@@ -1,0 +1,8 @@
+[package]
+name = "complgen"
+version = "0.1.0"
+edition = "2021"
+description = "A programming-language-agnostic shell completions generator"
+
+[dependencies]
+nom = "7.1.3"
