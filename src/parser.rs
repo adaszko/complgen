@@ -3,9 +3,7 @@
 // Drawing of a railroad diagram for a grammar.
 // https://github.com/mbrubeck/compleat/tree/master/examples
 
-use std::collections::HashMap;
-
-use nom::{character::complete::{char, one_of, multispace0}, bytes::complete::{tag, escaped, is_not}, IResult, branch::alt};
+use nom::{character::{complete::{char, multispace0, multispace1}}, bytes::complete::{is_not, take_while, take_while1}, IResult, branch::alt};
 
 #[derive(Debug, PartialEq)]
 struct Grammar<'a> {
@@ -32,10 +30,8 @@ enum Expr<'a> {
 
 
 fn terminal(input: &str) -> IResult<&str, &str> {
-    let (input, inner) = escaped(is_not("\\"), '\\', one_of("\""))(input)?;
-    debug_assert!(inner.starts_with("\""));
-    debug_assert!(inner.ends_with("\""));
-    Ok((input, &inner[1..inner.len()-1]))
+    let (input, term) = take_while1(|c: char| !c.is_whitespace())(input)?;
+    Ok((input, term))
 }
 
 
@@ -71,9 +67,9 @@ fn optional_expr(input: &str) -> IResult<&str, Expr> {
 
 fn expr(input: &str) -> IResult<&str, Expr> {
     let (input, expr) = alt((
-        terminal_expr,
         nonterminal_expr,
         optional_expr,
+        terminal_expr,
     ))(input)?;
     Ok((input, expr))
 }
@@ -90,7 +86,7 @@ fn variant(input: &str) -> IResult<&str, Variant> {
     Ok((input, production))
 }
 
-fn parse(input: &str) -> IResult<&str, Grammar> {
+fn parse(_input: &str) -> IResult<&str, Grammar> {
     todo!();
 }
 
@@ -102,28 +98,28 @@ mod tests {
     #[test]
     fn parses_word_terminal() {
         const INPUT: &str = r#"foo"#;
-        let ("", e) = expr(INPUT).unwrap() else { panic!("parsing error"); };
+        let ("", e) = terminal_expr(INPUT).unwrap() else { panic!("parsing error"); };
         assert_eq!(e, Expr::Terminal("foo"));
     }
 
     #[test]
     fn parses_short_option_terminal() {
         const INPUT: &str = r#"-f"#;
-        let ("", e) = expr(INPUT).unwrap() else { panic!("parsing error"); };
+        let ("", e) = terminal_expr(INPUT).unwrap() else { panic!("parsing error"); };
         assert_eq!(e, Expr::Terminal("-f"));
     }
 
     #[test]
     fn parses_long_option_terminal() {
         const INPUT: &str = r#"--foo"#;
-        let ("", e) = expr(INPUT).unwrap() else { panic!("parsing error"); };
+        let ("", e) = terminal_expr(INPUT).unwrap() else { panic!("parsing error"); };
         assert_eq!(e, Expr::Terminal("--foo"));
     }
 
     #[test]
     fn parses_nonterminal() {
         const INPUT: &str = "<FILE>";
-        let ("", e) = expr(INPUT).unwrap() else { panic!("parsing error"); };
+        let ("", e) = nonterminal_expr(INPUT).unwrap() else { panic!("parsing error"); };
         assert_eq!(e, Expr::Nonterminal("FILE"));
     }
 
