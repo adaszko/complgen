@@ -1,7 +1,7 @@
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error("Parsing error")]
-    ParsingError,
+    #[error("Parsing error: {:?}", .0)]
+    ParsingError(String),
 
     #[error("Empty grammar")]
     EmptyGrammar,

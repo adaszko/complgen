@@ -3,7 +3,13 @@
 // Drawing of a railroad diagram for a grammar.
 // https://github.com/mbrubeck/compleat/tree/master/examples
 
-use nom::{character::{complete::{char, multispace0, multispace1}}, bytes::complete::{is_not, take_while1, tag}, IResult, branch::alt, multi::separated_list1};
+use nom::{
+    branch::alt,
+    bytes::complete::{is_not, tag, take_while1},
+    character::complete::{char, multispace0, multispace1},
+    multi::separated_list1,
+    IResult,
+};
 
 use crate::error::Error;
 
@@ -19,7 +25,6 @@ struct Variant<'a> {
     rhs: Expr<'a>,
 }
 
-
 #[derive(Debug, PartialEq)]
 enum Expr<'a> {
     Terminal(&'a str),
@@ -30,7 +35,6 @@ enum Expr<'a> {
     Alternative(Vec<Expr<'a>>),
 }
 
-
 fn terminal(input: &str) -> IResult<&str, &str> {
     // TODO Allow for escaping these characters thus making them part of a terminal symbol
     // TODO Make it into a positive list instead of a negative one (easier to spot where the
@@ -39,12 +43,10 @@ fn terminal(input: &str) -> IResult<&str, &str> {
     Ok((input, term))
 }
 
-
 fn terminal_expr(input: &str) -> IResult<&str, Expr> {
     let (input, literal) = terminal(input)?;
     Ok((input, Expr::Terminal(literal)))
 }
-
 
 fn nonterminal(input: &str) -> IResult<&str, &str> {
     let (input, _) = char('<')(input)?;
@@ -53,12 +55,10 @@ fn nonterminal(input: &str) -> IResult<&str, &str> {
     Ok((input, name))
 }
 
-
 fn nonterminal_expr(input: &str) -> IResult<&str, Expr> {
     let (input, nonterm) = nonterminal(input)?;
     Ok((input, Expr::Nonterminal(nonterm)))
 }
-
 
 fn optional_expr(input: &str) -> IResult<&str, Expr> {
     let (input, _) = char('[')(input)?;
@@ -69,7 +69,6 @@ fn optional_expr(input: &str) -> IResult<&str, Expr> {
     Ok((input, Expr::Optional(Box::new(expr))))
 }
 
-
 fn parenthesized_expr(input: &str) -> IResult<&str, Expr> {
     let (input, _) = char('(')(input)?;
     let (input, _) = multispace0(input)?;
@@ -79,6 +78,11 @@ fn parenthesized_expr(input: &str) -> IResult<&str, Expr> {
     Ok((input, e))
 }
 
+fn one_or_more_tag(input: &str) -> IResult<&str, ()> {
+    let (input, _) = multispace0(input)?;
+    let (input, _) = tag("...")(input)?;
+    Ok((input, ()))
+}
 
 fn expr_no_alternative_no_sequence(input: &str) -> IResult<&str, Expr> {
     let (input, e) = alt((
@@ -88,13 +92,12 @@ fn expr_no_alternative_no_sequence(input: &str) -> IResult<&str, Expr> {
         terminal_expr,
     ))(input)?;
 
-    if let Ok((input, "...")) = tag::<_, _, ()>("...")(input) {
+    if let Ok((input, ())) = one_or_more_tag(input) {
         return Ok((input, Expr::OneOrMore(Box::new(e))));
     }
 
     Ok((input, e))
 }
-
 
 fn sequence_expr(input: &str) -> IResult<&str, Expr> {
     fn do_sequence_expr(input: &str) -> IResult<&str, Expr> {
@@ -117,7 +120,6 @@ fn sequence_expr(input: &str) -> IResult<&str, Expr> {
     };
     Ok((input, result))
 }
-
 
 fn alternative_expr(input: &str) -> IResult<&str, Expr> {
     fn do_alternative_expr(input: &str) -> IResult<&str, Expr> {
@@ -143,11 +145,9 @@ fn alternative_expr(input: &str) -> IResult<&str, Expr> {
     Ok((input, result))
 }
 
-
 fn expr(input: &str) -> IResult<&str, Expr> {
     alternative_expr(input)
 }
-
 
 fn variant(input: &str) -> IResult<&str, Variant> {
     let (input, name) = terminal(input)?;
@@ -170,20 +170,18 @@ fn grammar(input: &str) -> IResult<&str, Vec<Variant>> {
 }
 
 fn parse(input: &str) -> crate::error::Result<Grammar> {
-    let (input, variants) = match grammar(input) {
+    let (_, variants) = match grammar(input) {
         Ok((input, variants)) => (input, variants),
-        Err(_) => return Err(Error::ParsingError),
+        Err(e) => return Err(Error::ParsingError(e.to_string())),
     };
-
-    if input != "" {
-        return Err(Error::ParsingError);
-    }
 
     let mut commands: Vec<&str> = variants.iter().map(|v| v.lhs).collect();
     commands.sort();
     commands.dedup();
     if commands.len() > 1 {
-        return Err(Error::VaryingCommandNames(commands.into_iter().map(|s| s.to_string()).collect()));
+        return Err(Error::VaryingCommandNames(
+            commands.into_iter().map(|s| s.to_string()).collect(),
+        ));
     }
 
     if commands.is_empty() {
@@ -197,7 +195,6 @@ fn parse(input: &str) -> crate::error::Result<Grammar> {
     };
     Ok(g)
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -249,34 +246,52 @@ mod tests {
     fn parses_sequence_expr() {
         const INPUT: &str = "<first-nonterminal> <second nonterminal>";
         let ("", e) = expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Expr::Sequence(vec![Expr::Nonterminal("first-nonterminal"), Expr::Nonterminal("second nonterminal")]));
+        assert_eq!(
+            e,
+            Expr::Sequence(vec![
+                Expr::Nonterminal("first-nonterminal"),
+                Expr::Nonterminal("second nonterminal")
+            ])
+        );
     }
 
     #[test]
     fn parses_alternative_expr() {
         const INPUT: &str = "a b | c";
         let ("", e) = expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Expr::Alternative(vec![
-            Expr::Sequence(vec![Expr::Terminal("a"), Expr::Terminal("b")]),
-            Expr::Terminal("c")
-        ]));
+        assert_eq!(
+            e,
+            Expr::Alternative(vec![
+                Expr::Sequence(vec![Expr::Terminal("a"), Expr::Terminal("b")]),
+                Expr::Terminal("c")
+            ])
+        );
     }
 
     #[test]
     fn parses_parenthesised_expr() {
         const INPUT: &str = r#"a (b | c)"#;
         let ("", e) = expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Expr::Sequence(vec![
-            Expr::Terminal("a"),
-            Expr::Alternative(vec![Expr::Terminal("b"), Expr::Terminal("c")]),
-        ]));
+        assert_eq!(
+            e,
+            Expr::Sequence(vec![
+                Expr::Terminal("a"),
+                Expr::Alternative(vec![Expr::Terminal("b"), Expr::Terminal("c")]),
+            ])
+        );
     }
 
     #[test]
     fn parses_variant() {
         const INPUT: &str = r#"foo bar;"#;
         let ("", v) = variant(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(v, Variant { lhs: "foo", rhs: Expr::Terminal("bar") });
+        assert_eq!(
+            v,
+            Variant {
+                lhs: "foo",
+                rhs: Expr::Terminal("bar")
+            }
+        );
     }
 
     #[test]
@@ -286,20 +301,46 @@ foo bar;
 foo baz;
 "#;
         let g = parse(INPUT).unwrap();
-        assert_eq!(g, Grammar {
-            command: "foo",
-            variants: vec![
-                Expr::Terminal("bar"),
-                Expr::Terminal("baz"),
-            ]
-        });
+        assert_eq!(
+            g,
+            Grammar {
+                command: "foo",
+                variants: vec![Expr::Terminal("bar"), Expr::Terminal("baz"),]
+            }
+        );
+    }
+
+    #[test]
+    fn bug1() {
+        use Expr::*;
+        // Did not consider whitespace before ...
+        const INPUT: &str = "darcs help ( ( -v | --verbose ) | ( -q | --quiet ) ) ... [<DARCS_COMMAND> [DARCS_SUBCOMMAND]]  ;";
+        let g = parse(INPUT).unwrap();
+        assert_eq!(
+            g,
+            Grammar {
+                command: "darcs",
+                variants: vec![Sequence(vec![
+                    Terminal("help",),
+                    Sequence(vec![
+                        OneOrMore(Box::new(Alternative(vec![
+                            Alternative(vec![Terminal("-v",), Terminal("--verbose",),],),
+                            Alternative(vec![Terminal("-q",), Terminal("--quiet",),],),
+                        ],)),),
+                        Optional(Box::new(Sequence(vec![
+                            Nonterminal("DARCS_COMMAND",),
+                            Optional(Box::new(Terminal("DARCS_SUBCOMMAND",)),),
+                        ],)),),
+                    ],),
+                ],),],
+            },
+        );
     }
 
     #[test]
     fn parses_darcs_grammar() {
         // Source: https://github.com/mbrubeck/compleat/blob/56dd9761cdbb07de674947b129192cd8043cda8a/examples/darcs.usage
         const INPUT: &str = r#"
-DARCS_COMMAND = (help | add | remove | move | replace | revert | unrevert | whatsnew | record | unrecord | amend-record | mark-conflicts | tag | setpref | diff | changes | annotate | dist | trackdown | show | pull | obliterate | rollback | push | send | apply | get | put | initialize | optimize | check | repair | convert);
 darcs help ( ( --debug | --debug-verbose | --debug-http | ( -v | --verbose ) | ( -q | --quiet ) | --standard-verbosity ) | --timings | ( --posthook <COMMAND> | --no-posthook ) | ( --prompt-posthook | --run-posthook ) | ( --prehook <COMMAND> | --no-prehook ) | ( --prompt-prehook | --run-prehook ) ) ... [<DARCS_COMMAND> [DARCS_SUBCOMMAND]]  ;
 darcs add ( --boring | ( --case-ok | --reserved-ok ) | ( ( -r | --recursive ) | --not-recursive ) | ( --date-trick | --no-date-trick ) | --repodir <DIRECTORY> | --dry-run | --umask <UMASK> | ( --debug | --debug-verbose | --debug-http | ( -v | --verbose ) | ( -q | --quiet ) | --standard-verbosity ) | --timings | ( --posthook <COMMAND> | --no-posthook ) | ( --prompt-posthook | --run-posthook ) | ( --prehook <COMMAND> | --no-prehook ) | ( --prompt-prehook | --run-prehook ) ) ... ( <FILE> | <DIRECTORY> )...;
 darcs remove ( --repodir <DIRECTORY> | --umask <UMASK> | ( --debug | --debug-verbose | --debug-http | ( -v | --verbose ) | ( -q | --quiet ) | --standard-verbosity ) | --timings | ( --posthook <COMMAND> | --no-posthook ) | ( --prompt-posthook | --run-posthook ) | ( --prehook <COMMAND> | --no-prehook ) | ( --prompt-prehook | --run-prehook ) ) ... ( <FILE> | <DIRECTORY> )...;
@@ -334,5 +375,6 @@ darcs check ( ( --complete | --partial ) | ( --no-test | --test ) | ( --leave-te
 darcs repair ( --repodir <DIRECTORY> | --umask <UMASK> | ( --debug | --debug-verbose | --debug-http | ( -v | --verbose ) | ( -q | --quiet ) | --standard-verbosity ) | --timings | ( --posthook <COMMAND> | --no-posthook ) | ( --prompt-posthook | --run-posthook ) | ( --prehook <COMMAND> | --no-prehook ) | ( --prompt-prehook | --run-prehook ) ) ... ;
 darcs convert ( ( --repo-name <DIRECTORY> | --repodir <DIRECTORY> ) | ( --set-scripts-executable | --dont-set-scripts-executable ) | ( --ssh-cm | --no-ssh-cm ) | ( --http-pipelining | --no-http-pipelining ) | --no-cache | ( --debug | --debug-verbose | --debug-http | ( -v | --verbose ) | ( -q | --quiet ) | --standard-verbosity ) | --timings | ( --posthook <COMMAND> | --no-posthook ) | ( --prompt-posthook | --run-posthook ) | ( --prehook <COMMAND> | --no-prehook ) | ( --prompt-prehook | --run-prehook ) ) ... <SOURCE> [<DESTINATION>]
 "#;
+        dbg!(parse(INPUT));
     }
 }
