@@ -3,7 +3,7 @@
 // Drawing of a railroad diagram for a grammar.
 // https://github.com/mbrubeck/compleat/tree/master/examples
 
-use nom::{character::{complete::{char, multispace0, multispace1}}, bytes::complete::{is_not, take_while, take_while1}, IResult, branch::alt};
+use nom::{character::{complete::{char, multispace0, multispace1}}, bytes::complete::{is_not, take_while, take_while1, tag}, IResult, branch::alt, multi::{many1, separated_list1}};
 
 #[derive(Debug, PartialEq)]
 struct Grammar<'a> {
@@ -65,11 +65,52 @@ fn optional_expr(input: &str) -> IResult<&str, Expr> {
 }
 
 
+fn one_or_more_expr(input: &str) -> IResult<&str, Expr> {
+    // XXX Left recursion
+    let (input, expr) = expr(input)?;
+    let (input, _) = tag("...")(input)?;
+    Ok((input, Expr::OneOrMore(Box::new(expr))))
+}
+
+
+fn sequence_expr(input: &str) -> IResult<&str, Expr> {
+    let (input, v) = many1(expr)(input)?;
+    Ok((input, Expr::Sequence(v)))
+}
+
+
+fn alternative_expr(input: &str) -> IResult<&str, Expr> {
+    fn alternative_separator(input: &str) -> IResult<&str, ()> {
+        let (input, _) = multispace0(input)?;
+        let (input, _) = char('|')(input)?;
+        let (input, _) = multispace0(input)?;
+        Ok((input, ()))
+    }
+
+    let (input, v) = separated_list1(alternative_separator, expr)(input)?;
+    Ok((input, Expr::Sequence(v)))
+}
+
+
+fn parenthesized_expr(input: &str) -> IResult<&str, Expr> {
+    let (input, _) = char('(')(input)?;
+    let (input, _) = multispace0(input)?;
+    let (input, e) = expr(input)?;
+    let (input, _) = multispace0(input)?;
+    let (input, _) = char(')')(input)?;
+    Ok((input, e))
+}
+
+
 fn expr(input: &str) -> IResult<&str, Expr> {
     let (input, expr) = alt((
         nonterminal_expr,
         optional_expr,
         terminal_expr,
+        one_or_more_expr,
+        sequence_expr,
+        alternative_expr,
+        parenthesized_expr,
     ))(input)?;
     Ok((input, expr))
 }
