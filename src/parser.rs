@@ -3,7 +3,9 @@
 // Drawing of a railroad diagram for a grammar.
 // https://github.com/mbrubeck/compleat/tree/master/examples
 
-use nom::{character::{complete::{char, multispace0, multispace1}}, bytes::complete::{is_not, take_while1, tag}, IResult, branch::alt};
+use nom::{character::{complete::{char, multispace0, multispace1}}, bytes::complete::{is_not, take_while1, tag}, IResult, branch::alt, multi::separated_list1};
+
+use crate::error::Error;
 
 #[derive(Debug, PartialEq)]
 struct Grammar<'a> {
@@ -31,7 +33,9 @@ enum Expr<'a> {
 
 fn terminal(input: &str) -> IResult<&str, &str> {
     // TODO Allow for escaping these characters thus making them part of a terminal symbol
-    let (input, term) = take_while1(|c| " \t()[]<>.|".find(c).is_none())(input)?;
+    // TODO Make it into a positive list instead of a negative one (easier to spot where the
+    // grammar stopped parsing properly)
+    let (input, term) = take_while1(|c| " \t\n()[]<>.|;".find(c).is_none())(input)?;
     Ok((input, term))
 }
 
@@ -149,6 +153,8 @@ fn variant(input: &str) -> IResult<&str, Variant> {
     let (input, name) = terminal(input)?;
     let (input, _) = multispace1(input)?;
     let (input, expr) = expr(input)?;
+    let (input, _) = multispace0(input)?;
+    let (input, _) = char(';')(input)?;
     let production = Variant {
         lhs: name,
         rhs: expr,
@@ -156,8 +162,40 @@ fn variant(input: &str) -> IResult<&str, Variant> {
     Ok((input, production))
 }
 
-fn parse(_input: &str) -> IResult<&str, Grammar> {
-    todo!();
+fn grammar(input: &str) -> IResult<&str, Vec<Variant>> {
+    let (input, _) = multispace0(input)?;
+    let (input, variants) = separated_list1(multispace1, variant)(input)?;
+    let (input, _) = multispace0(input)?;
+    Ok((input, variants))
+}
+
+fn parse(input: &str) -> crate::error::Result<Grammar> {
+    let (input, variants) = match grammar(input) {
+        Ok((input, variants)) => (input, variants),
+        Err(_) => return Err(Error::ParsingError),
+    };
+
+    if input != "" {
+        return Err(Error::ParsingError);
+    }
+
+    let mut commands: Vec<&str> = variants.iter().map(|v| v.lhs).collect();
+    commands.sort();
+    commands.dedup();
+    if commands.len() > 1 {
+        return Err(Error::VaryingCommandNames(commands.into_iter().map(|s| s.to_string()).collect()));
+    }
+
+    if commands.is_empty() {
+        return Err(Error::EmptyGrammar);
+    }
+
+    let v: Vec<Expr> = variants.into_iter().map(|v| v.rhs).collect();
+    let g = Grammar {
+        command: commands[0],
+        variants: v,
+    };
+    Ok(g)
 }
 
 
@@ -236,9 +274,7 @@ mod tests {
 
     #[test]
     fn parses_variant() {
-        const INPUT: &str = r#"
-foo bar
-"#;
+        const INPUT: &str = r#"foo bar;"#;
         let ("", v) = variant(INPUT).unwrap() else { panic!("parsing error"); };
         assert_eq!(v, Variant { lhs: "foo", rhs: Expr::Terminal("bar") });
     }
@@ -246,10 +282,10 @@ foo bar
     #[test]
     fn parses_grammar() {
         const INPUT: &str = r#"
-foo bar
-foo baz
+foo bar;
+foo baz;
 "#;
-        let ("", g) = parse(INPUT).unwrap() else { panic!("parsing error"); };
+        let g = parse(INPUT).unwrap();
         assert_eq!(g, Grammar {
             command: "foo",
             variants: vec![

@@ -1,5 +1,6 @@
 mod parser;
 mod zsh;
+mod error;
 
 
 fn main() {
