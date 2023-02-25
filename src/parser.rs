@@ -3,7 +3,7 @@
 // Drawing of a railroad diagram for a grammar.
 // https://github.com/mbrubeck/compleat/tree/master/examples
 
-use nom::{character::{complete::{char, multispace0, multispace1}}, bytes::complete::{is_not, take_while, take_while1, tag}, IResult, branch::alt, multi::{many1, separated_list1}};
+use nom::{character::{complete::{char, multispace0, multispace1}}, bytes::complete::{is_not, take_while1, tag}, IResult, branch::alt};
 
 #[derive(Debug, PartialEq)]
 struct Grammar<'a> {
@@ -30,7 +30,8 @@ enum Expr<'a> {
 
 
 fn terminal(input: &str) -> IResult<&str, &str> {
-    let (input, term) = take_while1(|c: char| !c.is_whitespace())(input)?;
+    // TODO Allow for escaping these characters thus making them part of a terminal symbol
+    let (input, term) = take_while1(|c| " \t()[]<>.|".find(c).is_none())(input)?;
     Ok((input, term))
 }
 
@@ -65,33 +66,6 @@ fn optional_expr(input: &str) -> IResult<&str, Expr> {
 }
 
 
-fn one_or_more_expr(input: &str) -> IResult<&str, Expr> {
-    // XXX Left recursion
-    let (input, expr) = expr(input)?;
-    let (input, _) = tag("...")(input)?;
-    Ok((input, Expr::OneOrMore(Box::new(expr))))
-}
-
-
-fn sequence_expr(input: &str) -> IResult<&str, Expr> {
-    let (input, v) = many1(expr)(input)?;
-    Ok((input, Expr::Sequence(v)))
-}
-
-
-fn alternative_expr(input: &str) -> IResult<&str, Expr> {
-    fn alternative_separator(input: &str) -> IResult<&str, ()> {
-        let (input, _) = multispace0(input)?;
-        let (input, _) = char('|')(input)?;
-        let (input, _) = multispace0(input)?;
-        Ok((input, ()))
-    }
-
-    let (input, v) = separated_list1(alternative_separator, expr)(input)?;
-    Ok((input, Expr::Sequence(v)))
-}
-
-
 fn parenthesized_expr(input: &str) -> IResult<&str, Expr> {
     let (input, _) = char('(')(input)?;
     let (input, _) = multispace0(input)?;
@@ -102,17 +76,72 @@ fn parenthesized_expr(input: &str) -> IResult<&str, Expr> {
 }
 
 
-fn expr(input: &str) -> IResult<&str, Expr> {
-    let (input, expr) = alt((
+fn expr_no_alternative_no_sequence(input: &str) -> IResult<&str, Expr> {
+    let (input, e) = alt((
         nonterminal_expr,
         optional_expr,
-        terminal_expr,
-        one_or_more_expr,
-        sequence_expr,
-        alternative_expr,
         parenthesized_expr,
+        terminal_expr,
     ))(input)?;
-    Ok((input, expr))
+
+    if let Ok((input, "...")) = tag::<_, _, ()>("...")(input) {
+        return Ok((input, Expr::OneOrMore(Box::new(e))));
+    }
+
+    Ok((input, e))
+}
+
+
+fn sequence_expr(input: &str) -> IResult<&str, Expr> {
+    fn do_sequence_expr(input: &str) -> IResult<&str, Expr> {
+        let (input, _) = multispace0(input)?;
+        let (input, right) = sequence_expr(input)?;
+        Ok((input, right))
+    }
+
+    let (mut input, left) = expr_no_alternative_no_sequence(input)?;
+    let mut factors: Vec<Expr> = vec![left];
+    loop {
+        let Ok((pos, right)) = do_sequence_expr(input) else { break };
+        factors.push(right);
+        input = pos;
+    }
+    let result = if factors.len() == 1 {
+        factors.drain(..).next().unwrap()
+    } else {
+        Expr::Sequence(factors)
+    };
+    Ok((input, result))
+}
+
+
+fn alternative_expr(input: &str) -> IResult<&str, Expr> {
+    fn do_alternative_expr(input: &str) -> IResult<&str, Expr> {
+        let (input, _) = multispace0(input)?;
+        let (input, _) = char('|')(input)?;
+        let (input, _) = multispace0(input)?;
+        let (input, right) = sequence_expr(input)?;
+        Ok((input, right))
+    }
+
+    let (mut input, left) = sequence_expr(input)?;
+    let mut elems: Vec<Expr> = vec![left];
+    loop {
+        let Ok((pos, right)) = do_alternative_expr(input) else { break };
+        elems.push(right);
+        input = pos;
+    }
+    let result = if elems.len() == 1 {
+        elems.drain(..).next().unwrap()
+    } else {
+        Expr::Alternative(elems)
+    };
+    Ok((input, result))
+}
+
+
+fn expr(input: &str) -> IResult<&str, Expr> {
+    alternative_expr(input)
 }
 
 
@@ -201,12 +230,12 @@ mod tests {
         let ("", e) = expr(INPUT).unwrap() else { panic!("parsing error"); };
         assert_eq!(e, Expr::Sequence(vec![
             Expr::Terminal("a"),
-            Expr::Alternative(vec![Expr::Terminal("b"), Expr::Terminal("b")]),
+            Expr::Alternative(vec![Expr::Terminal("b"), Expr::Terminal("c")]),
         ]));
     }
 
     #[test]
-    fn parse_variant() {
+    fn parses_variant() {
         const INPUT: &str = r#"
 foo bar
 "#;
@@ -215,7 +244,7 @@ foo bar
     }
 
     #[test]
-    fn parse_grammar() {
+    fn parses_grammar() {
         const INPUT: &str = r#"
 foo bar
 foo baz
