@@ -1,8 +1,18 @@
 // nom-based parser for extended form of BNF
 // Can steal some stuff from https://docs.rs/clap_complete/latest/clap_complete/index.html
 // Drawing of a railroad diagram for a grammar.
+// https://github.com/mbrubeck/compleat/tree/master/examples
 
-use nom::{character::complete::{alphanumeric1, char, one_of, multispace0}, bytes::complete::{tag, escaped, is_not}, IResult, branch::alt};
+use std::collections::HashMap;
+
+use nom::{character::complete::{char, one_of, multispace0}, bytes::complete::{tag, escaped, is_not}, IResult, branch::alt};
+
+struct Grammar<'a> {
+    productions: HashMap<&'a str, Expr<'a>>,
+}
+
+impl<'a> Grammar<'a> {
+}
 
 #[derive(Debug, PartialEq)]
 struct Production<'a> {
@@ -17,15 +27,17 @@ enum Expr<'a> {
     Nonterminal(&'a str),
     Optional(Box<Expr<'a>>),
     ShellOut(&'a str),
-    Sequence(Box<Expr<'a>>),
+    Sequence(Vec<Expr<'a>>),
     OneOrMore(Box<Expr<'a>>),
-    Alternative(Vec<Box<Expr<'a>>>),
+    Alternative(Vec<Expr<'a>>),
 }
 
 
 fn terminal(input: &str) -> IResult<&str, &str> {
     let (input, inner) = escaped(is_not("\\"), '\\', one_of("\""))(input)?;
-    Ok((input, inner))
+    debug_assert!(inner.starts_with("\""));
+    debug_assert!(inner.ends_with("\""));
+    Ok((input, &inner[1..inner.len()-1]))
 }
 
 
@@ -37,7 +49,7 @@ fn terminal_expr(input: &str) -> IResult<&str, Expr> {
 
 fn nonterminal(input: &str) -> IResult<&str, &str> {
     let (input, _) = char('<')(input)?;
-    let (input, name) = alphanumeric1(input)?;
+    let (input, name) = is_not(">")(input)?;
     let (input, _) = char('>')(input)?;
     Ok((input, name))
 }
@@ -60,11 +72,8 @@ fn optional_expr(input: &str) -> IResult<&str, Expr> {
 
 
 fn shell_out_expr(input: &str) -> IResult<&str, Expr> {
-    let (input, _) = tag("$(")(input)?;
-    let (input, _) = multispace0(input)?;
+    let (input, _) = tag("$")(input)?;
     let (input, cmd) = terminal(input)?;
-    let (input, _) = multispace0(input)?;
-    let (input, _) = char(')')(input)?;
     Ok((input, Expr::ShellOut(cmd)))
 }
 
@@ -100,7 +109,7 @@ mod tests {
     #[test]
     fn parses_terminal_expr() {
         const INPUT: &str = r#""foo""#;
-        assert_eq!(nonterminal_expr(INPUT).unwrap(), ("", Expr::Terminal("foo")));
+        assert_eq!(terminal_expr(INPUT).unwrap(), ("", Expr::Terminal("foo")));
     }
 
     #[test]
@@ -110,15 +119,15 @@ mod tests {
     }
 
     #[test]
-    fn parses_optional_expr() {
-        const INPUT: &str = "[<foo bar>]";
-        assert_eq!(optional_expr(INPUT).unwrap(), ("", Expr::Nonterminal("foo bar")));
+    fn parses_shell_out_expr() {
+        const INPUT: &str = r#"$"foo""#;
+        assert_eq!(shell_out_expr(INPUT).unwrap(), ("", Expr::ShellOut("foo")));
     }
 
     #[test]
-    fn parses_shell_out_expr() {
-        const INPUT: &str = "$(foo)";
-        assert_eq!(shell_out_expr(INPUT).unwrap(), ("", Expr::Nonterminal("cli")));
+    fn parses_optional_expr() {
+        const INPUT: &str = "[<foo bar>]";
+        assert_eq!(optional_expr(INPUT).unwrap(), ("", Expr::Nonterminal("foo bar")));
     }
 
     #[test]
@@ -137,11 +146,5 @@ mod tests {
     fn parses_alternative_expr() {
         const INPUT: &str = "<first-nonterminal> | <second nonterminal>";
         assert_eq!(shell_out_expr(INPUT).unwrap(), ("", Expr::Nonterminal("cli")));
-    }
-
-    #[test]
-    fn parses_parenthesised_production() {
-        const INPUT: &str = r#"<clone> ::= "clone" (<urn> | <url>) [<clone-option>...]"#;
-        // assert_eq!(production(INPUT).unwrap(), ("", Expr::Nonterminal("cli")));
     }
 }
