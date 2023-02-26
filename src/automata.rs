@@ -114,7 +114,7 @@ impl<'a> Default for NFA {
 }
 
 impl<'a> NFA {
-    fn from_expr(p: &'a Pattern) -> Self {
+    fn from_pattern(p: &'a Pattern) -> Self {
         let mut result = Self::default();
         let start_state = result.start_state;
         nfa_from_pattern(&mut result, &[start_state], p);
@@ -148,6 +148,234 @@ impl<'a> NFA {
 
     // Dump to a GraphViz dot format.
     fn to_dot(&self) -> String {
+        // https://graphviz.org/Gallery/directed/fsm.html
         todo!();
+    }
+}
+
+
+struct Cursor<'a> {
+    nfa: &'a NFA,
+    current_state: StateId,
+}
+
+
+impl<'a> Cursor<'a> {
+    fn from_nfa(nfa: &NFA) -> Self {
+        Self {
+            nfa,
+            current_state: nfa.start_state,
+        }
+    }
+
+    // panics if there's more than one transition with `word`.
+    fn consume(&self, word: &str) -> Option<StateId> {
+        todo!();
+    }
+
+    fn in_accepting_state(&self) -> bool {
+        todo!();
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_any_word() {
+        let pattern = Pattern::Word(Word::Any);
+        let nfa = NFA::from_pattern(&pattern);
+        let cursor = Cursor::from_nfa(&nfa);
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("anything");
+        assert!(cursor.in_accepting_state());
+    }
+
+    #[test]
+    fn accepts_two_words_sequence_pattern() {
+        let pattern = Pattern::Sequence(vec![Pattern::Word(Word::Literal("foo".to_string())), Pattern::Word(Word::Literal("bar".to_string()))]);
+        let nfa = NFA::from_pattern(&pattern);
+        let cursor = Cursor::from_nfa(&nfa);
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("foo");
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("bar");
+        assert!(cursor.in_accepting_state());
+    }
+
+    #[test]
+    fn accepts_two_words_choice_pattern() {
+        let pattern = Pattern::Choice(vec![Pattern::Word(Word::Literal("foo".to_string())), Pattern::Word(Word::Literal("bar".to_string()))]);
+        let nfa = NFA::from_pattern(&pattern);
+
+        let cursor = Cursor::from_nfa(&nfa);
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("foo");
+        assert!(cursor.in_accepting_state());
+
+        // 2nd pass
+        let cursor = Cursor::from_nfa(&nfa);
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("bar");
+        assert!(cursor.in_accepting_state());
+    }
+
+    #[test]
+    fn accepts_optional_word_pattern() {
+        let pattern = Pattern::Optional(Box::new(Pattern::Word(Word::Literal("foo".to_string()))));
+        let nfa = NFA::from_pattern(&pattern);
+
+        let cursor = Cursor::from_nfa(&nfa);
+        assert!(cursor.in_accepting_state());
+        cursor.consume("foo");
+        assert!(cursor.in_accepting_state());
+    }
+
+    #[test]
+    fn accepts_many1_words_pattern() {
+        let pattern = Pattern::Many1(Box::new(Pattern::Word(Word::Literal("foo".to_string()))));
+        let nfa = NFA::from_pattern(&pattern);
+
+        let cursor = Cursor::from_nfa(&nfa);
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("foo");
+        assert!(cursor.in_accepting_state());
+        cursor.consume("foo");
+        assert!(cursor.in_accepting_state());
+    }
+
+    // The most complicated part is how complex patterns combine with each other.
+
+    #[test]
+    fn accepts_sequence_containing_a_choice() {
+        let pattern = Pattern::Sequence(vec![
+            Pattern::Word(Word::Literal("first".to_string())),
+            Pattern::Choice(vec![
+                Pattern::Word(Word::Literal("foo".to_string())),
+                Pattern::Word(Word::Literal("bar".to_string())),
+            ]),
+            Pattern::Word(Word::Literal("last".to_string())),
+        ]);
+
+        let nfa = NFA::from_pattern(&pattern);
+
+        let cursor = Cursor::from_nfa(&nfa);
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("first");
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("foo");
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("last");
+        assert!(cursor.in_accepting_state());
+
+        // 2nd pass
+        let cursor = Cursor::from_nfa(&nfa);
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("first");
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("bar");
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("last");
+        assert!(cursor.in_accepting_state());
+    }
+
+    #[test]
+    fn accepts_choice_containing_a_sequence() {
+        let pattern = Pattern::Choice(vec![
+            Pattern::Sequence(vec![
+                Pattern::Word(Word::Literal("foo".to_string())),
+                Pattern::Word(Word::Literal("bar".to_string())),
+            ]),
+            Pattern::Sequence(vec![
+                Pattern::Word(Word::Literal("foo".to_string())),
+                Pattern::Word(Word::Literal("baz".to_string())),
+            ]),
+        ]);
+        let nfa = NFA::from_pattern(&pattern);
+        
+        let cursor = Cursor::from_nfa(&nfa);
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("foo");
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("bar");
+        assert!(cursor.in_accepting_state());
+
+        // 2nd pass
+        let cursor = Cursor::from_nfa(&nfa);
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("foo");
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("baz");
+        assert!(cursor.in_accepting_state());
+    }
+
+    #[test]
+    fn accepts_optional_containing_a_choice() {
+        let pattern = Pattern::Sequence(vec![
+            Pattern::Word(Word::Literal("first".to_string())),
+            Pattern::Optional(
+                Box::new(Pattern::Choice(vec![
+                    Pattern::Word(Word::Literal("foo".to_string())),
+                    Pattern::Word(Word::Literal("bar".to_string())),
+            ]))),
+            Pattern::Word(Word::Literal("last".to_string())),
+        ]);
+
+        let nfa = NFA::from_pattern(&pattern);
+
+        let cursor = Cursor::from_nfa(&nfa);
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("first");
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("foo");
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("last");
+        assert!(cursor.in_accepting_state());
+
+        // 2nd pass
+        let cursor = Cursor::from_nfa(&nfa);
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("first");
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("bar");
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("last");
+        assert!(cursor.in_accepting_state());
+
+        // 3rd pass
+        let cursor = Cursor::from_nfa(&nfa);
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("first");
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("last");
+        assert!(cursor.in_accepting_state());
+    }
+
+    #[test]
+    fn accepts_repetition_of_a_choice() {
+        let pattern = Pattern::Sequence(vec![
+            Pattern::Word(Word::Literal("first".to_string())),
+            Pattern::Many1(
+                Box::new(Pattern::Choice(vec![
+                    Pattern::Word(Word::Literal("foo".to_string())),
+                    Pattern::Word(Word::Literal("bar".to_string())),
+            ]))),
+            Pattern::Word(Word::Literal("first".to_string())),
+        ]);
+
+        let nfa = NFA::from_pattern(&pattern);
+
+        let cursor = Cursor::from_nfa(&nfa);
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("first");
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("foo");
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("bar");
+        assert!(!cursor.in_accepting_state());
+        cursor.consume("last");
+        assert!(cursor.in_accepting_state());
     }
 }
