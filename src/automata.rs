@@ -70,7 +70,7 @@ fn is_deduped(v: &[StateId]) -> bool {
     copy == v
 }
 
-fn nfa_from_expr<'a>(nfa: &mut NFA<'a>, current_states: &[StateId], e: &Expr<'a>) -> Vec<StateId> {
+fn do_nfa_from_expr<'a>(nfa: &mut NFA<'a>, current_states: &[StateId], e: &Expr<'a>) -> Vec<StateId> {
     match e {
         Expr::Literal(input) => {
             let to_state_id = nfa.add_state();
@@ -90,20 +90,20 @@ fn nfa_from_expr<'a>(nfa: &mut NFA<'a>, current_states: &[StateId], e: &Expr<'a>
             // Compile into multiple NFA states stringed together by transitions
             let mut states = current_states.to_vec();
             for p in v {
-                states = nfa_from_expr(nfa, &states, p);
+                states = do_nfa_from_expr(nfa, &states, p);
             }
             states
         },
         Expr::Alternative(v) => {
             let mut result: Vec<StateId> = Default::default();
             for p in v {
-                result.extend(nfa_from_expr(nfa, current_states, p));
+                result.extend(do_nfa_from_expr(nfa, current_states, p));
             }
             assert!(is_deduped(&result));
             result
         },
         Expr::Optional(e) => {
-            let ending_states = nfa_from_expr(nfa, current_states, e);
+            let ending_states = do_nfa_from_expr(nfa, current_states, e);
             for current_state in current_states {
                 for ending_state in &ending_states {
                     nfa.add_transition(*current_state, Input::Epsilon, *ending_state)
@@ -112,7 +112,7 @@ fn nfa_from_expr<'a>(nfa: &mut NFA<'a>, current_states: &[StateId], e: &Expr<'a>
             ending_states
         },
         Expr::Many1(e) => {
-            let ending_states = nfa_from_expr(nfa, current_states, e);
+            let ending_states = do_nfa_from_expr(nfa, current_states, e);
             for ending_state in &ending_states {
                 for current_state in current_states {
                     // loop from the ending state to the current one
@@ -122,6 +122,17 @@ fn nfa_from_expr<'a>(nfa: &mut NFA<'a>, current_states: &[StateId], e: &Expr<'a>
             ending_states
         },
     }
+}
+
+
+fn nfa_from_expr<'a>(e: &Expr<'a>) -> NFA<'a> {
+    let mut nfa = NFA::default();
+    let start_state = nfa.start_state;
+    let ending_states = do_nfa_from_expr(&mut nfa, &[start_state], e);
+    for state in ending_states {
+        nfa.mark_state_accepting(state);
+    }
+    nfa
 }
 
 struct NFA<'a> {
@@ -143,11 +154,8 @@ impl<'a> Default for NFA<'a> {
 }
 
 impl<'a> NFA<'a> {
-    fn from_expr(p: &'a Expr) -> Self {
-        let mut result = Self::default();
-        let start_state = result.start_state;
-        nfa_from_expr(&mut result, &[start_state], p);
-        result
+    fn from_expr(e: &'a Expr) -> Self {
+        nfa_from_expr(e)
     }
 
     fn is_accepting_state(&self, state: StateId) -> bool {
@@ -178,7 +186,9 @@ impl<'a> NFA<'a> {
 
             if !visited.contains(&current_state) {
                 backtracking_stack.extend(epsilon_transitions.into_iter().map(|state| (input_index, state)));
-                backtracking_stack.extend(matching_consuming_transitions[1..].iter().map(|state| (input_index, *state)));
+                if let Some(rest) = matching_consuming_transitions.get(1..) {
+                    backtracking_stack.extend(rest.iter().map(|state| (input_index, *state)));
+                }
                 visited.insert(current_state);
             }
             if let Some(state) = matching_consuming_transitions.first() {
