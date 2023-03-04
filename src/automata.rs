@@ -187,7 +187,7 @@ impl<'a> NFA<'a> {
             if !visited.contains(&current_state) {
                 backtracking_stack.extend(epsilon_transitions.into_iter().map(|state| (input_index, state)));
                 if let Some(rest) = matching_consuming_transitions.get(1..) {
-                    backtracking_stack.extend(rest.iter().map(|state| (input_index, *state)));
+                    backtracking_stack.extend(rest.iter().map(|state| (input_index + 1, *state)));
                 }
                 visited.insert(current_state);
             }
