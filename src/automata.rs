@@ -1,19 +1,23 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashSet, BTreeMap};
 
+use crate::parser::Expr;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-enum Word {
+enum Input<'a> {
+    Literal(&'a str),
     Any,
-    Literal(String),
+    Epsilon,
 }
 
 
-#[derive(Debug, PartialEq)]
-pub enum Pattern {
-    Word(Word),
-    Sequence(Vec<Pattern>),
-    Choice(Vec<Pattern>),
-    Many1(Box<Pattern>),
+impl<'a> Input<'a> {
+    fn matches(&self, input: &str) -> bool {
+        match self {
+            Self::Literal(expected) => input == *expected,
+            Self::Any => true,
+            Self::Epsilon => false,
+        }
+    }
 }
 
 
@@ -50,38 +54,53 @@ fn is_deduped(v: &[StateId]) -> bool {
     copy == v
 }
 
-fn nfa_from_pattern<'a>(nfa: &mut NFA, current_states: &[StateId], p: &'a Pattern) -> Vec<StateId> {
-    match p {
-        Pattern::Word(lookahead_word) => {
+fn nfa_from_expr<'a>(nfa: &mut NFA<'a>, current_states: &[StateId], e: &Expr<'a>) -> Vec<StateId> {
+    match e {
+        Expr::Literal(lookahead_word) => {
             let to_state_id = nfa.add_state();
             for state in current_states {
-                nfa.add_transition(*state, lookahead_word.clone(), to_state_id);
+                nfa.add_transition(*state, Input::Literal(lookahead_word), to_state_id);
             }
             return vec![to_state_id];
         },
-        Pattern::Sequence(v) => {
+        Expr::Variable(_) => {
+            let to_state_id = nfa.add_state();
+            for state in current_states {
+                nfa.add_transition(*state, Input::Any, to_state_id);
+            }
+            return vec![to_state_id];
+        },
+        Expr::Sequence(v) => {
             // Compile into multiple NFA states stringed together by transitions
             let mut states = current_states.to_vec();
             for p in v {
-                states = nfa_from_pattern(nfa, &states, p);
+                states = nfa_from_expr(nfa, &states, p);
             }
             states
         },
-        Pattern::Choice(v) => {
+        Expr::Alternative(v) => {
             let mut result: Vec<StateId> = Default::default();
             for p in v {
-                result.extend(nfa_from_pattern(nfa, current_states, p));
+                result.extend(nfa_from_expr(nfa, current_states, p));
             }
             assert!(is_deduped(&result));
             result
         },
-        Pattern::Many1(p) => {
-            let ending_states = nfa_from_pattern(nfa, current_states, p);
+        Expr::Optional(e) => {
+            let ending_states = nfa_from_expr(nfa, current_states, e);
+            for current_state in current_states {
+                for ending_state in &ending_states {
+                    nfa.add_transition(*current_state, Input::Epsilon, *ending_state)
+                }
+            }
+            ending_states
+        },
+        Expr::Many1(e) => {
+            let ending_states = nfa_from_expr(nfa, current_states, e);
             for ending_state in &ending_states {
                 for current_state in current_states {
-                    let (lookahead_word, subpattern_begining_state_id) = nfa.walk_transitions_backwards(*ending_state, *current_state);
-                    // loop from the last states in `states`
-                    nfa.add_transition(*ending_state, lookahead_word, subpattern_begining_state_id);
+                    // loop from the ending state to the current one
+                    nfa.add_transition(*ending_state, Input::Epsilon, *current_state);
                 }
             }
             ending_states
@@ -89,20 +108,14 @@ fn nfa_from_pattern<'a>(nfa: &mut NFA, current_states: &[StateId], p: &'a Patter
     }
 }
 
-// Transform Optionals into Alternatives
-fn pattern_from_expr<'a>(_e: &'a crate::parser::Expr) -> Pattern {
-    todo!();
-}
-
-
-struct NFA {
+struct NFA<'a> {
     start_state: StateId,
     next_state_id: StateId,
-    transitions: HashMap<(StateId, StateId), Word>,
+    transitions: BTreeMap<StateId, HashSet<(Input<'a>, StateId)>>,
     accepting_states: HashSet<StateId>,
 }
 
-impl<'a> Default for NFA {
+impl<'a> Default for NFA<'a> {
     fn default() -> Self {
         Self {
             next_state_id: 0.into(),
@@ -113,12 +126,61 @@ impl<'a> Default for NFA {
     }
 }
 
-impl<'a> NFA {
-    fn from_pattern(p: &'a Pattern) -> Self {
+impl<'a> NFA<'a> {
+    fn from_expr(p: &'a Expr) -> Self {
         let mut result = Self::default();
         let start_state = result.start_state;
-        nfa_from_pattern(&mut result, &[start_state], p);
+        nfa_from_expr(&mut result, &[start_state], p);
         result
+    }
+
+    fn is_accepting_state(&self, state: StateId) -> bool {
+        self.accepting_states.contains(&state)
+    }
+
+    fn accepts(&self, inputs: &[&str]) -> bool {
+        let mut visited: HashSet<StateId> = Default::default();
+        let mut backtracking_stack: Vec<(usize, StateId)> = Default::default();
+
+        let mut input_index = 0;
+        let mut current_state = self.start_state;
+        loop {
+            if input_index >= inputs.len() {
+                break;
+            }
+
+            let transitions_from_current_state = self.transitions.get(&current_state).cloned().unwrap_or(HashSet::default());
+            let matching_consuming_transitions: Vec<StateId> = transitions_from_current_state.iter().filter_map(|(expected_input, to)| match expected_input.matches(inputs[input_index]) {
+                false => None,
+                true => Some(*to),
+            }).collect();
+
+            let epsilon_transitions: Vec<StateId> = transitions_from_current_state.iter().filter_map(|(expected_input, to)| match expected_input {
+               Input::Epsilon => Some(*to),
+                _ => None,
+            }).collect();
+
+            if !visited.contains(&current_state) {
+                backtracking_stack.extend(epsilon_transitions.into_iter().map(|state| (input_index, state)));
+                backtracking_stack.extend(matching_consuming_transitions[1..].iter().map(|state| (input_index, *state)));
+                visited.insert(current_state);
+            }
+            if let Some(state) = matching_consuming_transitions.first() {
+                current_state = *state;
+                input_index += 1;
+            }
+            else {
+                // backtrack
+                if let Some((index, state)) = backtracking_stack.pop() {
+                    input_index = index;
+                    current_state = state;
+                }
+                else {
+                    break;
+                }
+            }
+        }
+        self.is_accepting_state(current_state)
     }
 
     fn add_state(&mut self) -> StateId {
@@ -127,23 +189,12 @@ impl<'a> NFA {
         result
     }
 
-    fn add_transition(&mut self, from: StateId, word: Word, to: StateId) {
-        self.transitions.insert((from, to), word);
+    fn add_transition(&mut self, from: StateId, input: Input<'a>, to: StateId) {
+        self.transitions.entry(from).or_default().insert((input, to));
     }
 
     fn mark_state_accepting(&mut self, state: StateId) {
         self.accepting_states.insert(state);
-    }
-
-    fn walk_transitions_backwards(&self, ending_state: StateId, starting_state: StateId) -> (Word, StateId) {
-        loop {
-            let transitions: Vec<((StateId, StateId), Word)> = self.transitions.iter().filter(|((_, to), _)| *to == ending_state).map(|(t, w)| (*t, w.clone())).collect();
-            assert_eq!(transitions.len(), 1);
-            let ((from, to), w) = &transitions[0];
-            if *from == starting_state {
-                return (w.clone(), *to);
-            }
-        }
     }
 
     // Dump to a GraphViz dot format.
@@ -155,13 +206,13 @@ impl<'a> NFA {
 
 
 struct Cursor<'a> {
-    nfa: &'a NFA,
+    nfa: &'a NFA<'a>,
     current_state: StateId,
 }
 
 
 impl<'a> Cursor<'a> {
-    fn from_nfa(nfa: &NFA) -> Self {
+    fn from_nfa(nfa: &'a NFA) -> Self {
         Self {
             nfa,
             current_state: nfa.start_state,
@@ -169,12 +220,12 @@ impl<'a> Cursor<'a> {
     }
 
     // panics if there's more than one transition with `word`.
-    fn consume(&self, word: &str) -> Option<StateId> {
+    fn consume(&self, _input: &str) -> Option<StateId> {
         todo!();
     }
 
     fn in_accepting_state(&self) -> bool {
-        todo!();
+        self.nfa.accepting_states.contains(&self.current_state)
     }
 }
 
@@ -185,8 +236,8 @@ mod tests {
 
     #[test]
     fn accepts_any_word() {
-        let pattern = Pattern::Word(Word::Any);
-        let nfa = NFA::from_pattern(&pattern);
+        let pattern = Expr::Variable("dummy");
+        let nfa = NFA::from_expr(&pattern);
         let cursor = Cursor::from_nfa(&nfa);
         assert!(!cursor.in_accepting_state());
         cursor.consume("anything");
@@ -195,8 +246,8 @@ mod tests {
 
     #[test]
     fn accepts_two_words_sequence_pattern() {
-        let pattern = Pattern::Sequence(vec![Pattern::Word(Word::Literal("foo".to_string())), Pattern::Word(Word::Literal("bar".to_string()))]);
-        let nfa = NFA::from_pattern(&pattern);
+        let pattern = Expr::Sequence(vec![Expr::Literal("foo"), Expr::Literal("bar")]);
+        let nfa = NFA::from_expr(&pattern);
         let cursor = Cursor::from_nfa(&nfa);
         assert!(!cursor.in_accepting_state());
         cursor.consume("foo");
@@ -207,8 +258,8 @@ mod tests {
 
     #[test]
     fn accepts_two_words_choice_pattern() {
-        let pattern = Pattern::Choice(vec![Pattern::Word(Word::Literal("foo".to_string())), Pattern::Word(Word::Literal("bar".to_string()))]);
-        let nfa = NFA::from_pattern(&pattern);
+        let pattern = Expr::Alternative(vec![Expr::Literal("foo"), Expr::Literal("bar")]);
+        let nfa = NFA::from_expr(&pattern);
 
         let cursor = Cursor::from_nfa(&nfa);
         assert!(!cursor.in_accepting_state());
@@ -224,8 +275,8 @@ mod tests {
 
     #[test]
     fn accepts_optional_word_pattern() {
-        let pattern = Pattern::Optional(Box::new(Pattern::Word(Word::Literal("foo".to_string()))));
-        let nfa = NFA::from_pattern(&pattern);
+        let pattern = Expr::Optional(Box::new(Expr::Literal("foo")));
+        let nfa = NFA::from_expr(&pattern);
 
         let cursor = Cursor::from_nfa(&nfa);
         assert!(cursor.in_accepting_state());
@@ -235,8 +286,8 @@ mod tests {
 
     #[test]
     fn accepts_many1_words_pattern() {
-        let pattern = Pattern::Many1(Box::new(Pattern::Word(Word::Literal("foo".to_string()))));
-        let nfa = NFA::from_pattern(&pattern);
+        let pattern = Expr::Many1(Box::new(Expr::Literal("foo")));
+        let nfa = NFA::from_expr(&pattern);
 
         let cursor = Cursor::from_nfa(&nfa);
         assert!(!cursor.in_accepting_state());
@@ -250,16 +301,16 @@ mod tests {
 
     #[test]
     fn accepts_sequence_containing_a_choice() {
-        let pattern = Pattern::Sequence(vec![
-            Pattern::Word(Word::Literal("first".to_string())),
-            Pattern::Choice(vec![
-                Pattern::Word(Word::Literal("foo".to_string())),
-                Pattern::Word(Word::Literal("bar".to_string())),
+        let pattern = Expr::Sequence(vec![
+            Expr::Literal("first"),
+            Expr::Alternative(vec![
+                Expr::Literal("foo"),
+                Expr::Literal("bar"),
             ]),
-            Pattern::Word(Word::Literal("last".to_string())),
+            Expr::Literal("last"),
         ]);
 
-        let nfa = NFA::from_pattern(&pattern);
+        let nfa = NFA::from_expr(&pattern);
 
         let cursor = Cursor::from_nfa(&nfa);
         assert!(!cursor.in_accepting_state());
@@ -283,18 +334,18 @@ mod tests {
 
     #[test]
     fn accepts_choice_containing_a_sequence() {
-        let pattern = Pattern::Choice(vec![
-            Pattern::Sequence(vec![
-                Pattern::Word(Word::Literal("foo".to_string())),
-                Pattern::Word(Word::Literal("bar".to_string())),
+        let pattern = Expr::Alternative(vec![
+            Expr::Sequence(vec![
+                Expr::Literal("foo"),
+                Expr::Literal("bar"),
             ]),
-            Pattern::Sequence(vec![
-                Pattern::Word(Word::Literal("foo".to_string())),
-                Pattern::Word(Word::Literal("baz".to_string())),
+            Expr::Sequence(vec![
+                Expr::Literal("foo"),
+                Expr::Literal("baz"),
             ]),
         ]);
-        let nfa = NFA::from_pattern(&pattern);
-        
+        let nfa = NFA::from_expr(&pattern);
+
         let cursor = Cursor::from_nfa(&nfa);
         assert!(!cursor.in_accepting_state());
         cursor.consume("foo");
@@ -313,17 +364,17 @@ mod tests {
 
     #[test]
     fn accepts_optional_containing_a_choice() {
-        let pattern = Pattern::Sequence(vec![
-            Pattern::Word(Word::Literal("first".to_string())),
-            Pattern::Optional(
-                Box::new(Pattern::Choice(vec![
-                    Pattern::Word(Word::Literal("foo".to_string())),
-                    Pattern::Word(Word::Literal("bar".to_string())),
+        let pattern = Expr::Sequence(vec![
+            Expr::Literal("first"),
+            Expr::Optional(
+                Box::new(Expr::Alternative(vec![
+                    Expr::Literal("foo"),
+                    Expr::Literal("bar"),
             ]))),
-            Pattern::Word(Word::Literal("last".to_string())),
+            Expr::Literal("last"),
         ]);
 
-        let nfa = NFA::from_pattern(&pattern);
+        let nfa = NFA::from_expr(&pattern);
 
         let cursor = Cursor::from_nfa(&nfa);
         assert!(!cursor.in_accepting_state());
@@ -355,17 +406,17 @@ mod tests {
 
     #[test]
     fn accepts_repetition_of_a_choice() {
-        let pattern = Pattern::Sequence(vec![
-            Pattern::Word(Word::Literal("first".to_string())),
-            Pattern::Many1(
-                Box::new(Pattern::Choice(vec![
-                    Pattern::Word(Word::Literal("foo".to_string())),
-                    Pattern::Word(Word::Literal("bar".to_string())),
+        let pattern = Expr::Sequence(vec![
+            Expr::Literal("first"),
+            Expr::Many1(
+                Box::new(Expr::Alternative(vec![
+                    Expr::Literal("foo"),
+                    Expr::Literal("bar"),
             ]))),
-            Pattern::Word(Word::Literal("first".to_string())),
+            Expr::Literal("first"),
         ]);
 
-        let nfa = NFA::from_pattern(&pattern);
+        let nfa = NFA::from_expr(&pattern);
 
         let cursor = Cursor::from_nfa(&nfa);
         assert!(!cursor.in_accepting_state());
