@@ -163,43 +163,61 @@ impl<'a> NFA<'a> {
     }
 
     fn accepts(&self, inputs: &[&str]) -> bool {
-        let mut visited: HashSet<StateId> = Default::default();
+        let mut visited_epsilons: HashSet<StateId> = Default::default();
+        let mut visited_matching: HashSet<StateId> = Default::default();
         let mut backtracking_stack: Vec<(usize, StateId)> = Default::default();
 
         let mut input_index = 0;
         let mut current_state = self.start_state;
         loop {
-            if input_index >= inputs.len() {
-                break;
+            let transitions_from_current_state = self.transitions.get(&current_state).cloned().unwrap_or(HashSet::default());
+
+            if !visited_epsilons.contains(&current_state) {
+                let epsilon_transitions: Vec<StateId> = transitions_from_current_state.iter().filter_map(|(expected_input, to)| match expected_input {
+                    Input::Epsilon => Some(*to),
+                    _ => None,
+                }).collect();
+                backtracking_stack.extend(epsilon_transitions.into_iter().map(|state| (input_index, state)));
+                visited_epsilons.insert(current_state);
             }
 
-            let transitions_from_current_state = self.transitions.get(&current_state).cloned().unwrap_or(HashSet::default());
+            if input_index >= inputs.len() {
+                if self.is_accepting_state(current_state) {
+                    return true;
+                }
+                // backtrack
+                if let Some((index, state)) = backtracking_stack.pop() {
+                    input_index = index;
+                    current_state = state;
+                    continue;
+                }
+                else {
+                    break;
+                }
+            }
+
             let matching_consuming_transitions: Vec<StateId> = transitions_from_current_state.iter().filter_map(|(expected_input, to)| match expected_input.matches(inputs[input_index]) {
                 false => None,
                 true => Some(*to),
             }).collect();
 
-            let epsilon_transitions: Vec<StateId> = transitions_from_current_state.iter().filter_map(|(expected_input, to)| match expected_input {
-               Input::Epsilon => Some(*to),
-                _ => None,
-            }).collect();
-
-            if !visited.contains(&current_state) {
-                backtracking_stack.extend(epsilon_transitions.into_iter().map(|state| (input_index, state)));
+            if !visited_matching.contains(&current_state) {
                 if let Some(rest) = matching_consuming_transitions.get(1..) {
                     backtracking_stack.extend(rest.iter().map(|state| (input_index + 1, *state)));
                 }
-                visited.insert(current_state);
+                visited_matching.insert(current_state);
             }
             if let Some(state) = matching_consuming_transitions.first() {
                 current_state = *state;
                 input_index += 1;
+                continue;
             }
             else {
                 // backtrack
                 if let Some((index, state)) = backtracking_stack.pop() {
                     input_index = index;
                     current_state = state;
+                    continue;
                 }
                 else {
                     break;
@@ -262,6 +280,7 @@ impl<'a> NFA<'a> {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn to_dot_file<P: AsRef<std::path::Path>>(
         &self,
         path: P,
@@ -382,7 +401,7 @@ mod tests {
                     Expr::Literal("foo"),
                     Expr::Literal("bar"),
             ]))),
-            Expr::Literal("first"),
+            Expr::Literal("last"),
         ]);
 
         let nfa = NFA::from_expr(&pattern);
