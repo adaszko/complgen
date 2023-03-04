@@ -1,6 +1,6 @@
 use std::{collections::{HashSet, BTreeMap}, io::Write, fmt::Display};
 
-use crate::parser::Expr;
+use crate::{parser::Expr, automata::StateId};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum Input<'a> {
@@ -27,38 +27,6 @@ impl<'a> Input<'a> {
             Self::Any => true,
             Self::Epsilon => false,
         }
-    }
-}
-
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-struct StateId(usize);
-
-impl Display for StateId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl StateId {
-    fn start() -> Self {
-        StateId(0)
-    }
-
-    fn advance(&mut self) {
-        self.0 += 1;
-    }
-}
-
-impl From<usize> for StateId {
-    fn from(value: usize) -> Self {
-        Self(value)
-    }
-}
-
-impl From<StateId> for usize {
-    fn from(value: StateId) -> Self {
-        value.0
     }
 }
 
@@ -135,7 +103,7 @@ fn nfa_from_expr<'a>(e: &Expr<'a>) -> NFA<'a> {
     nfa
 }
 
-struct NFA<'a> {
+pub struct NFA<'a> {
     start_state: StateId,
     unallocated_state_id: StateId,
     transitions: BTreeMap<StateId, HashSet<(Input<'a>, StateId)>>,
@@ -157,7 +125,7 @@ impl<'a> Default for NFA<'a> {
 }
 
 impl<'a> NFA<'a> {
-    fn from_expr(e: &'a Expr) -> Self {
+    pub fn from_expr(e: &'a Expr) -> Self {
         nfa_from_expr(e)
     }
 
@@ -165,7 +133,7 @@ impl<'a> NFA<'a> {
         self.accepting_states.contains(&state)
     }
 
-    fn accepts(&self, inputs: &[&str]) -> bool {
+    pub fn accepts(&self, inputs: &[&str]) -> bool {
         let mut visited_epsilons: HashSet<StateId> = Default::default();
         let mut visited_matching: HashSet<StateId> = Default::default();
         let mut backtracking_stack: Vec<(usize, StateId)> = Default::default();
