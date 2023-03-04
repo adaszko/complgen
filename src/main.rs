@@ -1,6 +1,6 @@
 mod parser;
 mod error;
-mod automata;
+mod epsilon_nfa;
 
 
 fn main() {
