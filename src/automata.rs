@@ -145,9 +145,9 @@ struct NFA<'a> {
 impl<'a> Default for NFA<'a> {
     fn default() -> Self {
         Self {
-            unallocated_state_id: StateId::start(),
-            transitions: Default::default(),
             start_state: StateId::start(),
+            unallocated_state_id: 1.into(),
+            transitions: Default::default(),
             accepting_states: Default::default(),
         }
     }
