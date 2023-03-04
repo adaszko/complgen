@@ -1,4 +1,4 @@
-use std::collections::{HashSet, BTreeMap};
+use std::{collections::{HashSet, BTreeMap}, io::Write, fmt::Display};
 
 use crate::parser::Expr;
 
@@ -7,6 +7,16 @@ enum Input<'a> {
     Literal(&'a str),
     Any,
     Epsilon,
+}
+
+impl<'a> Display for Input<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Input::Literal(s) => write!(f, "{}", s),
+            Input::Any => write!(f, "*"),
+            Input::Epsilon => write!(f, "epsilon"),
+        }
+    }
 }
 
 
@@ -23,6 +33,12 @@ impl<'a> Input<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 struct StateId(usize);
+
+impl Display for StateId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 impl StateId {
     fn start() -> Self {
@@ -197,10 +213,52 @@ impl<'a> NFA<'a> {
         self.accepting_states.insert(state);
     }
 
-    // Dump to a GraphViz dot format.
-    fn to_dot(&self) -> String {
-        // https://graphviz.org/Gallery/directed/fsm.html
-        todo!();
+    pub fn to_dot<W: Write>(&self, output: &mut W) -> std::result::Result<(), std::io::Error> {
+        writeln!(output, "digraph nfa {{")?;
+        writeln!(output, "\trankdir=LR;")?;
+
+        let nonaccepting_states: HashSet<StateId> = {
+            let mut states: HashSet<StateId> = Default::default();
+            for (from, to) in &self.transitions {
+                states.insert(*from);
+                to.iter().for_each(|(_, to)| {
+                    states.insert(*to);
+                });
+            }
+            states.difference(&self.accepting_states).copied().collect()
+        };
+
+        writeln!(output, "\tnode [shape = circle];")?;
+        for state in nonaccepting_states {
+            writeln!(output, "\t_{}[label=\"{}\"];", state, state)?;
+        }
+
+        write!(output, "\n")?;
+
+        writeln!(output, "\tnode [shape = doublecircle];")?;
+        for state in &self.accepting_states {
+            writeln!(output, "\t_{}[label=\"{}\"];", state, state)?;
+        }
+
+        write!(output, "\n")?;
+
+        for (from, to) in &self.transitions {
+            for (input, to) in to {
+                writeln!(output, "\t_{} -> _{} [label = \"{}\"];", from, to, input)?;
+            }
+        }
+
+        writeln!(output, "}}")?;
+        Ok(())
+    }
+
+    pub fn to_dot_file<P: AsRef<std::path::Path>>(
+        &self,
+        path: P,
+    ) -> std::result::Result<(), std::io::Error> {
+        let mut file = std::fs::File::create(path)?;
+        self.to_dot(&mut file)?;
+        Ok(())
     }
 }
 
