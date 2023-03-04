@@ -301,30 +301,30 @@ mod tests {
 
     #[test]
     fn accepts_any_word() {
-        let pattern = Expr::Variable("dummy");
-        let nfa = NFA::from_expr(&pattern);
+        let expr = Expr::Variable("dummy");
+        let nfa = NFA::from_expr(&expr);
         assert!(nfa.accepts(&["anything"]));
     }
 
     #[test]
     fn accepts_two_words_sequence_pattern() {
-        let pattern = Expr::Sequence(vec![Expr::Literal("foo"), Expr::Literal("bar")]);
-        let nfa = NFA::from_expr(&pattern);
+        let expr = Expr::Sequence(vec![Expr::Literal("foo"), Expr::Literal("bar")]);
+        let nfa = NFA::from_expr(&expr);
         assert!(nfa.accepts(&["foo", "bar"]));
     }
 
     #[test]
     fn accepts_two_words_choice_pattern() {
-        let pattern = Expr::Alternative(vec![Expr::Literal("foo"), Expr::Literal("bar")]);
-        let nfa = NFA::from_expr(&pattern);
+        let expr = Expr::Alternative(vec![Expr::Literal("foo"), Expr::Literal("bar")]);
+        let nfa = NFA::from_expr(&expr);
         assert!(nfa.accepts(&["foo"]));
         assert!(nfa.accepts(&["bar"]));
     }
 
     #[test]
     fn accepts_optional_word_pattern() {
-        let pattern = Expr::Optional(Box::new(Expr::Literal("foo")));
-        let nfa = NFA::from_expr(&pattern);
+        let expr = Expr::Optional(Box::new(Expr::Literal("foo")));
+        let nfa = NFA::from_expr(&expr);
 
         assert!(nfa.accepts(&[]));
         assert!(nfa.accepts(&["foo"]));
@@ -332,8 +332,8 @@ mod tests {
 
     #[test]
     fn accepts_many1_words_pattern() {
-        let pattern = Expr::Many1(Box::new(Expr::Literal("foo")));
-        let nfa = NFA::from_expr(&pattern);
+        let expr = Expr::Many1(Box::new(Expr::Literal("foo")));
+        let nfa = NFA::from_expr(&expr);
 
         assert!(nfa.accepts(&["foo"]));
         assert!(nfa.accepts(&["foo", "foo"]));
@@ -343,7 +343,7 @@ mod tests {
 
     #[test]
     fn accepts_sequence_containing_a_choice() {
-        let pattern = Expr::Sequence(vec![
+        let expr = Expr::Sequence(vec![
             Expr::Literal("first"),
             Expr::Alternative(vec![
                 Expr::Literal("foo"),
@@ -352,7 +352,7 @@ mod tests {
             Expr::Literal("last"),
         ]);
 
-        let nfa = NFA::from_expr(&pattern);
+        let nfa = NFA::from_expr(&expr);
 
         assert!(nfa.accepts(&["first", "foo", "last"]));
         assert!(nfa.accepts(&["first", "bar", "last"]));
@@ -360,7 +360,7 @@ mod tests {
 
     #[test]
     fn accepts_choice_containing_a_sequence() {
-        let pattern = Expr::Alternative(vec![
+        let expr = Expr::Alternative(vec![
             Expr::Sequence(vec![
                 Expr::Literal("foo"),
                 Expr::Literal("bar"),
@@ -370,7 +370,7 @@ mod tests {
                 Expr::Literal("baz"),
             ]),
         ]);
-        let nfa = NFA::from_expr(&pattern);
+        let nfa = NFA::from_expr(&expr);
 
         assert!(nfa.accepts(&["foo", "bar"]));
         assert!(nfa.accepts(&["foo", "baz"]));
@@ -378,7 +378,7 @@ mod tests {
 
     #[test]
     fn accepts_optional_containing_a_choice() {
-        let pattern = Expr::Sequence(vec![
+        let expr = Expr::Sequence(vec![
             Expr::Literal("first"),
             Expr::Optional(
                 Box::new(Expr::Alternative(vec![
@@ -388,7 +388,7 @@ mod tests {
             Expr::Literal("last"),
         ]);
 
-        let nfa = NFA::from_expr(&pattern);
+        let nfa = NFA::from_expr(&expr);
 
         assert!(nfa.accepts(&["first", "foo", "last"]));
         assert!(nfa.accepts(&["first", "bar", "last"]));
@@ -397,7 +397,7 @@ mod tests {
 
     #[test]
     fn accepts_repetition_of_a_choice() {
-        let pattern = Expr::Sequence(vec![
+        let expr = Expr::Sequence(vec![
             Expr::Literal("first"),
             Expr::Many1(
                 Box::new(Expr::Alternative(vec![
@@ -407,7 +407,7 @@ mod tests {
             Expr::Literal("last"),
         ]);
 
-        let nfa = NFA::from_expr(&pattern);
+        let nfa = NFA::from_expr(&expr);
 
         assert!(nfa.accepts(&["first", "foo", "bar", "last"]));
     }
