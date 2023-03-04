@@ -205,31 +205,6 @@ impl<'a> NFA<'a> {
 }
 
 
-struct Cursor<'a> {
-    nfa: &'a NFA<'a>,
-    current_state: StateId,
-}
-
-
-impl<'a> Cursor<'a> {
-    fn from_nfa(nfa: &'a NFA) -> Self {
-        Self {
-            nfa,
-            current_state: nfa.start_state,
-        }
-    }
-
-    // panics if there's more than one transition with `word`.
-    fn consume(&self, _input: &str) -> Option<StateId> {
-        todo!();
-    }
-
-    fn in_accepting_state(&self) -> bool {
-        self.nfa.accepting_states.contains(&self.current_state)
-    }
-}
-
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -238,39 +213,22 @@ mod tests {
     fn accepts_any_word() {
         let pattern = Expr::Variable("dummy");
         let nfa = NFA::from_expr(&pattern);
-        let cursor = Cursor::from_nfa(&nfa);
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("anything");
-        assert!(cursor.in_accepting_state());
+        assert!(nfa.accepts(&["anything"]));
     }
 
     #[test]
     fn accepts_two_words_sequence_pattern() {
         let pattern = Expr::Sequence(vec![Expr::Literal("foo"), Expr::Literal("bar")]);
         let nfa = NFA::from_expr(&pattern);
-        let cursor = Cursor::from_nfa(&nfa);
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("foo");
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("bar");
-        assert!(cursor.in_accepting_state());
+        assert!(nfa.accepts(&["foo", "bar"]));
     }
 
     #[test]
     fn accepts_two_words_choice_pattern() {
         let pattern = Expr::Alternative(vec![Expr::Literal("foo"), Expr::Literal("bar")]);
         let nfa = NFA::from_expr(&pattern);
-
-        let cursor = Cursor::from_nfa(&nfa);
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("foo");
-        assert!(cursor.in_accepting_state());
-
-        // 2nd pass
-        let cursor = Cursor::from_nfa(&nfa);
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("bar");
-        assert!(cursor.in_accepting_state());
+        assert!(nfa.accepts(&["foo"]));
+        assert!(nfa.accepts(&["bar"]));
     }
 
     #[test]
@@ -278,10 +236,8 @@ mod tests {
         let pattern = Expr::Optional(Box::new(Expr::Literal("foo")));
         let nfa = NFA::from_expr(&pattern);
 
-        let cursor = Cursor::from_nfa(&nfa);
-        assert!(cursor.in_accepting_state());
-        cursor.consume("foo");
-        assert!(cursor.in_accepting_state());
+        assert!(nfa.accepts(&[]));
+        assert!(nfa.accepts(&["foo"]));
     }
 
     #[test]
@@ -289,12 +245,8 @@ mod tests {
         let pattern = Expr::Many1(Box::new(Expr::Literal("foo")));
         let nfa = NFA::from_expr(&pattern);
 
-        let cursor = Cursor::from_nfa(&nfa);
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("foo");
-        assert!(cursor.in_accepting_state());
-        cursor.consume("foo");
-        assert!(cursor.in_accepting_state());
+        assert!(nfa.accepts(&["foo"]));
+        assert!(nfa.accepts(&["foo", "foo"]));
     }
 
     // The most complicated part is how complex patterns combine with each other.
@@ -312,24 +264,8 @@ mod tests {
 
         let nfa = NFA::from_expr(&pattern);
 
-        let cursor = Cursor::from_nfa(&nfa);
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("first");
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("foo");
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("last");
-        assert!(cursor.in_accepting_state());
-
-        // 2nd pass
-        let cursor = Cursor::from_nfa(&nfa);
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("first");
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("bar");
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("last");
-        assert!(cursor.in_accepting_state());
+        assert!(nfa.accepts(&["first", "foo", "last"]));
+        assert!(nfa.accepts(&["first", "bar", "last"]));
     }
 
     #[test]
@@ -346,20 +282,8 @@ mod tests {
         ]);
         let nfa = NFA::from_expr(&pattern);
 
-        let cursor = Cursor::from_nfa(&nfa);
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("foo");
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("bar");
-        assert!(cursor.in_accepting_state());
-
-        // 2nd pass
-        let cursor = Cursor::from_nfa(&nfa);
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("foo");
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("baz");
-        assert!(cursor.in_accepting_state());
+        assert!(nfa.accepts(&["foo", "bar"]));
+        assert!(nfa.accepts(&["foo", "baz"]));
     }
 
     #[test]
@@ -376,32 +300,9 @@ mod tests {
 
         let nfa = NFA::from_expr(&pattern);
 
-        let cursor = Cursor::from_nfa(&nfa);
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("first");
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("foo");
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("last");
-        assert!(cursor.in_accepting_state());
-
-        // 2nd pass
-        let cursor = Cursor::from_nfa(&nfa);
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("first");
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("bar");
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("last");
-        assert!(cursor.in_accepting_state());
-
-        // 3rd pass
-        let cursor = Cursor::from_nfa(&nfa);
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("first");
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("last");
-        assert!(cursor.in_accepting_state());
+        assert!(nfa.accepts(&["first", "foo", "last"]));
+        assert!(nfa.accepts(&["first", "bar", "last"]));
+        assert!(nfa.accepts(&["first", "last"]));
     }
 
     #[test]
@@ -418,15 +319,6 @@ mod tests {
 
         let nfa = NFA::from_expr(&pattern);
 
-        let cursor = Cursor::from_nfa(&nfa);
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("first");
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("foo");
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("bar");
-        assert!(!cursor.in_accepting_state());
-        cursor.consume("last");
-        assert!(cursor.in_accepting_state());
+        assert!(nfa.accepts(&["first", "foo", "bar", "last"]));
     }
 }
