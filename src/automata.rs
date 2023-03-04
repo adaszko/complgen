@@ -144,9 +144,12 @@ struct NFA<'a> {
 
 impl<'a> Default for NFA<'a> {
     fn default() -> Self {
+        let start_state = StateId::start();
+        let mut unallocated_state_id = start_state;
+        unallocated_state_id.advance();
         Self {
             start_state: StateId::start(),
-            unallocated_state_id: 1.into(),
+            unallocated_state_id,
             transitions: Default::default(),
             accepting_states: Default::default(),
         }
