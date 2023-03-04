@@ -11,9 +11,9 @@ enum Input<'a> {
 
 
 impl<'a> Input<'a> {
-    fn matches(&self, input: &str) -> bool {
+    fn matches(&self, actual: &str) -> bool {
         match self {
-            Self::Literal(expected) => input == *expected,
+            Self::Literal(expected) => actual == *expected,
             Self::Any => true,
             Self::Epsilon => false,
         }
@@ -29,8 +29,8 @@ impl StateId {
         StateId(0)
     }
 
-    fn next(&self) -> Self {
-        StateId(self.0 + 1)
+    fn advance(&mut self) {
+        self.0 += 1;
     }
 }
 
@@ -56,10 +56,10 @@ fn is_deduped(v: &[StateId]) -> bool {
 
 fn nfa_from_expr<'a>(nfa: &mut NFA<'a>, current_states: &[StateId], e: &Expr<'a>) -> Vec<StateId> {
     match e {
-        Expr::Literal(lookahead_word) => {
+        Expr::Literal(input) => {
             let to_state_id = nfa.add_state();
             for state in current_states {
-                nfa.add_transition(*state, Input::Literal(lookahead_word), to_state_id);
+                nfa.add_transition(*state, Input::Literal(input), to_state_id);
             }
             return vec![to_state_id];
         },
@@ -110,7 +110,7 @@ fn nfa_from_expr<'a>(nfa: &mut NFA<'a>, current_states: &[StateId], e: &Expr<'a>
 
 struct NFA<'a> {
     start_state: StateId,
-    next_state_id: StateId,
+    unallocated_state_id: StateId,
     transitions: BTreeMap<StateId, HashSet<(Input<'a>, StateId)>>,
     accepting_states: HashSet<StateId>,
 }
@@ -118,7 +118,7 @@ struct NFA<'a> {
 impl<'a> Default for NFA<'a> {
     fn default() -> Self {
         Self {
-            next_state_id: 0.into(),
+            unallocated_state_id: StateId::start(),
             transitions: Default::default(),
             start_state: StateId::start(),
             accepting_states: Default::default(),
@@ -184,8 +184,8 @@ impl<'a> NFA<'a> {
     }
 
     fn add_state(&mut self) -> StateId {
-        let result = self.next_state_id;
-        self.next_state_id = self.next_state_id.next();
+        let result = self.unallocated_state_id;
+        self.unallocated_state_id.advance();
         result
     }
 
