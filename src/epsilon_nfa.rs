@@ -2,8 +2,8 @@ use std::{collections::{HashSet, BTreeMap}, io::Write, fmt::Display};
 
 use crate::{parser::Expr, automata::StateId};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-enum Input<'a> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Input<'a> {
     Literal(&'a str),
     Any,
     Epsilon,
@@ -26,6 +26,13 @@ impl<'a> Input<'a> {
             Self::Literal(expected) => actual == *expected,
             Self::Any => true,
             Self::Epsilon => false,
+        }
+    }
+
+    pub fn is_epsilon(&self) -> bool {
+        match self {
+            Self::Epsilon => true,
+            _ => false,
         }
     }
 }
@@ -104,10 +111,10 @@ fn nfa_from_expr<'a>(e: &Expr<'a>) -> NFA<'a> {
 }
 
 pub struct NFA<'a> {
-    start_state: StateId,
+    pub start_state: StateId,
     unallocated_state_id: StateId,
-    transitions: BTreeMap<StateId, HashSet<(Input<'a>, StateId)>>,
-    accepting_states: HashSet<StateId>,
+    pub transitions: BTreeMap<StateId, HashSet<(Input<'a>, StateId)>>,
+    pub accepting_states: HashSet<StateId>,
 }
 
 impl<'a> Default for NFA<'a> {
@@ -129,73 +136,34 @@ impl<'a> NFA<'a> {
         nfa_from_expr(e)
     }
 
-    fn is_accepting_state(&self, state: StateId) -> bool {
+    pub fn is_accepting_state(&self, state: StateId) -> bool {
         self.accepting_states.contains(&state)
     }
 
     pub fn accepts(&self, inputs: &[&str]) -> bool {
-        let mut visited_epsilons: HashSet<StateId> = Default::default();
-        let mut visited_matching: HashSet<StateId> = Default::default();
-        let mut backtracking_stack: Vec<(usize, StateId)> = Default::default();
-
-        let mut input_index = 0;
-        let mut current_state = self.start_state;
+        let mut backtracking_stack: Vec<(usize, StateId)> = vec![(0, self.start_state)];
         loop {
-            let transitions_from_current_state = self.transitions.get(&current_state).cloned().unwrap_or(HashSet::default());
+            let Some((input_index, current_state)) = backtracking_stack.pop() else {
+                return false;
+            };
 
-            if !visited_epsilons.contains(&current_state) {
-                let epsilon_transitions: Vec<StateId> = transitions_from_current_state.iter().filter_map(|(expected_input, to)| match expected_input {
-                    Input::Epsilon => Some(*to),
-                    _ => None,
+            if self.is_accepting_state(current_state) {
+                return true;
+            }
+
+            let transitions_from_current_state = self.get_transitions_from(current_state);
+
+            let epsilon_transitions: Vec<StateId> = transitions_from_current_state.iter().filter(|(input, _)| input.is_epsilon()).map(|(_, to)| *to).collect();
+            backtracking_stack.extend(epsilon_transitions.into_iter().map(|state| (input_index, state)));
+
+            if input_index < inputs.len() {
+                let matching_consuming_transitions: Vec<StateId> = transitions_from_current_state.iter().filter_map(|(expected_input, to)| match expected_input.matches(inputs[input_index]) {
+                    false => None,
+                    true => Some(*to),
                 }).collect();
-                backtracking_stack.extend(epsilon_transitions.into_iter().map(|state| (input_index, state)));
-                visited_epsilons.insert(current_state);
-            }
-
-            if input_index >= inputs.len() {
-                if self.is_accepting_state(current_state) {
-                    return true;
-                }
-                // backtrack
-                if let Some((index, state)) = backtracking_stack.pop() {
-                    input_index = index;
-                    current_state = state;
-                    continue;
-                }
-                else {
-                    break;
-                }
-            }
-
-            let matching_consuming_transitions: Vec<StateId> = transitions_from_current_state.iter().filter_map(|(expected_input, to)| match expected_input.matches(inputs[input_index]) {
-                false => None,
-                true => Some(*to),
-            }).collect();
-
-            if !visited_matching.contains(&current_state) {
-                if let Some(rest) = matching_consuming_transitions.get(1..) {
-                    backtracking_stack.extend(rest.iter().map(|state| (input_index + 1, *state)));
-                }
-                visited_matching.insert(current_state);
-            }
-            if let Some(state) = matching_consuming_transitions.first() {
-                current_state = *state;
-                input_index += 1;
-                continue;
-            }
-            else {
-                // backtrack
-                if let Some((index, state)) = backtracking_stack.pop() {
-                    input_index = index;
-                    current_state = state;
-                    continue;
-                }
-                else {
-                    break;
-                }
+                backtracking_stack.extend(matching_consuming_transitions.iter().map(|state| (input_index + 1, *state)));
             }
         }
-        self.is_accepting_state(current_state)
     }
 
     fn add_state(&mut self) -> StateId {
@@ -210,6 +178,22 @@ impl<'a> NFA<'a> {
 
     fn mark_state_accepting(&mut self, state: StateId) {
         self.accepting_states.insert(state);
+    }
+
+    pub fn get_transitions_from(&self, from: StateId) -> HashSet<(Input, StateId)> {
+        self.transitions.get(&from).cloned().unwrap_or(HashSet::default())
+    }
+
+    pub fn get_transitions_to(&self, desired_to: StateId) -> HashSet<(StateId, Input)> {
+        let mut result: HashSet<(StateId, Input)> = Default::default();
+        for (from, tos) in &self.transitions {
+            for (input, to) in tos {
+                if desired_to == *to {
+                    result.insert((*from, *input));
+                }
+            }
+        }
+        result
     }
 
     pub fn to_dot<W: Write>(&self, output: &mut W) -> std::result::Result<(), std::io::Error> {
