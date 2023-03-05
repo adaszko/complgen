@@ -142,11 +142,7 @@ impl<'a> NFA<'a> {
 
     pub fn accepts(&self, inputs: &[&str]) -> bool {
         let mut backtracking_stack: Vec<(usize, StateId)> = vec![(0, self.start_state)];
-        loop {
-            let Some((input_index, current_state)) = backtracking_stack.pop() else {
-                return false;
-            };
-
+        while let Some((input_index, current_state)) = backtracking_stack.pop() {
             if self.is_accepting_state(current_state) {
                 return true;
             }
@@ -164,6 +160,7 @@ impl<'a> NFA<'a> {
                 backtracking_stack.extend(matching_consuming_transitions.iter().map(|state| (input_index + 1, *state)));
             }
         }
+        false
     }
 
     fn add_state(&mut self) -> StateId {

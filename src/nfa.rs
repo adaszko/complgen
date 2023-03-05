@@ -23,7 +23,7 @@ impl<'a> Input<'a> {
         }
     }
 
-    fn matches(&self, actual: &str) -> bool {
+    pub fn matches(&self, actual: &str) -> bool {
         match self {
             Self::Literal(expected) => actual == *expected,
             Self::Any => true,
@@ -67,9 +67,7 @@ fn nfa_from_epsilon_nfa<'a>(epsilon_nfa: &'a EpsilonNFA<'a>) -> NFA<'a> {
     nfa.start_state = epsilon_nfa.start_state;
     let mut visited_states: HashSet<StateId> = Default::default();
     let mut to_visit: Vec<StateId> = vec![nfa.start_state];
-    loop {
-        let Some(current_state) = to_visit.pop() else { break };
-
+    while let Some(current_state) = to_visit.pop() {
         if visited_states.contains(&current_state) {
             continue;
         }
