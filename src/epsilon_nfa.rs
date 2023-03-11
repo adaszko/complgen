@@ -246,7 +246,12 @@ impl NFA {
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
+
+    use crate::parser::{arb_expr, random_sequence_matching_expr};
+
     use super::*;
+    use proptest::prelude::*;
 
     #[test]
     fn accepts_any_word() {

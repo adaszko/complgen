@@ -5,6 +5,8 @@
 // TODO Add context() calls for better error messages (https://github.com/rust-bakery/nom/blob/1c1e9c896bd422baa8ae0a167be57ae721f10377/examples/json.rs#L8)
 // TODO (Re)add a syntax for gathering a list of possible completions from a shell command
 
+use std::rc::Rc;
+
 use nom::{
     branch::alt,
     bytes::complete::{is_not, tag, take_while1},
@@ -12,6 +14,8 @@ use nom::{
     multi::separated_list1,
     IResult,
 };
+use proptest::{strategy::BoxedStrategy};
+use proptest::prelude::*;
 
 use crate::error::Error;
 
@@ -27,7 +31,7 @@ struct Variant {
     rhs: Expr,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     Literal(String),
     Variable(String), // e.g. <FILE>, <PATH>, <DIR>, etc.
@@ -35,6 +39,60 @@ pub enum Expr {
     Alternative(Vec<Expr>),
     Optional(Box<Expr>),
     Many1(Box<Expr>),
+}
+
+fn arb_literal(inputs: Rc<Vec<String>>) -> BoxedStrategy<Expr> {
+    (0..inputs.len()).prop_map(move |index| Expr::Literal(inputs[index].clone())).boxed()
+}
+
+fn arb_variable(variables: Rc<Vec<String>>) -> BoxedStrategy<Expr> {
+    (0..variables.len()).prop_map(move |index| Expr::Variable(variables[index].clone())).boxed()
+}
+
+fn arb_optional(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
+    arb_expr(inputs, variables, remaining_depth-1, max_width).prop_map(|e| Expr::Optional(Box::new(e))).boxed()
+}
+
+fn arb_many1(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
+    arb_expr(inputs, variables, remaining_depth-1, max_width).prop_map(|e| Expr::Many1(Box::new(e))).boxed()
+}
+
+fn arb_sequence(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
+    (2..max_width).prop_flat_map(move |width| {
+        let e = arb_expr(inputs.clone(), variables.clone(), remaining_depth-1, max_width);
+        prop::collection::vec(e, width).prop_map(Expr::Sequence)
+    }).boxed()
+}
+
+fn arb_alternative(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
+    (2..max_width).prop_flat_map(move |width| {
+        let e = arb_expr(inputs.clone(), variables.clone(), remaining_depth-1, max_width);
+        prop::collection::vec(e, width).prop_map(Expr::Alternative)
+    }).boxed()
+}
+
+pub fn arb_expr(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
+    if remaining_depth <= 1 {
+        prop_oneof![
+            arb_literal(Rc::clone(&inputs)),
+            arb_variable(variables),
+        ].boxed()
+    }
+    else {
+        prop_oneof![
+            arb_literal(inputs.clone()),
+            arb_variable(variables.clone()),
+            arb_optional(inputs.clone(), variables.clone(), remaining_depth, max_width),
+            arb_many1(inputs.clone(), variables.clone(), remaining_depth, max_width),
+            arb_sequence(inputs.clone(), variables.clone(), remaining_depth, max_width),
+            arb_alternative(inputs, variables, remaining_depth, max_width),
+        ].boxed()
+    }
+}
+
+// Produce an arbitrary sequence matching `e`.
+pub fn arb_match(e: &Expr) -> Vec<String> {
+    todo!();
 }
 
 fn terminal(input: &str) -> IResult<&str, &str> {

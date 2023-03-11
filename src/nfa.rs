@@ -117,6 +117,8 @@ impl NFA {
     }
 
     pub fn add_transition(&mut self, from: StateId, input: Input, to: StateId) {
+        // Overwrites mean there's a bug in the algorithm.
+        debug_assert!(!self.transitions.entry(from).or_default().contains(&(input.clone(), to)));
         self.transitions.entry(from).or_default().insert((input, to));
     }
 

@@ -61,7 +61,6 @@ fn dfa_from_nfa(nfa: &NFA) -> DFA {
     dfa.unallocated_state_id = nfa.unallocated_state_id;
     let mut visited: HashSet<StateId> = Default::default();
     let mut to_visit: VecDeque<StateId> = VecDeque::from_iter(vec![dfa.start_state]);
-    let mut dfa_state_from_nfa_state: HashMap<StateId, StateId> = Default::default();
     while let Some(current_state) = to_visit.pop_front() {
         if visited.contains(&current_state) {
             continue;
@@ -78,16 +77,13 @@ fn dfa_from_nfa(nfa: &NFA) -> DFA {
             } else {
                 let new_state = dfa.add_state();
                 for (_, to) in transitions {
-                    dfa_state_from_nfa_state.insert(*to, new_state);
                     if nfa.accepting_states.contains(to) {
                         dfa.accepting_states.insert(new_state);
                     }
                     dfa.add_transition(current_state, input.clone(), new_state);
                     for (input_prime, to_prime) in nfa.get_transitions_from(*to) {
-                        let dfa_to = dfa_state_from_nfa_state.get(&to_prime).unwrap_or(&to_prime);
-                        dfa.add_transition(new_state, input_prime, *dfa_to);
+                        dfa.add_transition(new_state, input_prime, to_prime);
                     }
-                    visited.insert(*to);
                 }
             }
         }
