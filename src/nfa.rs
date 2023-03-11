@@ -7,15 +7,15 @@ use crate::epsilon_nfa::NFA as EpsilonNFA;
 use crate::epsilon_nfa::Input as EpsilonInput;
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum Input<'a> {
-    Literal(&'a str),
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Input {
+    Literal(String),
     Any,
 }
 
 
-impl<'a> Input<'a> {
-    fn from_epsilon_input(value: EpsilonInput<'a>) -> Option<Self> {
+impl Input {
+    fn from_epsilon_input(value: EpsilonInput) -> Option<Self> {
         match value {
             EpsilonInput::Literal(s) => Some(Self::Literal(s)),
             EpsilonInput::Any => Some(Self::Any),
@@ -32,7 +32,7 @@ impl<'a> Input<'a> {
 }
 
 
-impl<'a> Display for Input<'a> {
+impl Display for Input {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Input::Literal(s) => write!(f, "{}", s),
@@ -43,15 +43,15 @@ impl<'a> Display for Input<'a> {
 
 
 
-pub struct NFA<'a> {
+pub struct NFA {
     pub start_state: StateId,
     pub unallocated_state_id: StateId,
-    transitions: BTreeMap<StateId, HashSet<(Input<'a>, StateId)>>,
+    transitions: BTreeMap<StateId, HashSet<(Input, StateId)>>,
     pub accepting_states: HashSet<StateId>,
 }
 
 
-impl<'a> Default for NFA<'a> {
+impl Default for NFA {
     fn default() -> Self {
         let start_state = StateId::start();
         let mut unallocated_state_id = start_state;
@@ -66,7 +66,7 @@ impl<'a> Default for NFA<'a> {
 }
 
 
-fn nfa_from_epsilon_nfa<'a>(epsilon_nfa: &'a EpsilonNFA<'a>) -> NFA<'a> {
+fn nfa_from_epsilon_nfa<'a>(epsilon_nfa: &'a EpsilonNFA) -> NFA {
     let mut nfa = NFA::default();
     nfa.accepting_states = epsilon_nfa.accepting_states.clone();
     nfa.start_state = epsilon_nfa.start_state;
@@ -101,8 +101,8 @@ fn nfa_from_epsilon_nfa<'a>(epsilon_nfa: &'a EpsilonNFA<'a>) -> NFA<'a> {
 }
 
 
-impl<'a> NFA<'a> {
-    pub fn from_epsilon_nfa(epsilon_nfa: &'a EpsilonNFA<'a>) -> Self {
+impl NFA {
+    pub fn from_epsilon_nfa(epsilon_nfa: &EpsilonNFA) -> Self {
         nfa_from_epsilon_nfa(&epsilon_nfa)
     }
 
@@ -116,7 +116,7 @@ impl<'a> NFA<'a> {
         self.accepting_states.insert(state);
     }
 
-    pub fn add_transition(&mut self, from: StateId, input: Input<'a>, to: StateId) {
+    pub fn add_transition(&mut self, from: StateId, input: Input, to: StateId) {
         self.transitions.entry(from).or_default().insert((input, to));
     }
 
@@ -206,7 +206,7 @@ mod tests {
 
     #[test]
     fn accepts_any_word() {
-        let expr = Expr::Variable("dummy");
+        let expr = Expr::Variable("dummy".to_string());
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
         assert!(nfa.accepts(&["anything"]));
@@ -214,7 +214,7 @@ mod tests {
 
     #[test]
     fn accepts_two_words_sequence_pattern() {
-        let expr = Expr::Sequence(vec![Expr::Literal("foo"), Expr::Literal("bar")]);
+        let expr = Expr::Sequence(vec![Expr::Literal("foo".to_string()), Expr::Literal("bar".to_string())]);
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
         assert!(nfa.accepts(&["foo", "bar"]));
@@ -222,7 +222,7 @@ mod tests {
 
     #[test]
     fn accepts_two_words_choice_pattern() {
-        let expr = Expr::Alternative(vec![Expr::Literal("foo"), Expr::Literal("bar")]);
+        let expr = Expr::Alternative(vec![Expr::Literal("foo".to_string()), Expr::Literal("bar".to_string())]);
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
         assert!(nfa.accepts(&["foo"]));
@@ -231,7 +231,7 @@ mod tests {
 
     #[test]
     fn accepts_optional_word_pattern() {
-        let expr = Expr::Optional(Box::new(Expr::Literal("foo")));
+        let expr = Expr::Optional(Box::new(Expr::Literal("foo".to_string())));
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
         assert!(nfa.accepts(&[]));
@@ -240,7 +240,7 @@ mod tests {
 
     #[test]
     fn accepts_many1_words_pattern() {
-        let expr = Expr::Many1(Box::new(Expr::Literal("foo")));
+        let expr = Expr::Many1(Box::new(Expr::Literal("foo".to_string())));
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
         assert!(nfa.accepts(&["foo"]));
@@ -252,12 +252,12 @@ mod tests {
     #[test]
     fn accepts_sequence_containing_a_choice() {
         let expr = Expr::Sequence(vec![
-            Expr::Literal("first"),
+            Expr::Literal("first".to_string()),
             Expr::Alternative(vec![
-                Expr::Literal("foo"),
-                Expr::Literal("bar"),
+                Expr::Literal("foo".to_string()),
+                Expr::Literal("bar".to_string()),
             ]),
-            Expr::Literal("last"),
+            Expr::Literal("last".to_string()),
         ]);
 
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
@@ -270,12 +270,12 @@ mod tests {
     fn accepts_choice_containing_a_sequence() {
         let expr = Expr::Alternative(vec![
             Expr::Sequence(vec![
-                Expr::Literal("foo"),
-                Expr::Literal("bar"),
+                Expr::Literal("foo".to_string()),
+                Expr::Literal("bar".to_string()),
             ]),
             Expr::Sequence(vec![
-                Expr::Literal("foo"),
-                Expr::Literal("baz"),
+                Expr::Literal("foo".to_string()),
+                Expr::Literal("baz".to_string()),
             ]),
         ]);
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
@@ -287,13 +287,13 @@ mod tests {
     #[test]
     fn accepts_optional_containing_a_choice() {
         let expr = Expr::Sequence(vec![
-            Expr::Literal("first"),
+            Expr::Literal("first".to_string()),
             Expr::Optional(
                 Box::new(Expr::Alternative(vec![
-                    Expr::Literal("foo"),
-                    Expr::Literal("bar"),
+                    Expr::Literal("foo".to_string()),
+                    Expr::Literal("bar".to_string()),
             ]))),
-            Expr::Literal("last"),
+            Expr::Literal("last".to_string()),
         ]);
 
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
@@ -306,13 +306,13 @@ mod tests {
     #[test]
     fn accepts_repetition_of_a_choice() {
         let expr = Expr::Sequence(vec![
-            Expr::Literal("first"),
+            Expr::Literal("first".to_string()),
             Expr::Many1(
                 Box::new(Expr::Alternative(vec![
-                    Expr::Literal("foo"),
-                    Expr::Literal("bar"),
+                    Expr::Literal("foo".to_string()),
+                    Expr::Literal("bar".to_string()),
             ]))),
-            Expr::Literal("last"),
+            Expr::Literal("last".to_string()),
         ]);
 
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);

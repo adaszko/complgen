@@ -16,25 +16,25 @@ use nom::{
 use crate::error::Error;
 
 #[derive(Debug, PartialEq)]
-pub struct Grammar<'a> {
-    pub command: &'a str,
-    pub args: Vec<Expr<'a>>, // alternatives
+pub struct Grammar {
+    pub command: String,
+    pub args: Vec<Expr>, // alternatives
 }
 
 #[derive(Debug, PartialEq)]
-struct Variant<'a> {
-    lhs: &'a str,
-    rhs: Expr<'a>,
+struct Variant {
+    lhs: String,
+    rhs: Expr,
 }
 
 #[derive(Debug, PartialEq)]
-pub enum Expr<'a> {
-    Literal(&'a str),
-    Variable(&'a str), // e.g. <FILE>, <PATH>, <DIR>, etc.
-    Sequence(Vec<Expr<'a>>),
-    Alternative(Vec<Expr<'a>>),
-    Optional(Box<Expr<'a>>),
-    Many1(Box<Expr<'a>>),
+pub enum Expr {
+    Literal(String),
+    Variable(String), // e.g. <FILE>, <PATH>, <DIR>, etc.
+    Sequence(Vec<Expr>),
+    Alternative(Vec<Expr>),
+    Optional(Box<Expr>),
+    Many1(Box<Expr>),
 }
 
 fn terminal(input: &str) -> IResult<&str, &str> {
@@ -47,7 +47,7 @@ fn terminal(input: &str) -> IResult<&str, &str> {
 
 fn terminal_expr(input: &str) -> IResult<&str, Expr> {
     let (input, literal) = terminal(input)?;
-    Ok((input, Expr::Literal(literal)))
+    Ok((input, Expr::Literal(literal.to_string())))
 }
 
 fn symbol(input: &str) -> IResult<&str, &str> {
@@ -59,7 +59,7 @@ fn symbol(input: &str) -> IResult<&str, &str> {
 
 fn symbol_expr(input: &str) -> IResult<&str, Expr> {
     let (input, nonterm) = symbol(input)?;
-    Ok((input, Expr::Variable(nonterm)))
+    Ok((input, Expr::Variable(nonterm.to_string())))
 }
 
 fn optional_expr(input: &str) -> IResult<&str, Expr> {
@@ -158,7 +158,7 @@ fn variant(input: &str) -> IResult<&str, Variant> {
     let (input, _) = multispace0(input)?;
     let (input, _) = char(';')(input)?;
     let production = Variant {
-        lhs: name,
+        lhs: name.to_string(),
         rhs: expr,
     };
     Ok((input, production))
@@ -177,7 +177,7 @@ fn parse(input: &str) -> crate::error::Result<Grammar> {
         Err(e) => return Err(Error::ParsingError(e.to_string())),
     };
 
-    let mut commands: Vec<&str> = variants.iter().map(|v| v.lhs).collect();
+    let mut commands: Vec<String> = variants.iter().map(|v| v.lhs.to_string()).collect();
     commands.sort();
     commands.dedup();
     if commands.len() > 1 {
@@ -192,7 +192,7 @@ fn parse(input: &str) -> crate::error::Result<Grammar> {
 
     let v: Vec<Expr> = variants.into_iter().map(|v| v.rhs).collect();
     let g = Grammar {
-        command: commands[0],
+        command: commands[0].clone(),
         args: v,
     };
     Ok(g)
@@ -206,42 +206,42 @@ mod tests {
     fn parses_word_terminal() {
         const INPUT: &str = r#"foo"#;
         let ("", e) = terminal_expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Expr::Literal("foo"));
+        assert_eq!(e, Expr::Literal("foo".to_string()));
     }
 
     #[test]
     fn parses_short_option_terminal() {
         const INPUT: &str = r#"-f"#;
         let ("", e) = terminal_expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Expr::Literal("-f"));
+        assert_eq!(e, Expr::Literal("-f".to_string()));
     }
 
     #[test]
     fn parses_long_option_terminal() {
         const INPUT: &str = r#"--foo"#;
         let ("", e) = terminal_expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Expr::Literal("--foo"));
+        assert_eq!(e, Expr::Literal("--foo".to_string()));
     }
 
     #[test]
     fn parses_symbol() {
         const INPUT: &str = "<FILE>";
         let ("", e) = symbol_expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Expr::Variable("FILE"));
+        assert_eq!(e, Expr::Variable("FILE".to_string()));
     }
 
     #[test]
     fn parses_optional_expr() {
         const INPUT: &str = "[<foo>]";
         let ("", e) = expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Expr::Optional(Box::new(Expr::Variable("foo"))));
+        assert_eq!(e, Expr::Optional(Box::new(Expr::Variable("foo".to_string()))));
     }
 
     #[test]
     fn parses_one_or_more_expr() {
         const INPUT: &str = "<foo>...";
         let ("", e) = expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Expr::Many1(Box::new(Expr::Variable("foo"))));
+        assert_eq!(e, Expr::Many1(Box::new(Expr::Variable("foo".to_string()))));
     }
 
     #[test]
@@ -251,8 +251,8 @@ mod tests {
         assert_eq!(
             e,
             Expr::Sequence(vec![
-                Expr::Variable("first-symbol"),
-                Expr::Variable("second symbol")
+                Expr::Variable("first-symbol".to_string()),
+                Expr::Variable("second symbol".to_string())
             ])
         );
     }
@@ -264,8 +264,8 @@ mod tests {
         assert_eq!(
             e,
             Expr::Alternative(vec![
-                Expr::Sequence(vec![Expr::Literal("a"), Expr::Literal("b")]),
-                Expr::Literal("c")
+                Expr::Sequence(vec![Expr::Literal("a".to_string()), Expr::Literal("b".to_string())]),
+                Expr::Literal("c".to_string())
             ])
         );
     }
@@ -277,8 +277,8 @@ mod tests {
         assert_eq!(
             e,
             Expr::Sequence(vec![
-                Expr::Literal("a"),
-                Expr::Alternative(vec![Expr::Literal("b"), Expr::Literal("c")]),
+                Expr::Literal("a".to_string()),
+                Expr::Alternative(vec![Expr::Literal("b".to_string()), Expr::Literal("c".to_string())]),
             ])
         );
     }
@@ -290,8 +290,8 @@ mod tests {
         assert_eq!(
             v,
             Variant {
-                lhs: "foo",
-                rhs: Expr::Literal("bar")
+                lhs: "foo".to_string(),
+                rhs: Expr::Literal("bar".to_string())
             }
         );
     }
@@ -306,8 +306,8 @@ foo baz;
         assert_eq!(
             g,
             Grammar {
-                command: "foo",
-                args: vec![Expr::Literal("bar"), Expr::Literal("baz")],
+                command: "foo".to_string(),
+                args: vec![Expr::Literal("bar".to_string()), Expr::Literal("baz".to_string())],
             }
         );
     }
@@ -321,17 +321,17 @@ foo baz;
         assert_eq!(
             g,
             Grammar {
-                command: "darcs",
+                command: "darcs".to_string(),
                 args: vec![Sequence(vec![
-                    Literal("help",),
+                    Literal("help".to_string()),
                     Sequence(vec![
                         Many1(Box::new(Alternative(vec![
-                            Alternative(vec![Literal("-v",), Literal("--verbose")]),
-                            Alternative(vec![Literal("-q",), Literal("--quiet")]),
+                            Alternative(vec![Literal("-v".to_string()), Literal("--verbose".to_string())]),
+                            Alternative(vec![Literal("-q".to_string()), Literal("--quiet".to_string())]),
                         ],)),),
                         Optional(Box::new(Sequence(vec![
-                            Variable("DARCS_COMMAND",),
-                            Optional(Box::new(Literal("DARCS_SUBCOMMAND"))),
+                            Variable("DARCS_COMMAND".to_string()),
+                            Optional(Box::new(Literal("DARCS_SUBCOMMAND".to_string()))),
                         ]))),
                     ]),
                 ])],

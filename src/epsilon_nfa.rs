@@ -2,14 +2,14 @@ use std::{collections::{HashSet, BTreeMap}, io::Write, fmt::Display};
 
 use crate::{parser::Expr, automata::StateId};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Input<'a> {
-    Literal(&'a str),
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Input {
+    Literal(String),
     Any,
     Epsilon,
 }
 
-impl<'a> Display for Input<'a> {
+impl Display for Input {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Input::Literal(s) => write!(f, "{}", s),
@@ -20,7 +20,7 @@ impl<'a> Display for Input<'a> {
 }
 
 
-impl<'a> Input<'a> {
+impl Input {
     fn matches(&self, actual: &str) -> bool {
         match self {
             Self::Literal(expected) => actual == *expected,
@@ -45,12 +45,12 @@ fn is_deduped(v: &[StateId]) -> bool {
     copy == v
 }
 
-fn do_nfa_from_expr<'a>(nfa: &mut NFA<'a>, current_states: &[StateId], e: &Expr<'a>) -> Vec<StateId> {
+fn do_nfa_from_expr(nfa: &mut NFA, current_states: &[StateId], e: &Expr) -> Vec<StateId> {
     match e {
         Expr::Literal(input) => {
             let to_state_id = nfa.add_state();
             for state in current_states {
-                nfa.add_transition(*state, Input::Literal(input), to_state_id);
+                nfa.add_transition(*state, Input::Literal(input.to_string()), to_state_id);
             }
             return vec![to_state_id];
         },
@@ -100,7 +100,7 @@ fn do_nfa_from_expr<'a>(nfa: &mut NFA<'a>, current_states: &[StateId], e: &Expr<
 }
 
 
-fn nfa_from_expr<'a>(e: &Expr<'a>) -> NFA<'a> {
+fn nfa_from_expr(e: &Expr) -> NFA {
     let mut nfa = NFA::default();
     let start_state = nfa.start_state;
     let ending_states = do_nfa_from_expr(&mut nfa, &[start_state], e);
@@ -110,14 +110,14 @@ fn nfa_from_expr<'a>(e: &Expr<'a>) -> NFA<'a> {
     nfa
 }
 
-pub struct NFA<'a> {
+pub struct NFA {
     pub start_state: StateId,
     pub unallocated_state_id: StateId,
-    pub transitions: BTreeMap<StateId, HashSet<(Input<'a>, StateId)>>,
+    pub transitions: BTreeMap<StateId, HashSet<(Input, StateId)>>,
     pub accepting_states: HashSet<StateId>,
 }
 
-impl<'a> Default for NFA<'a> {
+impl Default for NFA {
     fn default() -> Self {
         let start_state = StateId::start();
         let mut unallocated_state_id = start_state;
@@ -131,8 +131,8 @@ impl<'a> Default for NFA<'a> {
     }
 }
 
-impl<'a> NFA<'a> {
-    pub fn from_expr(e: &'a Expr) -> Self {
+impl NFA {
+    pub fn from_expr(e: &Expr) -> Self {
         nfa_from_expr(e)
     }
 
@@ -169,7 +169,7 @@ impl<'a> NFA<'a> {
         result
     }
 
-    pub fn add_transition(&mut self, from: StateId, input: Input<'a>, to: StateId) {
+    pub fn add_transition(&mut self, from: StateId, input: Input, to: StateId) {
         self.transitions.entry(from).or_default().insert((input, to));
     }
 
@@ -186,7 +186,7 @@ impl<'a> NFA<'a> {
         for (from, tos) in &self.transitions {
             for (input, to) in tos {
                 if desired_to == *to {
-                    result.insert((*from, *input));
+                    result.insert((*from, input.clone()));
                 }
             }
         }
@@ -250,21 +250,21 @@ mod tests {
 
     #[test]
     fn accepts_any_word() {
-        let expr = Expr::Variable("dummy");
+        let expr = Expr::Variable("dummy".to_string());
         let nfa = NFA::from_expr(&expr);
         assert!(nfa.accepts(&["anything"]));
     }
 
     #[test]
     fn accepts_two_words_sequence_pattern() {
-        let expr = Expr::Sequence(vec![Expr::Literal("foo"), Expr::Literal("bar")]);
+        let expr = Expr::Sequence(vec![Expr::Literal("foo".to_string()), Expr::Literal("bar".to_string())]);
         let nfa = NFA::from_expr(&expr);
         assert!(nfa.accepts(&["foo", "bar"]));
     }
 
     #[test]
     fn accepts_two_words_choice_pattern() {
-        let expr = Expr::Alternative(vec![Expr::Literal("foo"), Expr::Literal("bar")]);
+        let expr = Expr::Alternative(vec![Expr::Literal("foo".to_string()), Expr::Literal("bar".to_string())]);
         let nfa = NFA::from_expr(&expr);
         assert!(nfa.accepts(&["foo"]));
         assert!(nfa.accepts(&["bar"]));
@@ -272,7 +272,7 @@ mod tests {
 
     #[test]
     fn accepts_optional_word_pattern() {
-        let expr = Expr::Optional(Box::new(Expr::Literal("foo")));
+        let expr = Expr::Optional(Box::new(Expr::Literal("foo".to_string())));
         let nfa = NFA::from_expr(&expr);
 
         assert!(nfa.accepts(&[]));
@@ -281,7 +281,7 @@ mod tests {
 
     #[test]
     fn accepts_many1_words_pattern() {
-        let expr = Expr::Many1(Box::new(Expr::Literal("foo")));
+        let expr = Expr::Many1(Box::new(Expr::Literal("foo".to_string())));
         let nfa = NFA::from_expr(&expr);
 
         assert!(nfa.accepts(&["foo"]));
@@ -293,12 +293,12 @@ mod tests {
     #[test]
     fn accepts_sequence_containing_a_choice() {
         let expr = Expr::Sequence(vec![
-            Expr::Literal("first"),
+            Expr::Literal("first".to_string()),
             Expr::Alternative(vec![
-                Expr::Literal("foo"),
-                Expr::Literal("bar"),
+                Expr::Literal("foo".to_string()),
+                Expr::Literal("bar".to_string()),
             ]),
-            Expr::Literal("last"),
+            Expr::Literal("last".to_string()),
         ]);
 
         let nfa = NFA::from_expr(&expr);
@@ -311,12 +311,12 @@ mod tests {
     fn accepts_choice_containing_a_sequence() {
         let expr = Expr::Alternative(vec![
             Expr::Sequence(vec![
-                Expr::Literal("foo"),
-                Expr::Literal("bar"),
+                Expr::Literal("foo".to_string()),
+                Expr::Literal("bar".to_string()),
             ]),
             Expr::Sequence(vec![
-                Expr::Literal("foo"),
-                Expr::Literal("baz"),
+                Expr::Literal("foo".to_string()),
+                Expr::Literal("baz".to_string()),
             ]),
         ]);
         let nfa = NFA::from_expr(&expr);
@@ -328,13 +328,13 @@ mod tests {
     #[test]
     fn accepts_optional_containing_a_choice() {
         let expr = Expr::Sequence(vec![
-            Expr::Literal("first"),
+            Expr::Literal("first".to_string()),
             Expr::Optional(
                 Box::new(Expr::Alternative(vec![
-                    Expr::Literal("foo"),
-                    Expr::Literal("bar"),
+                    Expr::Literal("foo".to_string()),
+                    Expr::Literal("bar".to_string()),
             ]))),
-            Expr::Literal("last"),
+            Expr::Literal("last".to_string()),
         ]);
 
         let nfa = NFA::from_expr(&expr);
@@ -347,13 +347,13 @@ mod tests {
     #[test]
     fn accepts_repetition_of_a_choice() {
         let expr = Expr::Sequence(vec![
-            Expr::Literal("first"),
+            Expr::Literal("first".to_string()),
             Expr::Many1(
                 Box::new(Expr::Alternative(vec![
-                    Expr::Literal("foo"),
-                    Expr::Literal("bar"),
+                    Expr::Literal("foo".to_string()),
+                    Expr::Literal("bar".to_string()),
             ]))),
-            Expr::Literal("last"),
+            Expr::Literal("last".to_string()),
         ]);
 
         let nfa = NFA::from_expr(&expr);

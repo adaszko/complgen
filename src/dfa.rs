@@ -4,15 +4,15 @@ use crate::nfa::NFA;
 use crate::{automata::StateId, nfa::Input};
 
 
-pub struct DFA<'a> {
+pub struct DFA {
     start_state: StateId,
     unallocated_state_id: StateId,
-    transitions: BTreeMap<StateId, HashMap<Input<'a>, StateId>>,
+    transitions: BTreeMap<StateId, HashMap<Input, StateId>>,
     accepting_states: HashSet<StateId>,
 }
 
 
-impl<'a> Default for DFA<'a> {
+impl Default for DFA {
     fn default() -> Self {
         let start_state = StateId::start();
         let mut unallocated_state_id = start_state;
@@ -31,7 +31,7 @@ impl<'a> Default for DFA<'a> {
 // Vec::partition_dedup_by_key() is unstable at the time of writing this
 fn group_by_key<T, K, F>(v: &[T], get_key_fn: F) -> Vec<(K, &[T])>
     where
-        T: Copy,
+        T: Clone,
         K: Eq,
         F: Fn(T) -> K,
 {
@@ -42,9 +42,9 @@ fn group_by_key<T, K, F>(v: &[T], get_key_fn: F) -> Vec<(K, &[T])>
             break;
         }
         let slice_start = i;
-        let group_representant = get_key_fn(v[i]);
+        let group_representant = get_key_fn(v[i].clone());
         i += 1;
-        while i < v.len() && get_key_fn(v[i]) == group_representant {
+        while i < v.len() && get_key_fn(v[i].clone()) == group_representant {
             i += 1;
         }
         result.push((group_representant, &v[slice_start..i]));
@@ -54,7 +54,7 @@ fn group_by_key<T, K, F>(v: &[T], get_key_fn: F) -> Vec<(K, &[T])>
 
 
 // https://github.com/caleb531/automata/blob/b9c195a80a5aa5977c7c0b81d5a72ba56bb12551/automata/fa/dfa.py#L1224
-fn dfa_from_nfa<'a>(nfa: &'a NFA<'a>) -> DFA<'a> {
+fn dfa_from_nfa(nfa: &NFA) -> DFA {
     let mut dfa = DFA::default();
     dfa.accepting_states = nfa.accepting_states.clone();
     dfa.start_state = nfa.start_state;
@@ -70,11 +70,11 @@ fn dfa_from_nfa<'a>(nfa: &'a NFA<'a>) -> DFA<'a> {
         let mut transitions_from_current_state: Vec<(Input, StateId)> = nfa.get_transitions_from(current_state).into_iter().collect();
         to_visit.extend(transitions_from_current_state.iter().map(|(_, to)| *to));
 
-        transitions_from_current_state.sort_by_key(|(input, _)| *input);
+        transitions_from_current_state.sort_by_key(|(input, _)| input.clone());
         let groups = group_by_key(&transitions_from_current_state, |(input, _)| input);
         for (input, transitions) in groups {
             if let [(input, to)] = transitions {
-                dfa.add_transition(current_state, *input, *to);
+                dfa.add_transition(current_state, input.clone(), *to);
             } else {
                 let new_state = dfa.add_state();
                 for (_, to) in transitions {
@@ -82,7 +82,7 @@ fn dfa_from_nfa<'a>(nfa: &'a NFA<'a>) -> DFA<'a> {
                     if nfa.accepting_states.contains(to) {
                         dfa.accepting_states.insert(new_state);
                     }
-                    dfa.add_transition(current_state, input, new_state);
+                    dfa.add_transition(current_state, input.clone(), new_state);
                     for (input_prime, to_prime) in nfa.get_transitions_from(*to) {
                         let dfa_to = dfa_state_from_nfa_state.get(&to_prime).unwrap_or(&to_prime);
                         dfa.add_transition(new_state, input_prime, *dfa_to);
@@ -98,8 +98,8 @@ fn dfa_from_nfa<'a>(nfa: &'a NFA<'a>) -> DFA<'a> {
 }
 
 
-impl<'a> DFA<'a> {
-    pub fn from_nfa(nfa: &'a NFA<'a>) -> Self {
+impl DFA {
+    pub fn from_nfa(nfa: &NFA) -> Self {
         dfa_from_nfa(nfa)
     }
 
@@ -109,7 +109,7 @@ impl<'a> DFA<'a> {
         result
     }
 
-    fn add_transition(&mut self, from: StateId, input: Input<'a>, to: StateId) {
+    fn add_transition(&mut self, from: StateId, input: Input, to: StateId) {
         self.transitions.entry(from).or_default().insert(input, to);
     }
 
@@ -212,9 +212,9 @@ mod tests {
         let mut nfa = NFA::default();
         let first_state = nfa.add_state();
         let second_state = nfa.add_state();
-        nfa.add_transition(nfa.start_state, Input::Literal("foo"), first_state);
+        nfa.add_transition(nfa.start_state, Input::Literal("foo".to_string()), first_state);
         nfa.mark_state_accepting(first_state);
-        nfa.add_transition(nfa.start_state, Input::Literal("foo"), second_state);
+        nfa.add_transition(nfa.start_state, Input::Literal("foo".to_string()), second_state);
         nfa.mark_state_accepting(second_state);
         let dfa = DFA::from_nfa(&nfa);
         assert!(dfa.accepts(&["foo"]));
@@ -226,10 +226,10 @@ mod tests {
         let first_state = nfa.add_state();
         let second_state = nfa.add_state();
         let third_state = nfa.add_state();
-        nfa.add_transition(nfa.start_state, Input::Literal("foo"), first_state);
-        nfa.add_transition(nfa.start_state, Input::Literal("foo"), second_state);
-        nfa.add_transition(first_state, Input::Literal("bar"), third_state);
-        nfa.add_transition(second_state, Input::Literal("baz"), third_state);
+        nfa.add_transition(nfa.start_state, Input::Literal("foo".to_string()), first_state);
+        nfa.add_transition(nfa.start_state, Input::Literal("foo".to_string()), second_state);
+        nfa.add_transition(first_state, Input::Literal("bar".to_string()), third_state);
+        nfa.add_transition(second_state, Input::Literal("baz".to_string()), third_state);
         nfa.mark_state_accepting(third_state);
         let dfa = DFA::from_nfa(&nfa);
         assert!(dfa.accepts(&["foo", "bar"]));
@@ -243,9 +243,9 @@ mod tests {
         let second_state = nfa.add_state();
         nfa.mark_state_accepting(first_state);
         nfa.mark_state_accepting(second_state);
-        nfa.add_transition(nfa.start_state, Input::Literal("foo"), first_state);
-        nfa.add_transition(nfa.start_state, Input::Literal("foo"), second_state);
-        nfa.add_transition(first_state, Input::Literal("bar"), first_state);
+        nfa.add_transition(nfa.start_state, Input::Literal("foo".to_string()), first_state);
+        nfa.add_transition(nfa.start_state, Input::Literal("foo".to_string()), second_state);
+        nfa.add_transition(first_state, Input::Literal("bar".to_string()), first_state);
         let dfa = DFA::from_nfa(&nfa);
         assert!(dfa.accepts(&["foo"]));
         assert!(dfa.accepts(&["foo", "baz"]));
@@ -258,9 +258,9 @@ mod tests {
         let second_state = nfa.add_state();
         nfa.mark_state_accepting(first_state);
         nfa.mark_state_accepting(second_state);
-        nfa.add_transition(nfa.start_state, Input::Literal("foo"), first_state);
-        nfa.add_transition(nfa.start_state, Input::Literal("foo"), second_state);
-        nfa.add_transition(first_state, Input::Literal("bar"), second_state);
+        nfa.add_transition(nfa.start_state, Input::Literal("foo".to_string()), first_state);
+        nfa.add_transition(nfa.start_state, Input::Literal("foo".to_string()), second_state);
+        nfa.add_transition(first_state, Input::Literal("bar".to_string()), second_state);
         let dfa = DFA::from_nfa(&nfa);
         assert!(dfa.accepts(&["foo"]));
         assert!(dfa.accepts(&["foo", "bar"]));
@@ -268,7 +268,7 @@ mod tests {
 
     #[test]
     fn accepts_any_word() {
-        let expr = Expr::Variable("dummy");
+        let expr = Expr::Variable("dummy".to_string());
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
         let dfa = DFA::from_nfa(&nfa);
@@ -277,7 +277,7 @@ mod tests {
 
     #[test]
     fn accepts_two_words_sequence_pattern() {
-        let expr = Expr::Sequence(vec![Expr::Literal("foo"), Expr::Literal("bar")]);
+        let expr = Expr::Sequence(vec![Expr::Literal("foo".to_string()), Expr::Literal("bar".to_string())]);
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
         let dfa = DFA::from_nfa(&nfa);
@@ -286,7 +286,7 @@ mod tests {
 
     #[test]
     fn accepts_two_words_choice_pattern() {
-        let expr = Expr::Alternative(vec![Expr::Literal("foo"), Expr::Literal("bar")]);
+        let expr = Expr::Alternative(vec![Expr::Literal("foo".to_string()), Expr::Literal("bar".to_string())]);
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
         let dfa = DFA::from_nfa(&nfa);
@@ -296,7 +296,7 @@ mod tests {
 
     #[test]
     fn accepts_optional_word_pattern() {
-        let expr = Expr::Optional(Box::new(Expr::Literal("foo")));
+        let expr = Expr::Optional(Box::new(Expr::Literal("foo".to_string())));
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
         let dfa = DFA::from_nfa(&nfa);
@@ -306,7 +306,7 @@ mod tests {
 
     #[test]
     fn accepts_many1_words_pattern() {
-        let expr = Expr::Many1(Box::new(Expr::Literal("foo")));
+        let expr = Expr::Many1(Box::new(Expr::Literal("foo".to_string())));
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
         let dfa = DFA::from_nfa(&nfa);
@@ -319,12 +319,12 @@ mod tests {
     #[test]
     fn accepts_sequence_containing_a_choice() {
         let expr = Expr::Sequence(vec![
-            Expr::Literal("first"),
+            Expr::Literal("first".to_string()),
             Expr::Alternative(vec![
-                Expr::Literal("foo"),
-                Expr::Literal("bar"),
+                Expr::Literal("foo".to_string()),
+                Expr::Literal("bar".to_string()),
             ]),
-            Expr::Literal("last"),
+            Expr::Literal("last".to_string()),
         ]);
 
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
@@ -338,12 +338,12 @@ mod tests {
     fn accepts_choice_containing_a_sequence() {
         let expr = Expr::Alternative(vec![
             Expr::Sequence(vec![
-                Expr::Literal("foo"),
-                Expr::Literal("bar"),
+                Expr::Literal("foo".to_string()),
+                Expr::Literal("bar".to_string()),
             ]),
             Expr::Sequence(vec![
-                Expr::Literal("foo"),
-                Expr::Literal("baz"),
+                Expr::Literal("foo".to_string()),
+                Expr::Literal("baz".to_string()),
             ]),
         ]);
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
@@ -356,13 +356,13 @@ mod tests {
     #[test]
     fn accepts_optional_containing_a_choice() {
         let expr = Expr::Sequence(vec![
-            Expr::Literal("first"),
+            Expr::Literal("first".to_string()),
             Expr::Optional(
                 Box::new(Expr::Alternative(vec![
-                    Expr::Literal("foo"),
-                    Expr::Literal("bar"),
+                    Expr::Literal("foo".to_string()),
+                    Expr::Literal("bar".to_string()),
             ]))),
-            Expr::Literal("last"),
+            Expr::Literal("last".to_string()),
         ]);
 
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
@@ -376,13 +376,13 @@ mod tests {
     #[test]
     fn accepts_repetition_of_a_choice() {
         let expr = Expr::Sequence(vec![
-            Expr::Literal("first"),
+            Expr::Literal("first".to_string()),
             Expr::Many1(
                 Box::new(Expr::Alternative(vec![
-                    Expr::Literal("foo"),
-                    Expr::Literal("bar"),
+                    Expr::Literal("foo".to_string()),
+                    Expr::Literal("bar".to_string()),
             ]))),
-            Expr::Literal("last"),
+            Expr::Literal("last".to_string()),
         ]);
 
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
