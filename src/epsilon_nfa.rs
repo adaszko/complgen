@@ -112,7 +112,7 @@ fn nfa_from_expr<'a>(e: &Expr<'a>) -> NFA<'a> {
 
 pub struct NFA<'a> {
     pub start_state: StateId,
-    unallocated_state_id: StateId,
+    pub unallocated_state_id: StateId,
     pub transitions: BTreeMap<StateId, HashSet<(Input<'a>, StateId)>>,
     pub accepting_states: HashSet<StateId>,
 }
@@ -163,17 +163,17 @@ impl<'a> NFA<'a> {
         false
     }
 
-    fn add_state(&mut self) -> StateId {
+    pub fn add_state(&mut self) -> StateId {
         let result = self.unallocated_state_id;
         self.unallocated_state_id.advance();
         result
     }
 
-    fn add_transition(&mut self, from: StateId, input: Input<'a>, to: StateId) {
+    pub fn add_transition(&mut self, from: StateId, input: Input<'a>, to: StateId) {
         self.transitions.entry(from).or_default().insert((input, to));
     }
 
-    fn mark_state_accepting(&mut self, state: StateId) {
+    pub fn mark_state_accepting(&mut self, state: StateId) {
         self.accepting_states.insert(state);
     }
 

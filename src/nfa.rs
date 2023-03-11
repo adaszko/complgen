@@ -7,7 +7,7 @@ use crate::epsilon_nfa::NFA as EpsilonNFA;
 use crate::epsilon_nfa::Input as EpsilonInput;
 
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Input<'a> {
     Literal(&'a str),
     Any,
@@ -44,16 +44,21 @@ impl<'a> Display for Input<'a> {
 
 
 pub struct NFA<'a> {
-    start_state: StateId,
+    pub start_state: StateId,
+    pub unallocated_state_id: StateId,
     transitions: BTreeMap<StateId, HashSet<(Input<'a>, StateId)>>,
-    accepting_states: HashSet<StateId>,
+    pub accepting_states: HashSet<StateId>,
 }
 
 
 impl<'a> Default for NFA<'a> {
     fn default() -> Self {
+        let start_state = StateId::start();
+        let mut unallocated_state_id = start_state;
+        unallocated_state_id.advance();
         Self {
             start_state: StateId::start(),
+            unallocated_state_id,
             transitions: Default::default(),
             accepting_states: Default::default(),
         }
@@ -65,10 +70,11 @@ fn nfa_from_epsilon_nfa<'a>(epsilon_nfa: &'a EpsilonNFA<'a>) -> NFA<'a> {
     let mut nfa = NFA::default();
     nfa.accepting_states = epsilon_nfa.accepting_states.clone();
     nfa.start_state = epsilon_nfa.start_state;
-    let mut visited_states: HashSet<StateId> = Default::default();
+    nfa.unallocated_state_id = epsilon_nfa.unallocated_state_id;
+    let mut visited: HashSet<StateId> = Default::default();
     let mut to_visit: Vec<StateId> = vec![nfa.start_state];
     while let Some(current_state) = to_visit.pop() {
-        if visited_states.contains(&current_state) {
+        if visited.contains(&current_state) {
             continue;
         }
 
@@ -87,10 +93,9 @@ fn nfa_from_epsilon_nfa<'a>(epsilon_nfa: &'a EpsilonNFA<'a>) -> NFA<'a> {
             else {
                 nfa.add_transition(current_state, Input::from_epsilon_input(input).unwrap(), to);
             }
-            to_visit.push(to);
         }
 
-        visited_states.insert(current_state);
+        visited.insert(current_state);
     }
     nfa
 }
@@ -101,7 +106,17 @@ impl<'a> NFA<'a> {
         nfa_from_epsilon_nfa(&epsilon_nfa)
     }
 
-    fn add_transition(&mut self, from: StateId, input: Input<'a>, to: StateId) {
+    pub fn add_state(&mut self) -> StateId {
+        let result = self.unallocated_state_id;
+        self.unallocated_state_id.advance();
+        result
+    }
+
+    pub fn mark_state_accepting(&mut self, state: StateId) {
+        self.accepting_states.insert(state);
+    }
+
+    pub fn add_transition(&mut self, from: StateId, input: Input<'a>, to: StateId) {
         self.transitions.entry(from).or_default().insert((input, to));
     }
 
@@ -303,5 +318,18 @@ mod tests {
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
         assert!(nfa.accepts(&["first", "foo", "bar", "last"]));
+    }
+
+    #[test]
+    fn eliminates_double_epsilon_transition() {
+        let mut epsilon_nfa = EpsilonNFA::default();
+        let first_state = epsilon_nfa.add_state();
+        let second_state = epsilon_nfa.add_state();
+        epsilon_nfa.add_transition(first_state, EpsilonInput::Epsilon, second_state);
+        let third_state = epsilon_nfa.add_state();
+        epsilon_nfa.add_transition(second_state, EpsilonInput::Epsilon, third_state);
+        epsilon_nfa.mark_state_accepting(third_state);
+        let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
+        assert!(nfa.accepts(&[]));
     }
 }
