@@ -25,6 +25,12 @@ pub struct Grammar {
     pub args: Vec<Expr>, // alternatives
 }
 
+impl Grammar {
+    pub fn as_expr(&self) -> Expr {
+        Expr::Alternative(self.args)
+    }
+}
+
 #[derive(Debug, PartialEq)]
 struct Variant {
     lhs: String,
@@ -263,7 +269,7 @@ fn grammar(input: &str) -> IResult<&str, Vec<Variant>> {
     Ok((input, variants))
 }
 
-fn parse(input: &str) -> crate::error::Result<Grammar> {
+pub fn parse(input: &str) -> crate::error::Result<Grammar> {
     let (_, variants) = match grammar(input) {
         Ok((input, variants)) => (input, variants),
         Err(e) => return Err(Error::ParsingError(e.to_string())),

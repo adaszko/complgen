@@ -127,7 +127,7 @@ impl DFA {
     }
 
     fn add_transition(&mut self, from: StateId, input: Input, to: StateId) {
-        let entry = self.transitions.entry(from).or_default().insert(input, to);
+        self.transitions.entry(from).or_default().insert(input, to);
     }
 
     pub fn get_transitions_from(&self, from: StateId) -> HashMap<Input, StateId> {
