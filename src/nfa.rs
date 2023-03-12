@@ -46,7 +46,7 @@ impl Display for Input {
 pub struct NFA {
     pub start_state: StateId,
     pub unallocated_state_id: StateId,
-    transitions: BTreeMap<StateId, HashSet<(Input, StateId)>>,
+    pub transitions: BTreeMap<StateId, HashSet<(Input, StateId)>>,
     pub accepting_states: HashSet<StateId>,
 }
 
@@ -116,14 +116,28 @@ impl NFA {
         self.accepting_states.insert(state);
     }
 
+    pub fn remove_transition(&mut self, from: StateId, input: Input, to: StateId) {
+        self.transitions.entry(from).or_default().remove(&(input, to));
+    }
+
     pub fn add_transition(&mut self, from: StateId, input: Input, to: StateId) {
-        // Overwrites mean there's a bug in the algorithm.
-        debug_assert!(!self.transitions.entry(from).or_default().contains(&(input.clone(), to)));
         self.transitions.entry(from).or_default().insert((input, to));
     }
 
     pub fn get_transitions_from(&self, from: StateId) -> HashSet<(Input, StateId)> {
         self.transitions.get(&from).cloned().unwrap_or(HashSet::default())
+    }
+
+    pub fn get_transitions_to(&self, desired_to: StateId) -> HashSet<(StateId, Input)> {
+        let mut result: HashSet<(StateId, Input)> = Default::default();
+        for (from, tos) in &self.transitions {
+            for (input, to) in tos {
+                if desired_to == *to {
+                    result.insert((*from, input.clone()));
+                }
+            }
+        }
+        result
     }
 
     pub fn accepts(&self, inputs: &[&str]) -> bool {
