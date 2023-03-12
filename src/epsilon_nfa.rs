@@ -248,7 +248,7 @@ impl NFA {
 mod tests {
     use std::rc::Rc;
 
-    use crate::parser::{arb_expr, random_sequence_matching_expr};
+    use crate::parser::{arb_expr_match};
 
     use super::*;
     use proptest::prelude::*;
@@ -364,5 +364,22 @@ mod tests {
         let nfa = NFA::from_expr(&expr);
 
         assert!(nfa.accepts(&["first", "foo", "bar", "last"]));
+    }
+
+    const INPUTS_ALPHABET: &[&str] = &["foo", "bar", "--baz", "--quux"];
+    const VARIABLES_ALPHABET: &[&str] = &["FILE", "DIRECTORY", "PATH"];
+
+    proptest! {
+        #[test]
+        fn accepts_arb_expr_input((expr, input) in arb_expr_match(Rc::new(INPUTS_ALPHABET.iter().map(|s|s.to_string()).collect()), Rc::new(VARIABLES_ALPHABET.iter().map(|s|s.to_string()).collect()), 10, 3)) {
+            println!("{:?}", expr);
+            println!("{:?}", input);
+            let nfa = NFA::from_expr(&expr);
+            let input: Vec<&str> = input.iter().map(|s| {
+                let s: &str = s;
+                s
+            }).collect();
+            assert!(nfa.accepts(&input));
+        }
     }
 }

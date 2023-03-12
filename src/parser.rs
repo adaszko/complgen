@@ -5,7 +5,7 @@
 // TODO Add context() calls for better error messages (https://github.com/rust-bakery/nom/blob/1c1e9c896bd422baa8ae0a167be57ae721f10377/examples/json.rs#L8)
 // TODO (Re)add a syntax for gathering a list of possible completions from a shell command
 
-use std::rc::Rc;
+use std::{rc::Rc, ops::Rem};
 
 use nom::{
     branch::alt,
@@ -14,7 +14,7 @@ use nom::{
     multi::separated_list1,
     IResult,
 };
-use proptest::{strategy::BoxedStrategy};
+use proptest::{strategy::{BoxedStrategy}, test_runner::TestRng};
 use proptest::prelude::*;
 
 use crate::error::Error;
@@ -90,9 +90,43 @@ pub fn arb_expr(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_d
     }
 }
 
+pub fn do_arb_match(e: &Expr, rng: &mut TestRng, max_width: usize, output: &mut Vec<String>) {
+    match e {
+        Expr::Literal(s) => output.push(s.to_string()),
+        Expr::Variable(_) => output.push("anything".to_string()),
+        Expr::Sequence(v) => {
+            for subexpr in v {
+                do_arb_match(subexpr, rng, max_width, output);
+            }
+        },
+        Expr::Alternative(v) => {
+            let chosen_alternative = usize::try_from(rng.next_u64().rem(u64::try_from(v.len()).unwrap())).unwrap();
+            do_arb_match(&v[chosen_alternative], rng, max_width, output);
+        },
+        Expr::Optional(subexpr) => {
+            if rng.next_u64() % 2 == 0 {
+                do_arb_match(subexpr, rng, max_width, output);
+            }
+        },
+        Expr::Many1(subexpr) => {
+            let n = rng.next_u64();
+            let chosen_len = n % u64::try_from(max_width).unwrap() + 1;
+            for _ in 0..chosen_len {
+                do_arb_match(subexpr, rng, max_width, output);
+            }
+        },
+    }
+}
+
+pub fn arb_match(e: Expr, mut rng: TestRng, max_width: usize) -> (Expr, Vec<String>) {
+    let mut output: Vec<String> = Default::default();
+    do_arb_match(&e, &mut rng, max_width, &mut output);
+    (e, output)
+}
+
 // Produce an arbitrary sequence matching `e`.
-pub fn arb_match(e: &Expr) -> Vec<String> {
-    todo!();
+pub fn arb_expr_match(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<(Expr, Vec<String>)> {
+    arb_expr(inputs, variables, remaining_depth, max_width).prop_perturb(move |e, rng| arb_match(e, rng, max_width)).boxed()
 }
 
 fn terminal(input: &str) -> IResult<&str, &str> {
