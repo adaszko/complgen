@@ -5,7 +5,7 @@ use crate::error::Result;
 use crate::dfa::DFA;
 
 
-fn write_dfa_state<W: Write>(buffer: &mut W, dfa: &DFA, state: StateId) -> Result<()> {
+fn write_dfa_state_function<W: Write>(buffer: &mut W, dfa: &DFA, state: StateId) -> Result<()> {
     write!(buffer, r#"
 _state_{state} () {{
     case ${{COMP_WORDS[$current_dfa_word]}}
@@ -22,13 +22,16 @@ _state_{state} () {{
     write!(buffer, r#"
     esac
 }}
+
 "#)?;
     Ok(())
 }
 
 
-pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, _dfa: &DFA) -> Result<()> {
-    // TODO Write a separate bash function for each state in a DFA
+pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
+    for state in dfa.get_states() {
+        write_dfa_state_function(buffer, dfa, state)?;
+    }
 
     write!(buffer, r#"
 _{command}_completions () {{

@@ -151,6 +151,18 @@ impl DFA {
         false
     }
 
+    pub fn get_states(&self) -> HashSet<StateId> {
+        let mut result: HashSet<StateId> = self.accepting_states.clone();
+        result.insert(self.start_state);
+        for (from, tos) in &self.transitions {
+            result.insert(*from);
+            for (_, to) in tos {
+                result.insert(*to);
+            }
+        }
+        result
+    }
+
     pub fn to_dot<W: Write>(&self, output: &mut W) -> std::result::Result<(), std::io::Error> {
         writeln!(output, "digraph nfa {{")?;
         writeln!(output, "\trankdir=LR;")?;
