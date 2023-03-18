@@ -4,7 +4,6 @@ use crate::{bash::write_completion_script, grammar::parse};
 use crate::epsilon_nfa::NFA as EpsilonNFA;
 
 mod grammar;
-mod error;
 mod epsilon_nfa;
 mod nfa;
 mod dfa;
