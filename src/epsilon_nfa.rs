@@ -1,6 +1,7 @@
 use std::{collections::{HashSet, BTreeMap}, io::Write, fmt::Display};
 
-use crate::{grammar::Expr, automata::StateId};
+use complgen::{START_STATE_ID, StateId};
+use crate::grammar::Expr;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Input {
@@ -119,12 +120,9 @@ pub struct NFA {
 
 impl Default for NFA {
     fn default() -> Self {
-        let start_state = StateId::start();
-        let mut unallocated_state_id = start_state;
-        unallocated_state_id.advance();
         Self {
-            start_state: StateId::start(),
-            unallocated_state_id,
+            start_state: START_STATE_ID,
+            unallocated_state_id: START_STATE_ID + 1,
             transitions: Default::default(),
             accepting_states: Default::default(),
         }
@@ -166,7 +164,7 @@ impl NFA {
 
     pub fn add_state(&mut self) -> StateId {
         let result = self.unallocated_state_id;
-        self.unallocated_state_id.advance();
+        self.unallocated_state_id += 1;
         result
     }
 
@@ -249,7 +247,7 @@ impl NFA {
 mod tests {
     use std::rc::Rc;
 
-    use crate::grammar::{arb_expr_match};
+    use crate::grammar::arb_expr_match;
 
     use super::*;
     use proptest::prelude::*;

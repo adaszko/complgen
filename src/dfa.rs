@@ -1,7 +1,7 @@
 use std::{collections::{HashSet, BTreeMap, HashMap}, io::Write};
 
-use crate::nfa::NFA;
-use crate::{automata::StateId, nfa::Input};
+use crate::nfa::{NFA, Input};
+use complgen::{StateId, START_STATE_ID};
 
 
 pub struct DFA {
@@ -14,12 +14,9 @@ pub struct DFA {
 
 impl Default for DFA {
     fn default() -> Self {
-        let start_state = StateId::start();
-        let mut unallocated_state_id = start_state;
-        unallocated_state_id.advance();
         Self {
-            start_state: StateId::start(),
-            unallocated_state_id,
+            start_state: START_STATE_ID,
+            unallocated_state_id: START_STATE_ID + 1,
             transitions: Default::default(),
             accepting_states: Default::default(),
         }
@@ -122,7 +119,7 @@ impl DFA {
 
     fn add_state(&mut self) -> StateId {
         let result = self.unallocated_state_id;
-        self.unallocated_state_id.advance();
+        self.unallocated_state_id += 1;
         result
     }
 

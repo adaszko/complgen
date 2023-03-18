@@ -5,7 +5,6 @@ use crate::epsilon_nfa::NFA as EpsilonNFA;
 
 mod grammar;
 mod error;
-mod automata;
 mod epsilon_nfa;
 mod nfa;
 mod dfa;
