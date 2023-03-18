@@ -27,7 +27,7 @@ pub struct Grammar {
 
 impl Grammar {
     pub fn as_expr(&self) -> Expr {
-        Expr::Alternative(self.args)
+        Expr::Alternative(self.args.clone())
     }
 }
 
@@ -47,6 +47,16 @@ pub enum Expr {
     Many1(Box<Expr>),
 }
 
+
+// This is used to avoid generating Optional(Optional(...)) and Many1(Many1(...)) which not only
+// are redundant but also introduce double epsilon transitions which aren't properly handled currently.
+pub enum ParentExpr {
+    Optional,
+    Many1,
+    Other,
+}
+
+
 fn arb_literal(inputs: Rc<Vec<String>>) -> BoxedStrategy<Expr> {
     (0..inputs.len()).prop_map(move |index| Expr::Literal(inputs[index].clone())).boxed()
 }
@@ -56,43 +66,58 @@ fn arb_variable(variables: Rc<Vec<String>>) -> BoxedStrategy<Expr> {
 }
 
 fn arb_optional(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
-    arb_expr(inputs, variables, remaining_depth-1, max_width).prop_map(|e| Expr::Optional(Box::new(e))).boxed()
+    arb_expr(inputs, variables, remaining_depth-1, max_width, ParentExpr::Optional).prop_map(|e| Expr::Optional(Box::new(e))).boxed()
 }
 
 fn arb_many1(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
-    arb_expr(inputs, variables, remaining_depth-1, max_width).prop_map(|e| Expr::Many1(Box::new(e))).boxed()
+    arb_expr(inputs, variables, remaining_depth-1, max_width, ParentExpr::Many1).prop_map(|e| Expr::Many1(Box::new(e))).boxed()
 }
 
 fn arb_sequence(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
     (2..max_width).prop_flat_map(move |width| {
-        let e = arb_expr(inputs.clone(), variables.clone(), remaining_depth-1, max_width);
+        let e = arb_expr(inputs.clone(), variables.clone(), remaining_depth-1, max_width, ParentExpr::Other);
         prop::collection::vec(e, width).prop_map(Expr::Sequence)
     }).boxed()
 }
 
 fn arb_alternative(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
     (2..max_width).prop_flat_map(move |width| {
-        let e = arb_expr(inputs.clone(), variables.clone(), remaining_depth-1, max_width);
+        let e = arb_expr(inputs.clone(), variables.clone(), remaining_depth-1, max_width, ParentExpr::Other);
         prop::collection::vec(e, width).prop_map(Expr::Alternative)
     }).boxed()
 }
 
-pub fn arb_expr(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
+pub fn arb_expr(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize, parent_expr: ParentExpr) -> BoxedStrategy<Expr> {
     if remaining_depth <= 1 {
-        prop_oneof![
+        return prop_oneof![
             arb_literal(Rc::clone(&inputs)),
             arb_variable(variables),
-        ].boxed()
+        ].boxed();
     }
-    else {
-        prop_oneof![
-            arb_literal(inputs.clone()),
-            arb_variable(variables.clone()),
-            arb_optional(inputs.clone(), variables.clone(), remaining_depth, max_width),
-            arb_many1(inputs.clone(), variables.clone(), remaining_depth, max_width),
-            arb_sequence(inputs.clone(), variables.clone(), remaining_depth, max_width),
-            arb_alternative(inputs, variables, remaining_depth, max_width),
-        ].boxed()
+
+    match parent_expr {
+        ParentExpr::Optional => prop_oneof![
+                arb_literal(inputs.clone()),
+                arb_variable(variables.clone()),
+                arb_many1(inputs.clone(), variables.clone(), remaining_depth, max_width),
+                arb_sequence(inputs.clone(), variables.clone(), remaining_depth, max_width),
+                arb_alternative(inputs, variables, remaining_depth, max_width),
+            ].boxed(),
+        ParentExpr::Many1 => prop_oneof![
+                arb_literal(inputs.clone()),
+                arb_variable(variables.clone()),
+                arb_optional(inputs.clone(), variables.clone(), remaining_depth, max_width),
+                arb_sequence(inputs.clone(), variables.clone(), remaining_depth, max_width),
+                arb_alternative(inputs, variables, remaining_depth, max_width),
+            ].boxed(),
+        ParentExpr::Other => prop_oneof![
+                arb_literal(inputs.clone()),
+                arb_variable(variables.clone()),
+                arb_optional(inputs.clone(), variables.clone(), remaining_depth, max_width),
+                arb_many1(inputs.clone(), variables.clone(), remaining_depth, max_width),
+                arb_sequence(inputs.clone(), variables.clone(), remaining_depth, max_width),
+                arb_alternative(inputs, variables, remaining_depth, max_width),
+            ].boxed(),
     }
 }
 
@@ -132,7 +157,7 @@ pub fn arb_match(e: Expr, mut rng: TestRng, max_width: usize) -> (Expr, Vec<Stri
 
 // Produce an arbitrary sequence matching `e`.
 pub fn arb_expr_match(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<(Expr, Vec<String>)> {
-    arb_expr(inputs, variables, remaining_depth, max_width).prop_perturb(move |e, rng| arb_match(e, rng, max_width)).boxed()
+    arb_expr(inputs, variables, remaining_depth, max_width, ParentExpr::Other).prop_perturb(move |e, rng| arb_match(e, rng, max_width)).boxed()
 }
 
 fn terminal(input: &str) -> IResult<&str, &str> {
