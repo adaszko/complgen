@@ -28,7 +28,7 @@ _state_{state} () {{
 
 
 pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
-    for state in dfa.get_states() {
+    for state in dfa.get_live_states() {
         write_dfa_state_function(buffer, dfa, state)?;
     }
 

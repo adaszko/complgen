@@ -117,16 +117,6 @@ impl DFA {
         dfa_from_determinized_nfa(&nfa)
     }
 
-    fn add_state(&mut self) -> StateId {
-        let result = self.unallocated_state_id;
-        self.unallocated_state_id += 1;
-        result
-    }
-
-    fn add_transition(&mut self, from: StateId, input: Input, to: StateId) {
-        self.transitions.entry(from).or_default().insert(input, to);
-    }
-
     pub fn get_transitions_from(&self, from: StateId) -> HashMap<Input, StateId> {
         self.transitions.get(&from).cloned().unwrap_or(HashMap::default())
     }
@@ -151,16 +141,23 @@ impl DFA {
         false
     }
 
-    pub fn get_states(&self) -> HashSet<StateId> {
-        let mut result: HashSet<StateId> = self.accepting_states.clone();
-        result.insert(self.start_state);
-        for (from, tos) in &self.transitions {
-            result.insert(*from);
-            for (_, to) in tos {
-                result.insert(*to);
+    pub fn get_live_states(&self) -> HashSet<StateId> {
+        let mut visited: HashSet<StateId> = Default::default();
+        let mut to_visit: Vec<StateId> = vec![self.start_state];
+        while let Some(current_state) = to_visit.pop() {
+            if visited.contains(&current_state) {
+                continue;
             }
+
+            for (_, to) in self.get_transitions_from(current_state) {
+                if !visited.contains(&to) {
+                    to_visit.push(to);
+                }
+            }
+
+            visited.insert(current_state);
         }
-        result
+        visited
     }
 
     pub fn to_dot<W: Write>(&self, output: &mut W) -> std::result::Result<(), std::io::Error> {
