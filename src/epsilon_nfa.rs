@@ -140,6 +140,7 @@ impl NFA {
         self.accepting_states.contains(&state)
     }
 
+    // TODO Handle epsilon loops: https://cs.stackexchange.com/questions/88185/nfa-string-acceptance-with-loop-of-epsilon-transitions
     pub fn accepts(&self, inputs: &[&str]) -> bool {
         let mut backtracking_stack: Vec<(usize, StateId)> = vec![(0, self.start_state)];
         while let Some((input_index, current_state)) = backtracking_stack.pop() {
@@ -364,6 +365,18 @@ mod tests {
         let nfa = NFA::from_expr(&expr);
 
         assert!(nfa.accepts(&["first", "foo", "bar", "last"]));
+    }
+
+    #[test]
+    fn accept_does_not_hang_on_epsilon_loop() {
+        use Expr::*;
+        let expr = Sequence(vec![Optional(Box::new(Many1(Box::new(Literal("bar".to_string()))))), Literal("bar".to_string())]);
+        let nfa = NFA::from_expr(&expr);
+        assert!(nfa.accepts(&[]));
+
+        let expr = Optional(Box::new(Sequence(vec![Many1(Box::new(Optional(Box::new(Literal("bar".to_string()))))), Variable("DIRECTORY".to_string())])));
+        let nfa = NFA::from_expr(&expr);
+        assert!(nfa.accepts(&[]));
     }
 
     const INPUTS_ALPHABET: &[&str] = &["foo", "bar", "--baz", "--quux"];

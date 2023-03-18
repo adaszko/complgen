@@ -26,8 +26,8 @@ pub struct Grammar {
 }
 
 impl Grammar {
-    pub fn as_expr(&self) -> Expr {
-        Expr::Alternative(self.args)
+    pub fn into_command_expr(self) -> (String, Expr) {
+        (self.command, Expr::Alternative(self.args))
     }
 }
 

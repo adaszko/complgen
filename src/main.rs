@@ -12,14 +12,14 @@ mod dfa;
 mod bash;
 
 
-
 fn main() {
     let input = std::io::read_to_string(std::io::stdin()).unwrap();
     let grammar = parse(&input).unwrap();
-    let epsilon_nfa = EpsilonNFA::from_expr(&grammar.as_expr());
+    let (command, expr) = grammar.into_command_expr();
+    let epsilon_nfa = EpsilonNFA::from_expr(&expr);
     let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
     let dfa = DFA::from_nfa(nfa);
     let mut output = String::default();
-    write_completion_script(&mut output, &grammar, &dfa).unwrap();
+    write_completion_script(&mut output, &command, &dfa).unwrap();
     print!("{}", output);
 }
