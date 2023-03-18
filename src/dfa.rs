@@ -1,5 +1,7 @@
 use std::{collections::{HashSet, BTreeMap, HashMap}, io::Write};
 
+use roaring::RoaringBitmap;
+
 use crate::nfa::{NFA, Input};
 use complgen::{StateId, START_STATE_ID};
 
@@ -141,16 +143,16 @@ impl DFA {
         false
     }
 
-    pub fn get_live_states(&self) -> HashSet<StateId> {
-        let mut visited: HashSet<StateId> = Default::default();
+    pub fn get_live_states(&self) -> RoaringBitmap {
+        let mut visited: RoaringBitmap = Default::default();
         let mut to_visit: Vec<StateId> = vec![self.start_state];
         while let Some(current_state) = to_visit.pop() {
-            if visited.contains(&current_state) {
+            if visited.contains(current_state) {
                 continue;
             }
 
             for (_, to) in self.get_transitions_from(current_state) {
-                if !visited.contains(&to) {
+                if !visited.contains(to) {
                     to_visit.push(to);
                 }
             }
