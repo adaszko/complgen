@@ -3,6 +3,7 @@ use std::fmt::Display;
 use std::io::Write;
 
 use complgen::{StateId, START_STATE_ID};
+use roaring::{RoaringBitmap, MultiOps};
 use crate::epsilon_nfa::NFA as EpsilonNFA;
 use crate::epsilon_nfa::Input as EpsilonInput;
 
@@ -47,7 +48,7 @@ pub struct NFA {
     pub start_state: StateId,
     pub unallocated_state_id: StateId,
     pub transitions: BTreeMap<StateId, HashSet<(Input, StateId)>>,
-    pub accepting_states: HashSet<StateId>,
+    pub accepting_states: RoaringBitmap,
 }
 
 
@@ -103,6 +104,17 @@ impl NFA {
         nfa_from_epsilon_nfa(&epsilon_nfa)
     }
 
+    pub fn get_all_states(&self) -> RoaringBitmap {
+        let mut states: RoaringBitmap = Default::default();
+        for (from, to) in &self.transitions {
+            states.insert(*from);
+            to.iter().for_each(|(_, to)| {
+                states.insert(*to);
+            });
+        }
+        states
+    }
+
     pub fn add_state(&mut self) -> StateId {
         let result = self.unallocated_state_id;
         self.unallocated_state_id += 1;
@@ -144,7 +156,7 @@ impl NFA {
                 return false;
             };
 
-            if self.accepting_states.contains(&current_state) {
+            if self.accepting_states.contains(current_state) {
                 return true;
             }
 
@@ -164,16 +176,7 @@ impl NFA {
         writeln!(output, "digraph nfa {{")?;
         writeln!(output, "\trankdir=LR;")?;
 
-        let nonaccepting_states: HashSet<StateId> = {
-            let mut states: HashSet<StateId> = Default::default();
-            for (from, to) in &self.transitions {
-                states.insert(*from);
-                to.iter().for_each(|(_, to)| {
-                    states.insert(*to);
-                });
-            }
-            states.difference(&self.accepting_states).copied().collect()
-        };
+        let nonaccepting_states = [&self.get_all_states(), &self.accepting_states].difference();
 
         writeln!(output, "\tnode [shape = circle];")?;
         for state in nonaccepting_states {

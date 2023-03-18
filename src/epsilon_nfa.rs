@@ -1,6 +1,7 @@
-use std::{collections::{HashSet, BTreeMap}, io::Write, fmt::Display};
+use std::{collections::{HashSet, BTreeMap, VecDeque}, io::Write, fmt::Display};
 
 use complgen::{START_STATE_ID, StateId};
+use roaring::{RoaringBitmap, MultiOps};
 use crate::grammar::Expr;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -31,10 +32,7 @@ impl Input {
     }
 
     pub fn is_epsilon(&self) -> bool {
-        match self {
-            Self::Epsilon => true,
-            _ => false,
-        }
+        matches!(self, Self::Epsilon)
     }
 }
 
@@ -115,7 +113,7 @@ pub struct NFA {
     pub start_state: StateId,
     pub unallocated_state_id: StateId,
     pub transitions: BTreeMap<StateId, HashSet<(Input, StateId)>>,
-    pub accepting_states: HashSet<StateId>,
+    pub accepting_states: RoaringBitmap,
 }
 
 impl Default for NFA {
@@ -134,32 +132,98 @@ impl NFA {
         nfa_from_expr(e)
     }
 
-    pub fn is_accepting_state(&self, state: StateId) -> bool {
-        self.accepting_states.contains(&state)
+    pub fn get_all_states(&self) -> RoaringBitmap {
+        let mut states: RoaringBitmap = Default::default();
+        for (from, to) in &self.transitions {
+            states.insert(*from);
+            to.iter().for_each(|(_, to)| {
+                states.insert(*to);
+            });
+        }
+        states
     }
 
-    // TODO Handle epsilon loops: https://cs.stackexchange.com/questions/88185/nfa-string-acceptance-with-loop-of-epsilon-transitions
-    pub fn accepts(&self, inputs: &[&str]) -> bool {
-        let mut backtracking_stack: Vec<(usize, StateId)> = vec![(0, self.start_state)];
-        while let Some((input_index, current_state)) = backtracking_stack.pop() {
-            if self.is_accepting_state(current_state) {
-                return true;
+    pub fn is_accepting_state(&self, state: StateId) -> bool {
+        self.accepting_states.contains(state)
+    }
+
+    // A set of states reachable from `state` via ϵ-transitions
+    // Note: The return value does *not* include `start_state`.
+    pub fn get_state_epsilon_closure(&self, start_state: StateId) -> RoaringBitmap {
+        let mut visited: RoaringBitmap = Default::default();
+        let mut to_visit: VecDeque<StateId> = VecDeque::with_capacity(self.unallocated_state_id.try_into().unwrap());
+        to_visit.push_back(start_state);
+        while let Some(current_state) = to_visit.pop_front() {
+            if visited.contains(current_state) {
+                continue;
             }
 
-            let transitions_from_current_state = self.get_transitions_from(current_state);
+            for (input, to) in self.get_transitions_from(current_state) {
+                if !input.is_epsilon() {
+                    continue;
+                }
 
-            let epsilon_transitions: Vec<StateId> = transitions_from_current_state.iter().filter(|(input, _)| input.is_epsilon()).map(|(_, to)| *to).collect();
-            backtracking_stack.extend(epsilon_transitions.into_iter().map(|state| (input_index, state)));
+                if visited.contains(to) {
+                    continue;
+                }
 
-            if input_index < inputs.len() {
-                let matching_consuming_transitions: Vec<StateId> = transitions_from_current_state.iter().filter_map(|(expected_input, to)| match expected_input.matches(inputs[input_index]) {
-                    false => None,
-                    true => Some(*to),
-                }).collect();
-                backtracking_stack.extend(matching_consuming_transitions.iter().map(|state| (input_index + 1, *state)));
+                to_visit.push_back(to);
             }
+
+            visited.insert(current_state);
         }
-        false
+        visited.remove(start_state);
+        visited
+    }
+
+    pub fn get_transitions_from_matching(&self, from: StateId, input: &str) -> RoaringBitmap {
+        let empty = HashSet::default();
+        let tos = self.transitions.get(&from).unwrap_or_else(|| &empty);
+        tos.iter().filter_map(|(transition_input, to)|
+            if transition_input.matches(input) {
+                Some(*to)
+            } else {
+                None
+            }
+        ).collect()
+    }
+
+    // https://cs.stackexchange.com/questions/88185/nfa-string-acceptance-with-loop-of-epsilon-transitions
+    pub fn accepts(&self, inputs: &[&str]) -> bool {
+        let mut reachable_states: HashSet<(StateId, usize)> = Default::default();
+        for state in self.get_state_epsilon_closure(self.start_state) {
+            reachable_states.insert((state, 0));
+        }
+        reachable_states.insert((self.start_state, 0));
+
+        loop {
+            if reachable_states.is_empty() {
+                return false;
+            }
+
+            for (state, input_index) in &reachable_states {
+                if *input_index == inputs.len() && self.accepting_states.contains(*state) {
+                    return true;
+                }
+            }
+
+            let mut current_reachable_states: HashSet<(StateId, usize)> = Default::default();
+            for (from, input_index) in &reachable_states {
+                for to in self.get_state_epsilon_closure(*from) {
+                    current_reachable_states.insert((to, *input_index));
+                }
+            }
+
+            for (from, input_index) in &reachable_states {
+                if *input_index < inputs.len() {
+                    for to in self.get_transitions_from_matching(*from, inputs[*input_index]) {
+                        current_reachable_states.insert((to, input_index + 1));
+                    }
+                }
+            }
+
+            reachable_states = current_reachable_states;
+        }
     }
 
     pub fn add_state(&mut self) -> StateId {
@@ -196,16 +260,7 @@ impl NFA {
         writeln!(output, "digraph nfa {{")?;
         writeln!(output, "\trankdir=LR;")?;
 
-        let nonaccepting_states: HashSet<StateId> = {
-            let mut states: HashSet<StateId> = Default::default();
-            for (from, to) in &self.transitions {
-                states.insert(*from);
-                to.iter().for_each(|(_, to)| {
-                    states.insert(*to);
-                });
-            }
-            states.difference(&self.accepting_states).copied().collect()
-        };
+        let nonaccepting_states = [&self.get_all_states(), &self.accepting_states].difference();
 
         writeln!(output, "\tnode [shape = circle];")?;
         for state in nonaccepting_states {
@@ -287,7 +342,6 @@ mod tests {
     fn accepts_many1_words_pattern() {
         let expr = Expr::Many1(Box::new(Expr::Literal("foo".to_string())));
         let nfa = NFA::from_expr(&expr);
-
         assert!(nfa.accepts(&["foo"]));
         assert!(nfa.accepts(&["foo", "foo"]));
     }
@@ -342,7 +396,6 @@ mod tests {
         ]);
 
         let nfa = NFA::from_expr(&expr);
-
         assert!(nfa.accepts(&["first", "foo", "last"]));
         assert!(nfa.accepts(&["first", "bar", "last"]));
         assert!(nfa.accepts(&["first", "last"]));
@@ -365,18 +418,6 @@ mod tests {
         assert!(nfa.accepts(&["first", "foo", "bar", "last"]));
     }
 
-    #[test]
-    fn accept_does_not_hang_on_epsilon_loop() {
-        use Expr::*;
-        let expr = Sequence(vec![Optional(Box::new(Many1(Box::new(Literal("bar".to_string()))))), Literal("bar".to_string())]);
-        let nfa = NFA::from_expr(&expr);
-        assert!(nfa.accepts(&[]));
-
-        let expr = Optional(Box::new(Sequence(vec![Many1(Box::new(Optional(Box::new(Literal("bar".to_string()))))), Variable("DIRECTORY".to_string())])));
-        let nfa = NFA::from_expr(&expr);
-        assert!(nfa.accepts(&[]));
-    }
-
     const INPUTS_ALPHABET: &[&str] = &["foo", "bar", "--baz", "--quux"];
     const VARIABLES_ALPHABET: &[&str] = &["FILE", "DIRECTORY", "PATH"];
 
@@ -392,5 +433,37 @@ mod tests {
             }).collect();
             assert!(nfa.accepts(&input));
         }
+    }
+
+    #[test]
+    fn accept_does_not_hang_on_epsilon_loop() {
+        use Expr::*;
+        let expr = Optional(Box::new(Sequence(vec![Many1(Box::new(Optional(Box::new(Literal("bar".to_string()))))), Variable("DIRECTORY".to_string())])));
+        let nfa = NFA::from_expr(&expr);
+        assert!(nfa.accepts(&[]));
+    }
+
+    #[test]
+    fn proptest_case_one() {
+        use Expr::*;
+        let expr = Sequence(vec![Sequence(vec![Literal("foo".to_string()), Literal("foo".to_string())]), Optional(Box::new(Literal("foo".to_string())))]);
+        let nfa = NFA::from_expr(&expr);
+        assert!(nfa.accepts(&["foo", "foo"]));
+    }
+
+    #[test]
+    fn proptest_case_two() {
+        use Expr::*;
+        let expr = Optional(Box::new(Optional(Box::new(Optional(Box::new(Sequence(vec![Literal("foo".to_string()), Optional(Box::new(Many1(Box::new(Literal("foo".to_string())))))])))))));
+        let nfa = NFA::from_expr(&expr);
+        assert!(nfa.accepts(&["foo", "foo"]));
+    }
+
+    #[test]
+    fn proptest_case_three() {
+        use Expr::*;
+        let expr = Sequence(vec![Many1(Box::new(Literal("foo".to_string()))), Literal("foo".to_string())]);
+        let nfa = NFA::from_expr(&expr);
+        assert!(nfa.accepts(&["foo", "foo", "foo"]));
     }
 }

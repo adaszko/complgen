@@ -1,6 +1,6 @@
 use std::{collections::{HashSet, BTreeMap, HashMap}, io::Write};
 
-use roaring::RoaringBitmap;
+use roaring::{RoaringBitmap, MultiOps};
 
 use crate::nfa::{NFA, Input};
 use complgen::{StateId, START_STATE_ID};
@@ -10,7 +10,7 @@ pub struct DFA {
     start_state: StateId,
     unallocated_state_id: StateId,
     transitions: BTreeMap<StateId, HashMap<Input, StateId>>,
-    accepting_states: HashSet<StateId>,
+    accepting_states: RoaringBitmap,
 }
 
 
@@ -74,7 +74,7 @@ fn determinize_nfa(nfa: &mut NFA) {
             let new_state = nfa.add_state();
             nfa.add_transition(current_state, input.clone(), new_state);
             for (_, to) in nondeterministic_transitions {
-                if nfa.accepting_states.contains(to) {
+                if nfa.accepting_states.contains(*to) {
                     nfa.accepting_states.insert(new_state);
                 }
                 for (input_prime, to_prime) in nfa.get_transitions_from(*to) {
@@ -119,6 +119,17 @@ impl DFA {
         dfa_from_determinized_nfa(&nfa)
     }
 
+    pub fn get_all_states(&self) -> RoaringBitmap {
+        let mut states: RoaringBitmap = Default::default();
+        for (from, to) in &self.transitions {
+            states.insert(*from);
+            to.iter().for_each(|(_, to)| {
+                states.insert(*to);
+            });
+        }
+        states
+    }
+
     pub fn get_transitions_from(&self, from: StateId) -> HashMap<Input, StateId> {
         self.transitions.get(&from).cloned().unwrap_or(HashMap::default())
     }
@@ -126,7 +137,7 @@ impl DFA {
     pub fn accepts(&self, inputs: &[&str]) -> bool {
         let mut backtracking_stack: Vec<(usize, StateId)> = vec![(0, self.start_state)];
         while let Some((input_index, current_state)) = backtracking_stack.pop() {
-            if self.accepting_states.contains(&current_state) {
+            if self.accepting_states.contains(current_state) {
                 return true;
             }
 
@@ -166,16 +177,7 @@ impl DFA {
         writeln!(output, "digraph nfa {{")?;
         writeln!(output, "\trankdir=LR;")?;
 
-        let nonaccepting_states: HashSet<StateId> = {
-            let mut states: HashSet<StateId> = Default::default();
-            for (from, to) in &self.transitions {
-                states.insert(*from);
-                to.iter().for_each(|(_, to)| {
-                    states.insert(*to);
-                });
-            }
-            states.difference(&self.accepting_states).copied().collect()
-        };
+        let nonaccepting_states = [&self.get_all_states(), &self.accepting_states].difference();
 
         writeln!(output, "\tnode [shape = circle];")?;
         for state in nonaccepting_states {
