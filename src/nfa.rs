@@ -216,7 +216,7 @@ impl NFA {
 
 #[cfg(test)]
 mod tests {
-    use crate::parser::Expr;
+    use crate::grammar::Expr;
 
     use super::*;
 

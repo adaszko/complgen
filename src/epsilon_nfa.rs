@@ -1,6 +1,6 @@
 use std::{collections::{HashSet, BTreeMap}, io::Write, fmt::Display};
 
-use crate::{parser::Expr, automata::StateId};
+use crate::{grammar::Expr, automata::StateId};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Input {
@@ -249,7 +249,7 @@ impl NFA {
 mod tests {
     use std::rc::Rc;
 
-    use crate::parser::{arb_expr_match};
+    use crate::grammar::{arb_expr_match};
 
     use super::*;
     use proptest::prelude::*;

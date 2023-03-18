@@ -1,9 +1,9 @@
 use crate::dfa::DFA;
 use crate::nfa::NFA;
-use crate::{bash::write_completion_script, parser::parse};
+use crate::{bash::write_completion_script, grammar::parse};
 use crate::epsilon_nfa::NFA as EpsilonNFA;
 
-mod parser;
+mod grammar;
 mod error;
 mod automata;
 mod epsilon_nfa;

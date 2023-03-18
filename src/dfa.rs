@@ -207,7 +207,7 @@ impl DFA {
 
 #[cfg(test)]
 mod tests {
-    use crate::parser::Expr;
+    use crate::grammar::Expr;
     use crate::epsilon_nfa::NFA as EpsilonNFA;
 
     use super::*;
