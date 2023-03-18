@@ -17,7 +17,7 @@ use nom::{
 use proptest::{strategy::{BoxedStrategy}, test_runner::TestRng};
 use proptest::prelude::*;
 
-use crate::error::Error;
+use complgen::{Error, Result};
 
 #[derive(Debug, PartialEq)]
 pub struct Grammar {
@@ -269,7 +269,7 @@ fn grammar(input: &str) -> IResult<&str, Vec<Variant>> {
     Ok((input, variants))
 }
 
-pub fn parse(input: &str) -> crate::error::Result<Grammar> {
+pub fn parse(input: &str) -> Result<Grammar> {
     let (_, variants) = match grammar(input) {
         Ok((input, variants)) => (input, variants),
         Err(e) => return Err(Error::ParsingError(e.to_string())),

@@ -1,7 +1,6 @@
 use std::fmt::Write;
 
-use complgen::StateId;
-use crate::error::Result;
+use complgen::{StateId, Result};
 use crate::dfa::DFA;
 
 

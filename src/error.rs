@@ -17,5 +17,3 @@ pub enum Error {
     #[error("Formatting error")]
     FmtError(#[from] std::fmt::Error),
 }
-
-pub type Result<T> = std::result::Result<T, Error>;
