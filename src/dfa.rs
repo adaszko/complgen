@@ -98,14 +98,27 @@ fn determinize_nfa(nfa: &mut NFA) {
 
 fn dfa_from_determinized_nfa(nfa: &NFA) -> DFA {
     let mut dfa = DFA::default();
-    dfa.accepting_states = nfa.accepting_states.clone();
+
+    let live_states = nfa.get_live_states();
+
+    for state in &nfa.accepting_states {
+        if live_states.contains(state) {
+            dfa.accepting_states.insert(state);
+        }
+    }
+
     dfa.start_states = nfa.starting_states.clone();
+
     for (from, tos) in &nfa.transitions {
         let mut ts: HashMap<Input, StateId> = Default::default();
         for (input, to) in tos {
-            ts.insert(input.clone(), *to);
+            if live_states.contains(*from) && live_states.contains(*to) {
+                ts.insert(input.clone(), *to);
+            }
         }
-        dfa.transitions.insert(*from, ts);
+        if !ts.is_empty() {
+            dfa.transitions.insert(*from, ts);
+        }
     }
     dfa
 }
@@ -150,25 +163,6 @@ impl DFA {
             }
         }
         false
-    }
-
-    pub fn get_live_states(&self) -> RoaringBitmap {
-        let mut visited: RoaringBitmap = Default::default();
-        let mut to_visit: Vec<StateId> = self.start_states.iter().collect();
-        while let Some(current_state) = to_visit.pop() {
-            if visited.contains(current_state) {
-                continue;
-            }
-
-            for (_, to) in self.get_transitions_from(current_state) {
-                if !visited.contains(to) {
-                    to_visit.push(to);
-                }
-            }
-
-            visited.insert(current_state);
-        }
-        visited
     }
 
     pub fn to_dot<W: Write>(&self, output: &mut W) -> std::result::Result<(), std::io::Error> {
