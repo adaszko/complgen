@@ -45,7 +45,7 @@ impl Display for Input {
 
 
 pub struct NFA {
-    pub start_state: StateId,
+    pub starting_states: RoaringBitmap,
     pub unallocated_state_id: StateId,
     pub transitions: BTreeMap<StateId, HashSet<(Input, StateId)>>,
     pub accepting_states: RoaringBitmap,
@@ -55,7 +55,7 @@ pub struct NFA {
 impl Default for NFA {
     fn default() -> Self {
         Self {
-            start_state: START_STATE_ID,
+            starting_states: RoaringBitmap::from_iter(&[START_STATE_ID]),
             unallocated_state_id: START_STATE_ID + 1,
             transitions: Default::default(),
             accepting_states: Default::default(),
@@ -64,38 +64,43 @@ impl Default for NFA {
 }
 
 
+// https://www.javatpoint.com/automata-eliminating-null-transitions
+// https://cstaleem.com/elimination-of-epsilon-%CE%B5-from-nfa
 fn nfa_from_epsilon_nfa<'a>(epsilon_nfa: &'a EpsilonNFA) -> NFA {
-    let mut nfa = NFA::default();
-    nfa.accepting_states = epsilon_nfa.accepting_states.clone();
-    nfa.start_state = epsilon_nfa.start_state;
-    nfa.unallocated_state_id = epsilon_nfa.unallocated_state_id;
-    let mut visited: HashSet<StateId> = Default::default();
-    let mut to_visit: Vec<StateId> = vec![nfa.start_state];
-    while let Some(current_state) = to_visit.pop() {
-        if visited.contains(&current_state) {
-            continue;
-        }
+    let mut result = NFA::default();
 
-        let transitions_from_current_state = epsilon_nfa.get_transitions_from(current_state);
-        to_visit.extend(transitions_from_current_state.iter().map(|(_, to)| *to));
+    result.accepting_states = epsilon_nfa.accepting_states.clone();
+    result.starting_states = RoaringBitmap::from_iter(&[epsilon_nfa.start_state]);
+    result.unallocated_state_id = epsilon_nfa.unallocated_state_id;
 
-        for (input, to) in transitions_from_current_state {
-            if input.is_epsilon() {
-                for (from_prime, input_prime) in epsilon_nfa.get_transitions_to(current_state) {
-                    nfa.add_transition(from_prime, Input::from_epsilon_input(input_prime).unwrap(), to);
-                }
-                if epsilon_nfa.is_accepting_state(to) {
-                    nfa.accepting_states.insert(current_state);
-                }
-            }
-            else {
-                nfa.add_transition(current_state, Input::from_epsilon_input(input).unwrap(), to);
+    for (from, tos) in &epsilon_nfa.transitions {
+        for (input, to) in tos {
+            if !input.is_epsilon() {
+                result.add_transition(*from, Input::from_epsilon_input(input.clone()).unwrap(), *to);
             }
         }
-
-        visited.insert(current_state);
     }
-    nfa
+
+    for from in epsilon_nfa.get_all_states() {
+        let mut epsilon_closure = epsilon_nfa.get_epsilon_closure_dfs(from);
+        epsilon_closure.reverse();
+        for to in epsilon_closure {
+            for (from_prime, input_prime) in epsilon_nfa.get_transitions_to(from) {
+                if input_prime.is_epsilon() {
+                    continue;
+                }
+                result.add_transition(from_prime, Input::from_epsilon_input(input_prime).unwrap(), to);
+            }
+            if epsilon_nfa.is_starting_state(from) {
+                result.starting_states.insert(to);
+            }
+            if epsilon_nfa.is_accepting_state(to) {
+                result.accepting_states.insert(from);
+            }
+        }
+    }
+
+    result
 }
 
 
@@ -150,9 +155,9 @@ impl NFA {
     }
 
     pub fn accepts(&self, inputs: &[&str]) -> bool {
-        let mut backtracking_stack: Vec<(usize, StateId)> = vec![(0, self.start_state)];
+        let mut to_visit: Vec<(usize, StateId)> = self.starting_states.iter().map(|state| (0, state)).collect();
         loop {
-            let Some((input_index, current_state)) = backtracking_stack.pop() else {
+            let Some((input_index, current_state)) = to_visit.pop() else {
                 return false;
             };
 
@@ -167,7 +172,7 @@ impl NFA {
                     false => None,
                     true => Some(*to),
                 }).collect();
-                backtracking_stack.extend(matching_consuming_transitions.iter().map(|state| (input_index + 1, *state)));
+                to_visit.extend(matching_consuming_transitions.iter().map(|state| (input_index + 1, *state)));
             }
         }
     }
@@ -216,9 +221,13 @@ impl NFA {
 
 #[cfg(test)]
 mod tests {
-    use crate::grammar::Expr;
+    use std::rc::Rc;
+
+    use crate::grammar::{Expr, arb_expr_match};
 
     use super::*;
+
+    use proptest::prelude::*;
 
     #[test]
     fn accepts_any_word() {
@@ -339,13 +348,38 @@ mod tests {
     #[test]
     fn eliminates_double_epsilon_transition() {
         let mut epsilon_nfa = EpsilonNFA::default();
-        let first_state = epsilon_nfa.add_state();
-        let second_state = epsilon_nfa.add_state();
-        epsilon_nfa.add_transition(first_state, EpsilonInput::Epsilon, second_state);
-        let third_state = epsilon_nfa.add_state();
-        epsilon_nfa.add_transition(second_state, EpsilonInput::Epsilon, third_state);
-        epsilon_nfa.mark_state_accepting(third_state);
+        epsilon_nfa.add_transition(0, EpsilonInput::Epsilon, 1);
+        epsilon_nfa.add_transition(1, EpsilonInput::Epsilon, 2);
+        epsilon_nfa.mark_state_accepting(2);
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
         assert!(nfa.accepts(&[]));
+    }
+
+    const INPUTS_ALPHABET: &[&str] = &["foo", "bar", "--baz", "--quux"];
+    const VARIABLES_ALPHABET: &[&str] = &["FILE", "DIRECTORY", "PATH"];
+
+    proptest! {
+        #[test]
+        fn accepts_arb_expr_input((expr, input) in arb_expr_match(Rc::new(INPUTS_ALPHABET.iter().map(|s|s.to_string()).collect()), Rc::new(VARIABLES_ALPHABET.iter().map(|s|s.to_string()).collect()), 10, 3)) {
+            println!("{:?}", expr);
+            println!("{:?}", input);
+            let epsilon_nfa = EpsilonNFA::from_expr(&expr);
+            let input: Vec<&str> = input.iter().map(|s| {
+                let s: &str = s;
+                s
+            }).collect();
+            prop_assert!(epsilon_nfa.accepts(&input));
+            let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
+            prop_assert!(nfa.accepts(&input));
+        }
+    }
+
+    #[test]
+    fn proptest_failure_one() {
+        use Expr::*;
+        let expr = Many1(Box::new(Sequence(vec![Alternative(vec![Many1(Box::new(Sequence(vec![Alternative(vec![Many1(Box::new(Optional(Box::new(Sequence(vec![Literal("--baz".to_string()), Literal("foo".to_string())]))))), Optional(Box::new(Literal("--baz".to_string())))]), Literal("foo".to_string())]))), Sequence(vec![Optional(Box::new(Literal("foo".to_string()))), Literal("foo".to_string())])]), Literal("foo".to_string())])));
+        let epsilon_nfa = EpsilonNFA::from_expr(&expr);
+        let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
+        nfa.accepts(&["foo", "foo"]);
     }
 }

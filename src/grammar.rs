@@ -37,7 +37,7 @@ struct Variant {
     rhs: Expr,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum Expr {
     Literal(String),
     Variable(String), // e.g. <FILE>, <PATH>, <DIR>, etc.
@@ -45,6 +45,19 @@ pub enum Expr {
     Alternative(Vec<Expr>),
     Optional(Box<Expr>),
     Many1(Box<Expr>),
+}
+
+impl std::fmt::Debug for Expr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Literal(arg0) => f.write_fmt(format_args!(r#"Literal("{}".to_string())"#, arg0)),
+            Self::Variable(arg0) => f.write_fmt(format_args!(r#"Variable("{}".to_string())"#, arg0)),
+            Self::Sequence(arg0) => f.write_fmt(format_args!(r#"Sequence(vec!{:?})"#, arg0)),
+            Self::Alternative(arg0) => f.write_fmt(format_args!(r#"Alternative(vec!{:?})"#, arg0)),
+            Self::Optional(arg0) => f.write_fmt(format_args!(r#"Optional(Box::new({:?}))"#, arg0)),
+            Self::Many1(arg0) => f.write_fmt(format_args!(r#"Many1(Box::new({:?}))"#, arg0)),
+        }
+    }
 }
 
 fn arb_literal(inputs: Rc<Vec<String>>) -> BoxedStrategy<Expr> {

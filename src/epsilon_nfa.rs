@@ -143,6 +143,10 @@ impl NFA {
         states
     }
 
+    pub fn is_starting_state(&self, state: StateId) -> bool {
+        state == 0
+    }
+
     pub fn is_accepting_state(&self, state: StateId) -> bool {
         self.accepting_states.contains(state)
     }
@@ -174,6 +178,39 @@ impl NFA {
         }
         visited.remove(start_state);
         visited
+    }
+
+    // A set of states reachable from `state` via ϵ-transitions
+    // Note: The return value does *not* include `start_state`.
+    // Results are produced in the order suitable for remove ϵ-transitions, i.e. farthest from the
+    // starting state first.
+    pub fn get_epsilon_closure_dfs(&self, start_state: StateId) -> Vec<StateId> {
+        let mut result: Vec<StateId> = Default::default();
+        let mut visited: RoaringBitmap = Default::default();
+        let mut to_visit: Vec<StateId> = vec![start_state];
+        while let Some(current_state) = to_visit.pop() {
+            if visited.contains(current_state) {
+                continue;
+            }
+
+            for (input, to) in self.get_transitions_from(current_state) {
+                if !input.is_epsilon() {
+                    continue;
+                }
+
+                if visited.contains(to) {
+                    continue;
+                }
+
+                to_visit.push(to);
+            }
+
+            visited.insert(current_state);
+            result.push(current_state);
+        }
+        debug_assert_eq!(result.first(), Some(&start_state));
+        result.remove(0);
+        result
     }
 
     pub fn get_transitions_from_matching(&self, from: StateId, input: &str) -> RoaringBitmap {
@@ -431,7 +468,7 @@ mod tests {
                 let s: &str = s;
                 s
             }).collect();
-            assert!(nfa.accepts(&input));
+            prop_assert!(nfa.accepts(&input));
         }
     }
 

@@ -7,7 +7,7 @@ use complgen::{StateId, START_STATE_ID};
 
 
 pub struct DFA {
-    start_state: StateId,
+    start_states: RoaringBitmap,
     unallocated_state_id: StateId,
     transitions: BTreeMap<StateId, HashMap<Input, StateId>>,
     accepting_states: RoaringBitmap,
@@ -17,7 +17,7 @@ pub struct DFA {
 impl Default for DFA {
     fn default() -> Self {
         Self {
-            start_state: START_STATE_ID,
+            start_states: RoaringBitmap::from_iter([START_STATE_ID]),
             unallocated_state_id: START_STATE_ID + 1,
             transitions: Default::default(),
             accepting_states: Default::default(),
@@ -55,7 +55,7 @@ fn group_by_key<T, K, F>(v: &[T], get_key_fn: F) -> Vec<(K, &[T])>
 // https://github.com/caleb531/automata/blob/b9c195a80a5aa5977c7c0b81d5a72ba56bb12551/automata/fa/dfa.py#L1224
 fn determinize_nfa(nfa: &mut NFA) {
     let mut visited: HashSet<StateId> = Default::default();
-    let mut to_visit: HashSet<StateId> = HashSet::from_iter(vec![nfa.start_state]);
+    let mut to_visit: HashSet<StateId> = HashSet::from_iter(nfa.starting_states.iter());
     while !to_visit.is_empty() {
         // popping from a hashset is somewhat involved
         let current_state = to_visit.iter().next().copied().unwrap();
@@ -100,7 +100,7 @@ fn determinize_nfa(nfa: &mut NFA) {
 fn dfa_from_determinized_nfa(nfa: &NFA) -> DFA {
     let mut dfa = DFA::default();
     dfa.accepting_states = nfa.accepting_states.clone();
-    dfa.start_state = nfa.start_state;
+    dfa.start_states = nfa.starting_states.clone();
     dfa.unallocated_state_id = nfa.unallocated_state_id;
     for (from, tos) in &nfa.transitions {
         let mut ts: HashMap<Input, StateId> = Default::default();
@@ -135,7 +135,7 @@ impl DFA {
     }
 
     pub fn accepts(&self, inputs: &[&str]) -> bool {
-        let mut backtracking_stack: Vec<(usize, StateId)> = vec![(0, self.start_state)];
+        let mut backtracking_stack: Vec<(usize, StateId)> = self.start_states.iter().map(|state| (0, state)).collect();
         while let Some((input_index, current_state)) = backtracking_stack.pop() {
             if self.accepting_states.contains(current_state) {
                 return true;
@@ -156,7 +156,7 @@ impl DFA {
 
     pub fn get_live_states(&self) -> RoaringBitmap {
         let mut visited: RoaringBitmap = Default::default();
-        let mut to_visit: Vec<StateId> = vec![self.start_state];
+        let mut to_visit: Vec<StateId> = self.start_states.iter().collect();
         while let Some(current_state) = to_visit.pop() {
             if visited.contains(current_state) {
                 continue;
@@ -237,12 +237,10 @@ mod tests {
     #[test]
     fn dfa_from_simple_nfa() {
         let mut nfa = NFA::default();
-        let first_state = nfa.add_state();
-        let second_state = nfa.add_state();
-        nfa.add_transition(nfa.start_state, Input::Literal("foo".to_string()), first_state);
-        nfa.mark_state_accepting(first_state);
-        nfa.add_transition(nfa.start_state, Input::Literal("foo".to_string()), second_state);
-        nfa.mark_state_accepting(second_state);
+        nfa.add_transition(0, Input::Literal("foo".to_string()), 1);
+        nfa.mark_state_accepting(1);
+        nfa.add_transition(0, Input::Literal("foo".to_string()), 2);
+        nfa.mark_state_accepting(2);
         let dfa = DFA::from_nfa(nfa);
         assert!(dfa.accepts(&["foo"]));
     }
@@ -250,14 +248,11 @@ mod tests {
     #[test]
     fn dfa_from_diamond_nfa() {
         let mut nfa = NFA::default();
-        let first_state = nfa.add_state();
-        let second_state = nfa.add_state();
-        let third_state = nfa.add_state();
-        nfa.add_transition(nfa.start_state, Input::Literal("foo".to_string()), first_state);
-        nfa.add_transition(nfa.start_state, Input::Literal("foo".to_string()), second_state);
-        nfa.add_transition(first_state, Input::Literal("bar".to_string()), third_state);
-        nfa.add_transition(second_state, Input::Literal("baz".to_string()), third_state);
-        nfa.mark_state_accepting(third_state);
+        nfa.add_transition(0, Input::Literal("foo".to_string()), 1);
+        nfa.add_transition(0, Input::Literal("foo".to_string()), 2);
+        nfa.add_transition(1, Input::Literal("bar".to_string()), 3);
+        nfa.add_transition(2, Input::Literal("baz".to_string()), 3);
+        nfa.mark_state_accepting(3);
         let dfa = DFA::from_nfa(nfa);
         assert!(dfa.accepts(&["foo", "bar"]));
         assert!(dfa.accepts(&["foo", "baz"]));
@@ -266,13 +261,11 @@ mod tests {
     #[test]
     fn dfa_from_nfa_with_simple_loop() {
         let mut nfa = NFA::default();
-        let first_state = nfa.add_state();
-        let second_state = nfa.add_state();
-        nfa.mark_state_accepting(first_state);
-        nfa.mark_state_accepting(second_state);
-        nfa.add_transition(nfa.start_state, Input::Literal("foo".to_string()), first_state);
-        nfa.add_transition(nfa.start_state, Input::Literal("foo".to_string()), second_state);
-        nfa.add_transition(first_state, Input::Literal("bar".to_string()), first_state);
+        nfa.mark_state_accepting(1);
+        nfa.mark_state_accepting(2);
+        nfa.add_transition(0, Input::Literal("foo".to_string()), 1);
+        nfa.add_transition(0, Input::Literal("foo".to_string()), 2);
+        nfa.add_transition(1, Input::Literal("bar".to_string()), 1);
         let dfa = DFA::from_nfa(nfa);
         assert!(dfa.accepts(&["foo"]));
         assert!(dfa.accepts(&["foo", "baz"]));
@@ -281,13 +274,11 @@ mod tests {
     #[test]
     fn dfa_from_nfa_with_bigger_loop() {
         let mut nfa = NFA::default();
-        let first_state = nfa.add_state();
-        let second_state = nfa.add_state();
-        nfa.mark_state_accepting(first_state);
-        nfa.mark_state_accepting(second_state);
-        nfa.add_transition(nfa.start_state, Input::Literal("foo".to_string()), first_state);
-        nfa.add_transition(nfa.start_state, Input::Literal("foo".to_string()), second_state);
-        nfa.add_transition(first_state, Input::Literal("bar".to_string()), second_state);
+        nfa.mark_state_accepting(1);
+        nfa.mark_state_accepting(2);
+        nfa.add_transition(0, Input::Literal("foo".to_string()), 1);
+        nfa.add_transition(0, Input::Literal("foo".to_string()), 2);
+        nfa.add_transition(1, Input::Literal("bar".to_string()), 2);
         let dfa = DFA::from_nfa(nfa);
         assert!(dfa.accepts(&["foo"]));
         assert!(dfa.accepts(&["foo", "bar"]));
