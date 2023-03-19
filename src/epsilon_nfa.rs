@@ -1,4 +1,4 @@
-use std::{collections::{HashSet, BTreeMap, VecDeque}, io::Write, fmt::Display};
+use std::{collections::{HashSet, BTreeMap}, io::Write, fmt::Display};
 
 use complgen::{START_STATE_ID, StateId};
 use roaring::{RoaringBitmap, MultiOps};
@@ -153,37 +153,6 @@ impl NFA {
 
     // A set of states reachable from `state` via ϵ-transitions
     // Note: The return value does *not* include `start_state`.
-    pub fn get_state_epsilon_closure(&self, start_state: StateId) -> RoaringBitmap {
-        let mut visited: RoaringBitmap = Default::default();
-        let mut to_visit: VecDeque<StateId> = VecDeque::with_capacity(self.unallocated_state_id.try_into().unwrap());
-        to_visit.push_back(start_state);
-        while let Some(current_state) = to_visit.pop_front() {
-            if visited.contains(current_state) {
-                continue;
-            }
-
-            for (input, to) in self.get_transitions_from(current_state) {
-                if !input.is_epsilon() {
-                    continue;
-                }
-
-                if visited.contains(to) {
-                    continue;
-                }
-
-                to_visit.push_back(to);
-            }
-
-            visited.insert(current_state);
-        }
-        visited.remove(start_state);
-        visited
-    }
-
-    // A set of states reachable from `state` via ϵ-transitions
-    // Note: The return value does *not* include `start_state`.
-    // Results are produced in the order suitable for remove ϵ-transitions, i.e. farthest from the
-    // starting state first.
     pub fn get_epsilon_closure_dfs(&self, start_state: StateId) -> Vec<StateId> {
         let mut result: Vec<StateId> = Default::default();
         let mut visited: RoaringBitmap = Default::default();
@@ -228,7 +197,7 @@ impl NFA {
     // https://cs.stackexchange.com/questions/88185/nfa-string-acceptance-with-loop-of-epsilon-transitions
     pub fn accepts(&self, inputs: &[&str]) -> bool {
         let mut reachable_states: HashSet<(StateId, usize)> = Default::default();
-        for state in self.get_state_epsilon_closure(self.start_state) {
+        for state in self.get_epsilon_closure_dfs(self.start_state) {
             reachable_states.insert((state, 0));
         }
         reachable_states.insert((self.start_state, 0));
@@ -246,7 +215,7 @@ impl NFA {
 
             let mut current_reachable_states: HashSet<(StateId, usize)> = Default::default();
             for (from, input_index) in &reachable_states {
-                for to in self.get_state_epsilon_closure(*from) {
+                for to in self.get_epsilon_closure_dfs(*from) {
                     current_reachable_states.insert((to, *input_index));
                 }
             }
