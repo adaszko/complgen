@@ -8,7 +8,6 @@ use complgen::{StateId, START_STATE_ID};
 
 pub struct DFA {
     start_states: RoaringBitmap,
-    unallocated_state_id: StateId,
     transitions: BTreeMap<StateId, HashMap<Input, StateId>>,
     accepting_states: RoaringBitmap,
 }
@@ -18,7 +17,6 @@ impl Default for DFA {
     fn default() -> Self {
         Self {
             start_states: RoaringBitmap::from_iter([START_STATE_ID]),
-            unallocated_state_id: START_STATE_ID + 1,
             transitions: Default::default(),
             accepting_states: Default::default(),
         }
@@ -61,6 +59,7 @@ fn determinize_nfa(nfa: &mut NFA) {
         let current_state = to_visit.iter().next().copied().unwrap();
         let current_state = to_visit.take(&current_state).unwrap();
 
+
         if visited.contains(&current_state) {
             continue;
         }
@@ -101,7 +100,6 @@ fn dfa_from_determinized_nfa(nfa: &NFA) -> DFA {
     let mut dfa = DFA::default();
     dfa.accepting_states = nfa.accepting_states.clone();
     dfa.start_states = nfa.starting_states.clone();
-    dfa.unallocated_state_id = nfa.unallocated_state_id;
     for (from, tos) in &nfa.transitions {
         let mut ts: HashMap<Input, StateId> = Default::default();
         for (input, to) in tos {
@@ -217,10 +215,14 @@ impl DFA {
 
 #[cfg(test)]
 mod tests {
-    use crate::grammar::Expr;
+    use std::rc::Rc;
+
+    use crate::grammar::{Expr, arb_expr_match};
     use crate::epsilon_nfa::NFA as EpsilonNFA;
 
     use super::*;
+
+    use proptest::prelude::*;
 
     /*
     #[test]
@@ -253,6 +255,7 @@ mod tests {
         nfa.add_transition(1, Input::Literal("bar".to_string()), 3);
         nfa.add_transition(2, Input::Literal("baz".to_string()), 3);
         nfa.mark_state_accepting(3);
+        nfa.unallocated_state_id = 4;
         let dfa = DFA::from_nfa(nfa);
         assert!(dfa.accepts(&["foo", "bar"]));
         assert!(dfa.accepts(&["foo", "baz"]));
@@ -266,6 +269,7 @@ mod tests {
         nfa.add_transition(0, Input::Literal("foo".to_string()), 1);
         nfa.add_transition(0, Input::Literal("foo".to_string()), 2);
         nfa.add_transition(1, Input::Literal("bar".to_string()), 1);
+        nfa.unallocated_state_id = 3;
         let dfa = DFA::from_nfa(nfa);
         assert!(dfa.accepts(&["foo"]));
         assert!(dfa.accepts(&["foo", "baz"]));
@@ -279,6 +283,7 @@ mod tests {
         nfa.add_transition(0, Input::Literal("foo".to_string()), 1);
         nfa.add_transition(0, Input::Literal("foo".to_string()), 2);
         nfa.add_transition(1, Input::Literal("bar".to_string()), 2);
+        nfa.unallocated_state_id = 3;
         let dfa = DFA::from_nfa(nfa);
         assert!(dfa.accepts(&["foo"]));
         assert!(dfa.accepts(&["foo", "bar"]));
@@ -405,5 +410,26 @@ mod tests {
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
         let dfa = DFA::from_nfa(nfa);
         assert!(dfa.accepts(&["first", "foo", "bar", "last"]));
+    }
+
+    const INPUTS_ALPHABET: &[&str] = &["foo", "bar", "--baz", "--quux"];
+    const VARIABLES_ALPHABET: &[&str] = &["FILE", "DIRECTORY", "PATH"];
+
+    proptest! {
+        #[test]
+        fn accepts_arb_expr_input((expr, input) in arb_expr_match(Rc::new(INPUTS_ALPHABET.iter().map(|s|s.to_string()).collect()), Rc::new(VARIABLES_ALPHABET.iter().map(|s|s.to_string()).collect()), 10, 3)) {
+            println!("{:?}", expr);
+            println!("{:?}", input);
+            let epsilon_nfa = EpsilonNFA::from_expr(&expr);
+            let input: Vec<&str> = input.iter().map(|s| {
+                let s: &str = s;
+                s
+            }).collect();
+            prop_assert!(epsilon_nfa.accepts(&input));
+            let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
+            prop_assert!(nfa.accepts(&input));
+            let dfa = DFA::from_nfa(nfa);
+            prop_assert!(dfa.accepts(&input));
+        }
     }
 }

@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 82ffd02d92dc5bbc29db5b83fbcdb4d728dc2fb5ef827eb2c027c955a38a1858 # shrinks to (expr, input) = (Many1(Sequence([Alternative([Many1(Sequence([Alternative([Many1(Optional(Sequence([Literal("--baz"), Literal("foo")]))), Optional(Literal("--baz"))]), Literal("foo")])), Sequence([Optional(Literal("foo")), Literal("foo")])]), Literal("foo")])), ["foo", "foo"])
