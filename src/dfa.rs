@@ -406,6 +406,22 @@ mod tests {
         assert!(dfa.accepts(&["first", "foo", "bar", "last"]));
     }
 
+    #[test]
+    fn does_not_loop_at_the_last_word() {
+        let expr = Expr::Sequence(vec![
+            Expr::Literal("first".to_string()),
+            Expr::Literal("last".to_string()),
+        ]);
+
+        let epsilon_nfa = EpsilonNFA::from_expr(&expr);
+        assert!(!epsilon_nfa.accepts(&["first", "last", "last"]));
+        let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
+        assert!(!nfa.accepts(&["first", "last", "last"]));
+        let dfa = DFA::from_nfa(nfa);
+        assert!(dfa.accepts(&["first", "last"]));
+        assert!(!dfa.accepts(&["first", "last", "last"]));
+    }
+
     const INPUTS_ALPHABET: &[&str] = &["foo", "bar", "--baz", "--quux"];
     const VARIABLES_ALPHABET: &[&str] = &["FILE", "DIRECTORY", "PATH"];
 
