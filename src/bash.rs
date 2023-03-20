@@ -2,27 +2,40 @@ use std::fmt::Write;
 
 use complgen::{StateId, Result};
 use crate::dfa::DFA;
+use crate::nfa::Input;
 
 
 fn write_dfa_state_function<W: Write>(buffer: &mut W, dfa: &DFA, state: StateId) -> Result<()> {
-    let inputs: Vec<String> = dfa.get_transitions_from(state).into_iter().map(|(input, _)| input.to_string()).collect();
-    let inputs = inputs.join(" ");
+    let discriminating_inputs: Vec<String> = dfa.get_transitions_from(state).into_iter().filter_map(|(input, _)| match input {
+        Input::Literal(s) => Some(s.to_string()),
+        Input::Any => None,
+    }).collect();
 
-    // We're generating completions for the current state
     write!(buffer, r#"
 _state_{state} () {{
     local index=$1
     if [[ $index == $COMP_CWORD ]]; then
+"#, state = state)?;
+
+    // We're generating completions for the current state
+    if !discriminating_inputs.is_empty() {
+        write!(buffer, r#"
         COMPREPLY=($(compgen -W '{inputs}' -- "${{COMP_WORDS[$COMP_CWORD]}}"))
+"#, inputs = discriminating_inputs.join(" "))?;
+    }
+
+    write!(buffer, r#"
         return 0
     fi
-"#, state = state, inputs = inputs)?;
+"#)?;
 
     // We're matching $COMP_WORDS[$index] against the DFA
     write!(buffer, r#"
     case ${{COMP_WORDS[$index]}} in
 "#)?;
 
+    // XXX Input::Any should be the last case branch to use it as a fallback when everything more
+    // specific failed
     for (input, to) in dfa.get_transitions_from(state) {
         write!(buffer, r#"
         {input})

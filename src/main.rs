@@ -17,6 +17,7 @@ fn main() {
     let epsilon_nfa = EpsilonNFA::from_expr(&expr);
     let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
     let dfa = DFA::from_nfa(nfa);
+    dfa.to_dot_file("dfa.dot").unwrap();
     let mut output = String::default();
     write_completion_script(&mut output, &command, &dfa).unwrap();
     print!("{}", output);
