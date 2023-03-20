@@ -1,17 +1,18 @@
-use std::{collections::{HashSet, BTreeMap, HashMap}, io::Write};
+use std::{
+    collections::{BTreeMap, HashMap, HashSet},
+    io::Write,
+};
 
-use roaring::{RoaringBitmap, MultiOps};
+use roaring::{MultiOps, RoaringBitmap};
 
-use crate::nfa::{NFA, Input};
+use crate::nfa::{Input, NFA};
 use complgen::{StateId, START_STATE_ID};
-
 
 pub struct DFA {
     pub start_states: RoaringBitmap,
     transitions: BTreeMap<StateId, HashMap<Input, StateId>>,
     accepting_states: RoaringBitmap,
 }
-
 
 impl Default for DFA {
     fn default() -> Self {
@@ -23,14 +24,13 @@ impl Default for DFA {
     }
 }
 
-
 // Assumption: `v` is already sorted by key
 // Vec::partition_dedup_by_key() is unstable at the time of writing this
 fn group_by_key<T, K, F>(v: &[T], get_key_fn: F) -> Vec<(K, &[T])>
-    where
-        T: Clone,
-        K: Eq,
-        F: Fn(T) -> K,
+where
+    T: Clone,
+    K: Eq,
+    F: Fn(T) -> K,
 {
     let mut result: Vec<(K, &[T])> = Default::default();
     let mut i = 0;
@@ -49,7 +49,6 @@ fn group_by_key<T, K, F>(v: &[T], get_key_fn: F) -> Vec<(K, &[T])>
     result
 }
 
-
 // https://github.com/caleb531/automata/blob/b9c195a80a5aa5977c7c0b81d5a72ba56bb12551/automata/fa/dfa.py#L1224
 fn determinize_nfa(nfa: &mut NFA) {
     let mut visited: HashSet<StateId> = Default::default();
@@ -59,17 +58,20 @@ fn determinize_nfa(nfa: &mut NFA) {
         let current_state = to_visit.iter().next().copied().unwrap();
         let current_state = to_visit.take(&current_state).unwrap();
 
-
         if visited.contains(&current_state) {
             continue;
         }
 
-        let mut transitions_from_current_state: Vec<(Input, StateId)> = nfa.get_transitions_from(current_state).into_iter().collect();
+        let mut transitions_from_current_state: Vec<(Input, StateId)> = nfa
+            .get_transitions_from(current_state)
+            .into_iter()
+            .collect();
         to_visit.extend(transitions_from_current_state.iter().map(|(_, to)| *to));
 
         transitions_from_current_state.sort_by_key(|(input, _)| input.clone());
         let groups = group_by_key(&transitions_from_current_state, |(input, _)| input);
-        for (input, nondeterministic_transitions) in groups.into_iter().filter(|(_, g)| g.len() > 1) {
+        for (input, nondeterministic_transitions) in groups.into_iter().filter(|(_, g)| g.len() > 1)
+        {
             let new_state = nfa.add_state();
             nfa.add_transition(current_state, input.clone(), new_state);
             for (_, to) in nondeterministic_transitions {
@@ -94,7 +96,6 @@ fn determinize_nfa(nfa: &mut NFA) {
         visited.insert(current_state);
     }
 }
-
 
 fn dfa_from_determinized_nfa(nfa: &NFA) -> DFA {
     let mut dfa = DFA::default();
@@ -123,7 +124,6 @@ fn dfa_from_determinized_nfa(nfa: &NFA) -> DFA {
     dfa
 }
 
-
 impl DFA {
     pub fn from_nfa(mut nfa: NFA) -> Self {
         determinize_nfa(&mut nfa);
@@ -142,11 +142,15 @@ impl DFA {
     }
 
     pub fn get_transitions_from(&self, from: StateId) -> HashMap<Input, StateId> {
-        self.transitions.get(&from).cloned().unwrap_or(HashMap::default())
+        self.transitions
+            .get(&from)
+            .cloned()
+            .unwrap_or(HashMap::default())
     }
 
     pub fn accepts(&self, inputs: &[&str]) -> bool {
-        let mut backtracking_stack: Vec<(usize, StateId)> = self.start_states.iter().map(|state| (0, state)).collect();
+        let mut backtracking_stack: Vec<(usize, StateId)> =
+            self.start_states.iter().map(|state| (0, state)).collect();
         while let Some((input_index, current_state)) = backtracking_stack.pop() {
             if input_index == inputs.len() && self.accepting_states.contains(current_state) {
                 return true;
@@ -155,11 +159,20 @@ impl DFA {
             let transitions_from_current_state = self.get_transitions_from(current_state);
 
             if input_index < inputs.len() {
-                let matching_consuming_transitions: Vec<StateId> = transitions_from_current_state.iter().filter_map(|(expected_input, to)| match expected_input.matches(inputs[input_index]) {
-                    false => None,
-                    true => Some(*to),
-                }).collect();
-                backtracking_stack.extend(matching_consuming_transitions.iter().map(|state| (input_index + 1, *state)));
+                let matching_consuming_transitions: Vec<StateId> = transitions_from_current_state
+                    .iter()
+                    .filter_map(|(expected_input, to)| {
+                        match expected_input.matches(inputs[input_index]) {
+                            false => None,
+                            true => Some(*to),
+                        }
+                    })
+                    .collect();
+                backtracking_stack.extend(
+                    matching_consuming_transitions
+                        .iter()
+                        .map(|state| (input_index + 1, *state)),
+                );
             }
         }
         false
@@ -206,13 +219,12 @@ impl DFA {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use std::rc::Rc;
 
-    use crate::grammar::{Expr, arb_expr_match, parse};
     use crate::epsilon_nfa::NFA as EpsilonNFA;
+    use crate::grammar::{arb_expr_match, parse, Expr};
 
     use super::*;
 
@@ -295,7 +307,10 @@ mod tests {
 
     #[test]
     fn accepts_two_words_sequence_pattern() {
-        let expr = Expr::Sequence(vec![Expr::Literal("foo".to_string()), Expr::Literal("bar".to_string())]);
+        let expr = Expr::Sequence(vec![
+            Expr::Literal("foo".to_string()),
+            Expr::Literal("bar".to_string()),
+        ]);
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
         let dfa = DFA::from_nfa(nfa);
@@ -304,7 +319,10 @@ mod tests {
 
     #[test]
     fn accepts_two_words_choice_pattern() {
-        let expr = Expr::Alternative(vec![Expr::Literal("foo".to_string()), Expr::Literal("bar".to_string())]);
+        let expr = Expr::Alternative(vec![
+            Expr::Literal("foo".to_string()),
+            Expr::Literal("bar".to_string()),
+        ]);
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
         let dfa = DFA::from_nfa(nfa);
@@ -373,10 +391,9 @@ mod tests {
     fn accepts_optional_containing_a_choice() {
         let expr = Expr::Sequence(vec![
             Expr::Literal("first".to_string()),
-            Expr::Optional(
-                Box::new(Expr::Alternative(vec![
-                    Expr::Literal("foo".to_string()),
-                    Expr::Literal("bar".to_string()),
+            Expr::Optional(Box::new(Expr::Alternative(vec![
+                Expr::Literal("foo".to_string()),
+                Expr::Literal("bar".to_string()),
             ]))),
             Expr::Literal("last".to_string()),
         ]);
@@ -393,10 +410,9 @@ mod tests {
     fn accepts_repetition_of_a_choice() {
         let expr = Expr::Sequence(vec![
             Expr::Literal("first".to_string()),
-            Expr::Many1(
-                Box::new(Expr::Alternative(vec![
-                    Expr::Literal("foo".to_string()),
-                    Expr::Literal("bar".to_string()),
+            Expr::Many1(Box::new(Expr::Alternative(vec![
+                Expr::Literal("foo".to_string()),
+                Expr::Literal("bar".to_string()),
             ]))),
             Expr::Literal("last".to_string()),
         ]);
@@ -426,24 +442,27 @@ mod tests {
         let (_, expr) = g.into_command_expr();
 
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
+        epsilon_nfa.to_dot_file("enfa.dot").unwrap();
         assert!(epsilon_nfa.accepts(&["foo", "--help"]));
         assert!(!epsilon_nfa.accepts(&["foo", "--help", "--help"]));
 
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
+        nfa.to_dot_file("nfa.dot").unwrap();
         assert!(nfa.accepts(&["foo", "--help"]));
         assert!(!nfa.accepts(&["foo", "--help", "--help"]));
 
         let dfa = DFA::from_nfa(nfa);
+        dfa.to_dot_file("dfa.dot").unwrap();
         assert!(dfa.accepts(&["foo", "--help"]));
         assert!(!dfa.accepts(&["foo", "--help", "--help"]));
     }
 
-    const INPUTS_ALPHABET: &[&str] = &["foo", "bar", "--baz", "--quux"];
-    const VARIABLES_ALPHABET: &[&str] = &["FILE", "DIRECTORY", "PATH"];
+    const LITERALS: &[&str] = &["foo", "bar", "--baz", "--quux"];
+    const VARIABLES: &[&str] = &["FILE", "DIRECTORY", "PATH"];
 
     proptest! {
         #[test]
-        fn accepts_arb_expr_input((expr, input) in arb_expr_match(Rc::new(INPUTS_ALPHABET.iter().map(|s|s.to_string()).collect()), Rc::new(VARIABLES_ALPHABET.iter().map(|s|s.to_string()).collect()), 10, 3)) {
+        fn accepts_arb_expr_input((expr, input) in arb_expr_match(Rc::new(LITERALS.iter().map(|s|s.to_string()).collect()), Rc::new(VARIABLES.iter().map(|s|s.to_string()).collect()), 10, 3)) {
             println!("{:?}", expr);
             println!("{:?}", input);
             let epsilon_nfa = EpsilonNFA::from_expr(&expr);

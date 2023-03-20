@@ -2,18 +2,16 @@ use std::collections::{BTreeMap, HashSet};
 use std::fmt::Display;
 use std::io::Write;
 
-use complgen::{StateId, START_STATE_ID};
-use roaring::{RoaringBitmap, MultiOps};
-use crate::epsilon_nfa::NFA as EpsilonNFA;
 use crate::epsilon_nfa::Input as EpsilonInput;
-
+use crate::epsilon_nfa::NFA as EpsilonNFA;
+use complgen::{StateId, START_STATE_ID};
+use roaring::{MultiOps, RoaringBitmap};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Input {
     Literal(String),
     Any,
 }
-
 
 impl Input {
     fn from_epsilon_input(value: EpsilonInput) -> Option<Self> {
@@ -32,7 +30,6 @@ impl Input {
     }
 }
 
-
 impl Display for Input {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -42,15 +39,12 @@ impl Display for Input {
     }
 }
 
-
-
 pub struct NFA {
     pub starting_states: RoaringBitmap,
     pub unallocated_state_id: StateId,
     pub transitions: BTreeMap<StateId, HashSet<(Input, StateId)>>,
     pub accepting_states: RoaringBitmap,
 }
-
 
 impl Default for NFA {
     fn default() -> Self {
@@ -62,7 +56,6 @@ impl Default for NFA {
         }
     }
 }
-
 
 // https://www.javatpoint.com/automata-eliminating-null-transitions
 // https://cstaleem.com/elimination-of-epsilon-%CE%B5-from-nfa
@@ -76,7 +69,11 @@ fn nfa_from_epsilon_nfa<'a>(epsilon_nfa: &'a EpsilonNFA) -> NFA {
     for (from, tos) in &epsilon_nfa.transitions {
         for (input, to) in tos {
             if !input.is_epsilon() {
-                result.add_transition(*from, Input::from_epsilon_input(input.clone()).unwrap(), *to);
+                result.add_transition(
+                    *from,
+                    Input::from_epsilon_input(input.clone()).unwrap(),
+                    *to,
+                );
             }
         }
     }
@@ -89,7 +86,11 @@ fn nfa_from_epsilon_nfa<'a>(epsilon_nfa: &'a EpsilonNFA) -> NFA {
                 if input_prime.is_epsilon() {
                     continue;
                 }
-                result.add_transition(from_prime, Input::from_epsilon_input(input_prime).unwrap(), to);
+                result.add_transition(
+                    from_prime,
+                    Input::from_epsilon_input(input_prime).unwrap(),
+                    to,
+                );
             }
             if epsilon_nfa.is_starting_state(from) {
                 result.starting_states.insert(to);
@@ -102,7 +103,6 @@ fn nfa_from_epsilon_nfa<'a>(epsilon_nfa: &'a EpsilonNFA) -> NFA {
 
     result
 }
-
 
 impl NFA {
     pub fn from_epsilon_nfa(epsilon_nfa: &EpsilonNFA) -> Self {
@@ -150,15 +150,24 @@ impl NFA {
     }
 
     pub fn remove_transition(&mut self, from: StateId, input: Input, to: StateId) {
-        self.transitions.entry(from).or_default().remove(&(input, to));
+        self.transitions
+            .entry(from)
+            .or_default()
+            .remove(&(input, to));
     }
 
     pub fn add_transition(&mut self, from: StateId, input: Input, to: StateId) {
-        self.transitions.entry(from).or_default().insert((input, to));
+        self.transitions
+            .entry(from)
+            .or_default()
+            .insert((input, to));
     }
 
     pub fn get_transitions_from(&self, from: StateId) -> HashSet<(Input, StateId)> {
-        self.transitions.get(&from).cloned().unwrap_or(HashSet::default())
+        self.transitions
+            .get(&from)
+            .cloned()
+            .unwrap_or(HashSet::default())
     }
 
     pub fn get_transitions_to(&self, desired_to: StateId) -> HashSet<(StateId, Input)> {
@@ -174,7 +183,11 @@ impl NFA {
     }
 
     pub fn accepts(&self, inputs: &[&str]) -> bool {
-        let mut to_visit: Vec<(usize, StateId)> = self.starting_states.iter().map(|state| (0, state)).collect();
+        let mut to_visit: Vec<(usize, StateId)> = self
+            .starting_states
+            .iter()
+            .map(|state| (0, state))
+            .collect();
         loop {
             let Some((input_index, current_state)) = to_visit.pop() else {
                 return false;
@@ -187,11 +200,20 @@ impl NFA {
             let transitions_from_current_state = self.get_transitions_from(current_state);
 
             if input_index < inputs.len() {
-                let matching_consuming_transitions: Vec<StateId> = transitions_from_current_state.iter().filter_map(|(expected_input, to)| match expected_input.matches(inputs[input_index]) {
-                    false => None,
-                    true => Some(*to),
-                }).collect();
-                to_visit.extend(matching_consuming_transitions.iter().map(|state| (input_index + 1, *state)));
+                let matching_consuming_transitions: Vec<StateId> = transitions_from_current_state
+                    .iter()
+                    .filter_map(|(expected_input, to)| {
+                        match expected_input.matches(inputs[input_index]) {
+                            false => None,
+                            true => Some(*to),
+                        }
+                    })
+                    .collect();
+                to_visit.extend(
+                    matching_consuming_transitions
+                        .iter()
+                        .map(|state| (input_index + 1, *state)),
+                );
             }
         }
     }
@@ -237,12 +259,11 @@ impl NFA {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use std::rc::Rc;
 
-    use crate::grammar::{Expr, arb_expr_match};
+    use crate::grammar::{arb_expr_match, Expr};
 
     use super::*;
 
@@ -258,7 +279,10 @@ mod tests {
 
     #[test]
     fn accepts_two_words_sequence_pattern() {
-        let expr = Expr::Sequence(vec![Expr::Literal("foo".to_string()), Expr::Literal("bar".to_string())]);
+        let expr = Expr::Sequence(vec![
+            Expr::Literal("foo".to_string()),
+            Expr::Literal("bar".to_string()),
+        ]);
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
         assert!(nfa.accepts(&["foo", "bar"]));
@@ -266,7 +290,10 @@ mod tests {
 
     #[test]
     fn accepts_two_words_choice_pattern() {
-        let expr = Expr::Alternative(vec![Expr::Literal("foo".to_string()), Expr::Literal("bar".to_string())]);
+        let expr = Expr::Alternative(vec![
+            Expr::Literal("foo".to_string()),
+            Expr::Literal("bar".to_string()),
+        ]);
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
         assert!(nfa.accepts(&["foo"]));
@@ -332,10 +359,9 @@ mod tests {
     fn accepts_optional_containing_a_choice() {
         let expr = Expr::Sequence(vec![
             Expr::Literal("first".to_string()),
-            Expr::Optional(
-                Box::new(Expr::Alternative(vec![
-                    Expr::Literal("foo".to_string()),
-                    Expr::Literal("bar".to_string()),
+            Expr::Optional(Box::new(Expr::Alternative(vec![
+                Expr::Literal("foo".to_string()),
+                Expr::Literal("bar".to_string()),
             ]))),
             Expr::Literal("last".to_string()),
         ]);
@@ -351,10 +377,9 @@ mod tests {
     fn accepts_repetition_of_a_choice() {
         let expr = Expr::Sequence(vec![
             Expr::Literal("first".to_string()),
-            Expr::Many1(
-                Box::new(Expr::Alternative(vec![
-                    Expr::Literal("foo".to_string()),
-                    Expr::Literal("bar".to_string()),
+            Expr::Many1(Box::new(Expr::Alternative(vec![
+                Expr::Literal("foo".to_string()),
+                Expr::Literal("bar".to_string()),
             ]))),
             Expr::Literal("last".to_string()),
         ]);
@@ -374,12 +399,12 @@ mod tests {
         assert!(nfa.accepts(&[]));
     }
 
-    const INPUTS_ALPHABET: &[&str] = &["foo", "bar", "--baz", "--quux"];
-    const VARIABLES_ALPHABET: &[&str] = &["FILE", "DIRECTORY", "PATH"];
+    const LITERALS: &[&str] = &["foo", "bar", "--baz", "--quux"];
+    const VARIABLES: &[&str] = &["FILE", "DIRECTORY", "PATH"];
 
     proptest! {
         #[test]
-        fn accepts_arb_expr_input((expr, input) in arb_expr_match(Rc::new(INPUTS_ALPHABET.iter().map(|s|s.to_string()).collect()), Rc::new(VARIABLES_ALPHABET.iter().map(|s|s.to_string()).collect()), 10, 3)) {
+        fn accepts_arb_expr_input((expr, input) in arb_expr_match(Rc::new(LITERALS.iter().map(|s|s.to_string()).collect()), Rc::new(VARIABLES.iter().map(|s|s.to_string()).collect()), 10, 3)) {
             println!("{:?}", expr);
             println!("{:?}", input);
             let epsilon_nfa = EpsilonNFA::from_expr(&expr);
@@ -396,7 +421,25 @@ mod tests {
     #[test]
     fn proptest_failure_one() {
         use Expr::*;
-        let expr = Many1(Box::new(Sequence(vec![Alternative(vec![Many1(Box::new(Sequence(vec![Alternative(vec![Many1(Box::new(Optional(Box::new(Sequence(vec![Literal("--baz".to_string()), Literal("foo".to_string())]))))), Optional(Box::new(Literal("--baz".to_string())))]), Literal("foo".to_string())]))), Sequence(vec![Optional(Box::new(Literal("foo".to_string()))), Literal("foo".to_string())])]), Literal("foo".to_string())])));
+        let expr = Many1(Box::new(Sequence(vec![
+            Alternative(vec![
+                Many1(Box::new(Sequence(vec![
+                    Alternative(vec![
+                        Many1(Box::new(Optional(Box::new(Sequence(vec![
+                            Literal("--baz".to_string()),
+                            Literal("foo".to_string()),
+                        ]))))),
+                        Optional(Box::new(Literal("--baz".to_string()))),
+                    ]),
+                    Literal("foo".to_string()),
+                ]))),
+                Sequence(vec![
+                    Optional(Box::new(Literal("foo".to_string()))),
+                    Literal("foo".to_string()),
+                ]),
+            ]),
+            Literal("foo".to_string()),
+        ])));
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
         nfa.accepts(&["foo", "foo"]);
