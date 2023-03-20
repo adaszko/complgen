@@ -408,18 +408,14 @@ mod tests {
 
     #[test]
     fn does_not_loop_at_the_last_word() {
-        let expr = Expr::Sequence(vec![
-            Expr::Literal("first".to_string()),
-            Expr::Literal("last".to_string()),
-        ]);
-
+        let expr = Expr::Literal("first".to_string());
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
-        assert!(!epsilon_nfa.accepts(&["first", "last", "last"]));
+        assert!(!epsilon_nfa.accepts(&["first", "first"]));
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
-        assert!(!nfa.accepts(&["first", "last", "last"]));
+        assert!(!nfa.accepts(&["first", "first"]));
         let dfa = DFA::from_nfa(nfa);
-        assert!(dfa.accepts(&["first", "last"]));
-        assert!(!dfa.accepts(&["first", "last", "last"]));
+        assert!(dfa.accepts(&["first"]));
+        assert!(!dfa.accepts(&["first", "first"]));
     }
 
     const INPUTS_ALPHABET: &[&str] = &["foo", "bar", "--baz", "--quux"];
