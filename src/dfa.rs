@@ -211,7 +211,7 @@ impl DFA {
 mod tests {
     use std::rc::Rc;
 
-    use crate::grammar::{Expr, arb_expr_match};
+    use crate::grammar::{Expr, arb_expr_match, parse};
     use crate::epsilon_nfa::NFA as EpsilonNFA;
 
     use super::*;
@@ -408,7 +408,7 @@ mod tests {
     }
 
     #[test]
-    fn does_not_loop_at_the_last_word() {
+    fn does_not_accept_a_prefix() {
         let expr = Expr::Literal("first".to_string());
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
         assert!(!epsilon_nfa.accepts(&["first", "first"]));
@@ -417,6 +417,25 @@ mod tests {
         let dfa = DFA::from_nfa(nfa);
         assert!(dfa.accepts(&["first"]));
         assert!(!dfa.accepts(&["first", "first"]));
+    }
+
+    #[test]
+    fn does_not_loop_at_the_last_word() {
+        const INPUT: &str = "foo <id> [--help];";
+        let g = parse(INPUT).unwrap();
+        let (_, expr) = g.into_command_expr();
+
+        let epsilon_nfa = EpsilonNFA::from_expr(&expr);
+        assert!(epsilon_nfa.accepts(&["foo", "--help"]));
+        assert!(!epsilon_nfa.accepts(&["foo", "--help", "--help"]));
+
+        let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
+        assert!(nfa.accepts(&["foo", "--help"]));
+        assert!(!nfa.accepts(&["foo", "--help", "--help"]));
+
+        let dfa = DFA::from_nfa(nfa);
+        assert!(dfa.accepts(&["foo", "--help"]));
+        assert!(!dfa.accepts(&["foo", "--help", "--help"]));
     }
 
     const INPUTS_ALPHABET: &[&str] = &["foo", "bar", "--baz", "--quux"];
