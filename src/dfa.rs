@@ -7,7 +7,7 @@ use complgen::{StateId, START_STATE_ID};
 
 
 pub struct DFA {
-    start_states: RoaringBitmap,
+    pub start_states: RoaringBitmap,
     transitions: BTreeMap<StateId, HashMap<Input, StateId>>,
     accepting_states: RoaringBitmap,
 }
