@@ -180,7 +180,7 @@ impl NFA {
                 return false;
             };
 
-            if self.accepting_states.contains(current_state) {
+            if input_index == inputs.len() && self.accepting_states.contains(current_state) {
                 return true;
             }
 

@@ -148,7 +148,7 @@ impl DFA {
     pub fn accepts(&self, inputs: &[&str]) -> bool {
         let mut backtracking_stack: Vec<(usize, StateId)> = self.start_states.iter().map(|state| (0, state)).collect();
         while let Some((input_index, current_state)) = backtracking_stack.pop() {
-            if self.accepting_states.contains(current_state) {
+            if input_index == inputs.len() && self.accepting_states.contains(current_state) {
                 return true;
             }
 
@@ -266,7 +266,8 @@ mod tests {
         nfa.unallocated_state_id = 3;
         let dfa = DFA::from_nfa(nfa);
         assert!(dfa.accepts(&["foo"]));
-        assert!(dfa.accepts(&["foo", "baz"]));
+        assert!(dfa.accepts(&["foo", "bar"]));
+        assert!(!dfa.accepts(&["foo", "baz"]));
     }
 
     #[test]
