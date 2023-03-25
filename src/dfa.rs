@@ -446,11 +446,8 @@ mod tests {
         ]);
 
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
-        epsilon_nfa.to_dot_file("enfa.dot").unwrap();
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
-        nfa.to_dot_file("nfa.dot").unwrap();
         let dfa = DFA::from_nfa(&nfa);
-        dfa.to_dot_file("dfa.dot").unwrap();
         assert!(dfa.accepts(&["first", "foo", "bar", "last"]));
     }
 
@@ -463,7 +460,6 @@ mod tests {
         nfa.add_transition(1, Input::Literal("b".to_string()), 2);
         nfa.mark_state_accepting(2);
         nfa.unallocated_state_id = 3;
-        nfa.to_dot_file("nfa.dot").unwrap();
 
         assert!(nfa.accepts(&["b", "b"]));
         assert!(nfa.accepts(&["a", "b", "b"]));
@@ -471,7 +467,6 @@ mod tests {
         assert!(nfa.accepts(&["a", "b", "b", "b"]));
 
         let dfa = DFA::from_nfa(&nfa);
-        dfa.to_dot_file("dfa.dot").unwrap();
         assert!(dfa.accepts(&["b", "b"]));
         assert!(dfa.accepts(&["a", "b", "b"]));
         assert!(dfa.accepts(&["a", "a", "b", "b"]));
@@ -486,35 +481,10 @@ mod tests {
         ]);
 
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
-        epsilon_nfa.to_dot_file("enfa.dot").unwrap();
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
-        nfa.to_dot_file("nfa.dot").unwrap();
         let dfa = DFA::from_nfa(&nfa);
-        dfa.to_dot_file("dfa.dot").unwrap();
         assert!(dfa.accepts(&["foo", "foo"]));
         assert!(dfa.accepts(&["foo", "foo", "foo"]));
-    }
-
-    #[test]
-    fn educative_example() {
-        let mut nfa = NFA::default();
-        nfa.add_transition(0, Input::Literal("a".to_string()), 1);
-        nfa.add_transition(0, Input::Literal("a".to_string()), 2);
-        nfa.add_transition(0, Input::Literal("b".to_string()), 4);
-
-        nfa.add_transition(1, Input::Literal("a".to_string()), 0);
-
-        nfa.add_transition(2, Input::Literal("a".to_string()), 3);
-
-        nfa.add_transition(3, Input::Literal("b".to_string()), 0);
-
-        nfa.mark_state_accepting(4);
-        nfa.unallocated_state_id = 5;
-
-        nfa.to_dot_file("nfa.dot").unwrap();
-
-        let dfa = DFA::from_nfa(&nfa);
-        dfa.to_dot_file("dfa.dot").unwrap();
     }
 
     #[test]
@@ -536,17 +506,14 @@ mod tests {
         let (_, expr) = g.into_command_expr();
 
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
-        epsilon_nfa.to_dot_file("enfa.dot").unwrap();
         assert!(epsilon_nfa.accepts(&["foo", "--help"]));
         assert!(!epsilon_nfa.accepts(&["foo", "--help", "--help"]));
 
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
-        nfa.to_dot_file("nfa.dot").unwrap();
         assert!(nfa.accepts(&["foo", "--help"]));
         assert!(!nfa.accepts(&["foo", "--help", "--help"]));
 
         let dfa = DFA::from_nfa(&nfa);
-        dfa.to_dot_file("dfa.dot").unwrap();
         assert!(dfa.accepts(&["foo", "--help"]));
         assert!(!dfa.accepts(&["foo", "--help", "--help"]));
     }
