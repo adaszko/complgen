@@ -11,7 +11,9 @@ fn make_state_name(command: &str, state: StateId) -> String {
 
 
 fn write_dfa_state_function<W: Write>(buffer: &mut W, command: &str, dfa: &DFA, state: StateId) -> Result<()> {
-    let discriminating_inputs: Vec<String> = dfa.get_transitions_from(state).into_iter().filter_map(|(input, _)| match input {
+    let transitions = dfa.get_transitions_from(state);
+
+    let discriminating_inputs: Vec<String> = transitions.iter().filter_map(|(input, _)| match input {
         Input::Literal(s) => Some(s.to_string()),
         Input::Any => None,
     }).collect();
@@ -30,19 +32,21 @@ fn write_dfa_state_function<W: Write>(buffer: &mut W, command: &str, dfa: &DFA, 
     fi
 "#)?;
 
-    // We're matching $COMP_WORDS[$i] against the DFA
-    writeln!(buffer, r#"    case ${{COMP_WORDS[$i]}} in"#)?;
+    if !transitions.is_empty() {
+        // We're matching $COMP_WORDS[$i] against the DFA
+        writeln!(buffer, r#"    case ${{COMP_WORDS[$i]}} in"#)?;
 
-    // XXX Input::Any should be the last case branch to use it as a fallback when everything more
-    // specific failed
-    for (input, to) in dfa.get_transitions_from(state) {
-        writeln!(buffer, r#"        {input}) {state_name} $((i + 1)); return;;"#, state_name = make_state_name(command, to), input = input)?;
+        // XXX Input::Any should be the last case branch to use it as a fallback when everything more
+        // specific failed
+        for (input, to) in transitions {
+            writeln!(buffer, r#"        {input}) {state_name} $((i + 1)); return;;"#, state_name = make_state_name(command, to), input = input)?;
+        }
+
+        writeln!(buffer, r#"    esac"#)?;
     }
 
-    write!(buffer, r#"    esac
-    return 1
+    writeln!(buffer, r#"    return 1
 }}
-
 "#)?;
     Ok(())
 }
