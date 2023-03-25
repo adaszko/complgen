@@ -121,25 +121,6 @@ impl NFA {
         states
     }
 
-    pub fn get_live_states(&self) -> RoaringBitmap {
-        let mut visited: RoaringBitmap = Default::default();
-        let mut to_visit: Vec<StateId> = self.starting_states.iter().collect();
-        while let Some(current_state) = to_visit.pop() {
-            if visited.contains(current_state) {
-                continue;
-            }
-
-            for (_, to) in self.get_transitions_from(current_state) {
-                if !visited.contains(to) {
-                    to_visit.push(to);
-                }
-            }
-
-            visited.insert(current_state);
-        }
-        visited
-    }
-
     pub fn add_state(&mut self) -> StateId {
         let result = self.unallocated_state_id;
         self.unallocated_state_id += 1;

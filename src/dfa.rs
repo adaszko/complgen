@@ -51,6 +51,26 @@ where
     result
 }
 
+fn cleanup_dfa(dfa: &DFA) -> DFA {
+    let live_states = dfa.get_live_states();
+    let mut result: DFA = Default::default();
+    result.starting_states = dfa.starting_states.clone();
+    for (from, tos) in &dfa.transitions {
+        for (input, to) in tos {
+            if live_states.contains(*from) && live_states.contains(*to) {
+                result.add_transition(*from, input.clone(), *to);
+            }
+        }
+    }
+    for state in &dfa.accepting_states {
+        if live_states.contains(state) {
+            result.accepting_states.insert(state);
+        }
+    }
+    result.unallocated_state_id = live_states.iter().max().map(|m| m + 1).unwrap_or(0);
+    result
+}
+
 fn dfa_from_determinized_nfa(nfa: &NFA, transitions: &HashSet<(BTreeSet<StateId>, Input, BTreeSet<StateId>)>, accepting_states: &HashSet<BTreeSet<StateId>>) -> DFA {
     let mut result: DFA = Default::default();
     result.unallocated_state_id = nfa.unallocated_state_id;
@@ -82,7 +102,7 @@ fn dfa_from_determinized_nfa(nfa: &NFA, transitions: &HashSet<(BTreeSet<StateId>
         result.accepting_states.insert(to_state_id);
     }
 
-    result
+    cleanup_dfa(&result)
 }
 
 // https://www.gatevidyalay.com/converting-nfa-to-dfa-solved-examples/
@@ -167,6 +187,25 @@ impl DFA {
             });
         }
         states
+    }
+
+    pub fn get_live_states(&self) -> RoaringBitmap {
+        let mut visited: RoaringBitmap = Default::default();
+        let mut to_visit: Vec<StateId> = self.starting_states.iter().collect();
+        while let Some(current_state) = to_visit.pop() {
+            if visited.contains(current_state) {
+                continue;
+            }
+
+            for (_, to) in self.get_transitions_from(current_state) {
+                if !visited.contains(to) {
+                    to_visit.push(to);
+                }
+            }
+
+            visited.insert(current_state);
+        }
+        visited
     }
 
     pub fn get_transitions_from(&self, from: StateId) -> HashMap<Input, StateId> {
