@@ -54,7 +54,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     }
 
     // XXX Should be exactly one, not many
-    let start_state = dfa.start_states.iter().next().unwrap();
+    let start_state = dfa.starting_states.iter().next().unwrap();
 
     write!(buffer, r#"
 _{command} () {{

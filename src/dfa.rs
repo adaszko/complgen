@@ -1,6 +1,6 @@
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
-    io::Write,
+    collections::{BTreeMap, HashMap, HashSet, BTreeSet},
+    io::Write
 };
 
 use roaring::{MultiOps, RoaringBitmap};
@@ -9,17 +9,19 @@ use crate::nfa::{Input, NFA};
 use complgen::{StateId, START_STATE_ID};
 
 pub struct DFA {
-    pub start_states: RoaringBitmap,
+    pub starting_states: RoaringBitmap,
     transitions: BTreeMap<StateId, HashMap<Input, StateId>>,
     accepting_states: RoaringBitmap,
+    unallocated_state_id: StateId,
 }
 
 impl Default for DFA {
     fn default() -> Self {
         Self {
-            start_states: RoaringBitmap::from_iter([START_STATE_ID]),
+            starting_states: RoaringBitmap::from_iter([START_STATE_ID]),
             transitions: Default::default(),
             accepting_states: Default::default(),
+            unallocated_state_id: START_STATE_ID + 1,
         }
     }
 }
@@ -49,85 +51,111 @@ where
     result
 }
 
-// https://github.com/caleb531/automata/blob/b9c195a80a5aa5977c7c0b81d5a72ba56bb12551/automata/fa/dfa.py#L1224
-fn determinize_nfa(nfa: &mut NFA) {
-    let mut visited: HashSet<StateId> = Default::default();
-    let mut to_visit: HashSet<StateId> = HashSet::from_iter(nfa.starting_states.iter());
-    while !to_visit.is_empty() {
-        // popping from a hashset is somewhat involved
-        let current_state = to_visit.iter().next().copied().unwrap();
-        let current_state = to_visit.take(&current_state).unwrap();
+fn dfa_from_determinized_nfa(nfa: &NFA, transitions: &HashSet<(BTreeSet<StateId>, Input, BTreeSet<StateId>)>, accepting_states: &HashSet<BTreeSet<StateId>>) -> DFA {
+    let mut result: DFA = Default::default();
+    result.unallocated_state_id = nfa.unallocated_state_id;
+    result.starting_states = nfa.starting_states.clone();
 
-        if visited.contains(&current_state) {
+    let mut new_states: HashMap<BTreeSet<StateId>, StateId> = Default::default();
+    for (from, input, to) in transitions {
+        let from_state_id = if from.len() == 1 {
+            *from.iter().next().unwrap()
+        }
+        else {
+            *new_states.entry(from.clone()).or_insert_with(|| result.add_state())
+        };
+        let to_state_id = if to.len() == 1 {
+            *to.iter().next().unwrap()
+        }
+        else {
+            *new_states.entry(to.clone()).or_insert_with(|| result.add_state())
+        };
+        result.add_transition(from_state_id, input.clone(), to_state_id);
+    }
+
+    result.accepting_states = nfa.accepting_states.clone();
+    for to in accepting_states {
+        if to.len() == 1 {
             continue;
         }
-
-        let mut transitions_from_current_state: Vec<(Input, StateId)> = nfa
-            .get_transitions_from(current_state)
-            .into_iter()
-            .collect();
-        to_visit.extend(transitions_from_current_state.iter().map(|(_, to)| *to));
-
-        transitions_from_current_state.sort_by_key(|(input, _)| input.clone());
-        let groups = group_by_key(&transitions_from_current_state, |(input, _)| input);
-        for (input, nondeterministic_transitions) in groups.into_iter().filter(|(_, g)| g.len() > 1)
-        {
-            let new_state = nfa.add_state();
-            nfa.add_transition(current_state, input.clone(), new_state);
-            for (_, to) in nondeterministic_transitions {
-                if nfa.accepting_states.contains(*to) {
-                    nfa.accepting_states.insert(new_state);
-                }
-                for (input_prime, to_prime) in nfa.get_transitions_from(*to) {
-                    nfa.remove_transition(current_state, input.clone(), *to);
-                    nfa.add_transition(new_state, input_prime, to_prime);
-                }
-                for (from_prime, input_prime) in nfa.get_transitions_to(*to) {
-                    nfa.remove_transition(from_prime, input_prime.clone(), *to);
-                    nfa.add_transition(from_prime, input_prime, new_state);
-                }
-                if to_visit.contains(to) {
-                    to_visit.remove(to);
-                    to_visit.insert(new_state);
-                }
-            }
-        }
-
-        visited.insert(current_state);
+        let to_state_id = *new_states.entry(to.clone()).or_insert_with(|| result.add_state());
+        result.accepting_states.insert(to_state_id);
     }
+
+    result
 }
 
-fn dfa_from_determinized_nfa(nfa: &NFA) -> DFA {
-    let mut dfa = DFA::default();
+// https://www.gatevidyalay.com/converting-nfa-to-dfa-solved-examples/
+// Approach used: Induction on the transitions table.
+fn dfa_from_nfa(nfa: &NFA) -> DFA {
+    let mut accepting_states: HashSet<BTreeSet<StateId>> = Default::default();
 
-    let live_states = nfa.get_live_states();
-
-    for state in &nfa.accepting_states {
-        if live_states.contains(state) {
-            dfa.accepting_states.insert(state);
-        }
+    let mut transitions: HashSet<(BTreeSet<StateId>, Input, BTreeSet<StateId>)> = Default::default();
+    let mut scalar_transitions: HashSet<(StateId, Input, StateId)> = Default::default();
+    for from in &nfa.starting_states {
+        scalar_transitions.extend(nfa.get_transitions_from(from).into_iter().map(|(input, to)| (from, input, to)));
     }
-
-    dfa.start_states = nfa.starting_states.clone();
-
-    for (from, tos) in &nfa.transitions {
-        let mut ts: HashMap<Input, StateId> = Default::default();
-        for (input, to) in tos {
-            if live_states.contains(*from) && live_states.contains(*to) {
-                ts.insert(input.clone(), *to);
+    let mut scalar_transitions: Vec<(StateId, Input, StateId)> = scalar_transitions.into_iter().collect();
+    scalar_transitions.sort_by_key(|(from, input, _)| (*from, input.clone()));
+    for (_, common_input_transitions) in group_by_key(&scalar_transitions, |(from, input, _)| (from, input)) {
+        let combined_state: BTreeSet<StateId> = common_input_transitions.iter().map(|(_, _, to)| *to).collect();
+        for (from, input, q) in common_input_transitions {
+            let from_combined_state = BTreeSet::from_iter([*from]);
+            transitions.insert((from_combined_state, input.clone(), combined_state.clone()));
+            if nfa.accepting_states.contains(*q) {
+                accepting_states.insert(combined_state.clone());
             }
         }
-        if !ts.is_empty() {
-            dfa.transitions.insert(*from, ts);
-        }
     }
-    dfa
+
+    let mut result_transitions: HashSet<(BTreeSet<StateId>, Input, BTreeSet<StateId>)> = transitions.clone();
+    while !transitions.is_empty() {
+        let mut new_transitions: HashSet<(BTreeSet<StateId>, Input, BTreeSet<StateId>)> = Default::default();
+
+        for (_, _, to) in transitions {
+            let mut scalar_transitions: HashSet<(StateId, Input, StateId)> = Default::default();
+            for to_prime in &to {
+                scalar_transitions.extend(nfa.get_transitions_from(*to_prime).into_iter().map(|(input, to)| (*to_prime, input, to)));
+            }
+            let mut scalar_transitions: Vec<(StateId, Input, StateId)> = scalar_transitions.into_iter().collect();
+            scalar_transitions.sort_by_key(|(_, input, _)| input.clone());
+            for (_, common_input_transitions) in group_by_key(&scalar_transitions, |(_, input, _)| input) {
+                let combined_state: BTreeSet<StateId> = common_input_transitions.iter().map(|(_, _, to)| *to).collect();
+                for (_, input, q) in common_input_transitions {
+                    if result_transitions.contains(&(to.clone(), input.clone(), combined_state.clone())) {
+                        continue;
+                    }
+                    new_transitions.insert((to.clone(), input.clone(), combined_state.clone()));
+                    if nfa.accepting_states.contains(*q) {
+                        accepting_states.insert(combined_state.clone());
+                    }
+                }
+            }
+        }
+
+        result_transitions.extend(new_transitions.clone());
+        transitions = new_transitions;
+    }
+
+    dfa_from_determinized_nfa(nfa, &result_transitions, &accepting_states)
 }
 
 impl DFA {
-    pub fn from_nfa(mut nfa: NFA) -> Self {
-        determinize_nfa(&mut nfa);
-        dfa_from_determinized_nfa(&nfa)
+    pub fn from_nfa(nfa: &NFA) -> Self {
+        dfa_from_nfa(&nfa)
+    }
+
+    pub fn add_state(&mut self) -> StateId {
+        let result = self.unallocated_state_id;
+        self.unallocated_state_id += 1;
+        result
+    }
+
+    pub fn add_transition(&mut self, from: StateId, input: Input, to: StateId) {
+        self.transitions
+            .entry(from)
+            .or_default()
+            .insert(input, to);
     }
 
     pub fn get_all_states(&self) -> RoaringBitmap {
@@ -150,7 +178,7 @@ impl DFA {
 
     pub fn accepts(&self, inputs: &[&str]) -> bool {
         let mut backtracking_stack: Vec<(usize, StateId)> =
-            self.start_states.iter().map(|state| (0, state)).collect();
+            self.starting_states.iter().map(|state| (0, state)).collect();
         while let Some((input_index, current_state)) = backtracking_stack.pop() {
             if input_index == inputs.len() && self.accepting_states.contains(current_state) {
                 return true;
@@ -249,7 +277,7 @@ mod tests {
         nfa.mark_state_accepting(1);
         nfa.add_transition(0, Input::Literal("foo".to_string()), 2);
         nfa.mark_state_accepting(2);
-        let dfa = DFA::from_nfa(nfa);
+        let dfa = DFA::from_nfa(&nfa);
         assert!(dfa.accepts(&["foo"]));
     }
 
@@ -262,7 +290,7 @@ mod tests {
         nfa.add_transition(2, Input::Literal("baz".to_string()), 3);
         nfa.mark_state_accepting(3);
         nfa.unallocated_state_id = 4;
-        let dfa = DFA::from_nfa(nfa);
+        let dfa = DFA::from_nfa(&nfa);
         assert!(dfa.accepts(&["foo", "bar"]));
         assert!(dfa.accepts(&["foo", "baz"]));
     }
@@ -276,7 +304,7 @@ mod tests {
         nfa.add_transition(0, Input::Literal("foo".to_string()), 2);
         nfa.add_transition(1, Input::Literal("bar".to_string()), 1);
         nfa.unallocated_state_id = 3;
-        let dfa = DFA::from_nfa(nfa);
+        let dfa = DFA::from_nfa(&nfa);
         assert!(dfa.accepts(&["foo"]));
         assert!(dfa.accepts(&["foo", "bar"]));
         assert!(!dfa.accepts(&["foo", "baz"]));
@@ -291,7 +319,7 @@ mod tests {
         nfa.add_transition(0, Input::Literal("foo".to_string()), 2);
         nfa.add_transition(1, Input::Literal("bar".to_string()), 2);
         nfa.unallocated_state_id = 3;
-        let dfa = DFA::from_nfa(nfa);
+        let dfa = DFA::from_nfa(&nfa);
         assert!(dfa.accepts(&["foo"]));
         assert!(dfa.accepts(&["foo", "bar"]));
     }
@@ -301,7 +329,7 @@ mod tests {
         let expr = Expr::Variable("dummy".to_string());
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
-        let dfa = DFA::from_nfa(nfa);
+        let dfa = DFA::from_nfa(&nfa);
         assert!(dfa.accepts(&["anything"]));
     }
 
@@ -313,7 +341,7 @@ mod tests {
         ]);
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
-        let dfa = DFA::from_nfa(nfa);
+        let dfa = DFA::from_nfa(&nfa);
         assert!(dfa.accepts(&["foo", "bar"]));
     }
 
@@ -325,7 +353,7 @@ mod tests {
         ]);
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
-        let dfa = DFA::from_nfa(nfa);
+        let dfa = DFA::from_nfa(&nfa);
         assert!(dfa.accepts(&["foo"]));
         assert!(dfa.accepts(&["bar"]));
     }
@@ -335,7 +363,7 @@ mod tests {
         let expr = Expr::Optional(Box::new(Expr::Literal("foo".to_string())));
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
-        let dfa = DFA::from_nfa(nfa);
+        let dfa = DFA::from_nfa(&nfa);
         assert!(dfa.accepts(&[]));
         assert!(dfa.accepts(&["foo"]));
     }
@@ -345,7 +373,7 @@ mod tests {
         let expr = Expr::Many1(Box::new(Expr::Literal("foo".to_string())));
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
-        let dfa = DFA::from_nfa(nfa);
+        let dfa = DFA::from_nfa(&nfa);
         assert!(dfa.accepts(&["foo"]));
         assert!(dfa.accepts(&["foo", "foo"]));
     }
@@ -363,7 +391,7 @@ mod tests {
 
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
-        let dfa = DFA::from_nfa(nfa);
+        let dfa = DFA::from_nfa(&nfa);
         assert!(dfa.accepts(&["first", "foo", "last"]));
         assert!(dfa.accepts(&["first", "bar", "last"]));
     }
@@ -382,7 +410,7 @@ mod tests {
         ]);
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
-        let dfa = DFA::from_nfa(nfa);
+        let dfa = DFA::from_nfa(&nfa);
         assert!(dfa.accepts(&["foo", "bar"]));
         assert!(dfa.accepts(&["foo", "baz"]));
     }
@@ -400,7 +428,7 @@ mod tests {
 
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
-        let dfa = DFA::from_nfa(nfa);
+        let dfa = DFA::from_nfa(&nfa);
         assert!(dfa.accepts(&["first", "foo", "last"]));
         assert!(dfa.accepts(&["first", "bar", "last"]));
         assert!(dfa.accepts(&["first", "last"]));
@@ -418,9 +446,75 @@ mod tests {
         ]);
 
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
+        epsilon_nfa.to_dot_file("enfa.dot").unwrap();
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
-        let dfa = DFA::from_nfa(nfa);
+        nfa.to_dot_file("nfa.dot").unwrap();
+        let dfa = DFA::from_nfa(&nfa);
+        dfa.to_dot_file("dfa.dot").unwrap();
         assert!(dfa.accepts(&["first", "foo", "bar", "last"]));
+    }
+
+    #[test]
+    fn gatevidyalay_problem1() {
+        let mut nfa = NFA::default();
+        nfa.add_transition(0, Input::Literal("a".to_string()), 0);
+        nfa.add_transition(0, Input::Literal("b".to_string()), 0);
+        nfa.add_transition(0, Input::Literal("b".to_string()), 1);
+        nfa.add_transition(1, Input::Literal("b".to_string()), 2);
+        nfa.mark_state_accepting(2);
+        nfa.unallocated_state_id = 3;
+        nfa.to_dot_file("nfa.dot").unwrap();
+
+        assert!(nfa.accepts(&["b", "b"]));
+        assert!(nfa.accepts(&["a", "b", "b"]));
+        assert!(nfa.accepts(&["a", "a", "b", "b"]));
+        assert!(nfa.accepts(&["a", "b", "b", "b"]));
+
+        let dfa = DFA::from_nfa(&nfa);
+        dfa.to_dot_file("dfa.dot").unwrap();
+        assert!(dfa.accepts(&["b", "b"]));
+        assert!(dfa.accepts(&["a", "b", "b"]));
+        assert!(dfa.accepts(&["a", "a", "b", "b"]));
+        assert!(dfa.accepts(&["a", "b", "b", "b"]));
+    }
+
+    #[test]
+    fn defeats_naive_nfa_to_dfa() {
+        let expr = Expr::Sequence(vec![
+            Expr::Many1(Box::new(Expr::Literal("foo".to_string()))),
+            Expr::Literal("foo".to_string()),
+        ]);
+
+        let epsilon_nfa = EpsilonNFA::from_expr(&expr);
+        epsilon_nfa.to_dot_file("enfa.dot").unwrap();
+        let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
+        nfa.to_dot_file("nfa.dot").unwrap();
+        let dfa = DFA::from_nfa(&nfa);
+        dfa.to_dot_file("dfa.dot").unwrap();
+        assert!(dfa.accepts(&["foo", "foo"]));
+        assert!(dfa.accepts(&["foo", "foo", "foo"]));
+    }
+
+    #[test]
+    fn educative_example() {
+        let mut nfa = NFA::default();
+        nfa.add_transition(0, Input::Literal("a".to_string()), 1);
+        nfa.add_transition(0, Input::Literal("a".to_string()), 2);
+        nfa.add_transition(0, Input::Literal("b".to_string()), 4);
+
+        nfa.add_transition(1, Input::Literal("a".to_string()), 0);
+
+        nfa.add_transition(2, Input::Literal("a".to_string()), 3);
+
+        nfa.add_transition(3, Input::Literal("b".to_string()), 0);
+
+        nfa.mark_state_accepting(4);
+        nfa.unallocated_state_id = 5;
+
+        nfa.to_dot_file("nfa.dot").unwrap();
+
+        let dfa = DFA::from_nfa(&nfa);
+        dfa.to_dot_file("dfa.dot").unwrap();
     }
 
     #[test]
@@ -430,7 +524,7 @@ mod tests {
         assert!(!epsilon_nfa.accepts(&["first", "first"]));
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
         assert!(!nfa.accepts(&["first", "first"]));
-        let dfa = DFA::from_nfa(nfa);
+        let dfa = DFA::from_nfa(&nfa);
         assert!(dfa.accepts(&["first"]));
         assert!(!dfa.accepts(&["first", "first"]));
     }
@@ -451,7 +545,7 @@ mod tests {
         assert!(nfa.accepts(&["foo", "--help"]));
         assert!(!nfa.accepts(&["foo", "--help", "--help"]));
 
-        let dfa = DFA::from_nfa(nfa);
+        let dfa = DFA::from_nfa(&nfa);
         dfa.to_dot_file("dfa.dot").unwrap();
         assert!(dfa.accepts(&["foo", "--help"]));
         assert!(!dfa.accepts(&["foo", "--help", "--help"]));
@@ -473,7 +567,7 @@ mod tests {
             prop_assert!(epsilon_nfa.accepts(&input));
             let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
             prop_assert!(nfa.accepts(&input));
-            let dfa = DFA::from_nfa(nfa);
+            let dfa = DFA::from_nfa(&nfa);
             prop_assert!(dfa.accepts(&input));
         }
     }

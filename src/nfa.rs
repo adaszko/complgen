@@ -39,6 +39,7 @@ impl Display for Input {
     }
 }
 
+#[derive(Clone)]
 pub struct NFA {
     pub starting_states: RoaringBitmap,
     pub unallocated_state_id: StateId,
