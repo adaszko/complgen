@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashSet};
 use std::fmt::Display;
 use std::io::Write;
@@ -7,10 +8,21 @@ use crate::epsilon_nfa::NFA as EpsilonNFA;
 use complgen::{StateId, START_STATE_ID};
 use roaring::{MultiOps, RoaringBitmap};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd)]
 pub enum Input {
     Literal(String),
     Any,
+}
+
+impl Ord for Input {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            (Input::Literal(left), Input::Literal(right)) => left.cmp(right),
+            (Input::Literal(_), Input::Any) => Ordering::Less,
+            (Input::Any, Input::Literal(_)) => Ordering::Greater,
+            (Input::Any, Input::Any) => Ordering::Equal,
+        }
+    }
 }
 
 impl Input {

@@ -33,10 +33,10 @@ fn write_dfa_state_function<W: Write>(buffer: &mut W, command: &str, dfa: &DFA, 
     // We're matching $COMP_WORDS[$i] against the DFA
     writeln!(buffer, r#"    case ${{COMP_WORDS[$i]}} in"#)?;
 
-    // XXX Input::Any should be the last case branch to use it as a fallback when everything more
-    // specific failed
-    for (input, to) in dfa.get_transitions_from(state) {
-        writeln!(buffer, r#"        {input}) {state_name} $((i + 1)); return;;"#, state_name = make_state_name(command, to), input = input)?;
+    let mut transitions: Vec<(Input, StateId)> = dfa.get_transitions_from(state).into_iter().collect();
+    transitions.sort_by_key(|(input, _)| input.clone());
+    for (input, to) in transitions {
+        writeln!(buffer, r#"        {input}) {state_name} $((i + 1)); return 0;;"#, state_name = make_state_name(command, to), input = input)?;
     }
 
     write!(buffer, r#"    esac
