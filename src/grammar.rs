@@ -1,10 +1,3 @@
-// nom-based parser for extended form of BNF
-// Can steal some stuff from https://docs.rs/clap_complete/latest/clap_complete/index.html
-// Drawing of a railroad diagram for a grammar.
-// https://github.com/mbrubeck/compleat/tree/master/examples
-// TODO Add context() calls for better error messages (https://github.com/rust-bakery/nom/blob/1c1e9c896bd422baa8ae0a167be57ae721f10377/examples/json.rs#L8)
-// TODO (Re)add a syntax for gathering a list of possible completions from a shell command
-
 use std::{rc::Rc, ops::Rem};
 
 use nom::{
