@@ -1,6 +1,6 @@
 use crate::dfa::DFA;
 use crate::nfa::NFA;
-use crate::{bash::write_completion_script, grammar::parse};
+use crate::grammar::parse;
 use crate::epsilon_nfa::NFA as EpsilonNFA;
 
 mod grammar;
@@ -8,6 +8,7 @@ mod epsilon_nfa;
 mod nfa;
 mod dfa;
 mod bash;
+mod fish;
 
 
 fn main() {
@@ -19,6 +20,7 @@ fn main() {
     let dfa = DFA::from_nfa(&nfa);
     dfa.to_dot_file("dfa.dot").unwrap();
     let mut output = String::default();
-    write_completion_script(&mut output, &command, &dfa).unwrap();
+    //bash::write_completion_script(&mut output, &command, &dfa).unwrap();
+    fish::write_completion_script(&mut output, &command, &dfa).unwrap();
     print!("{}", output);
 }
