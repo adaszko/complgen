@@ -8,6 +8,7 @@ use roaring::{MultiOps, RoaringBitmap};
 use crate::nfa::{Input, NFA};
 use complgen::{StateId, START_STATE_ID};
 
+#[derive(Clone)]
 pub struct DFA {
     pub starting_states: RoaringBitmap,
     transitions: BTreeMap<StateId, HashMap<Input, StateId>>,
@@ -52,22 +53,56 @@ where
 }
 
 fn cleanup_dfa(dfa: &DFA) -> DFA {
-    let live_states = dfa.get_live_states();
+    let reachable_states = dfa.get_reachable_states();
     let mut result: DFA = Default::default();
     result.starting_states = dfa.starting_states.clone();
     for (from, tos) in &dfa.transitions {
         for (input, to) in tos {
-            if live_states.contains(*from) && live_states.contains(*to) {
+            if reachable_states.contains(*from) && reachable_states.contains(*to) {
                 result.add_transition(*from, input.clone(), *to);
             }
         }
     }
     for state in &dfa.accepting_states {
-        if live_states.contains(state) {
+        if reachable_states.contains(state) {
             result.accepting_states.insert(state);
         }
     }
-    result.unallocated_state_id = live_states.iter().max().map(|m| m + 1).unwrap_or(0);
+    result.unallocated_state_id = reachable_states.iter().max().map(|m| m + 1).unwrap_or(0);
+    result
+}
+
+// This is just a simple but non-exhaustive minimization technique that shaves ~500 lines out the
+// resulting Bash script.
+// TODO Implement a full Hopcroft algorithm: https://en.wikipedia.org/wiki/DFA_minimization#Hopcroft's_algorithm
+fn collapse_equivalent_states(dfa: &DFA) -> DFA {
+    let mut result: DFA = dfa.clone();
+
+    let mut equivalent_states_from_outgoing_transitions: HashMap<(bool, BTreeSet<(Input, StateId)>), RoaringBitmap> = Default::default();
+    for from in dfa.get_all_states() {
+        let outgoing_transitions: BTreeSet<(Input, StateId)> = dfa.get_transitions_from(from).iter().map(|(input, to)| (input.clone(), *to)).collect();
+        let is_accepting_state = dfa.accepting_states.contains(from);
+        equivalent_states_from_outgoing_transitions.entry((is_accepting_state, outgoing_transitions)).or_default().insert(from);
+    }
+
+    let mut representant_state: HashMap<StateId, StateId> = Default::default();
+    for (_, equivalent_states) in equivalent_states_from_outgoing_transitions {
+        let representant = equivalent_states.iter().next().unwrap();
+        for state in equivalent_states {
+            representant_state.insert(state, representant);
+        }
+    }
+
+    for (from, tos) in &dfa.transitions {
+        for (_, to) in tos {
+            if let Some(representant) = representant_state.get(&to) {
+                if *representant != *to {
+                    result.replace_transition_target_state(*from, *to, *representant);
+                }
+            }
+        }
+    }
+
     result
 }
 
@@ -102,6 +137,7 @@ fn dfa_from_determinized_nfa(nfa: &NFA, transitions: &HashSet<(BTreeSet<StateId>
         result.accepting_states.insert(to_state_id);
     }
 
+    result = collapse_equivalent_states(&result);
     cleanup_dfa(&result)
 }
 
@@ -178,6 +214,16 @@ impl DFA {
             .insert(input, to);
     }
 
+    pub fn replace_transition_target_state(&mut self, from: StateId, to: StateId, replacement: StateId) {
+        self.transitions.entry(from).and_modify(|e| {
+            e.iter_mut().for_each(|(_, v)| {
+                if *v == to {
+                    *v = replacement
+                }
+            });
+        });
+    }
+
     pub fn get_all_states(&self) -> RoaringBitmap {
         let mut states: RoaringBitmap = Default::default();
         for (from, to) in &self.transitions {
@@ -189,7 +235,7 @@ impl DFA {
         states
     }
 
-    pub fn get_live_states(&self) -> RoaringBitmap {
+    pub fn get_reachable_states(&self) -> RoaringBitmap {
         let mut visited: RoaringBitmap = Default::default();
         let mut to_visit: Vec<StateId> = self.starting_states.iter().collect();
         while let Some(current_state) = to_visit.pop() {
