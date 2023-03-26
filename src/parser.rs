@@ -2,6 +2,8 @@
 // Can steal some stuff from https://docs.rs/clap_complete/latest/clap_complete/index.html
 // Drawing of a railroad diagram for a grammar.
 // https://github.com/mbrubeck/compleat/tree/master/examples
+// TODO Add context() calls for better error messages (https://github.com/rust-bakery/nom/blob/1c1e9c896bd422baa8ae0a167be57ae721f10377/examples/json.rs#L8)
+// TODO (Re)add a syntax for gathering a list of possible completions from a shell command
 
 use nom::{
     branch::alt,
@@ -14,9 +16,9 @@ use nom::{
 use crate::error::Error;
 
 #[derive(Debug, PartialEq)]
-struct Grammar<'a> {
-    command: &'a str,
-    variants: Vec<Expr<'a>>,
+pub struct Grammar<'a> {
+    pub command: &'a str,
+    pub args: Vec<Expr<'a>>, // alternatives
 }
 
 #[derive(Debug, PartialEq)]
@@ -26,9 +28,9 @@ struct Variant<'a> {
 }
 
 #[derive(Debug, PartialEq)]
-enum Expr<'a> {
+pub enum Expr<'a> {
     Terminal(&'a str),
-    Nonterminal(&'a str),
+    Symbol(&'a str), // e.g. <FILE>, <PATH>, <DIR>, etc.
     Optional(Box<Expr<'a>>),
     Sequence(Vec<Expr<'a>>),
     OneOrMore(Box<Expr<'a>>),
@@ -48,16 +50,16 @@ fn terminal_expr(input: &str) -> IResult<&str, Expr> {
     Ok((input, Expr::Terminal(literal)))
 }
 
-fn nonterminal(input: &str) -> IResult<&str, &str> {
+fn symbol(input: &str) -> IResult<&str, &str> {
     let (input, _) = char('<')(input)?;
     let (input, name) = is_not(">")(input)?;
     let (input, _) = char('>')(input)?;
     Ok((input, name))
 }
 
-fn nonterminal_expr(input: &str) -> IResult<&str, Expr> {
-    let (input, nonterm) = nonterminal(input)?;
-    Ok((input, Expr::Nonterminal(nonterm)))
+fn symbol_expr(input: &str) -> IResult<&str, Expr> {
+    let (input, nonterm) = symbol(input)?;
+    Ok((input, Expr::Symbol(nonterm)))
 }
 
 fn optional_expr(input: &str) -> IResult<&str, Expr> {
@@ -86,7 +88,7 @@ fn one_or_more_tag(input: &str) -> IResult<&str, ()> {
 
 fn expr_no_alternative_no_sequence(input: &str) -> IResult<&str, Expr> {
     let (input, e) = alt((
-        nonterminal_expr,
+        symbol_expr,
         optional_expr,
         parenthesized_expr,
         terminal_expr,
@@ -191,7 +193,7 @@ fn parse(input: &str) -> crate::error::Result<Grammar> {
     let v: Vec<Expr> = variants.into_iter().map(|v| v.rhs).collect();
     let g = Grammar {
         command: commands[0],
-        variants: v,
+        args: v,
     };
     Ok(g)
 }
@@ -222,35 +224,35 @@ mod tests {
     }
 
     #[test]
-    fn parses_nonterminal() {
+    fn parses_symbol() {
         const INPUT: &str = "<FILE>";
-        let ("", e) = nonterminal_expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Expr::Nonterminal("FILE"));
+        let ("", e) = symbol_expr(INPUT).unwrap() else { panic!("parsing error"); };
+        assert_eq!(e, Expr::Symbol("FILE"));
     }
 
     #[test]
     fn parses_optional_expr() {
         const INPUT: &str = "[<foo>]";
         let ("", e) = expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Expr::Optional(Box::new(Expr::Nonterminal("foo"))));
+        assert_eq!(e, Expr::Optional(Box::new(Expr::Symbol("foo"))));
     }
 
     #[test]
     fn parses_one_or_more_expr() {
         const INPUT: &str = "<foo>...";
         let ("", e) = expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Expr::OneOrMore(Box::new(Expr::Nonterminal("foo"))));
+        assert_eq!(e, Expr::OneOrMore(Box::new(Expr::Symbol("foo"))));
     }
 
     #[test]
     fn parses_sequence_expr() {
-        const INPUT: &str = "<first-nonterminal> <second nonterminal>";
+        const INPUT: &str = "<first-symbol> <second symbol>";
         let ("", e) = expr(INPUT).unwrap() else { panic!("parsing error"); };
         assert_eq!(
             e,
             Expr::Sequence(vec![
-                Expr::Nonterminal("first-nonterminal"),
-                Expr::Nonterminal("second nonterminal")
+                Expr::Symbol("first-symbol"),
+                Expr::Symbol("second symbol")
             ])
         );
     }
@@ -305,7 +307,7 @@ foo baz;
             g,
             Grammar {
                 command: "foo",
-                variants: vec![Expr::Terminal("bar"), Expr::Terminal("baz"),]
+                args: vec![Expr::Terminal("bar"), Expr::Terminal("baz")],
             }
         );
     }
@@ -320,19 +322,19 @@ foo baz;
             g,
             Grammar {
                 command: "darcs",
-                variants: vec![Sequence(vec![
+                args: vec![Sequence(vec![
                     Terminal("help",),
                     Sequence(vec![
                         OneOrMore(Box::new(Alternative(vec![
-                            Alternative(vec![Terminal("-v",), Terminal("--verbose",),],),
-                            Alternative(vec![Terminal("-q",), Terminal("--quiet",),],),
+                            Alternative(vec![Terminal("-v",), Terminal("--verbose")]),
+                            Alternative(vec![Terminal("-q",), Terminal("--quiet")]),
                         ],)),),
                         Optional(Box::new(Sequence(vec![
-                            Nonterminal("DARCS_COMMAND",),
-                            Optional(Box::new(Terminal("DARCS_SUBCOMMAND",)),),
-                        ],)),),
-                    ],),
-                ],),],
+                            Symbol("DARCS_COMMAND",),
+                            Optional(Box::new(Terminal("DARCS_SUBCOMMAND"))),
+                        ]))),
+                    ]),
+                ])],
             },
         );
     }
