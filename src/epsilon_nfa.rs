@@ -38,7 +38,25 @@ fn is_deduped(v: &[StateId]) -> bool {
     copy == v
 }
 
-fn do_nfa_from_expr(nfa: &mut EpsilonNFA, current_states: &[StateId], e: &Expr) -> Vec<StateId> {
+pub struct EpsilonNFA {
+    pub start_state: StateId,
+    pub unallocated_state_id: StateId,
+    pub transitions: BTreeMap<StateId, HashSet<(EpsilonInput, StateId)>>,
+    pub accepting_states: RoaringBitmap,
+}
+
+impl Default for EpsilonNFA {
+    fn default() -> Self {
+        Self {
+            start_state: START_STATE_ID,
+            unallocated_state_id: START_STATE_ID + 1,
+            transitions: Default::default(),
+            accepting_states: Default::default(),
+        }
+    }
+}
+
+fn nfa_from_expr(nfa: &mut EpsilonNFA, current_states: &[StateId], e: &Expr) -> Vec<StateId> {
     match e {
         Expr::Literal(input) => {
             let to_state_id = nfa.add_state();
@@ -58,20 +76,20 @@ fn do_nfa_from_expr(nfa: &mut EpsilonNFA, current_states: &[StateId], e: &Expr) 
             // Compile into multiple NFA states stringed together by transitions
             let mut states = current_states.to_vec();
             for p in v {
-                states = do_nfa_from_expr(nfa, &states, p);
+                states = nfa_from_expr(nfa, &states, p);
             }
             states
         }
         Expr::Alternative(v) => {
             let mut result: Vec<StateId> = Default::default();
             for p in v {
-                result.extend(do_nfa_from_expr(nfa, current_states, p));
+                result.extend(nfa_from_expr(nfa, current_states, p));
             }
             assert!(is_deduped(&result));
             result
         }
         Expr::Optional(e) => {
-            let ending_states = do_nfa_from_expr(nfa, current_states, e);
+            let ending_states = nfa_from_expr(nfa, current_states, e);
             for current_state in current_states {
                 for ending_state in &ending_states {
                     nfa.add_transition(*current_state, EpsilonInput::Epsilon, *ending_state)
@@ -80,7 +98,7 @@ fn do_nfa_from_expr(nfa: &mut EpsilonNFA, current_states: &[StateId], e: &Expr) 
             ending_states
         }
         Expr::Many1(e) => {
-            let ending_states = do_nfa_from_expr(nfa, current_states, e);
+            let ending_states = nfa_from_expr(nfa, current_states, e);
             for ending_state in &ending_states {
                 for current_state in current_states {
                     // loop from the ending state to the current one
@@ -92,37 +110,15 @@ fn do_nfa_from_expr(nfa: &mut EpsilonNFA, current_states: &[StateId], e: &Expr) 
     }
 }
 
-fn nfa_from_expr(e: &Expr) -> EpsilonNFA {
-    let mut nfa = EpsilonNFA::default();
-    let start_state = nfa.start_state;
-    let ending_states = do_nfa_from_expr(&mut nfa, &[start_state], e);
-    for state in ending_states {
-        nfa.mark_state_accepting(state);
-    }
-    nfa
-}
-
-pub struct EpsilonNFA {
-    pub start_state: StateId,
-    pub unallocated_state_id: StateId,
-    pub transitions: BTreeMap<StateId, HashSet<(EpsilonInput, StateId)>>,
-    pub accepting_states: RoaringBitmap,
-}
-
-impl Default for EpsilonNFA {
-    fn default() -> Self {
-        Self {
-            start_state: START_STATE_ID,
-            unallocated_state_id: START_STATE_ID + 1,
-            transitions: Default::default(),
-            accepting_states: Default::default(),
-        }
-    }
-}
-
 impl EpsilonNFA {
     pub fn from_expr(e: &Expr) -> Self {
-        nfa_from_expr(e)
+        let mut nfa = EpsilonNFA::default();
+        let start_state = nfa.start_state;
+        let ending_states = nfa_from_expr(&mut nfa, &[start_state], e);
+        for state in ending_states {
+            nfa.mark_state_accepting(state);
+        }
+        nfa
     }
 
     pub fn get_all_states(&self) -> RoaringBitmap {
