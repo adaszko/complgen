@@ -31,15 +31,8 @@ impl EpsilonInput {
     }
 }
 
-fn is_deduped(v: &[StateId]) -> bool {
-    let mut copy = v.to_vec();
-    copy.sort();
-    copy.dedup();
-    copy == v
-}
-
 pub struct EpsilonNFA {
-    pub start_state: StateId,
+    pub starting_state: StateId,
     pub unallocated_state_id: StateId,
     pub transitions: BTreeMap<StateId, HashSet<(EpsilonInput, StateId)>>,
     pub accepting_states: RoaringBitmap,
@@ -48,7 +41,7 @@ pub struct EpsilonNFA {
 impl Default for EpsilonNFA {
     fn default() -> Self {
         Self {
-            start_state: START_STATE_ID,
+            starting_state: START_STATE_ID,
             unallocated_state_id: START_STATE_ID + 1,
             transitions: Default::default(),
             accepting_states: Default::default(),
@@ -59,14 +52,14 @@ impl Default for EpsilonNFA {
 fn nfa_from_expr(nfa: &mut EpsilonNFA, current_states: &[StateId], e: &Expr) -> Vec<StateId> {
     match e {
         Expr::Literal(input) => {
-            let to_state_id = nfa.add_state();
+            let to_state_id = nfa.alloc_state_id();
             for state in current_states {
                 nfa.add_transition(*state, EpsilonInput::Literal(input.to_string()), to_state_id);
             }
             return vec![to_state_id];
         }
         Expr::Variable(_) => {
-            let to_state_id = nfa.add_state();
+            let to_state_id = nfa.alloc_state_id();
             for state in current_states {
                 nfa.add_transition(*state, EpsilonInput::Any, to_state_id);
             }
@@ -85,7 +78,6 @@ fn nfa_from_expr(nfa: &mut EpsilonNFA, current_states: &[StateId], e: &Expr) -> 
             for p in v {
                 result.extend(nfa_from_expr(nfa, current_states, p));
             }
-            assert!(is_deduped(&result));
             result
         }
         Expr::Optional(e) => {
@@ -113,7 +105,7 @@ fn nfa_from_expr(nfa: &mut EpsilonNFA, current_states: &[StateId], e: &Expr) -> 
 impl EpsilonNFA {
     pub fn from_expr(e: &Expr) -> Self {
         let mut nfa = EpsilonNFA::default();
-        let start_state = nfa.start_state;
+        let start_state = nfa.starting_state;
         let ending_states = nfa_from_expr(&mut nfa, &[start_state], e);
         for state in ending_states {
             nfa.mark_state_accepting(state);
@@ -171,7 +163,7 @@ impl EpsilonNFA {
         result
     }
 
-    pub fn add_state(&mut self) -> StateId {
+    pub fn alloc_state_id(&mut self) -> StateId {
         let result = self.unallocated_state_id;
         self.unallocated_state_id += 1;
         result
@@ -286,10 +278,10 @@ mod tests {
         // https://cs.stackexchange.com/questions/88185/nfa-string-acceptance-with-loop-of-epsilon-transitions
         pub fn accepts(&self, inputs: &[&str]) -> bool {
             let mut reachable_states: HashSet<(StateId, usize)> = Default::default();
-            for state in self.get_epsilon_closure_dfs(self.start_state) {
+            for state in self.get_epsilon_closure_dfs(self.starting_state) {
                 reachable_states.insert((state, 0));
             }
-            reachable_states.insert((self.start_state, 0));
+            reachable_states.insert((self.starting_state, 0));
 
             loop {
                 if reachable_states.is_empty() {

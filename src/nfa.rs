@@ -69,7 +69,7 @@ fn nfa_from_epsilon_nfa(epsilon_nfa: &EpsilonNFA) -> NFA {
     let mut result = NFA::default();
 
     result.accepting_states = epsilon_nfa.accepting_states.clone();
-    result.starting_states = RoaringBitmap::from_iter(&[epsilon_nfa.start_state]);
+    result.starting_states = RoaringBitmap::from_iter(&[epsilon_nfa.starting_state]);
     result.unallocated_state_id = epsilon_nfa.unallocated_state_id;
 
     for (from, tos) in &epsilon_nfa.transitions {
