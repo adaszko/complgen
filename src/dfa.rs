@@ -344,17 +344,15 @@ mod tests {
 
     use proptest::prelude::*;
 
-    /*
     #[test]
     fn groups_by_key() {
         let input = vec![0, 1, 1, 2, 2, 2];
         let output = group_by_key(&input, |x| x);
         assert_eq!(output.len(), 3);
-        assert_eq!(output[0], (0, &[0]));
-        assert_eq!(output[1], (1, &[1, 1]));
-        assert_eq!(output[2], (2, &[2, 2, 2]));
+        assert!(matches!(output[0], (0, &[0])));
+        assert!(matches!(output[1], (1, &[1, 1])));
+        assert!(matches!(output[2], (2, &[2, 2, 2])));
     }
-    */
 
     #[test]
     fn dfa_from_simple_nfa() {
