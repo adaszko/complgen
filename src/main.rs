@@ -1,5 +1,7 @@
 use std::io::Write;
 
+use complgen::Error;
+
 use crate::dfa::DFA;
 use crate::nfa::NFA;
 use crate::grammar::parse;
@@ -15,7 +17,17 @@ mod fish;
 
 fn main() {
     let input = std::io::read_to_string(std::io::stdin()).unwrap();
-    let grammar = parse(&input).unwrap();
+    let grammar = match parse(&input) {
+        Ok(g) => g,
+        Err(Error::ParsingError(e)) => {
+            eprintln!("Unable to parse grammar: {:?}", e);
+            return;
+        },
+        Err(e) => {
+            eprintln!("{:?}", e);
+            return;
+        }
+    };
     let (command, expr) = grammar.into_command_expr();
     let epsilon_nfa = EpsilonNFA::from_expr(&expr);
     let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
