@@ -9,23 +9,23 @@ use complgen::{StateId, START_STATE_ID};
 use roaring::{MultiOps, RoaringBitmap};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Input {
+pub enum EpsilonInput {
     Literal(String),
     Any,
     Epsilon,
 }
 
-impl Display for Input {
+impl Display for EpsilonInput {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Input::Literal(s) => write!(f, "{}", s),
-            Input::Any => write!(f, "*"),
-            Input::Epsilon => write!(f, "epsilon"),
+            EpsilonInput::Literal(s) => write!(f, "{}", s),
+            EpsilonInput::Any => write!(f, "*"),
+            EpsilonInput::Epsilon => write!(f, "epsilon"),
         }
     }
 }
 
-impl Input {
+impl EpsilonInput {
     pub fn is_epsilon(&self) -> bool {
         matches!(self, Self::Epsilon)
     }
@@ -38,19 +38,19 @@ fn is_deduped(v: &[StateId]) -> bool {
     copy == v
 }
 
-fn do_nfa_from_expr(nfa: &mut NFA, current_states: &[StateId], e: &Expr) -> Vec<StateId> {
+fn do_nfa_from_expr(nfa: &mut EpsilonNFA, current_states: &[StateId], e: &Expr) -> Vec<StateId> {
     match e {
         Expr::Literal(input) => {
             let to_state_id = nfa.add_state();
             for state in current_states {
-                nfa.add_transition(*state, Input::Literal(input.to_string()), to_state_id);
+                nfa.add_transition(*state, EpsilonInput::Literal(input.to_string()), to_state_id);
             }
             return vec![to_state_id];
         }
         Expr::Variable(_) => {
             let to_state_id = nfa.add_state();
             for state in current_states {
-                nfa.add_transition(*state, Input::Any, to_state_id);
+                nfa.add_transition(*state, EpsilonInput::Any, to_state_id);
             }
             return vec![to_state_id];
         }
@@ -74,7 +74,7 @@ fn do_nfa_from_expr(nfa: &mut NFA, current_states: &[StateId], e: &Expr) -> Vec<
             let ending_states = do_nfa_from_expr(nfa, current_states, e);
             for current_state in current_states {
                 for ending_state in &ending_states {
-                    nfa.add_transition(*current_state, Input::Epsilon, *ending_state)
+                    nfa.add_transition(*current_state, EpsilonInput::Epsilon, *ending_state)
                 }
             }
             ending_states
@@ -84,7 +84,7 @@ fn do_nfa_from_expr(nfa: &mut NFA, current_states: &[StateId], e: &Expr) -> Vec<
             for ending_state in &ending_states {
                 for current_state in current_states {
                     // loop from the ending state to the current one
-                    nfa.add_transition(*ending_state, Input::Epsilon, *current_state);
+                    nfa.add_transition(*ending_state, EpsilonInput::Epsilon, *current_state);
                 }
             }
             ending_states
@@ -92,8 +92,8 @@ fn do_nfa_from_expr(nfa: &mut NFA, current_states: &[StateId], e: &Expr) -> Vec<
     }
 }
 
-fn nfa_from_expr(e: &Expr) -> NFA {
-    let mut nfa = NFA::default();
+fn nfa_from_expr(e: &Expr) -> EpsilonNFA {
+    let mut nfa = EpsilonNFA::default();
     let start_state = nfa.start_state;
     let ending_states = do_nfa_from_expr(&mut nfa, &[start_state], e);
     for state in ending_states {
@@ -102,14 +102,14 @@ fn nfa_from_expr(e: &Expr) -> NFA {
     nfa
 }
 
-pub struct NFA {
+pub struct EpsilonNFA {
     pub start_state: StateId,
     pub unallocated_state_id: StateId,
-    pub transitions: BTreeMap<StateId, HashSet<(Input, StateId)>>,
+    pub transitions: BTreeMap<StateId, HashSet<(EpsilonInput, StateId)>>,
     pub accepting_states: RoaringBitmap,
 }
 
-impl Default for NFA {
+impl Default for EpsilonNFA {
     fn default() -> Self {
         Self {
             start_state: START_STATE_ID,
@@ -120,7 +120,7 @@ impl Default for NFA {
     }
 }
 
-impl NFA {
+impl EpsilonNFA {
     pub fn from_expr(e: &Expr) -> Self {
         nfa_from_expr(e)
     }
@@ -181,7 +181,7 @@ impl NFA {
         result
     }
 
-    pub fn add_transition(&mut self, from: StateId, input: Input, to: StateId) {
+    pub fn add_transition(&mut self, from: StateId, input: EpsilonInput, to: StateId) {
         self.transitions
             .entry(from)
             .or_default()
@@ -192,15 +192,15 @@ impl NFA {
         self.accepting_states.insert(state);
     }
 
-    pub fn get_transitions_from(&self, from: StateId) -> HashSet<(Input, StateId)> {
+    pub fn get_transitions_from(&self, from: StateId) -> HashSet<(EpsilonInput, StateId)> {
         self.transitions
             .get(&from)
             .cloned()
             .unwrap_or(HashSet::default())
     }
 
-    pub fn get_transitions_to(&self, desired_to: StateId) -> HashSet<(StateId, Input)> {
-        let mut result: HashSet<(StateId, Input)> = Default::default();
+    pub fn get_transitions_to(&self, desired_to: StateId) -> HashSet<(StateId, EpsilonInput)> {
+        let mut result: HashSet<(StateId, EpsilonInput)> = Default::default();
         for (from, tos) in &self.transitions {
             for (input, to) in tos {
                 if desired_to == *to {
@@ -261,7 +261,7 @@ mod tests {
     use super::*;
     use proptest::prelude::*;
 
-    impl Input {
+    impl EpsilonInput {
         fn matches(&self, actual: &str) -> bool {
             match self {
                 Self::Literal(expected) => actual == *expected,
@@ -272,7 +272,7 @@ mod tests {
     }
 
 
-    impl NFA {
+    impl EpsilonNFA {
         pub fn get_transitions_from_matching(&self, from: StateId, input: &str) -> RoaringBitmap {
             let empty = HashSet::default();
             let tos = self.transitions.get(&from).unwrap_or_else(|| &empty);
@@ -329,7 +329,7 @@ mod tests {
     #[test]
     fn accepts_any_word() {
         let expr = Expr::Variable("dummy".to_string());
-        let nfa = NFA::from_expr(&expr);
+        let nfa = EpsilonNFA::from_expr(&expr);
         assert!(nfa.accepts(&["anything"]));
     }
 
@@ -339,7 +339,7 @@ mod tests {
             Expr::Literal("foo".to_string()),
             Expr::Literal("bar".to_string()),
         ]);
-        let nfa = NFA::from_expr(&expr);
+        let nfa = EpsilonNFA::from_expr(&expr);
         assert!(nfa.accepts(&["foo", "bar"]));
     }
 
@@ -349,7 +349,7 @@ mod tests {
             Expr::Literal("foo".to_string()),
             Expr::Literal("bar".to_string()),
         ]);
-        let nfa = NFA::from_expr(&expr);
+        let nfa = EpsilonNFA::from_expr(&expr);
         assert!(nfa.accepts(&["foo"]));
         assert!(nfa.accepts(&["bar"]));
     }
@@ -357,7 +357,7 @@ mod tests {
     #[test]
     fn accepts_optional_word_pattern() {
         let expr = Expr::Optional(Box::new(Expr::Literal("foo".to_string())));
-        let nfa = NFA::from_expr(&expr);
+        let nfa = EpsilonNFA::from_expr(&expr);
 
         assert!(nfa.accepts(&[]));
         assert!(nfa.accepts(&["foo"]));
@@ -366,7 +366,7 @@ mod tests {
     #[test]
     fn accepts_many1_words_pattern() {
         let expr = Expr::Many1(Box::new(Expr::Literal("foo".to_string())));
-        let nfa = NFA::from_expr(&expr);
+        let nfa = EpsilonNFA::from_expr(&expr);
         assert!(nfa.accepts(&["foo"]));
         assert!(nfa.accepts(&["foo", "foo"]));
     }
@@ -384,7 +384,7 @@ mod tests {
             Expr::Literal("last".to_string()),
         ]);
 
-        let nfa = NFA::from_expr(&expr);
+        let nfa = EpsilonNFA::from_expr(&expr);
 
         assert!(nfa.accepts(&["first", "foo", "last"]));
         assert!(nfa.accepts(&["first", "bar", "last"]));
@@ -402,7 +402,7 @@ mod tests {
                 Expr::Literal("baz".to_string()),
             ]),
         ]);
-        let nfa = NFA::from_expr(&expr);
+        let nfa = EpsilonNFA::from_expr(&expr);
 
         assert!(nfa.accepts(&["foo", "bar"]));
         assert!(nfa.accepts(&["foo", "baz"]));
@@ -419,7 +419,7 @@ mod tests {
             Expr::Literal("last".to_string()),
         ]);
 
-        let nfa = NFA::from_expr(&expr);
+        let nfa = EpsilonNFA::from_expr(&expr);
         assert!(nfa.accepts(&["first", "foo", "last"]));
         assert!(nfa.accepts(&["first", "bar", "last"]));
         assert!(nfa.accepts(&["first", "last"]));
@@ -436,7 +436,7 @@ mod tests {
             Expr::Literal("last".to_string()),
         ]);
 
-        let nfa = NFA::from_expr(&expr);
+        let nfa = EpsilonNFA::from_expr(&expr);
 
         assert!(nfa.accepts(&["first", "foo", "bar", "last"]));
     }
@@ -449,7 +449,7 @@ mod tests {
         fn accepts_arb_expr_input((expr, input) in arb_expr_match(Rc::new(LITERALS.iter().map(|s|s.to_string()).collect()), Rc::new(VARIABLES.iter().map(|s|s.to_string()).collect()), 10, 3)) {
             println!("{:?}", expr);
             println!("{:?}", input);
-            let nfa = NFA::from_expr(&expr);
+            let nfa = EpsilonNFA::from_expr(&expr);
             let input: Vec<&str> = input.iter().map(|s| {
                 let s: &str = s;
                 s
@@ -465,7 +465,7 @@ mod tests {
             Many1(Box::new(Optional(Box::new(Literal("bar".to_string()))))),
             Variable("DIRECTORY".to_string()),
         ])));
-        let nfa = NFA::from_expr(&expr);
+        let nfa = EpsilonNFA::from_expr(&expr);
         assert!(nfa.accepts(&[]));
     }
 
@@ -476,7 +476,7 @@ mod tests {
             Sequence(vec![Literal("foo".to_string()), Literal("foo".to_string())]),
             Optional(Box::new(Literal("foo".to_string()))),
         ]);
-        let nfa = NFA::from_expr(&expr);
+        let nfa = EpsilonNFA::from_expr(&expr);
         assert!(nfa.accepts(&["foo", "foo"]));
     }
 
@@ -489,7 +489,7 @@ mod tests {
                 Optional(Box::new(Many1(Box::new(Literal("foo".to_string()))))),
             ],
         )))))));
-        let nfa = NFA::from_expr(&expr);
+        let nfa = EpsilonNFA::from_expr(&expr);
         assert!(nfa.accepts(&["foo", "foo"]));
     }
 
@@ -500,7 +500,7 @@ mod tests {
             Many1(Box::new(Literal("foo".to_string()))),
             Literal("foo".to_string()),
         ]);
-        let nfa = NFA::from_expr(&expr);
+        let nfa = EpsilonNFA::from_expr(&expr);
         assert!(nfa.accepts(&["foo", "foo", "foo"]));
     }
 }

@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, HashSet};
 use std::fmt::Display;
 use std::io::Write;
 
-use crate::epsilon_nfa::Input as EpsilonInput;
-use crate::epsilon_nfa::NFA as EpsilonNFA;
+use crate::epsilon_nfa::EpsilonInput;
+use crate::epsilon_nfa::EpsilonNFA;
 use complgen::{StateId, START_STATE_ID};
 use roaring::{MultiOps, RoaringBitmap};
 

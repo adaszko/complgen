@@ -306,7 +306,7 @@ impl DFA {
 mod tests {
     use std::rc::Rc;
 
-    use crate::epsilon_nfa::NFA as EpsilonNFA;
+    use crate::epsilon_nfa::EpsilonNFA;
     use crate::grammar::{parse, Expr};
     use crate::grammar::tests::arb_expr_match;
 

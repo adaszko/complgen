@@ -1,7 +1,7 @@
 use crate::dfa::DFA;
 use crate::nfa::NFA;
 use crate::grammar::parse;
-use crate::epsilon_nfa::NFA as EpsilonNFA;
+use crate::epsilon_nfa::EpsilonNFA;
 
 mod grammar;
 mod epsilon_nfa;
