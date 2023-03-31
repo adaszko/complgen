@@ -1,5 +1,3 @@
-use std::{rc::Rc, ops::Rem};
-
 use nom::{
     branch::alt,
     bytes::complete::{is_not, tag, take_while1},
@@ -7,8 +5,6 @@ use nom::{
     multi::separated_list1,
     IResult,
 };
-use proptest::{strategy::{BoxedStrategy}, test_runner::TestRng};
-use proptest::prelude::*;
 
 use complgen::{Error, Result};
 
@@ -51,94 +47,6 @@ impl std::fmt::Debug for Expr {
             Self::Many1(arg0) => f.write_fmt(format_args!(r#"Many1(Box::new({:?}))"#, arg0)),
         }
     }
-}
-
-fn arb_literal(inputs: Rc<Vec<String>>) -> BoxedStrategy<Expr> {
-    (0..inputs.len()).prop_map(move |index| Expr::Literal(inputs[index].clone())).boxed()
-}
-
-fn arb_variable(variables: Rc<Vec<String>>) -> BoxedStrategy<Expr> {
-    (0..variables.len()).prop_map(move |index| Expr::Variable(variables[index].clone())).boxed()
-}
-
-fn arb_optional(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
-    arb_expr(inputs, variables, remaining_depth-1, max_width).prop_map(|e| Expr::Optional(Box::new(e))).boxed()
-}
-
-fn arb_many1(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
-    arb_expr(inputs, variables, remaining_depth-1, max_width).prop_map(|e| Expr::Many1(Box::new(e))).boxed()
-}
-
-fn arb_sequence(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
-    (2..max_width).prop_flat_map(move |width| {
-        let e = arb_expr(inputs.clone(), variables.clone(), remaining_depth-1, max_width);
-        prop::collection::vec(e, width).prop_map(Expr::Sequence)
-    }).boxed()
-}
-
-fn arb_alternative(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
-    (2..max_width).prop_flat_map(move |width| {
-        let e = arb_expr(inputs.clone(), variables.clone(), remaining_depth-1, max_width);
-        prop::collection::vec(e, width).prop_map(Expr::Alternative)
-    }).boxed()
-}
-
-pub fn arb_expr(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
-    if remaining_depth <= 1 {
-        prop_oneof![
-            arb_literal(Rc::clone(&inputs)),
-            arb_variable(variables),
-        ].boxed()
-    }
-    else {
-        prop_oneof![
-            arb_literal(inputs.clone()),
-            arb_variable(variables.clone()),
-            arb_optional(inputs.clone(), variables.clone(), remaining_depth, max_width),
-            arb_many1(inputs.clone(), variables.clone(), remaining_depth, max_width),
-            arb_sequence(inputs.clone(), variables.clone(), remaining_depth, max_width),
-            arb_alternative(inputs, variables, remaining_depth, max_width),
-        ].boxed()
-    }
-}
-
-pub fn do_arb_match(e: &Expr, rng: &mut TestRng, max_width: usize, output: &mut Vec<String>) {
-    match e {
-        Expr::Literal(s) => output.push(s.to_string()),
-        Expr::Variable(_) => output.push("anything".to_string()),
-        Expr::Sequence(v) => {
-            for subexpr in v {
-                do_arb_match(subexpr, rng, max_width, output);
-            }
-        },
-        Expr::Alternative(v) => {
-            let chosen_alternative = usize::try_from(rng.next_u64().rem(u64::try_from(v.len()).unwrap())).unwrap();
-            do_arb_match(&v[chosen_alternative], rng, max_width, output);
-        },
-        Expr::Optional(subexpr) => {
-            if rng.next_u64() % 2 == 0 {
-                do_arb_match(subexpr, rng, max_width, output);
-            }
-        },
-        Expr::Many1(subexpr) => {
-            let n = rng.next_u64();
-            let chosen_len = n % u64::try_from(max_width).unwrap() + 1;
-            for _ in 0..chosen_len {
-                do_arb_match(subexpr, rng, max_width, output);
-            }
-        },
-    }
-}
-
-pub fn arb_match(e: Expr, mut rng: TestRng, max_width: usize) -> (Expr, Vec<String>) {
-    let mut output: Vec<String> = Default::default();
-    do_arb_match(&e, &mut rng, max_width, &mut output);
-    (e, output)
-}
-
-// Produce an arbitrary sequence matching `e`.
-pub fn arb_expr_match(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<(Expr, Vec<String>)> {
-    arb_expr(inputs, variables, remaining_depth, max_width).prop_perturb(move |e, rng| arb_match(e, rng, max_width)).boxed()
 }
 
 fn terminal(input: &str) -> IResult<&str, &str> {
@@ -303,8 +211,101 @@ pub fn parse(input: &str) -> Result<Grammar> {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod tests {
+    use std::{rc::Rc, ops::Rem};
+    use proptest::{strategy::BoxedStrategy, test_runner::TestRng};
+    use proptest::prelude::*;
+
     use super::*;
+
+    fn arb_literal(inputs: Rc<Vec<String>>) -> BoxedStrategy<Expr> {
+        (0..inputs.len()).prop_map(move |index| Expr::Literal(inputs[index].clone())).boxed()
+    }
+
+    fn arb_variable(variables: Rc<Vec<String>>) -> BoxedStrategy<Expr> {
+        (0..variables.len()).prop_map(move |index| Expr::Variable(variables[index].clone())).boxed()
+    }
+
+    fn arb_optional(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
+        arb_expr(inputs, variables, remaining_depth-1, max_width).prop_map(|e| Expr::Optional(Box::new(e))).boxed()
+    }
+
+    fn arb_many1(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
+        arb_expr(inputs, variables, remaining_depth-1, max_width).prop_map(|e| Expr::Many1(Box::new(e))).boxed()
+    }
+
+    fn arb_sequence(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
+        (2..max_width).prop_flat_map(move |width| {
+            let e = arb_expr(inputs.clone(), variables.clone(), remaining_depth-1, max_width);
+            prop::collection::vec(e, width).prop_map(Expr::Sequence)
+        }).boxed()
+    }
+
+    fn arb_alternative(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
+        (2..max_width).prop_flat_map(move |width| {
+            let e = arb_expr(inputs.clone(), variables.clone(), remaining_depth-1, max_width);
+            prop::collection::vec(e, width).prop_map(Expr::Alternative)
+        }).boxed()
+    }
+
+    pub fn arb_expr(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
+        if remaining_depth <= 1 {
+            prop_oneof![
+                arb_literal(Rc::clone(&inputs)),
+                arb_variable(variables),
+            ].boxed()
+        }
+        else {
+            prop_oneof![
+                arb_literal(inputs.clone()),
+                arb_variable(variables.clone()),
+                arb_optional(inputs.clone(), variables.clone(), remaining_depth, max_width),
+                arb_many1(inputs.clone(), variables.clone(), remaining_depth, max_width),
+                arb_sequence(inputs.clone(), variables.clone(), remaining_depth, max_width),
+                arb_alternative(inputs, variables, remaining_depth, max_width),
+            ].boxed()
+        }
+    }
+
+    pub fn do_arb_match(e: &Expr, rng: &mut TestRng, max_width: usize, output: &mut Vec<String>) {
+        match e {
+            Expr::Literal(s) => output.push(s.to_string()),
+            Expr::Variable(_) => output.push("anything".to_string()),
+            Expr::Sequence(v) => {
+                for subexpr in v {
+                    do_arb_match(subexpr, rng, max_width, output);
+                }
+            },
+            Expr::Alternative(v) => {
+                let chosen_alternative = usize::try_from(rng.next_u64().rem(u64::try_from(v.len()).unwrap())).unwrap();
+                do_arb_match(&v[chosen_alternative], rng, max_width, output);
+            },
+            Expr::Optional(subexpr) => {
+                if rng.next_u64() % 2 == 0 {
+                    do_arb_match(subexpr, rng, max_width, output);
+                }
+            },
+            Expr::Many1(subexpr) => {
+                let n = rng.next_u64();
+                let chosen_len = n % u64::try_from(max_width).unwrap() + 1;
+                for _ in 0..chosen_len {
+                    do_arb_match(subexpr, rng, max_width, output);
+                }
+            },
+        }
+    }
+
+    pub fn arb_match(e: Expr, mut rng: TestRng, max_width: usize) -> (Expr, Vec<String>) {
+        let mut output: Vec<String> = Default::default();
+        do_arb_match(&e, &mut rng, max_width, &mut output);
+        (e, output)
+    }
+
+    // Produce an arbitrary sequence matching `e`.
+    pub fn arb_expr_match(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<(Expr, Vec<String>)> {
+        arb_expr(inputs, variables, remaining_depth, max_width).prop_perturb(move |e, rng| arb_match(e, rng, max_width)).boxed()
+    }
+
 
     #[test]
     fn parses_word_terminal() {

@@ -257,7 +257,8 @@ impl NFA {
 mod tests {
     use std::rc::Rc;
 
-    use crate::grammar::{arb_expr_match, Expr};
+    use crate::grammar::Expr;
+    use crate::grammar::tests::arb_expr_match;
 
     use super::*;
 

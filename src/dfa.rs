@@ -337,7 +337,8 @@ mod tests {
     use std::rc::Rc;
 
     use crate::epsilon_nfa::NFA as EpsilonNFA;
-    use crate::grammar::{arb_expr_match, parse, Expr};
+    use crate::grammar::{parse, Expr};
+    use crate::grammar::tests::arb_expr_match;
 
     use super::*;
 
