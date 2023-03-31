@@ -65,7 +65,7 @@ impl Default for NFA {
 
 // https://www.javatpoint.com/automata-eliminating-null-transitions
 // https://cstaleem.com/elimination-of-epsilon-%CE%B5-from-nfa
-fn nfa_from_epsilon_nfa<'a>(epsilon_nfa: &'a EpsilonNFA) -> NFA {
+fn nfa_from_epsilon_nfa(epsilon_nfa: &EpsilonNFA) -> NFA {
     let mut result = NFA::default();
 
     result.accepting_states = epsilon_nfa.accepting_states.clone();

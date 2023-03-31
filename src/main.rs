@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use crate::dfa::DFA;
 use crate::nfa::NFA;
 use crate::grammar::parse;
@@ -20,7 +22,16 @@ fn main() {
     let dfa = DFA::from_nfa(&nfa);
     dfa.to_dot_file("dfa.dot").unwrap();
     let mut output = String::default();
-    //bash::write_completion_script(&mut output, &command, &dfa).unwrap();
-    fish::write_completion_script(&mut output, &command, &dfa).unwrap();
-    print!("{}", output);
+
+    {
+        bash::write_completion_script(&mut output, &command, &dfa).unwrap();
+        let mut bash_completion_script = std::fs::File::create("completion.bash").unwrap();
+        bash_completion_script.write_all(output.as_bytes()).unwrap();
+    }
+
+    {
+        fish::write_completion_script(&mut output, &command, &dfa).unwrap();
+        let mut fish_completion_script = std::fs::File::create("completion.fish").unwrap();
+        fish_completion_script.write_all(output.as_bytes()).unwrap();
+    }
 }
