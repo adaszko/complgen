@@ -261,36 +261,6 @@ impl DFA {
             .unwrap_or(HashMap::default())
     }
 
-    pub fn accepts(&self, inputs: &[&str]) -> bool {
-        let mut backtracking_stack: Vec<(usize, StateId)> =
-            self.starting_states.iter().map(|state| (0, state)).collect();
-        while let Some((input_index, current_state)) = backtracking_stack.pop() {
-            if input_index == inputs.len() && self.accepting_states.contains(current_state) {
-                return true;
-            }
-
-            let transitions_from_current_state = self.get_transitions_from(current_state);
-
-            if input_index < inputs.len() {
-                let matching_consuming_transitions: Vec<StateId> = transitions_from_current_state
-                    .iter()
-                    .filter_map(|(expected_input, to)| {
-                        match expected_input.matches(inputs[input_index]) {
-                            false => None,
-                            true => Some(*to),
-                        }
-                    })
-                    .collect();
-                backtracking_stack.extend(
-                    matching_consuming_transitions
-                        .iter()
-                        .map(|state| (input_index + 1, *state)),
-                );
-            }
-        }
-        false
-    }
-
     pub fn to_dot<W: Write>(&self, output: &mut W) -> std::result::Result<(), std::io::Error> {
         writeln!(output, "digraph nfa {{")?;
         writeln!(output, "\trankdir=LR;")?;
@@ -343,6 +313,38 @@ mod tests {
     use super::*;
 
     use proptest::prelude::*;
+
+    impl DFA {
+        pub fn accepts(&self, inputs: &[&str]) -> bool {
+            let mut backtracking_stack: Vec<(usize, StateId)> =
+                self.starting_states.iter().map(|state| (0, state)).collect();
+            while let Some((input_index, current_state)) = backtracking_stack.pop() {
+                if input_index == inputs.len() && self.accepting_states.contains(current_state) {
+                    return true;
+                }
+
+                let transitions_from_current_state = self.get_transitions_from(current_state);
+
+                if input_index < inputs.len() {
+                    let matching_consuming_transitions: Vec<StateId> = transitions_from_current_state
+                        .iter()
+                        .filter_map(|(expected_input, to)| {
+                            match expected_input.matches(inputs[input_index]) {
+                                false => None,
+                                true => Some(*to),
+                            }
+                        })
+                        .collect();
+                    backtracking_stack.extend(
+                        matching_consuming_transitions
+                            .iter()
+                            .map(|state| (input_index + 1, *state)),
+                    );
+                }
+            }
+            false
+        }
+    }
 
     #[test]
     fn groups_by_key() {

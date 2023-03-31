@@ -33,13 +33,6 @@ impl Input {
             EpsilonInput::Epsilon => None,
         }
     }
-
-    pub fn matches(&self, actual: &str) -> bool {
-        match self {
-            Self::Literal(expected) => actual == *expected,
-            Self::Any => true,
-        }
-    }
 }
 
 impl Display for Input {
@@ -133,23 +126,6 @@ impl NFA {
         states
     }
 
-    pub fn add_state(&mut self) -> StateId {
-        let result = self.unallocated_state_id;
-        self.unallocated_state_id += 1;
-        result
-    }
-
-    pub fn mark_state_accepting(&mut self, state: StateId) {
-        self.accepting_states.insert(state);
-    }
-
-    pub fn remove_transition(&mut self, from: StateId, input: Input, to: StateId) {
-        self.transitions
-            .entry(from)
-            .or_default()
-            .remove(&(input, to));
-    }
-
     pub fn add_transition(&mut self, from: StateId, input: Input, to: StateId) {
         self.transitions
             .entry(from)
@@ -162,54 +138,6 @@ impl NFA {
             .get(&from)
             .cloned()
             .unwrap_or(HashSet::default())
-    }
-
-    pub fn get_transitions_to(&self, desired_to: StateId) -> HashSet<(StateId, Input)> {
-        let mut result: HashSet<(StateId, Input)> = Default::default();
-        for (from, tos) in &self.transitions {
-            for (input, to) in tos {
-                if desired_to == *to {
-                    result.insert((*from, input.clone()));
-                }
-            }
-        }
-        result
-    }
-
-    pub fn accepts(&self, inputs: &[&str]) -> bool {
-        let mut to_visit: Vec<(usize, StateId)> = self
-            .starting_states
-            .iter()
-            .map(|state| (0, state))
-            .collect();
-        loop {
-            let Some((input_index, current_state)) = to_visit.pop() else {
-                return false;
-            };
-
-            if input_index == inputs.len() && self.accepting_states.contains(current_state) {
-                return true;
-            }
-
-            let transitions_from_current_state = self.get_transitions_from(current_state);
-
-            if input_index < inputs.len() {
-                let matching_consuming_transitions: Vec<StateId> = transitions_from_current_state
-                    .iter()
-                    .filter_map(|(expected_input, to)| {
-                        match expected_input.matches(inputs[input_index]) {
-                            false => None,
-                            true => Some(*to),
-                        }
-                    })
-                    .collect();
-                to_visit.extend(
-                    matching_consuming_transitions
-                        .iter()
-                        .map(|state| (input_index + 1, *state)),
-                );
-            }
-        }
     }
 
     pub fn to_dot<W: Write>(&self, output: &mut W) -> std::result::Result<(), std::io::Error> {
@@ -263,6 +191,57 @@ mod tests {
     use super::*;
 
     use proptest::prelude::*;
+
+    impl Input {
+        pub fn matches(&self, actual: &str) -> bool {
+            match self {
+                Self::Literal(expected) => actual == *expected,
+                Self::Any => true,
+            }
+        }
+    }
+
+    impl NFA {
+        pub fn mark_state_accepting(&mut self, state: StateId) {
+            self.accepting_states.insert(state);
+        }
+
+        pub fn accepts(&self, inputs: &[&str]) -> bool {
+            let mut to_visit: Vec<(usize, StateId)> = self
+                .starting_states
+                .iter()
+                .map(|state| (0, state))
+                .collect();
+            loop {
+                let Some((input_index, current_state)) = to_visit.pop() else {
+                    return false;
+                };
+
+                if input_index == inputs.len() && self.accepting_states.contains(current_state) {
+                    return true;
+                }
+
+                let transitions_from_current_state = self.get_transitions_from(current_state);
+
+                if input_index < inputs.len() {
+                    let matching_consuming_transitions: Vec<StateId> = transitions_from_current_state
+                        .iter()
+                        .filter_map(|(expected_input, to)| {
+                            match expected_input.matches(inputs[input_index]) {
+                                false => None,
+                                true => Some(*to),
+                            }
+                        })
+                        .collect();
+                    to_visit.extend(
+                        matching_consuming_transitions
+                            .iter()
+                            .map(|state| (input_index + 1, *state)),
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn accepts_any_word() {

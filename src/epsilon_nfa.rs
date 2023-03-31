@@ -26,14 +26,6 @@ impl Display for Input {
 }
 
 impl Input {
-    fn matches(&self, actual: &str) -> bool {
-        match self {
-            Self::Literal(expected) => actual == *expected,
-            Self::Any => true,
-            Self::Epsilon => false,
-        }
-    }
-
     pub fn is_epsilon(&self) -> bool {
         matches!(self, Self::Epsilon)
     }
@@ -183,58 +175,6 @@ impl NFA {
         result
     }
 
-    pub fn get_transitions_from_matching(&self, from: StateId, input: &str) -> RoaringBitmap {
-        let empty = HashSet::default();
-        let tos = self.transitions.get(&from).unwrap_or_else(|| &empty);
-        tos.iter()
-            .filter_map(|(transition_input, to)| {
-                if transition_input.matches(input) {
-                    Some(*to)
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
-    // https://cs.stackexchange.com/questions/88185/nfa-string-acceptance-with-loop-of-epsilon-transitions
-    pub fn accepts(&self, inputs: &[&str]) -> bool {
-        let mut reachable_states: HashSet<(StateId, usize)> = Default::default();
-        for state in self.get_epsilon_closure_dfs(self.start_state) {
-            reachable_states.insert((state, 0));
-        }
-        reachable_states.insert((self.start_state, 0));
-
-        loop {
-            if reachable_states.is_empty() {
-                return false;
-            }
-
-            for (state, input_index) in &reachable_states {
-                if *input_index == inputs.len() && self.accepting_states.contains(*state) {
-                    return true;
-                }
-            }
-
-            let mut current_reachable_states: HashSet<(StateId, usize)> = Default::default();
-            for (from, input_index) in &reachable_states {
-                for to in self.get_epsilon_closure_dfs(*from) {
-                    current_reachable_states.insert((to, *input_index));
-                }
-            }
-
-            for (from, input_index) in &reachable_states {
-                if *input_index < inputs.len() {
-                    for to in self.get_transitions_from_matching(*from, inputs[*input_index]) {
-                        current_reachable_states.insert((to, input_index + 1));
-                    }
-                }
-            }
-
-            reachable_states = current_reachable_states;
-        }
-    }
-
     pub fn add_state(&mut self) -> StateId {
         let result = self.unallocated_state_id;
         self.unallocated_state_id += 1;
@@ -320,6 +260,71 @@ mod tests {
 
     use super::*;
     use proptest::prelude::*;
+
+    impl Input {
+        fn matches(&self, actual: &str) -> bool {
+            match self {
+                Self::Literal(expected) => actual == *expected,
+                Self::Any => true,
+                Self::Epsilon => false,
+            }
+        }
+    }
+
+
+    impl NFA {
+        pub fn get_transitions_from_matching(&self, from: StateId, input: &str) -> RoaringBitmap {
+            let empty = HashSet::default();
+            let tos = self.transitions.get(&from).unwrap_or_else(|| &empty);
+            tos.iter()
+                .filter_map(|(transition_input, to)| {
+                    if transition_input.matches(input) {
+                        Some(*to)
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        }
+
+        // https://cs.stackexchange.com/questions/88185/nfa-string-acceptance-with-loop-of-epsilon-transitions
+        pub fn accepts(&self, inputs: &[&str]) -> bool {
+            let mut reachable_states: HashSet<(StateId, usize)> = Default::default();
+            for state in self.get_epsilon_closure_dfs(self.start_state) {
+                reachable_states.insert((state, 0));
+            }
+            reachable_states.insert((self.start_state, 0));
+
+            loop {
+                if reachable_states.is_empty() {
+                    return false;
+                }
+
+                for (state, input_index) in &reachable_states {
+                    if *input_index == inputs.len() && self.accepting_states.contains(*state) {
+                        return true;
+                    }
+                }
+
+                let mut current_reachable_states: HashSet<(StateId, usize)> = Default::default();
+                for (from, input_index) in &reachable_states {
+                    for to in self.get_epsilon_closure_dfs(*from) {
+                        current_reachable_states.insert((to, *input_index));
+                    }
+                }
+
+                for (from, input_index) in &reachable_states {
+                    if *input_index < inputs.len() {
+                        for to in self.get_transitions_from_matching(*from, inputs[*input_index]) {
+                            current_reachable_states.insert((to, input_index + 1));
+                        }
+                    }
+                }
+
+                reachable_states = current_reachable_states;
+            }
+        }
+    }
 
     #[test]
     fn accepts_any_word() {
