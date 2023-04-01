@@ -46,7 +46,7 @@ impl Display for Input {
 
 #[derive(Clone)]
 pub struct NFA {
-    pub starting_states: RoaringBitmap,
+    pub starting_state: StateId,
     pub unallocated_state_id: StateId,
     pub transitions: BTreeMap<StateId, HashSet<(Input, StateId)>>,
     pub accepting_states: RoaringBitmap,
@@ -55,7 +55,7 @@ pub struct NFA {
 impl Default for NFA {
     fn default() -> Self {
         Self {
-            starting_states: RoaringBitmap::from_iter(&[START_STATE_ID]),
+            starting_state: START_STATE_ID,
             unallocated_state_id: START_STATE_ID + 1,
             transitions: Default::default(),
             accepting_states: Default::default(),
@@ -67,9 +67,8 @@ impl Default for NFA {
 // https://cstaleem.com/elimination-of-epsilon-%CE%B5-from-nfa
 fn nfa_from_epsilon_nfa(epsilon_nfa: &EpsilonNFA) -> NFA {
     let mut result = NFA::default();
-
+    let mut starting_states = RoaringBitmap::from_iter(&[epsilon_nfa.starting_state]);
     result.accepting_states = epsilon_nfa.accepting_states.clone();
-    result.starting_states = RoaringBitmap::from_iter(&[epsilon_nfa.starting_state]);
     result.unallocated_state_id = epsilon_nfa.unallocated_state_id;
 
     for (from, tos) in &epsilon_nfa.transitions {
@@ -99,7 +98,7 @@ fn nfa_from_epsilon_nfa(epsilon_nfa: &EpsilonNFA) -> NFA {
                 );
             }
             if epsilon_nfa.is_starting_state(from) {
-                result.starting_states.insert(to);
+                starting_states.insert(to);
             }
             if epsilon_nfa.is_accepting_state(to) {
                 result.accepting_states.insert(from);
@@ -107,12 +106,36 @@ fn nfa_from_epsilon_nfa(epsilon_nfa: &EpsilonNFA) -> NFA {
         }
     }
 
+    // Reduce the number of starting states to one by introducing a new state that encompases all
+    // the newly created ones.  We can always do that because it's a NFA.
+    result.starting_state = if starting_states.len() > 1 {
+        let starting_state = result.alloc_state_id();
+        for from in starting_states {
+            for (input, to) in result.get_transitions_from(from) {
+                result.add_transition(starting_state, input, to);
+            }
+            if result.accepting_states.contains(from) {
+                result.accepting_states.insert(starting_state);
+            }
+        }
+        starting_state
+    }
+    else {
+        starting_states.iter().next().unwrap()
+    };
+
     result
 }
 
 impl NFA {
     pub fn from_epsilon_nfa(epsilon_nfa: &EpsilonNFA) -> Self {
         nfa_from_epsilon_nfa(&epsilon_nfa)
+    }
+
+    pub fn alloc_state_id(&mut self) -> StateId {
+        let result = self.unallocated_state_id;
+        self.unallocated_state_id += 1;
+        result
     }
 
     pub fn get_all_states(&self) -> RoaringBitmap {
@@ -144,10 +167,22 @@ impl NFA {
         writeln!(output, "digraph nfa {{")?;
         writeln!(output, "\trankdir=LR;")?;
 
-        let nonaccepting_states = [&self.get_all_states(), &self.accepting_states].difference();
+        if self.accepting_states.contains(self.starting_state) {
+            writeln!(output, "\tnode [shape = doubleoctagon];")?;
+        }
+        else {
+            writeln!(output, "\tnode [shape = octagon];")?;
+        }
+        writeln!(output, "\t_{}[label=\"{}\"];", self.starting_state, self.starting_state)?;
+
+        let regular_states = {
+            let mut states = [&self.get_all_states(), &self.accepting_states].difference();
+            states.remove(self.starting_state);
+            states
+        };
 
         writeln!(output, "\tnode [shape = circle];")?;
-        for state in nonaccepting_states {
+        for state in regular_states {
             writeln!(output, "\t_{}[label=\"{}\"];", state, state)?;
         }
 
@@ -207,11 +242,7 @@ mod tests {
         }
 
         pub fn accepts(&self, inputs: &[&str]) -> bool {
-            let mut to_visit: Vec<(usize, StateId)> = self
-                .starting_states
-                .iter()
-                .map(|state| (0, state))
-                .collect();
+            let mut to_visit: Vec<(usize, StateId)> = vec![(0, self.starting_state)];
             loop {
                 let Some((input_index, current_state)) = to_visit.pop() else {
                     return false;
@@ -393,14 +424,22 @@ mod tests {
     }
 
     #[test]
+    fn proptest_failure_one() {
+        use Expr::*;
+        let expr = Optional(Box::new(Sequence(vec![Literal("foo".to_string()), Literal("foo".to_string())])));
+        let epsilon_nfa = EpsilonNFA::from_expr(&expr);
+        assert!(epsilon_nfa.accepts(&["foo", "foo"]));
+        let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
+        assert!(nfa.accepts(&[]));
+    }
+
+    #[test]
     fn proptest_failure_two() {
         use Expr::*;
         let expr = Many1(Box::new(Sequence(vec![Alternative(vec![Optional(Box::new(Optional(Box::new(Many1(Box::new(Literal("--baz".to_string()))))))), Sequence(vec![Optional(Box::new(Literal("foo".to_string()))), Literal("foo".to_string())])]), Literal("foo".to_string())])));
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
         assert!(epsilon_nfa.accepts(&["foo", "foo"]));
-        epsilon_nfa.to_dot_file("enfa.dot").unwrap();
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
-        nfa.to_dot_file("nfa.dot").unwrap();
         assert!(nfa.accepts(&["foo", "foo"]));
     }
 }

@@ -53,16 +53,13 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         write_dfa_state_function(buffer, command, dfa, state)?;
     }
 
-    // XXX Should be exactly one, not many
-    let start_state = dfa.starting_states.iter().next().unwrap();
-
     write!(buffer, r#"
 _{command} () {{
     {state_name} 1
 }}
 
 complete -F _{command} {command}
-"#, state_name = make_state_name(command, start_state), command = command)?;
+"#, state_name = make_state_name(command, dfa.starting_state), command = command)?;
 
     Ok(())
 }

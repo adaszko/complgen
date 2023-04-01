@@ -10,7 +10,7 @@ use complgen::{StateId, START_STATE_ID};
 
 #[derive(Clone)]
 pub struct DFA {
-    pub starting_states: RoaringBitmap,
+    pub starting_state: StateId,
     transitions: BTreeMap<StateId, HashMap<Input, StateId>>,
     accepting_states: RoaringBitmap,
     unallocated_state_id: StateId,
@@ -19,7 +19,7 @@ pub struct DFA {
 impl Default for DFA {
     fn default() -> Self {
         Self {
-            starting_states: RoaringBitmap::from_iter([START_STATE_ID]),
+            starting_state: START_STATE_ID,
             transitions: Default::default(),
             accepting_states: Default::default(),
             unallocated_state_id: START_STATE_ID + 1,
@@ -55,7 +55,7 @@ where
 fn cleanup_dfa(dfa: &DFA) -> DFA {
     let reachable_states = dfa.get_reachable_states();
     let mut result: DFA = Default::default();
-    result.starting_states = dfa.starting_states.clone();
+    result.starting_state = dfa.starting_state;
     for (from, tos) in &dfa.transitions {
         for (input, to) in tos {
             if reachable_states.contains(*from) && reachable_states.contains(*to) {
@@ -109,7 +109,7 @@ fn collapse_equivalent_states(dfa: &DFA) -> DFA {
 fn dfa_from_determinized_nfa(nfa: &NFA, transitions: &HashSet<(BTreeSet<StateId>, Input, BTreeSet<StateId>)>, accepting_states: &HashSet<BTreeSet<StateId>>) -> DFA {
     let mut result: DFA = Default::default();
     result.unallocated_state_id = nfa.unallocated_state_id;
-    result.starting_states = nfa.starting_states.clone();
+    result.starting_state = nfa.starting_state;
 
     let mut new_states: HashMap<BTreeSet<StateId>, StateId> = Default::default();
     for (from, input, to) in transitions {
@@ -148,9 +148,7 @@ fn dfa_from_nfa(nfa: &NFA) -> DFA {
 
     let mut transitions: HashSet<(BTreeSet<StateId>, Input, BTreeSet<StateId>)> = Default::default();
     let mut scalar_transitions: HashSet<(StateId, Input, StateId)> = Default::default();
-    for from in &nfa.starting_states {
-        scalar_transitions.extend(nfa.get_transitions_from(from).into_iter().map(|(input, to)| (from, input, to)));
-    }
+    scalar_transitions.extend(nfa.get_transitions_from(nfa.starting_state).into_iter().map(|(input, to)| (nfa.starting_state, input, to)));
     let mut scalar_transitions: Vec<(StateId, Input, StateId)> = scalar_transitions.into_iter().collect();
     scalar_transitions.sort_by_key(|(from, input, _)| (*from, input.clone()));
     for (_, common_input_transitions) in group_by_key(&scalar_transitions, |(from, input, _)| (from, input)) {
@@ -237,7 +235,7 @@ impl DFA {
 
     pub fn get_reachable_states(&self) -> RoaringBitmap {
         let mut visited: RoaringBitmap = Default::default();
-        let mut to_visit: Vec<StateId> = self.starting_states.iter().collect();
+        let mut to_visit: Vec<StateId> = vec![self.starting_state];
         while let Some(current_state) = to_visit.pop() {
             if visited.contains(current_state) {
                 continue;
@@ -316,8 +314,7 @@ mod tests {
 
     impl DFA {
         pub fn accepts(&self, inputs: &[&str]) -> bool {
-            let mut backtracking_stack: Vec<(usize, StateId)> =
-                self.starting_states.iter().map(|state| (0, state)).collect();
+            let mut backtracking_stack: Vec<(usize, StateId)> = vec![(0, self.starting_state)];
             while let Some((input_index, current_state)) = backtracking_stack.pop() {
                 if input_index == inputs.len() && self.accepting_states.contains(current_state) {
                     return true;
