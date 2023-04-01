@@ -49,7 +49,7 @@ impl Default for EpsilonNFA {
     }
 }
 
-fn nfa_from_expr(nfa: &mut EpsilonNFA, current_states: &[StateId], e: &Expr) -> Vec<StateId> {
+fn epsilon_nfa_from_expr(nfa: &mut EpsilonNFA, current_states: &[StateId], e: &Expr) -> Vec<StateId> {
     match e {
         Expr::Literal(input) => {
             let to_state_id = nfa.alloc_state_id();
@@ -69,19 +69,19 @@ fn nfa_from_expr(nfa: &mut EpsilonNFA, current_states: &[StateId], e: &Expr) -> 
             // Compile into multiple NFA states stringed together by transitions
             let mut states = current_states.to_vec();
             for p in v {
-                states = nfa_from_expr(nfa, &states, p);
+                states = epsilon_nfa_from_expr(nfa, &states, p);
             }
             states
         }
         Expr::Alternative(v) => {
             let mut result: Vec<StateId> = Default::default();
             for p in v {
-                result.extend(nfa_from_expr(nfa, current_states, p));
+                result.extend(epsilon_nfa_from_expr(nfa, current_states, p));
             }
             result
         }
         Expr::Optional(e) => {
-            let ending_states = nfa_from_expr(nfa, current_states, e);
+            let ending_states = epsilon_nfa_from_expr(nfa, current_states, e);
             for current_state in current_states {
                 for ending_state in &ending_states {
                     nfa.add_transition(*current_state, EpsilonInput::Epsilon, *ending_state)
@@ -90,7 +90,7 @@ fn nfa_from_expr(nfa: &mut EpsilonNFA, current_states: &[StateId], e: &Expr) -> 
             ending_states
         }
         Expr::Many1(e) => {
-            let ending_states = nfa_from_expr(nfa, current_states, e);
+            let ending_states = epsilon_nfa_from_expr(nfa, current_states, e);
             for ending_state in &ending_states {
                 for current_state in current_states {
                     // loop from the ending state to the current one
@@ -106,7 +106,7 @@ impl EpsilonNFA {
     pub fn from_expr(e: &Expr) -> Self {
         let mut nfa = EpsilonNFA::default();
         let start_state = nfa.starting_state;
-        let ending_states = nfa_from_expr(&mut nfa, &[start_state], e);
+        let ending_states = epsilon_nfa_from_expr(&mut nfa, &[start_state], e);
         for state in ending_states {
             nfa.mark_state_accepting(state);
         }
