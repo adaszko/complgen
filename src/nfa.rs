@@ -379,8 +379,8 @@ mod tests {
     proptest! {
         #[test]
         fn accepts_arb_expr_input((expr, input) in arb_expr_match(Rc::new(LITERALS.iter().map(|s|s.to_string()).collect()), Rc::new(VARIABLES.iter().map(|s|s.to_string()).collect()), 10, 3)) {
-            println!("{:?}", expr);
-            println!("{:?}", input);
+            // println!("{:?}", expr);
+            // println!("{:?}", input);
             let epsilon_nfa = EpsilonNFA::from_expr(&expr);
             let input: Vec<&str> = input.iter().map(|s| {
                 let s: &str = s;
@@ -393,29 +393,14 @@ mod tests {
     }
 
     #[test]
-    fn proptest_failure_one() {
+    fn proptest_failure_two() {
         use Expr::*;
-        let expr = Many1(Box::new(Sequence(vec![
-            Alternative(vec![
-                Many1(Box::new(Sequence(vec![
-                    Alternative(vec![
-                        Many1(Box::new(Optional(Box::new(Sequence(vec![
-                            Literal("--baz".to_string()),
-                            Literal("foo".to_string()),
-                        ]))))),
-                        Optional(Box::new(Literal("--baz".to_string()))),
-                    ]),
-                    Literal("foo".to_string()),
-                ]))),
-                Sequence(vec![
-                    Optional(Box::new(Literal("foo".to_string()))),
-                    Literal("foo".to_string()),
-                ]),
-            ]),
-            Literal("foo".to_string()),
-        ])));
+        let expr = Many1(Box::new(Sequence(vec![Alternative(vec![Optional(Box::new(Optional(Box::new(Many1(Box::new(Literal("--baz".to_string()))))))), Sequence(vec![Optional(Box::new(Literal("foo".to_string()))), Literal("foo".to_string())])]), Literal("foo".to_string())])));
         let epsilon_nfa = EpsilonNFA::from_expr(&expr);
+        assert!(epsilon_nfa.accepts(&["foo", "foo"]));
+        epsilon_nfa.to_dot_file("enfa.dot").unwrap();
         let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
-        nfa.accepts(&["foo", "foo"]);
+        nfa.to_dot_file("nfa.dot").unwrap();
+        assert!(nfa.accepts(&["foo", "foo"]));
     }
 }

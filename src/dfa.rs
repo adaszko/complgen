@@ -610,8 +610,8 @@ mod tests {
     proptest! {
         #[test]
         fn accepts_arb_expr_input((expr, input) in arb_expr_match(Rc::new(LITERALS.iter().map(|s|s.to_string()).collect()), Rc::new(VARIABLES.iter().map(|s|s.to_string()).collect()), 10, 3)) {
-            println!("{:?}", expr);
-            println!("{:?}", input);
+            // println!("{:?}", expr);
+            // println!("{:?}", input);
             let epsilon_nfa = EpsilonNFA::from_expr(&expr);
             let input: Vec<&str> = input.iter().map(|s| {
                 let s: &str = s;

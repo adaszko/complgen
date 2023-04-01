@@ -37,6 +37,8 @@ Patterns may also include *variables*:
 # Roadmap
 
  * Implement DFA minimization via [Hopcroft's algorithm](https://en.wikipedia.org/wiki/DFA_minimization#Hopcroft's_algorithm)
+    * https://www.uobabylon.edu.iq/eprints/paper_12_2714_213.pdf
+    * https://people.csail.mit.edu/rrw/6.045-2019/notemindfa.pdf
  * Add producing the completion script based on the NFA in order to reduce completion script size
  * Add an "interpreter mode" that reads `*.usage` files on-demand but requires complgen to be installed on the user's machine
 
