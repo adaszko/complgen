@@ -263,10 +263,22 @@ impl DFA {
         writeln!(output, "digraph nfa {{")?;
         writeln!(output, "\trankdir=LR;")?;
 
-        let nonaccepting_states = [&self.get_all_states(), &self.accepting_states].difference();
+        if self.accepting_states.contains(self.starting_state) {
+            writeln!(output, "\tnode [shape = doubleoctagon];")?;
+        }
+        else {
+            writeln!(output, "\tnode [shape = octagon];")?;
+        }
+        writeln!(output, "\t_{}[label=\"{}\"];", self.starting_state, self.starting_state)?;
+
+        let regular_states = {
+            let mut states = [&self.get_all_states(), &self.accepting_states].difference();
+            states.remove(self.starting_state);
+            states
+        };
 
         writeln!(output, "\tnode [shape = circle];")?;
-        for state in nonaccepting_states {
+        for state in regular_states {
             writeln!(output, "\t_{}[label=\"{}\"];", state, state)?;
         }
 
