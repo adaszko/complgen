@@ -7,9 +7,10 @@ shell script that can be distributed independently.  You can, for instance, gene
 your command line tool on CI and package them along with your tool.  No additional software needs to be
 installed in order to use your custom completions.
 
+
 # Syntax
 
-The grammar is based on [compleat](https://github.com/mbrubeck/compleat/blob/master/README.markdown#syntax)'s one:
+The grammar is based on [compleat](https://github.com/mbrubeck/compleat/blob/master/README.markdown#syntax)'s one.
 
  * `a b` matches `a` followed by `b`.
  * `a b | c` matches either `a b` or `c`.

@@ -3,7 +3,7 @@ use nom::{
     bytes::complete::{is_not, tag, take_while1, escaped},
     character::{complete::{char, multispace0, multispace1, one_of}, is_alphanumeric},
     multi::separated_list1,
-    IResult, combinator::fail,
+    IResult, combinator::fail, error::context,
 };
 
 use complgen::{Error, Result};
@@ -51,10 +51,7 @@ impl std::fmt::Debug for Expr {
 
 fn terminal(input: &str) -> IResult<&str, &str> {
     fn is_terminal_char(c: char) -> bool {
-        if !c.is_ascii() {
-            return false;
-        }
-        is_alphanumeric(c as u8) || c == '-' || c == '+' || c == '_'
+        c.is_ascii() && (is_alphanumeric(c as u8) || c == '-' || c == '+' || c == '_')
     }
     let (input, term) = escaped(take_while1(is_terminal_char), '\\', one_of(r#"()[]<>.|;"#))(input)?;
     if term.len() == 0 {
@@ -64,7 +61,7 @@ fn terminal(input: &str) -> IResult<&str, &str> {
 }
 
 fn terminal_expr(input: &str) -> IResult<&str, Expr> {
-    let (input, literal) = terminal(input)?;
+    let (input, literal) = context("terminal", terminal)(input)?;
     Ok((input, Expr::Literal(literal.to_string())))
 }
 
@@ -76,7 +73,7 @@ fn symbol(input: &str) -> IResult<&str, &str> {
 }
 
 fn symbol_expr(input: &str) -> IResult<&str, Expr> {
-    let (input, nonterm) = symbol(input)?;
+    let (input, nonterm) = context("symbol", symbol)(input)?;
     Ok((input, Expr::Variable(nonterm.to_string())))
 }
 
