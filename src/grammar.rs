@@ -1,9 +1,9 @@
 use nom::{
     branch::alt,
-    bytes::complete::{is_not, tag, take_while1},
-    character::complete::{char, multispace0, multispace1},
+    bytes::complete::{is_not, tag, take_while1, escaped},
+    character::{complete::{char, multispace0, multispace1, one_of}, is_alphanumeric},
     multi::separated_list1,
-    IResult,
+    IResult, combinator::fail,
 };
 
 use complgen::{Error, Result};
@@ -28,7 +28,7 @@ struct Variant {
 
 #[derive(Clone, PartialEq)]
 pub enum Expr {
-    Literal(String),
+    Literal(String), // e.g. an option: "--help", or a command: "build"
     Variable(String), // e.g. <FILE>, <PATH>, <DIR>, etc.
     Sequence(Vec<Expr>),
     Alternative(Vec<Expr>),
@@ -50,10 +50,16 @@ impl std::fmt::Debug for Expr {
 }
 
 fn terminal(input: &str) -> IResult<&str, &str> {
-    // TODO Allow for escaping these characters thus making them part of a terminal symbol
-    // TODO Make it into a positive list instead of a negative one (easier to spot where the
-    // grammar stopped parsing properly)
-    let (input, term) = take_while1(|c| " \t\n()[]<>.|;".find(c).is_none())(input)?;
+    fn is_terminal_char(c: char) -> bool {
+        if !c.is_ascii() {
+            return false;
+        }
+        is_alphanumeric(c as u8) || c == '-' || c == '+' || c == '_'
+    }
+    let (input, term) = escaped(take_while1(is_terminal_char), '\\', one_of(r#"()[]<>.|;"#))(input)?;
+    if term.len() == 0 {
+        return fail(input);
+    }
     Ok((input, term))
 }
 
