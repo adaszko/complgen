@@ -8,10 +8,6 @@ use crate::nfa::Input;
 // `transitions`: an associative array where:
 //      key: state number
 //      value: a string that is an initializer of an associative array, e.g. "( [add]=23 [obliterate]=1080 [repair]=1543 )"
-// `accepting_states`: an associative array where:
-//      key: state number
-//      value: anything
-//  A state is accepting is a key is present in the associative array.
 //  `asterisk_transitions`: an associative array where:
 //      key: state number
 //      value: state number
@@ -32,22 +28,15 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
     writeln!(buffer, "")?;
 
     writeln!(buffer, r#"    declare -A asterisk_transitions"#)?;
-    let asterisk_transitions = itertools::join(dfa.get_asterisk_transitions().into_iter().map(|(from, to)| format!(" [{from}]={to}")), " ");
+    let asterisk_transitions = itertools::join(dfa.get_asterisk_transitions().into_iter().map(|(from, to)| format!("[{from}]={to}")), " ");
     writeln!(buffer, r#"    asterisk_transitions=({asterisk_transitions})"#)?;
-
-    writeln!(buffer, "")?;
-
-    writeln!(buffer, r#"    declare -A accepting_states"#)?;
-    let accepting_states: String = itertools::join(dfa.accepting_states.iter().map(|state| format!("[{state}]=1", state=state)), " ");
-    writeln!(buffer, r#"    accepting_states=({accepting_states})"#)?;
 
     Ok(())
 }
 
 
 pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
-    write!(buffer, r#"
-_{command} () {{
+    write!(buffer, r#"_{command} () {{
 "#)?;
 
     write_tables(buffer, dfa)?;
