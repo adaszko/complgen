@@ -33,6 +33,10 @@ impl Input {
             EpsilonInput::Epsilon => None,
         }
     }
+
+    pub fn is_any(&self) -> bool {
+        matches!(self, Self::Any)
+    }
 }
 
 impl Display for Input {

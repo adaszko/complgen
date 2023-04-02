@@ -11,8 +11,8 @@ use complgen::{StateId, START_STATE_ID};
 #[derive(Clone)]
 pub struct DFA {
     pub starting_state: StateId,
-    transitions: BTreeMap<StateId, HashMap<Input, StateId>>,
-    accepting_states: RoaringBitmap,
+    pub transitions: BTreeMap<StateId, HashMap<Input, StateId>>,
+    pub accepting_states: RoaringBitmap,
     unallocated_state_id: StateId,
 }
 
@@ -75,6 +75,7 @@ fn cleanup_dfa(dfa: &DFA) -> DFA {
 // This is just a simple but non-exhaustive minimization technique that shaves ~500 lines out the
 // resulting Bash script.
 // TODO Implement a full Hopcroft algorithm: https://en.wikipedia.org/wiki/DFA_minimization#Hopcroft's_algorithm
+// TODO Section "Minimizing the Number of States of a DFA" in The Dragon Book
 fn collapse_equivalent_states(dfa: &DFA) -> DFA {
     let mut result: DFA = dfa.clone();
 
@@ -231,6 +232,18 @@ impl DFA {
             });
         }
         states
+    }
+
+    pub fn get_asterisk_transitions(&self) -> Vec<(StateId, StateId)> {
+        let mut result: Vec<(StateId, StateId)> = Default::default();
+        for (from, tos) in &self.transitions {
+            for (input, to) in tos {
+                if input.is_any() {
+                    result.push((*from, *to));
+                }
+            }
+        }
+        result
     }
 
     pub fn get_reachable_states(&self) -> RoaringBitmap {
