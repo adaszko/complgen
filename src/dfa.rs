@@ -1,7 +1,8 @@
 use std::{
-    collections::{BTreeMap, HashMap, HashSet, BTreeSet},
+    collections::{BTreeMap, BTreeSet},
     io::Write
 };
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use roaring::{MultiOps, RoaringBitmap};
 
@@ -11,7 +12,7 @@ use complgen::{StateId, START_STATE_ID};
 #[derive(Clone)]
 pub struct DFA {
     pub starting_state: StateId,
-    pub transitions: BTreeMap<StateId, HashMap<Input, StateId>>,
+    pub transitions: BTreeMap<StateId, FxHashMap<Input, StateId>>,
     pub accepting_states: RoaringBitmap,
     unallocated_state_id: StateId,
 }
@@ -79,14 +80,14 @@ fn cleanup_dfa(dfa: &DFA) -> DFA {
 fn collapse_equivalent_states(dfa: &DFA) -> DFA {
     let mut result: DFA = dfa.clone();
 
-    let mut equivalent_states_from_outgoing_transitions: HashMap<(bool, BTreeSet<(Input, StateId)>), RoaringBitmap> = Default::default();
+    let mut equivalent_states_from_outgoing_transitions: FxHashMap<(bool, BTreeSet<(Input, StateId)>), RoaringBitmap> = Default::default();
     for from in dfa.get_all_states() {
         let outgoing_transitions: BTreeSet<(Input, StateId)> = dfa.get_transitions_from(from).iter().map(|(input, to)| (input.clone(), *to)).collect();
         let is_accepting_state = dfa.accepting_states.contains(from);
         equivalent_states_from_outgoing_transitions.entry((is_accepting_state, outgoing_transitions)).or_default().insert(from);
     }
 
-    let mut representant_state: HashMap<StateId, StateId> = Default::default();
+    let mut representant_state: FxHashMap<StateId, StateId> = Default::default();
     for (_, equivalent_states) in equivalent_states_from_outgoing_transitions {
         let representant = equivalent_states.iter().next().unwrap();
         for state in equivalent_states {
@@ -107,12 +108,12 @@ fn collapse_equivalent_states(dfa: &DFA) -> DFA {
     result
 }
 
-fn dfa_from_determinized_nfa(nfa: &NFA, transitions: &HashSet<(BTreeSet<StateId>, Input, BTreeSet<StateId>)>, accepting_states: &HashSet<BTreeSet<StateId>>) -> DFA {
+fn dfa_from_determinized_nfa(nfa: &NFA, transitions: &FxHashSet<(BTreeSet<StateId>, Input, BTreeSet<StateId>)>, accepting_states: &FxHashSet<BTreeSet<StateId>>) -> DFA {
     let mut result: DFA = Default::default();
     result.unallocated_state_id = nfa.unallocated_state_id;
     result.starting_state = nfa.starting_state;
 
-    let mut new_states: HashMap<BTreeSet<StateId>, StateId> = Default::default();
+    let mut new_states: FxHashMap<BTreeSet<StateId>, StateId> = Default::default();
     for (from, input, to) in transitions {
         let from_state_id = if from.len() == 1 {
             *from.iter().next().unwrap()
@@ -145,10 +146,10 @@ fn dfa_from_determinized_nfa(nfa: &NFA, transitions: &HashSet<(BTreeSet<StateId>
 // https://www.gatevidyalay.com/converting-nfa-to-dfa-solved-examples/
 // Approach used: Induction on the transitions table.
 fn dfa_from_nfa(nfa: &NFA) -> DFA {
-    let mut accepting_states: HashSet<BTreeSet<StateId>> = Default::default();
+    let mut accepting_states: FxHashSet<BTreeSet<StateId>> = Default::default();
 
-    let mut transitions: HashSet<(BTreeSet<StateId>, Input, BTreeSet<StateId>)> = Default::default();
-    let mut scalar_transitions: HashSet<(StateId, Input, StateId)> = Default::default();
+    let mut transitions: FxHashSet<(BTreeSet<StateId>, Input, BTreeSet<StateId>)> = Default::default();
+    let mut scalar_transitions: FxHashSet<(StateId, Input, StateId)> = Default::default();
     scalar_transitions.extend(nfa.get_transitions_from(nfa.starting_state).into_iter().map(|(input, to)| (nfa.starting_state, input, to)));
     let mut scalar_transitions: Vec<(StateId, Input, StateId)> = scalar_transitions.into_iter().collect();
     scalar_transitions.sort_by_key(|(from, input, _)| (*from, input.clone()));
@@ -163,12 +164,12 @@ fn dfa_from_nfa(nfa: &NFA) -> DFA {
         }
     }
 
-    let mut result_transitions: HashSet<(BTreeSet<StateId>, Input, BTreeSet<StateId>)> = transitions.clone();
+    let mut result_transitions: FxHashSet<(BTreeSet<StateId>, Input, BTreeSet<StateId>)> = transitions.clone();
     while !transitions.is_empty() {
-        let mut new_transitions: HashSet<(BTreeSet<StateId>, Input, BTreeSet<StateId>)> = Default::default();
+        let mut new_transitions: FxHashSet<(BTreeSet<StateId>, Input, BTreeSet<StateId>)> = Default::default();
 
         for (_, _, to) in transitions {
-            let mut scalar_transitions: HashSet<(StateId, Input, StateId)> = Default::default();
+            let mut scalar_transitions: FxHashSet<(StateId, Input, StateId)> = Default::default();
             for to_prime in &to {
                 scalar_transitions.extend(nfa.get_transitions_from(*to_prime).into_iter().map(|(input, to)| (*to_prime, input, to)));
             }
@@ -265,11 +266,11 @@ impl DFA {
         visited
     }
 
-    pub fn get_transitions_from(&self, from: StateId) -> HashMap<Input, StateId> {
+    pub fn get_transitions_from(&self, from: StateId) -> FxHashMap<Input, StateId> {
         self.transitions
             .get(&from)
             .cloned()
-            .unwrap_or(HashMap::default())
+            .unwrap_or(FxHashMap::default())
     }
 
     pub fn to_dot<W: Write>(&self, output: &mut W) -> std::result::Result<(), std::io::Error> {

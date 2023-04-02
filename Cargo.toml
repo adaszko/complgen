@@ -12,6 +12,7 @@ debug = true
 itertools = "0.10.5"
 nom = "7.1.3"
 roaring = "0.10.1"
+rustc-hash = "1.1.0"
 thiserror = "1.0.39"
 
 [dev-dependencies]
