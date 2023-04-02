@@ -1,6 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    io::Write
+    io::Write, rc::Rc
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -108,12 +108,12 @@ fn collapse_equivalent_states(dfa: &DFA) -> DFA {
     result
 }
 
-fn dfa_from_determinized_nfa(nfa: &NFA, transitions: &FxHashSet<(BTreeSet<StateId>, Input, BTreeSet<StateId>)>, accepting_states: &FxHashSet<BTreeSet<StateId>>) -> DFA {
+fn dfa_from_determinized_nfa(nfa: &NFA, transitions: &FxHashSet<(Rc<BTreeSet<StateId>>, Input, Rc<BTreeSet<StateId>>)>, accepting_states: &FxHashSet<Rc<BTreeSet<StateId>>>) -> DFA {
     let mut result: DFA = Default::default();
     result.unallocated_state_id = nfa.unallocated_state_id;
     result.starting_state = nfa.starting_state;
 
-    let mut new_states: FxHashMap<BTreeSet<StateId>, StateId> = Default::default();
+    let mut new_states: FxHashMap<Rc<BTreeSet<StateId>>, StateId> = Default::default();
     for (from, input, to) in transitions {
         let from_state_id = if from.len() == 1 {
             *from.iter().next().unwrap()
@@ -146,37 +146,40 @@ fn dfa_from_determinized_nfa(nfa: &NFA, transitions: &FxHashSet<(BTreeSet<StateI
 // https://www.gatevidyalay.com/converting-nfa-to-dfa-solved-examples/
 // Approach used: Induction on the transitions table.
 fn dfa_from_nfa(nfa: &NFA) -> DFA {
-    let mut accepting_states: FxHashSet<BTreeSet<StateId>> = Default::default();
+    let mut accepting_states: FxHashSet<Rc<BTreeSet<StateId>>> = Default::default();
 
-    let mut transitions: FxHashSet<(BTreeSet<StateId>, Input, BTreeSet<StateId>)> = Default::default();
+    let mut transitions: FxHashSet<(Rc<BTreeSet<StateId>>, Input, Rc<BTreeSet<StateId>>)> = Default::default();
     let mut scalar_transitions: FxHashSet<(StateId, Input, StateId)> = Default::default();
     scalar_transitions.extend(nfa.get_transitions_from(nfa.starting_state).into_iter().map(|(input, to)| (nfa.starting_state, input, to)));
     let mut scalar_transitions: Vec<(StateId, Input, StateId)> = scalar_transitions.into_iter().collect();
     scalar_transitions.sort_by_key(|(from, input, _)| (*from, input.clone()));
     for (_, common_input_transitions) in group_by_key(&scalar_transitions, |(from, input, _)| (from, input)) {
-        let combined_state: BTreeSet<StateId> = common_input_transitions.iter().map(|(_, _, to)| *to).collect();
+        let combined_state: Rc<BTreeSet<StateId>> = {
+            let combined_state: BTreeSet<StateId> = common_input_transitions.iter().map(|(_, _, to)| *to).collect();
+            Rc::new(combined_state)
+        };
         for (from, input, q) in common_input_transitions {
-            let from_combined_state = BTreeSet::from_iter([*from]);
-            transitions.insert((from_combined_state, input.clone(), combined_state.clone()));
+            let from_combined_state = Rc::new(BTreeSet::from_iter([*from]));
+            transitions.insert((from_combined_state.clone(), input.clone(), combined_state.clone()));
             if nfa.accepting_states.contains((*q).into()) {
                 accepting_states.insert(combined_state.clone());
             }
         }
     }
 
-    let mut result_transitions: FxHashSet<(BTreeSet<StateId>, Input, BTreeSet<StateId>)> = transitions.clone();
+    let mut result_transitions: FxHashSet<(Rc<BTreeSet<StateId>>, Input, Rc<BTreeSet<StateId>>)> = transitions.clone();
     while !transitions.is_empty() {
-        let mut new_transitions: FxHashSet<(BTreeSet<StateId>, Input, BTreeSet<StateId>)> = Default::default();
+        let mut new_transitions: FxHashSet<(Rc<BTreeSet<StateId>>, Input, Rc<BTreeSet<StateId>>)> = Default::default();
 
         for (_, _, to) in transitions {
             let mut scalar_transitions: FxHashSet<(StateId, Input, StateId)> = Default::default();
-            for to_prime in &to {
+            for to_prime in to.iter() {
                 scalar_transitions.extend(nfa.get_transitions_from(*to_prime).into_iter().map(|(input, to)| (*to_prime, input, to)));
             }
             let mut scalar_transitions: Vec<(StateId, Input, StateId)> = scalar_transitions.into_iter().collect();
             scalar_transitions.sort_by_key(|(_, input, _)| input.clone());
             for (_, common_input_transitions) in group_by_key(&scalar_transitions, |(_, input, _)| input) {
-                let combined_state: BTreeSet<StateId> = common_input_transitions.iter().map(|(_, _, to)| *to).collect();
+                let combined_state: Rc<BTreeSet<StateId>> = Rc::new(common_input_transitions.iter().map(|(_, _, to)| *to).collect());
                 for (_, input, q) in common_input_transitions {
                     if result_transitions.contains(&(to.clone(), input.clone(), combined_state.clone())) {
                         continue;
