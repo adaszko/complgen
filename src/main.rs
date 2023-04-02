@@ -29,19 +29,27 @@ fn main() {
         }
     };
     let (command, expr) = grammar.into_command_expr();
+
+    println!("Grammar -> EpsilonNFA");
     let epsilon_nfa = EpsilonNFA::from_expr(&expr);
+
+    println!("EpsilonNFA -> NFA");
     let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
+
+    println!("NFA -> DFA");
     let dfa = DFA::from_nfa(&nfa);
-    dfa.to_dot_file("dfa.dot").unwrap();
+
     let mut output = String::default();
 
     {
+        println!("Writing Bash completion script");
         bash::write_completion_script(&mut output, &command, &dfa).unwrap();
         let mut bash_completion_script = std::fs::File::create("completion.bash").unwrap();
         bash_completion_script.write_all(output.as_bytes()).unwrap();
     }
 
     {
+        println!("Writing Fish completion script");
         fish::write_completion_script(&mut output, &command, &dfa).unwrap();
         let mut fish_completion_script = std::fs::File::create("completion.fish").unwrap();
         fish_completion_script.write_all(output.as_bytes()).unwrap();
