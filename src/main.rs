@@ -44,14 +44,16 @@ fn main() {
     {
         println!("Writing Bash completion script");
         bash::write_completion_script(&mut output, &command, &dfa).unwrap();
-        let mut bash_completion_script = std::fs::File::create("completion.bash").unwrap();
+        let mut bash_completion_script = std::fs::File::create(format!("{command}.bash")).unwrap();
         bash_completion_script.write_all(output.as_bytes()).unwrap();
     }
+
+    output.clear();
 
     {
         println!("Writing Fish completion script");
         fish::write_completion_script(&mut output, &command, &dfa).unwrap();
-        let mut fish_completion_script = std::fs::File::create("completion.fish").unwrap();
+        let mut fish_completion_script = std::fs::File::create(format!("{command}.fish")).unwrap();
         fish_completion_script.write_all(output.as_bytes()).unwrap();
     }
 }

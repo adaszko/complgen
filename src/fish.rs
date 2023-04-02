@@ -5,6 +5,9 @@ use crate::dfa::DFA;
 use crate::nfa::Input;
 
 
+// TODO https://stackoverflow.com/a/40019138
+
+
 fn make_state_name(command: &str, state: StateId) -> String {
     format!("_{command}_{state}", command = command, state = state)
 }
