@@ -16,7 +16,7 @@ use crate::nfa::Input;
 fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
     writeln!(buffer, r#"    declare -A transitions"#)?;
     for state in dfa.get_all_states() {
-        let mut transitions: Vec<(Input, StateId)> = dfa.get_transitions_from(state).into_iter().filter(|(input, _)| !input.is_any()).collect();
+        let mut transitions: Vec<(Input, StateId)> = dfa.get_transitions_from(state as StateId).into_iter().filter(|(input, _)| !input.is_any()).collect();
         if transitions.is_empty() {
             continue;
         }

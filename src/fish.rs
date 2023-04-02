@@ -56,7 +56,7 @@ end
 
 pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
     for state in dfa.get_all_states() {
-        write_dfa_state_function(buffer, command, dfa, state)?;
+        write_dfa_state_function(buffer, command, dfa, state as StateId)?;
     }
 
     write!(buffer, r#"

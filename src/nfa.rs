@@ -71,7 +71,7 @@ impl Default for NFA {
 // https://cstaleem.com/elimination-of-epsilon-%CE%B5-from-nfa
 fn nfa_from_epsilon_nfa(epsilon_nfa: &EpsilonNFA) -> NFA {
     let mut result = NFA::default();
-    let mut starting_states = RoaringBitmap::from_iter(&[epsilon_nfa.starting_state]);
+    let mut starting_states = RoaringBitmap::from_iter(&[epsilon_nfa.starting_state.into()]);
     result.accepting_states = epsilon_nfa.accepting_states.clone();
     result.unallocated_state_id = epsilon_nfa.unallocated_state_id;
 
@@ -88,10 +88,10 @@ fn nfa_from_epsilon_nfa(epsilon_nfa: &EpsilonNFA) -> NFA {
     }
 
     for from in epsilon_nfa.get_all_states() {
-        let mut epsilon_closure = epsilon_nfa.get_epsilon_closure_dfs(from);
+        let mut epsilon_closure = epsilon_nfa.get_epsilon_closure_dfs(from as StateId);
         epsilon_closure.reverse();
         for to in epsilon_closure {
-            for (from_prime, input_prime) in epsilon_nfa.get_transitions_to(from) {
+            for (from_prime, input_prime) in epsilon_nfa.get_transitions_to(from as StateId) {
                 if input_prime.is_epsilon() {
                     continue;
                 }
@@ -101,8 +101,8 @@ fn nfa_from_epsilon_nfa(epsilon_nfa: &EpsilonNFA) -> NFA {
                     to,
                 );
             }
-            if epsilon_nfa.is_starting_state(from) {
-                starting_states.insert(to);
+            if epsilon_nfa.is_starting_state(from as StateId) {
+                starting_states.insert(to.into());
             }
             if epsilon_nfa.is_accepting_state(to) {
                 result.accepting_states.insert(from);
@@ -115,17 +115,17 @@ fn nfa_from_epsilon_nfa(epsilon_nfa: &EpsilonNFA) -> NFA {
     result.starting_state = if starting_states.len() > 1 {
         let starting_state = result.alloc_state_id();
         for from in starting_states {
-            for (input, to) in result.get_transitions_from(from) {
+            for (input, to) in result.get_transitions_from(from as StateId) {
                 result.add_transition(starting_state, input, to);
             }
             if result.accepting_states.contains(from) {
-                result.accepting_states.insert(starting_state);
+                result.accepting_states.insert(starting_state.into());
             }
         }
         starting_state
     }
     else {
-        starting_states.iter().next().unwrap()
+        starting_states.iter().next().unwrap() as StateId
     };
 
     result
@@ -145,9 +145,9 @@ impl NFA {
     pub fn get_all_states(&self) -> RoaringBitmap {
         let mut states: RoaringBitmap = Default::default();
         for (from, to) in &self.transitions {
-            states.insert(*from);
+            states.insert((*from).into());
             to.iter().for_each(|(_, to)| {
-                states.insert(*to);
+                states.insert((*to).into());
             });
         }
         states
@@ -171,7 +171,7 @@ impl NFA {
         writeln!(output, "digraph nfa {{")?;
         writeln!(output, "\trankdir=LR;")?;
 
-        if self.accepting_states.contains(self.starting_state) {
+        if self.accepting_states.contains(self.starting_state.into()) {
             writeln!(output, "\tnode [shape = doubleoctagon];")?;
         }
         else {
@@ -181,7 +181,7 @@ impl NFA {
 
         let regular_states = {
             let mut states = [&self.get_all_states(), &self.accepting_states].difference();
-            states.remove(self.starting_state);
+            states.remove(self.starting_state.into());
             states
         };
 
@@ -242,7 +242,7 @@ mod tests {
 
     impl NFA {
         pub fn mark_state_accepting(&mut self, state: StateId) {
-            self.accepting_states.insert(state);
+            self.accepting_states.insert(state.into());
         }
 
         pub fn accepts(&self, inputs: &[&str]) -> bool {
@@ -252,7 +252,7 @@ mod tests {
                     return false;
                 };
 
-                if input_index == inputs.len() && self.accepting_states.contains(current_state) {
+                if input_index == inputs.len() && self.accepting_states.contains(current_state.into()) {
                     return true;
                 }
 

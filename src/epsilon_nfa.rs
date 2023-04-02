@@ -116,9 +116,9 @@ impl EpsilonNFA {
     pub fn get_all_states(&self) -> RoaringBitmap {
         let mut states: RoaringBitmap = Default::default();
         for (from, to) in &self.transitions {
-            states.insert(*from);
+            states.insert((*from).into());
             to.iter().for_each(|(_, to)| {
-                states.insert(*to);
+                states.insert((*to).into());
             });
         }
         states
@@ -129,7 +129,7 @@ impl EpsilonNFA {
     }
 
     pub fn is_accepting_state(&self, state: StateId) -> bool {
-        self.accepting_states.contains(state)
+        self.accepting_states.contains(state.into())
     }
 
     // A set of states reachable from `state` via ϵ-transitions
@@ -139,7 +139,7 @@ impl EpsilonNFA {
         let mut visited: RoaringBitmap = Default::default();
         let mut to_visit: Vec<StateId> = vec![start_state];
         while let Some(current_state) = to_visit.pop() {
-            if visited.contains(current_state) {
+            if visited.contains(current_state.into()) {
                 continue;
             }
 
@@ -148,14 +148,14 @@ impl EpsilonNFA {
                     continue;
                 }
 
-                if visited.contains(to) {
+                if visited.contains(to.into()) {
                     continue;
                 }
 
                 to_visit.push(to);
             }
 
-            visited.insert(current_state);
+            visited.insert(current_state.into());
             result.push(current_state);
         }
         debug_assert_eq!(result.first(), Some(&start_state));
@@ -177,7 +177,7 @@ impl EpsilonNFA {
     }
 
     pub fn mark_state_accepting(&mut self, state: StateId) {
-        self.accepting_states.insert(state);
+        self.accepting_states.insert(state.into());
     }
 
     pub fn get_transitions_from(&self, from: StateId) -> HashSet<(EpsilonInput, StateId)> {
@@ -203,7 +203,7 @@ impl EpsilonNFA {
         writeln!(output, "digraph nfa {{")?;
         writeln!(output, "\trankdir=LR;")?;
 
-        if self.accepting_states.contains(self.starting_state) {
+        if self.accepting_states.contains(self.starting_state.into()) {
             writeln!(output, "\tnode [shape = doubleoctagon];")?;
         }
         else {
@@ -213,7 +213,7 @@ impl EpsilonNFA {
 
         let regular_states = {
             let mut states = [&self.get_all_states(), &self.accepting_states].difference();
-            states.remove(self.starting_state);
+            states.remove(self.starting_state.into());
             states
         };
 
@@ -279,7 +279,7 @@ mod tests {
             tos.iter()
                 .filter_map(|(transition_input, to)| {
                     if transition_input.matches(input) {
-                        Some(*to)
+                        Some(*to as u32)
                     } else {
                         None
                     }
@@ -301,7 +301,7 @@ mod tests {
                 }
 
                 for (state, input_index) in &reachable_states {
-                    if *input_index == inputs.len() && self.accepting_states.contains(*state) {
+                    if *input_index == inputs.len() && self.accepting_states.contains((*state).into()) {
                         return true;
                     }
                 }
@@ -316,7 +316,7 @@ mod tests {
                 for (from, input_index) in &reachable_states {
                     if *input_index < inputs.len() {
                         for to in self.get_transitions_from_matching(*from, inputs[*input_index]) {
-                            current_reachable_states.insert((to, input_index + 1));
+                            current_reachable_states.insert((to as StateId, input_index + 1));
                         }
                     }
                 }

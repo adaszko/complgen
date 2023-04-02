@@ -59,7 +59,7 @@ fn cleanup_dfa(dfa: &DFA) -> DFA {
     result.starting_state = dfa.starting_state;
     for (from, tos) in &dfa.transitions {
         for (input, to) in tos {
-            if reachable_states.contains(*from) && reachable_states.contains(*to) {
+            if reachable_states.contains(*from as u32) && reachable_states.contains(*to as u32) {
                 result.add_transition(*from, input.clone(), *to);
             }
         }
@@ -69,7 +69,7 @@ fn cleanup_dfa(dfa: &DFA) -> DFA {
             result.accepting_states.insert(state);
         }
     }
-    result.unallocated_state_id = reachable_states.iter().max().map(|m| m + 1).unwrap_or(0);
+    result.unallocated_state_id = reachable_states.iter().max().map(|m| m + 1).unwrap_or(0) as StateId;
     result
 }
 
@@ -82,7 +82,7 @@ fn collapse_equivalent_states(dfa: &DFA) -> DFA {
 
     let mut equivalent_states_from_outgoing_transitions: FxHashMap<(bool, BTreeSet<(Input, StateId)>), RoaringBitmap> = Default::default();
     for from in dfa.get_all_states() {
-        let outgoing_transitions: BTreeSet<(Input, StateId)> = dfa.get_transitions_from(from).iter().map(|(input, to)| (input.clone(), *to)).collect();
+        let outgoing_transitions: BTreeSet<(Input, StateId)> = dfa.get_transitions_from(from as StateId).iter().map(|(input, to)| (input.clone(), *to)).collect();
         let is_accepting_state = dfa.accepting_states.contains(from);
         equivalent_states_from_outgoing_transitions.entry((is_accepting_state, outgoing_transitions)).or_default().insert(from);
     }
@@ -91,7 +91,7 @@ fn collapse_equivalent_states(dfa: &DFA) -> DFA {
     for (_, equivalent_states) in equivalent_states_from_outgoing_transitions {
         let representant = equivalent_states.iter().next().unwrap();
         for state in equivalent_states {
-            representant_state.insert(state, representant);
+            representant_state.insert(state as StateId, representant as StateId);
         }
     }
 
@@ -136,7 +136,7 @@ fn dfa_from_determinized_nfa(nfa: &NFA, transitions: &FxHashSet<(BTreeSet<StateI
             continue;
         }
         let to_state_id = *new_states.entry(to.clone()).or_insert_with(|| result.add_state());
-        result.accepting_states.insert(to_state_id);
+        result.accepting_states.insert(to_state_id.into());
     }
 
     result = collapse_equivalent_states(&result);
@@ -158,7 +158,7 @@ fn dfa_from_nfa(nfa: &NFA) -> DFA {
         for (from, input, q) in common_input_transitions {
             let from_combined_state = BTreeSet::from_iter([*from]);
             transitions.insert((from_combined_state, input.clone(), combined_state.clone()));
-            if nfa.accepting_states.contains(*q) {
+            if nfa.accepting_states.contains((*q).into()) {
                 accepting_states.insert(combined_state.clone());
             }
         }
@@ -182,7 +182,7 @@ fn dfa_from_nfa(nfa: &NFA) -> DFA {
                         continue;
                     }
                     new_transitions.insert((to.clone(), input.clone(), combined_state.clone()));
-                    if nfa.accepting_states.contains(*q) {
+                    if nfa.accepting_states.contains((*q).into()) {
                         accepting_states.insert(combined_state.clone());
                     }
                 }
@@ -227,9 +227,9 @@ impl DFA {
     pub fn get_all_states(&self) -> RoaringBitmap {
         let mut states: RoaringBitmap = Default::default();
         for (from, to) in &self.transitions {
-            states.insert(*from);
+            states.insert((*from).into());
             to.iter().for_each(|(_, to)| {
-                states.insert(*to);
+                states.insert((*to).into());
             });
         }
         states
@@ -251,17 +251,17 @@ impl DFA {
         let mut visited: RoaringBitmap = Default::default();
         let mut to_visit: Vec<StateId> = vec![self.starting_state];
         while let Some(current_state) = to_visit.pop() {
-            if visited.contains(current_state) {
+            if visited.contains(current_state.into()) {
                 continue;
             }
 
             for (_, to) in self.get_transitions_from(current_state) {
-                if !visited.contains(to) {
+                if !visited.contains(to.into()) {
                     to_visit.push(to);
                 }
             }
 
-            visited.insert(current_state);
+            visited.insert(current_state.into());
         }
         visited
     }
@@ -277,7 +277,7 @@ impl DFA {
         writeln!(output, "digraph nfa {{")?;
         writeln!(output, "\trankdir=LR;")?;
 
-        if self.accepting_states.contains(self.starting_state) {
+        if self.accepting_states.contains(self.starting_state.into()) {
             writeln!(output, "\tnode [shape = doubleoctagon];")?;
         }
         else {
@@ -287,7 +287,7 @@ impl DFA {
 
         let regular_states = {
             let mut states = [&self.get_all_states(), &self.accepting_states].difference();
-            states.remove(self.starting_state);
+            states.remove(self.starting_state.into());
             states
         };
 
@@ -342,7 +342,7 @@ mod tests {
         pub fn accepts(&self, inputs: &[&str]) -> bool {
             let mut backtracking_stack: Vec<(usize, StateId)> = vec![(0, self.starting_state)];
             while let Some((input_index, current_state)) = backtracking_stack.pop() {
-                if input_index == inputs.len() && self.accepting_states.contains(current_state) {
+                if input_index == inputs.len() && self.accepting_states.contains(current_state.into()) {
                     return true;
                 }
 
