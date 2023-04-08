@@ -7,6 +7,15 @@ script that can be distributed on its own.  You can, for instance, generate comp
 command line tool on CI and package them along with your command line tool.  No additional software needs to
 be installed in order to use those custom completions.
 
+## Usage
+
+The command:
+
+    cargo run --release <darcs.usage
+
+will generate `darcs.bash` and `darcs.fish` in the current directory that can be sources in the respective
+shells to get `darcs` completions.
+
 ## Rationale
 
 Although various libraries exist for parsing command line arguments that can generate shell completions for
