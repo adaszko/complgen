@@ -14,6 +14,12 @@ you (e.g. clap), `complgen` has the advantage of being just a command line tool 
 particular implementation language.  The disadvantage, of course, is that now, parsing and completions are
 maintained separately from each other risking divergence.  On balance, it is deemed still worth it.
 
+# Status
+
+ * Generates working completion scripts for `bash` and `fish`.  `zsh` can use `bash` script [via bash
+   compatibility mode](https://stackoverflow.com/a/8492043).
+ * The implementation is still a bit dirty.  There's lots of room for optimization.
+
 # Syntax
 
 The grammar is based on [compleat](https://github.com/mbrubeck/compleat/blob/master/README.markdown#syntax)'s one.
@@ -32,22 +38,27 @@ Use parentheses to group patterns:
 
 Patterns may also include *variables*:
 
+# Roadmap
+
+ * Implement strings interning to speed it up and deduplicate strings in resulting scripts.
+ * Generate DFA directly from the grammar instead of going through Grammar -> ᵋ-NFA -> NFA -> DFA.
+ * Implement DFA minimization
+    * https://www.uobabylon.edu.iq/eprints/paper_12_2714_213.pdf
+    * https://people.csail.mit.edu/rrw/6.045-2019/notemindfa.pdf
+ * Add an "interpreter mode" that reads `*.usage` files on-demand but requires complgen to be installed on the user's machine
+
+ * DRY to_dot fns into a trait fn
+
+ * End-to-end tests that excercise the generation completion scripts and check they behave properly.
+
  * `name ::= expression;` defines a new production that can be referred to from other productions via `<name>`
-   syntax.  Referring to a production recursively is not supported.
+   syntax.  Referring to a production recursively won't be supported as that would take us outside of regular languages.
 
  * `name = { shell-command... }` defines a variable that uses a shell command to generate suggested
    completions.  The shell command should print one suggested completion per line.  The `$COMP_LINE` and
    `$COMP_CWORD` environment will contain the input line and the current word being completed.
 
  * If no value is defined for `name`, then the pattern `<name>` will match any word.
-
-# Roadmap
-
- * Implement DFA minimization via [Hopcroft's algorithm](https://en.wikipedia.org/wiki/DFA_minimization#Hopcroft's_algorithm)
-    * https://www.uobabylon.edu.iq/eprints/paper_12_2714_213.pdf
-    * https://people.csail.mit.edu/rrw/6.045-2019/notemindfa.pdf
- * Add producing the completion script based on the NFA in order to reduce completion script size
- * Add an "interpreter mode" that reads `*.usage` files on-demand but requires complgen to be installed on the user's machine
 
 # Limitations
 
