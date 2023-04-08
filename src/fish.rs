@@ -16,7 +16,7 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
             continue;
         }
         let state_transitions: String = itertools::join(transitions.into_iter().map(|(input, to)| format!("set -a inputs {}; set -a tos {};", input, to+1)), " ");
-        writeln!(buffer, r#"    set transitions[{}] "set -l inputs; set -l tos; {state_transitions}""#, state+1)?;
+        writeln!(buffer, r#"    set transitions[{}] "{state_transitions}""#, state+1)?;
     }
 
     writeln!(buffer, "")?;
@@ -51,6 +51,8 @@ function _{command}
     set --local word_index 2
     while test $word_index -lt $COMP_CWORD
         set --query transitions[$state] || return 1
+        set --local --erase inputs
+        set --local --erase tos
         eval $transitions[$state]
         set --local -- word $COMP_WORDS[$word_index]
         if contains -- $word $inputs
@@ -69,6 +71,8 @@ function _{command}
     end
 
     set --query transitions[$state] || return 1
+    set --local --erase inputs
+    set --local --erase tos
     eval $transitions[$state]
     printf '%s\n' $inputs
     return 0
