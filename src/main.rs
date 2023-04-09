@@ -1,6 +1,8 @@
 use std::io::Write;
 
-use complgen::Error;
+use clap::Parser;
+
+use complgen::{Result};
 
 use crate::dfa::DFA;
 use crate::nfa::NFA;
@@ -13,21 +15,43 @@ mod nfa;
 mod dfa;
 mod bash;
 mod fish;
+mod complete;
 
 
-fn main() {
+#[derive(clap::Parser)]
+struct Cli {
+    #[clap(subcommand)]
+    mode: Mode,
+}
+
+
+#[derive(clap::Subcommand)]
+enum Mode {
+    Complete(CompleteArgs),
+    Compile,
+}
+
+
+#[derive(clap::Args)]
+struct CompleteArgs {
+    args: Vec<String>,
+}
+
+
+fn complete(args: &[&str]) -> Result<()> {
     let input = std::io::read_to_string(std::io::stdin()).unwrap();
-    let grammar = match parse(&input) {
-        Ok(g) => g,
-        Err(Error::ParsingError(e)) => {
-            eprintln!("Unable to parse grammar: {:?}", e);
-            return;
-        },
-        Err(e) => {
-            eprintln!("{:?}", e);
-            return;
-        }
-    };
+    let grammar = parse(&input)?;
+    let (_, expr) = grammar.into_command_expr();
+    for completion in complete::get_completions(&expr, args, args.len() + 1) {
+        println!("{}", completion);
+    }
+    Ok(())
+}
+
+
+fn compile() -> Result<()> {
+    let input = std::io::read_to_string(std::io::stdin()).unwrap();
+    let grammar = parse(&input)?;
     let (command, expr) = grammar.into_command_expr();
 
     println!("Grammar -> EpsilonNFA");
@@ -56,4 +80,19 @@ fn main() {
         let mut fish_completion_script = std::fs::File::create(format!("{command}.fish")).unwrap();
         fish_completion_script.write_all(output.as_bytes()).unwrap();
     }
+
+    Ok(())
+}
+
+
+fn main() -> Result<()> {
+    let args = Cli::parse();
+    match args.mode {
+        Mode::Complete(args) => {
+            let v: Vec<&str> = args.args.iter().map(|s| s.as_ref()).collect();
+            complete(&v)?
+        },
+        Mode::Compile => compile()?,
+    };
+    Ok(())
 }
