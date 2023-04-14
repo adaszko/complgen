@@ -42,7 +42,7 @@ fn complete(args: &[&str]) -> Result<()> {
     let input = std::io::read_to_string(std::io::stdin()).unwrap();
     let grammar = parse(&input)?;
     let (_, expr) = grammar.into_command_expr();
-    for completion in complete::get_completions(&expr, args, args.len() + 1) {
+    for completion in complete::get_completions(&expr, args) {
         println!("{}", completion);
     }
     Ok(())
