@@ -34,12 +34,13 @@ enum Mode {
 
 #[derive(clap::Args)]
 struct CompleteArgs {
+    usage_file_path: String,
     args: Vec<String>,
 }
 
 
-fn complete(args: &[&str]) -> Result<()> {
-    let input = std::io::read_to_string(std::io::stdin()).unwrap();
+fn complete(args: &[&str], usage_file_path: &str) -> Result<()> {
+    let input = std::fs::read_to_string(usage_file_path).unwrap();
     let grammar = parse(&input)?;
     let (_, expr) = grammar.into_command_expr();
     for completion in complete::get_completions(&expr, args) {
@@ -90,7 +91,7 @@ fn main() -> Result<()> {
     match args.mode {
         Mode::Complete(args) => {
             let v: Vec<&str> = args.args.iter().map(|s| s.as_ref()).collect();
-            complete(&v)?
+            complete(&v, &args.usage_file_path)?
         },
         Mode::Compile => compile()?,
     };
