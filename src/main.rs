@@ -28,14 +28,25 @@ struct Cli {
 #[derive(clap::Subcommand)]
 enum Mode {
     Complete(CompleteArgs),
-    Compile,
+    Compile(CompileArgs),
 }
-
 
 #[derive(clap::Args)]
 struct CompleteArgs {
     usage_file_path: String,
     args: Vec<String>,
+}
+
+
+#[derive(clap::Args)]
+struct CompileArgs {
+    usage_file_path: String,
+
+    #[clap(long)]
+    bash_script_path: Option<String>,
+
+    #[clap(long)]
+    fish_script_path: Option<String>,
 }
 
 
@@ -50,8 +61,8 @@ fn complete(args: &[&str], usage_file_path: &str) -> Result<()> {
 }
 
 
-fn compile() -> Result<()> {
-    let input = std::io::read_to_string(std::io::stdin()).unwrap();
+fn compile(args: &CompileArgs) -> Result<()> {
+    let input = std::fs::read_to_string(&args.usage_file_path).unwrap();
     let grammar = parse(&input)?;
     let (command, expr) = grammar.into_command_expr();
 
@@ -66,19 +77,19 @@ fn compile() -> Result<()> {
 
     let mut output = String::default();
 
-    {
+    if let Some(path) = &args.bash_script_path {
         println!("Writing Bash completion script");
         bash::write_completion_script(&mut output, &command, &dfa).unwrap();
-        let mut bash_completion_script = std::fs::File::create(format!("{command}.bash")).unwrap();
+        let mut bash_completion_script = std::fs::File::create(path).unwrap();
         bash_completion_script.write_all(output.as_bytes()).unwrap();
     }
 
     output.clear();
 
-    {
+    if let Some(path) = &args.fish_script_path {
         println!("Writing Fish completion script");
         fish::write_completion_script(&mut output, &command, &dfa).unwrap();
-        let mut fish_completion_script = std::fs::File::create(format!("{command}.fish")).unwrap();
+        let mut fish_completion_script = std::fs::File::create(path).unwrap();
         fish_completion_script.write_all(output.as_bytes()).unwrap();
     }
 
@@ -93,7 +104,7 @@ fn main() -> Result<()> {
             let v: Vec<&str> = args.args.iter().map(|s| s.as_ref()).collect();
             complete(&v, &args.usage_file_path)?
         },
-        Mode::Compile => compile()?,
+        Mode::Compile(args) => compile(&args)?,
     };
     Ok(())
 }
