@@ -60,7 +60,6 @@ fn match_against_regex<'a, 'b>(expr: &'a Expr, mut words: &'b [&'a str], complet
 
 
 fn generate_completions<'a, 'b>(expr: &'a Expr, completions: Rc<RefCell<Vec<&'a str>>>) {
-    // We're generating completions for args[completed_word_index].
     match expr {
         Expr::Literal(s) => completions.borrow_mut().push(s),
         Expr::Variable(_) => (),
@@ -77,12 +76,12 @@ fn generate_completions<'a, 'b>(expr: &'a Expr, completions: Rc<RefCell<Vec<&'a 
 
 
 pub fn do_get_completions<'a, 'b>(expr: &'a Expr, words_before_cursor: &'b [&'a str], completions: Rc<RefCell<Vec<&'a str>>>) -> Option<&'b [&'a str]> {
-    if words_before_cursor.is_empty() {
-        generate_completions(expr, completions);
-        Some(words_before_cursor)
+    if !words_before_cursor.is_empty() {
+        match_against_regex(expr, words_before_cursor, completions)
     }
     else {
-        match_against_regex(expr, words_before_cursor, completions)
+        generate_completions(expr, completions);
+        None
     }
 }
 
@@ -93,16 +92,10 @@ pub fn get_completions<'a, 'b>(expr: &'a Expr, words_before_cursor: &'b [&'a str
     // checker's scope is limits to a single function so it isn't aware of the indirect recursion.
     // We work around it using Rc<RefCell<>>.
     let completions: Rc<RefCell<Vec<&'a str>>> = Default::default();
-    let remaining_words = match do_get_completions(expr, words_before_cursor, completions.clone()) {
-        Some(remaining_words) => remaining_words,
-        None => return vec![],
-    };
-    return if remaining_words.is_empty() {
-        Rc::<RefCell<Vec<&str>>>::try_unwrap(completions).unwrap().into_inner()
-    }
-    else {
-        vec![]
-    }
+    do_get_completions(expr, words_before_cursor, completions.clone());
+    let mut result = Rc::<RefCell<Vec<&str>>>::try_unwrap(completions).unwrap().into_inner();
+    result.sort();
+    result
 }
 
 
