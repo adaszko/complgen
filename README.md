@@ -49,6 +49,7 @@ Patterns may also include *variables*:
 
 # Roadmap
 
+ * Replace String with Rc<String> in Expr struct
  * Implement strings interning to speed it up and deduplicate strings in resulting scripts.
  * Generate DFA directly from the grammar instead of going through Grammar -> ᵋ-NFA -> NFA -> DFA.
  * Implement DFA minimization
