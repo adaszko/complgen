@@ -16,6 +16,7 @@ mod dfa;
 mod bash;
 mod fish;
 mod complete;
+mod regex;
 
 
 #[derive(clap::Parser)]
