@@ -89,7 +89,7 @@ pub fn do_get_completions<'a, 'b>(expr: &'a Expr, words_before_cursor: &'b [&'a 
 pub fn get_completions<'a, 'b>(expr: &'a Expr, words_before_cursor: &'b [&'a str]) -> Vec<&'a str> {
     // The borrow checker isn't happy with passing a mut ref in a loop inside of
     // match_against_regex().  The reason for that is we're using indirect recursion and borrow
-    // checker's scope is limits to a single function so it isn't aware of the indirect recursion.
+    // checker's scope is limited to a single function so it isn't aware of the indirect recursion.
     // We work around it using Rc<RefCell<>>.
     let completions: Rc<RefCell<Vec<&'a str>>> = Default::default();
     do_get_completions(expr, words_before_cursor, completions.clone());
