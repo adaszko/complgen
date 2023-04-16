@@ -187,9 +187,59 @@ impl Regex {
 mod tests {
     use super::*;
 
+    fn make_sample_star_regex() -> Regex {
+        Regex::Star(Box::new(Regex::Or(vec![Regex::Literal("a".to_string(), 1), Regex::Literal("b".to_string(), 2),])))
+    }
+
+    fn make_sample_regex() -> Regex {
+        // (a|b)*a
+        Regex::Cat(vec![
+            make_sample_star_regex(),
+            Regex::Literal("a".to_string(), 3),
+        ])
+    }
+
     #[test]
     fn nullable() {
-        let regex = Regex::RightmostLeaf(1);
-        assert!(regex.nullable());
+        let star_regex = make_sample_star_regex();
+        assert!(star_regex.nullable());
+
+        let regex = make_sample_regex();
+        assert!(!regex.nullable());
+    }
+
+    #[test]
+    fn firstpos() {
+        let regex = make_sample_regex();
+        assert_eq!(regex.firstpos(), HashSet::from([1,2,3]));
+    }
+
+    #[test]
+    fn lastpos() {
+        let regex = make_sample_regex();
+        assert_eq!(regex.lastpos(), HashSet::from([3]));
+    }
+
+    fn make_followpos_regex() -> Regex {
+        // (a|b)*abb#
+        Regex::Cat(vec![
+            make_sample_star_regex(),
+            Regex::Literal("a".to_string(), 3),
+            Regex::Literal("b".to_string(), 4),
+            Regex::Literal("b".to_string(), 5),
+            Regex::RightmostLeaf(6),
+        ])
+    }
+
+    #[test]
+    fn followpos() {
+        let regex = make_followpos_regex();
+        let fp = regex.followpos();
+        assert_eq!(fp.iter().filter_map(|(from, to)| if *from == 1 { Some(*to) } else { None }).collect::<HashSet<_>>(), HashSet::from([1,2,3]));
+        assert_eq!(fp.iter().filter_map(|(from, to)| if *from == 2 { Some(*to) } else { None }).collect::<HashSet<_>>(), HashSet::from([1,2,3]));
+        assert_eq!(fp.iter().filter_map(|(from, to)| if *from == 3 { Some(*to) } else { None }).collect::<HashSet<_>>(), HashSet::from([4]));
+        assert_eq!(fp.iter().filter_map(|(from, to)| if *from == 4 { Some(*to) } else { None }).collect::<HashSet<_>>(), HashSet::from([5]));
+        assert_eq!(fp.iter().filter_map(|(from, to)| if *from == 5 { Some(*to) } else { None }).collect::<HashSet<_>>(), HashSet::from([6]));
+        assert_eq!(fp.iter().filter_map(|(from, to)| if *from == 6 { Some(*to) } else { None }).collect::<HashSet<_>>(), HashSet::from([]));
     }
 }
