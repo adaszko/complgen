@@ -1,5 +1,6 @@
 use std::collections::{HashSet, BTreeMap};
 
+use itertools::Itertools;
 use roaring::RoaringBitmap;
 
 use crate::grammar::Expr;
@@ -8,7 +9,7 @@ use crate::grammar::Expr;
 pub enum Regex {
     Literal(String, usize),
     Variable(String, usize),
-    Cat(Vec<Regex>),
+    Cat(Box<Regex>, Box<Regex>),
     Or(Vec<Regex>),
     Star(Box<Regex>),
     Epsilon,
@@ -21,7 +22,7 @@ impl std::fmt::Debug for Regex {
         match self {
             Self::Literal(arg0, position) => f.write_fmt(format_args!(r#"Literal("{}".to_string(), {})"#, arg0, position)),
             Self::Variable(arg0, position) => f.write_fmt(format_args!(r#"Variable("{}".to_string(), {})"#, arg0, position)),
-            Self::Cat(arg0) => f.write_fmt(format_args!(r#"Cat(vec!{:?})"#, arg0)),
+            Self::Cat(left, right) => f.write_fmt(format_args!(r#"Cat(Box::new({:?}), Box::new({:?}))"#, left, right)),
             Self::Or(arg0) => f.write_fmt(format_args!(r#"Or(vec!{:?})"#, arg0)),
             Self::Star(arg0) => f.write_fmt(format_args!(r#"Star(Box::new({:?}))"#, arg0)),
             Self::RightmostLeaf(position) => f.write_fmt(format_args!(r#"RightmostLeaf({})"#, position)),
@@ -36,13 +37,17 @@ fn do_from_expr(e: &Expr, mut position: usize) -> (Regex, usize) {
         Expr::Literal(s) => (Regex::Literal(s.to_string(), position), position + 1),
         Expr::Variable(s) => (Regex::Variable(s.to_string(), position), position + 1),
         Expr::Sequence(subexprs) => {
-            let mut subregexes: Vec<Regex> = Default::default();
-            for e in subexprs {
-                let (subregex, pos) = do_from_expr(e, position);
-                subregexes.push(subregex);
+            let mut left = {
+                let (re, pos) = do_from_expr(&subexprs[0], position);
                 position = pos;
+                re
+            };
+            for right in &subexprs[1..] {
+                let (re, pos) = do_from_expr(right, position);
+                position = pos;
+                left = Regex::Cat(Box::new(left), Box::new(re))
             }
-            (Regex::Cat(subregexes), position)
+            (left, position)
         },
         Expr::Alternative(subexprs) => {
             let mut subregexes: Vec<Regex> = Default::default();
@@ -59,7 +64,7 @@ fn do_from_expr(e: &Expr, mut position: usize) -> (Regex, usize) {
         }
         Expr::Many1(subexpr) => {
             let (subregex, position) = do_from_expr(subexpr, position);
-            (Regex::Cat(vec![subregex.clone(), Regex::Star(Box::new(subregex))]), position)
+            (Regex::Cat(Box::new(subregex.clone()), Box::new(Regex::Star(Box::new(subregex)))), position)
         },
     }
 }
@@ -75,12 +80,13 @@ fn do_firstpos(re: &Regex, result: &mut HashSet<usize>) {
                 do_firstpos(subre, result);
             }
         },
-        Regex::Cat(subregexes) => {
-            for subre in subregexes {
-                do_firstpos(subre, result);
-                if !subre.nullable() {
-                    break;
-                }
+        Regex::Cat(left, right) => {
+            if left.nullable() {
+                do_firstpos(left, result);
+                do_firstpos(right, result);
+            }
+            else {
+                do_firstpos(left, result);
             }
         },
         Regex::Star(subregex) => { do_firstpos(subregex, result); },
@@ -99,12 +105,13 @@ fn do_lastpos(re: &Regex, result: &mut HashSet<usize>) {
                 do_lastpos(subre, result);
             }
         },
-        Regex::Cat(subregexes) => {
-            for subre in subregexes.iter().rev() {
-                do_lastpos(subre, result);
-                if !subre.nullable() {
-                    break;
-                }
+        Regex::Cat(left, right) => {
+            if right.nullable() {
+                do_lastpos(right, result);
+                do_lastpos(left, result);
+            }
+            else {
+                do_lastpos(right, result);
             }
         },
         Regex::Star(subregex) => { do_lastpos(subregex, result); },
@@ -123,14 +130,13 @@ fn do_followpos(re: &Regex, result: &mut BTreeMap<usize, RoaringBitmap>) {
                 do_followpos(subre, result);
             }
         },
-        Regex::Cat(subregexes) => {
-            for pair in subregexes.windows(2) {
-                let [left, right] = pair else { unreachable!() };
-                let fp = right.firstpos();
-                for i in left.lastpos() {
-                    for j in &fp {
-                        result.entry(i).or_default().insert(u32::try_from(*j).unwrap());
-                    }
+        Regex::Cat(left, right) => {
+            do_followpos(left, result);
+            do_followpos(right, result);
+            let fp = right.firstpos();
+            for i in left.lastpos() {
+                for j in &fp {
+                    result.entry(i).or_default().insert(u32::try_from(*j).unwrap());
                 }
             }
         },
@@ -160,7 +166,7 @@ impl Regex {
             Regex::Literal(_, _) => false,
             Regex::Variable(_, _) => false,
             Regex::Or(children) => children.iter().any(|child| child.nullable()),
-            Regex::Cat(children) => children.iter().all(|child| child.nullable()),
+            Regex::Cat(left, right) => left.nullable() && right.nullable(),
             Regex::Star(_) => true,
             Regex::RightmostLeaf(_) => true,
         }
@@ -196,10 +202,10 @@ mod tests {
 
     fn make_sample_regex() -> Regex {
         // (a|b)*a
-        Regex::Cat(vec![
-            make_sample_star_regex(),
-            Regex::Literal("a".to_string(), 3),
-        ])
+        Regex::Cat(
+            Box::new(make_sample_star_regex()),
+            Box::new(Regex::Literal("a".to_string(), 3)),
+        )
     }
 
     #[test]
@@ -225,13 +231,19 @@ mod tests {
 
     fn make_followpos_regex() -> Regex {
         // (a|b)*abb#
-        Regex::Cat(vec![
-            make_sample_star_regex(),
-            Regex::Literal("a".to_string(), 3),
-            Regex::Literal("b".to_string(), 4),
-            Regex::Literal("b".to_string(), 5),
-            Regex::RightmostLeaf(6),
-        ])
+        Regex::Cat(
+            Box::new(Regex::Cat(
+                Box::new(Regex::Cat(
+                    Box::new(Regex::Cat(
+                        Box::new(make_sample_star_regex()),
+                        Box::new(Regex::Literal("a".to_string(), 3)),
+                    )),
+                    Box::new(Regex::Literal("b".to_string(), 4)),
+                )),
+                Box::new(Regex::Literal("b".to_string(), 5)),
+            )),
+            Box::new(Regex::RightmostLeaf(6)),
+        )
     }
 
     #[test]
