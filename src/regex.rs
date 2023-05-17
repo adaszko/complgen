@@ -22,7 +22,7 @@ impl std::fmt::Debug for Regex {
             Self::Cat(arg0) => f.write_fmt(format_args!(r#"Cat(vec!{:?})"#, arg0)),
             Self::Or(arg0) => f.write_fmt(format_args!(r#"Or(vec!{:?})"#, arg0)),
             Self::Star(arg0) => f.write_fmt(format_args!(r#"Star(Box::new({:?}))"#, arg0)),
-            Self::RightmostLeaf(position) => f.write_fmt(format_args!(r#"Accept({})"#, position)),
+            Self::RightmostLeaf(position) => f.write_fmt(format_args!(r#"RightmostLeaf({})"#, position)),
             Self::Epsilon => f.write_fmt(format_args!(r#"Epsilon"#)),
         }
     }
@@ -82,7 +82,7 @@ fn do_firstpos(re: &Regex, result: &mut HashSet<usize>) {
             }
         },
         Regex::Star(subregex) => { do_firstpos(subregex, result); },
-        Regex::RightmostLeaf(_) => {},
+        Regex::RightmostLeaf(position) => { result.insert(*position); },
     }
 }
 
@@ -106,7 +106,7 @@ fn do_lastpos(re: &Regex, result: &mut HashSet<usize>) {
             }
         },
         Regex::Star(subregex) => { do_lastpos(subregex, result); },
-        Regex::RightmostLeaf(_) => {},
+        Regex::RightmostLeaf(position) => { result.insert(*position); },
     }
 }
 
@@ -124,9 +124,10 @@ fn do_followpos(re: &Regex, result: &mut BTreeSet<(usize, usize)>) {
         Regex::Cat(subregexes) => {
             for pair in subregexes.windows(2) {
                 let [left, right] = pair else { unreachable!() };
+                let fp = right.firstpos();
                 for i in left.lastpos() {
-                    for j in right.firstpos() {
-                        result.insert((i, j));
+                    for j in &fp {
+                        result.insert((i, *j));
                     }
                 }
             }
@@ -235,11 +236,11 @@ mod tests {
     fn followpos() {
         let regex = make_followpos_regex();
         let fp = regex.followpos();
-        assert_eq!(fp.iter().filter_map(|(from, to)| if *from == 1 { Some(*to) } else { None }).collect::<HashSet<_>>(), HashSet::from([1,2,3]));
-        assert_eq!(fp.iter().filter_map(|(from, to)| if *from == 2 { Some(*to) } else { None }).collect::<HashSet<_>>(), HashSet::from([1,2,3]));
-        assert_eq!(fp.iter().filter_map(|(from, to)| if *from == 3 { Some(*to) } else { None }).collect::<HashSet<_>>(), HashSet::from([4]));
-        assert_eq!(fp.iter().filter_map(|(from, to)| if *from == 4 { Some(*to) } else { None }).collect::<HashSet<_>>(), HashSet::from([5]));
-        assert_eq!(fp.iter().filter_map(|(from, to)| if *from == 5 { Some(*to) } else { None }).collect::<HashSet<_>>(), HashSet::from([6]));
         assert_eq!(fp.iter().filter_map(|(from, to)| if *from == 6 { Some(*to) } else { None }).collect::<HashSet<_>>(), HashSet::from([]));
+        assert_eq!(fp.iter().filter_map(|(from, to)| if *from == 5 { Some(*to) } else { None }).collect::<HashSet<_>>(), HashSet::from([6]));
+        assert_eq!(fp.iter().filter_map(|(from, to)| if *from == 4 { Some(*to) } else { None }).collect::<HashSet<_>>(), HashSet::from([5]));
+        assert_eq!(fp.iter().filter_map(|(from, to)| if *from == 3 { Some(*to) } else { None }).collect::<HashSet<_>>(), HashSet::from([4]));
+        assert_eq!(fp.iter().filter_map(|(from, to)| if *from == 2 { Some(*to) } else { None }).collect::<HashSet<_>>(), HashSet::from([1,2,3]));
+        assert_eq!(fp.iter().filter_map(|(from, to)| if *from == 1 { Some(*to) } else { None }).collect::<HashSet<_>>(), HashSet::from([1,2,3]));
     }
 }
