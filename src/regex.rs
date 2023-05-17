@@ -1,6 +1,5 @@
 use std::collections::{HashSet, BTreeMap};
 
-use itertools::Itertools;
 use roaring::RoaringBitmap;
 
 use crate::grammar::Expr;
