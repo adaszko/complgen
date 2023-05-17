@@ -3,9 +3,9 @@
 `complgen` allows you to generate completion scripts for all major shells (bash, zsh, fish) from a *single*,
 concise grammar.  It's inspired by [compleat](https://github.com/mbrubeck/compleat/) but instead of requiring
 for the `compleat` executable to be available at completion time, it compiles the grammar down to a standalone
-shell script that can be distributed on its own.  You can, for instance, generate completion scripts for your
-command line tool on CI and package them along with your command line tool.  No additional software needs to
-be installed in order to use those custom completions.
+shell script that can be distributed on its own.  If you're an author of a CLI tool, you can for instance
+generate completion scripts for your command line tool on CI, and package them along with your command line
+tool.  No additional software needs to be installed in order to use those custom completions.
 
 ## Usage
 
@@ -30,6 +30,8 @@ maintained separately from each other risking divergence.  On balance, it is dee
  * The implementation is still a bit dirty.  There's lots of room for optimization.
 
 # Syntax
+
+See the [subdirectory](usage/) for examples.
 
 The grammar is based on [compleat](https://github.com/mbrubeck/compleat/blob/master/README.markdown#syntax)'s one.
 
