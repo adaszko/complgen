@@ -13,7 +13,7 @@ The command:
 
     cargo run --release <darcs.usage
 
-will generate `darcs.bash` and `darcs.fish` in the current directory that can be sources in the respective
+will generate `darcs.bash` and `darcs.fish` in the current directory that can be sourced in the respective
 shells to get `darcs` completions.
 
 ## Rationale
@@ -47,17 +47,20 @@ Use parentheses to group patterns:
 
 Patterns may also include *variables*:
 
+# Limitations
+
+ * Grouping single character options into a single shell parameter isn't supported, e.g. `tar -xvf`.  You need
+   to pass each option in a separate shell argument instead: `tar -x -v -f`
+
+ * Passing option arguments using `=` is not supported.  E.g. `--foo=bar` doesn't work, but `--foo bar` does.
+
 # Roadmap
 
- * Replace String with Rc<String> in Expr struct
- * Implement strings interning to speed it up and deduplicate strings in resulting scripts.
+ * Implement strings interning to speed it up and to deduplicate strings in resulting scripts.
  * Generate DFA directly from the grammar instead of going through Grammar -> ᵋ-NFA -> NFA -> DFA.
  * Implement DFA minimization
     * https://www.uobabylon.edu.iq/eprints/paper_12_2714_213.pdf
     * https://people.csail.mit.edu/rrw/6.045-2019/notemindfa.pdf
- * Add an "interpreter mode" that reads `*.usage` files on-demand but requires complgen to be installed on the user's machine
-
- * DRY to_dot fns into a trait fn
 
  * End-to-end tests that excercise the generation completion scripts and check they behave properly.
 
@@ -70,9 +73,4 @@ Patterns may also include *variables*:
 
  * If no value is defined for `name`, then the pattern `<name>` will match any word.
 
-# Limitations
-
- * Grouping single character options into a single shell parameter isn't supported, e.g. `tar -xvf`.  You need
-   to pass each option in a separate shell argument instead: `tar -x -v -f`
-
- * Passing option arguments using `=` is not supported.  E.g. `--foo=bar` doesn't work, but `--foo bar` does.
+ * DRY to_dot fns into a trait fn
