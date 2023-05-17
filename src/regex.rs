@@ -1,4 +1,6 @@
-use std::collections::{HashSet, BTreeSet};
+use std::collections::{HashSet, BTreeMap};
+
+use roaring::RoaringBitmap;
 
 use crate::grammar::Expr;
 
@@ -111,7 +113,7 @@ fn do_lastpos(re: &Regex, result: &mut HashSet<usize>) {
 }
 
 
-fn do_followpos(re: &Regex, result: &mut BTreeSet<(usize, usize)>) {
+fn do_followpos(re: &Regex, result: &mut BTreeMap<usize, RoaringBitmap>) {
     match re {
         Regex::Epsilon => {},
         Regex::Literal(_, _) => {},
@@ -127,7 +129,7 @@ fn do_followpos(re: &Regex, result: &mut BTreeSet<(usize, usize)>) {
                 let fp = right.firstpos();
                 for i in left.lastpos() {
                     for j in &fp {
-                        result.insert((i, *j));
+                        result.entry(i).or_default().insert(u32::try_from(*j).unwrap());
                     }
                 }
             }
@@ -137,7 +139,7 @@ fn do_followpos(re: &Regex, result: &mut BTreeSet<(usize, usize)>) {
             let last = subregex.lastpos();
             for i in last {
                 for j in &first {
-                    result.insert((i, *j));
+                    result.entry(i).or_default().insert(u32::try_from(*j).unwrap());
                 }
             }
         },
@@ -176,8 +178,8 @@ impl Regex {
         result
     }
 
-    fn followpos(&self) -> BTreeSet<(usize, usize)> {
-        let mut result: BTreeSet<(usize, usize)> = Default::default();
+    fn followpos(&self) -> BTreeMap<usize, RoaringBitmap> {
+        let mut result: BTreeMap<usize, RoaringBitmap> = Default::default();
         do_followpos(self, &mut result);
         result
     }
@@ -236,11 +238,11 @@ mod tests {
     fn followpos() {
         let regex = make_followpos_regex();
         let fp = regex.followpos();
-        assert_eq!(fp.iter().filter_map(|(from, to)| if *from == 6 { Some(*to) } else { None }).collect::<HashSet<_>>(), HashSet::from([]));
-        assert_eq!(fp.iter().filter_map(|(from, to)| if *from == 5 { Some(*to) } else { None }).collect::<HashSet<_>>(), HashSet::from([6]));
-        assert_eq!(fp.iter().filter_map(|(from, to)| if *from == 4 { Some(*to) } else { None }).collect::<HashSet<_>>(), HashSet::from([5]));
-        assert_eq!(fp.iter().filter_map(|(from, to)| if *from == 3 { Some(*to) } else { None }).collect::<HashSet<_>>(), HashSet::from([4]));
-        assert_eq!(fp.iter().filter_map(|(from, to)| if *from == 2 { Some(*to) } else { None }).collect::<HashSet<_>>(), HashSet::from([1,2,3]));
-        assert_eq!(fp.iter().filter_map(|(from, to)| if *from == 1 { Some(*to) } else { None }).collect::<HashSet<_>>(), HashSet::from([1,2,3]));
+        assert_eq!(fp.get(&6), None);
+        assert_eq!(fp.get(&5), Some(&RoaringBitmap::from_iter([6])));
+        assert_eq!(fp.get(&4), Some(&RoaringBitmap::from_iter([5])));
+        assert_eq!(fp.get(&3), Some(&RoaringBitmap::from_iter([4])));
+        assert_eq!(fp.get(&2), Some(&RoaringBitmap::from_iter([1,2,3])));
+        assert_eq!(fp.get(&1), Some(&RoaringBitmap::from_iter([1,2,3])));
     }
 }
