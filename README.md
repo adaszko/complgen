@@ -11,7 +11,7 @@ be installed in order to use those custom completions.
 
 The command:
 
-    cargo run --release <darcs.usage
+    cargo run --release <usage/darcs.usage
 
 will generate `darcs.bash` and `darcs.fish` in the current directory that can be sourced in the respective
 shells to get `darcs` completions.
