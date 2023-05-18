@@ -6,7 +6,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use roaring::{MultiOps, RoaringBitmap};
 
-use crate::{nfa::{Input, NFA}, regex::{AugmentedRegex, Position}};
+use crate::{nfa::{Input, NFA}, regex::{AugmentedRegexNode, Position, AugmentedRegex}};
 use complgen::{StateId, START_STATE_ID};
 
 #[derive(Clone)]
@@ -223,7 +223,7 @@ fn dfa_from_regex(regex: &AugmentedRegex) -> DFA {
         for input in &input_symbols {
             let mut u = RoaringBitmap::new();
             for pos in &combined_state {
-                if regex.get_position_input(*pos) == *input {
+                if regex.get_input_from_position(*pos) == Some(input.clone()) {
                     if let Some(positions) = followpos.get(&pos) {
                         u |= positions;
                     }
@@ -403,6 +403,7 @@ mod tests {
     use crate::epsilon_nfa::EpsilonNFA;
     use crate::grammar::{parse, Expr};
     use crate::grammar::tests::arb_expr_match;
+    use crate::regex::AugmentedRegex;
 
     use super::*;
 

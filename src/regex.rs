@@ -1,4 +1,4 @@
-use std::collections::{HashSet, BTreeMap, BTreeSet};
+use std::collections::{HashSet, BTreeMap, BTreeSet, HashMap};
 
 use roaring::RoaringBitmap;
 
@@ -7,18 +7,18 @@ use crate::{grammar::Expr, nfa::Input};
 pub type Position = u32;
 
 #[derive(Clone, PartialEq)]
-pub enum AugmentedRegex {
+pub enum AugmentedRegexNode {
     Literal(String, Position),
     Variable(String, Position),
-    Cat(Box<AugmentedRegex>, Box<AugmentedRegex>),
-    Or(Vec<AugmentedRegex>),
-    Star(Box<AugmentedRegex>),
+    Cat(Box<AugmentedRegexNode>, Box<AugmentedRegexNode>),
+    Or(Vec<AugmentedRegexNode>),
+    Star(Box<AugmentedRegexNode>),
     Epsilon,
     EndMarker(Position),
 }
 
 
-impl std::fmt::Debug for AugmentedRegex {
+impl std::fmt::Debug for AugmentedRegexNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Literal(arg0, position) => f.write_fmt(format_args!(r#"Literal("{}".to_string(), {})"#, arg0, position)),
@@ -33,55 +33,17 @@ impl std::fmt::Debug for AugmentedRegex {
 }
 
 
-fn do_from_expr(e: &Expr, mut position: Position) -> (AugmentedRegex, Position) {
-    match e {
-        Expr::Literal(s) => (AugmentedRegex::Literal(s.to_string(), position), position + 1),
-        Expr::Variable(s) => (AugmentedRegex::Variable(s.to_string(), position), position + 1),
-        Expr::Sequence(subexprs) => {
-            let mut left = {
-                let (re, pos) = do_from_expr(&subexprs[0], position);
-                position = pos;
-                re
-            };
-            for right in &subexprs[1..] {
-                let (re, pos) = do_from_expr(right, position);
-                position = pos;
-                left = AugmentedRegex::Cat(Box::new(left), Box::new(re))
-            }
-            (left, position)
-        },
-        Expr::Alternative(subexprs) => {
-            let mut subregexes: Vec<AugmentedRegex> = Default::default();
-            for e in subexprs {
-                let (subregex, pos) = do_from_expr(e, position);
-                subregexes.push(subregex);
-                position = pos;
-            }
-            (AugmentedRegex::Or(subregexes), position)
-        },
-        Expr::Optional(subexpr) => {
-            let (subregex, position) = do_from_expr(subexpr, position);
-            (AugmentedRegex::Or(vec![subregex, AugmentedRegex::Epsilon]), position)
-        }
-        Expr::Many1(subexpr) => {
-            let (subregex, position) = do_from_expr(subexpr, position);
-            (AugmentedRegex::Cat(Box::new(subregex.clone()), Box::new(AugmentedRegex::Star(Box::new(subregex)))), position)
-        },
-    }
-}
-
-
-fn do_firstpos(re: &AugmentedRegex, result: &mut BTreeSet<Position>) {
+fn do_firstpos(re: &AugmentedRegexNode, result: &mut BTreeSet<Position>) {
     match re {
-        AugmentedRegex::Epsilon => {},
-        AugmentedRegex::Literal(_, position) => { result.insert(*position); },
-        AugmentedRegex::Variable(_, position) => { result.insert(*position); },
-        AugmentedRegex::Or(subregexes) => {
+        AugmentedRegexNode::Epsilon => {},
+        AugmentedRegexNode::Literal(_, position) => { result.insert(*position); },
+        AugmentedRegexNode::Variable(_, position) => { result.insert(*position); },
+        AugmentedRegexNode::Or(subregexes) => {
             for subre in subregexes {
                 do_firstpos(subre, result);
             }
         },
-        AugmentedRegex::Cat(left, right) => {
+        AugmentedRegexNode::Cat(left, right) => {
             if left.nullable() {
                 do_firstpos(left, result);
                 do_firstpos(right, result);
@@ -90,23 +52,23 @@ fn do_firstpos(re: &AugmentedRegex, result: &mut BTreeSet<Position>) {
                 do_firstpos(left, result);
             }
         },
-        AugmentedRegex::Star(subregex) => { do_firstpos(subregex, result); },
-        AugmentedRegex::EndMarker(position) => { result.insert(*position); },
+        AugmentedRegexNode::Star(subregex) => { do_firstpos(subregex, result); },
+        AugmentedRegexNode::EndMarker(position) => { result.insert(*position); },
     }
 }
 
 
-fn do_lastpos(re: &AugmentedRegex, result: &mut HashSet<u32>) {
+fn do_lastpos(re: &AugmentedRegexNode, result: &mut HashSet<u32>) {
     match re {
-        AugmentedRegex::Epsilon => {},
-        AugmentedRegex::Literal(_, position) => { result.insert(*position); },
-        AugmentedRegex::Variable(_, position) => { result.insert(*position); },
-        AugmentedRegex::Or(subregexes) => {
+        AugmentedRegexNode::Epsilon => {},
+        AugmentedRegexNode::Literal(_, position) => { result.insert(*position); },
+        AugmentedRegexNode::Variable(_, position) => { result.insert(*position); },
+        AugmentedRegexNode::Or(subregexes) => {
             for subre in subregexes {
                 do_lastpos(subre, result);
             }
         },
-        AugmentedRegex::Cat(left, right) => {
+        AugmentedRegexNode::Cat(left, right) => {
             if right.nullable() {
                 do_lastpos(right, result);
                 do_lastpos(left, result);
@@ -115,23 +77,23 @@ fn do_lastpos(re: &AugmentedRegex, result: &mut HashSet<u32>) {
                 do_lastpos(right, result);
             }
         },
-        AugmentedRegex::Star(subregex) => { do_lastpos(subregex, result); },
-        AugmentedRegex::EndMarker(position) => { result.insert(*position); },
+        AugmentedRegexNode::Star(subregex) => { do_lastpos(subregex, result); },
+        AugmentedRegexNode::EndMarker(position) => { result.insert(*position); },
     }
 }
 
 
-fn do_followpos(re: &AugmentedRegex, result: &mut BTreeMap<Position, RoaringBitmap>) {
+fn do_followpos(re: &AugmentedRegexNode, result: &mut BTreeMap<Position, RoaringBitmap>) {
     match re {
-        AugmentedRegex::Epsilon => {},
-        AugmentedRegex::Literal(_, _) => {},
-        AugmentedRegex::Variable(_, _) => {},
-        AugmentedRegex::Or(subregexes) => {
+        AugmentedRegexNode::Epsilon => {},
+        AugmentedRegexNode::Literal(_, _) => {},
+        AugmentedRegexNode::Variable(_, _) => {},
+        AugmentedRegexNode::Or(subregexes) => {
             for subre in subregexes {
                 do_followpos(subre, result);
             }
         },
-        AugmentedRegex::Cat(left, right) => {
+        AugmentedRegexNode::Cat(left, right) => {
             do_followpos(left, result);
             do_followpos(right, result);
             let fp = right.firstpos();
@@ -141,7 +103,7 @@ fn do_followpos(re: &AugmentedRegex, result: &mut BTreeMap<Position, RoaringBitm
                 }
             }
         },
-        AugmentedRegex::Star(subregex) => {
+        AugmentedRegexNode::Star(subregex) => {
             let first = subregex.firstpos();
             let last = subregex.lastpos();
             for i in last {
@@ -150,77 +112,55 @@ fn do_followpos(re: &AugmentedRegex, result: &mut BTreeMap<Position, RoaringBitm
                 }
             }
         },
-        AugmentedRegex::EndMarker(_) => {},
+        AugmentedRegexNode::EndMarker(_) => {},
     }
 }
 
 
-fn do_get_input_symbols(regex: &AugmentedRegex, output: &mut HashSet<Input>) {
+fn do_get_input_symbols(regex: &AugmentedRegexNode, output: &mut HashSet<Input>) {
     match regex {
-        AugmentedRegex::Epsilon => {},
-        AugmentedRegex::Literal(s, _) => { output.insert(Input::Literal(s.to_string())); },
-        AugmentedRegex::Variable(_, _) => { output.insert(Input::Any); },
-        AugmentedRegex::Cat(left, right) => {
+        AugmentedRegexNode::Epsilon => {},
+        AugmentedRegexNode::Literal(s, _) => { output.insert(Input::Literal(s.to_string())); },
+        AugmentedRegexNode::Variable(_, _) => { output.insert(Input::Any); },
+        AugmentedRegexNode::Cat(left, right) => {
             do_get_input_symbols(&left, output);
             do_get_input_symbols(&right, output);
         },
-        AugmentedRegex::Or(subregexes) => {
+        AugmentedRegexNode::Or(subregexes) => {
             for re in subregexes {
                 do_get_input_symbols(&re, output);
             }
         },
-        AugmentedRegex::Star(re) => {
+        AugmentedRegexNode::Star(re) => {
             do_get_input_symbols(&re, output);
         },
-        AugmentedRegex::EndMarker(_) => {},
+        AugmentedRegexNode::EndMarker(_) => {},
     }
 }
 
 
-impl AugmentedRegex {
-    pub fn from_expr(e: &Expr) -> Self {
-        let (regex, _) = do_from_expr(e, 0);
-        regex
-    }
-
+impl AugmentedRegexNode {
     pub fn get_rightmost_leaf_position(&self) -> Option<Position> {
         match self {
-            AugmentedRegex::Epsilon => None,
-            AugmentedRegex::Literal(_, _) => None,
-            AugmentedRegex::Variable(_, _) => None,
-            AugmentedRegex::Cat(_, right) => right.get_rightmost_leaf_position(),
-            AugmentedRegex::Or(v) => v.last().and_then(|re| re.get_rightmost_leaf_position()),
-            AugmentedRegex::Star(re) => re.get_rightmost_leaf_position(),
-            AugmentedRegex::EndMarker(position) => Some(*position),
+            AugmentedRegexNode::Epsilon => None,
+            AugmentedRegexNode::Literal(_, _) => None,
+            AugmentedRegexNode::Variable(_, _) => None,
+            AugmentedRegexNode::Cat(_, right) => right.get_rightmost_leaf_position(),
+            AugmentedRegexNode::Or(v) => v.last().and_then(|re| re.get_rightmost_leaf_position()),
+            AugmentedRegexNode::Star(re) => re.get_rightmost_leaf_position(),
+            AugmentedRegexNode::EndMarker(position) => Some(*position),
         }
-    }
-
-    // TODO This has to be precomputed in Self::from_expr() for efficiency.
-    pub fn get_input_symbols(&self) -> HashSet<Input> {
-        let mut output: HashSet<Input> = Default::default();
-        do_get_input_symbols(self, &mut output);
-        output
-    }
-
-    pub fn get_position_input(&self, position: u32) -> Input {
-        // TODO This has to be precomputed in Self::from_expr() for efficiency.
-        todo!();
-    }
-
-    pub fn get_endmarker_position(&self) -> Position {
-        // TODO This has to be precomputed in Self::from_expr() for efficiency.
-        todo!();
     }
 
     fn nullable(&self) -> bool {
         match self {
-            AugmentedRegex::Epsilon => true,
-            AugmentedRegex::Literal(_, _) => false,
-            AugmentedRegex::Variable(_, _) => false,
-            AugmentedRegex::Or(children) => children.iter().any(|child| child.nullable()),
-            AugmentedRegex::Cat(left, right) => left.nullable() && right.nullable(),
-            AugmentedRegex::Star(_) => true,
-            AugmentedRegex::EndMarker(_) => true,
+            AugmentedRegexNode::Epsilon => true,
+            AugmentedRegexNode::Literal(_, _) => false,
+            AugmentedRegexNode::Variable(_, _) => false,
+            AugmentedRegexNode::Or(children) => children.iter().any(|child| child.nullable()),
+            AugmentedRegexNode::Cat(left, right) => left.nullable() && right.nullable(),
+            AugmentedRegexNode::Star(_) => true,
+            AugmentedRegexNode::EndMarker(_) => true,
         }
     }
 
@@ -237,9 +177,95 @@ impl AugmentedRegex {
     }
 
     pub fn followpos(&self) -> BTreeMap<Position, RoaringBitmap> {
-        let mut result: BTreeMap<u32, RoaringBitmap> = Default::default();
+        let mut result: BTreeMap<Position, RoaringBitmap> = Default::default();
         do_followpos(self, &mut result);
         result
+    }
+}
+
+
+fn do_from_expr(e: &Expr, mut position: Position) -> (AugmentedRegexNode, Position) {
+    match e {
+        Expr::Literal(s) => (AugmentedRegexNode::Literal(s.to_string(), position), position + 1),
+        Expr::Variable(s) => (AugmentedRegexNode::Variable(s.to_string(), position), position + 1),
+        Expr::Sequence(subexprs) => {
+            let mut left = {
+                let (re, pos) = do_from_expr(&subexprs[0], position);
+                position = pos;
+                re
+            };
+            for right in &subexprs[1..] {
+                let (re, pos) = do_from_expr(right, position);
+                position = pos;
+                left = AugmentedRegexNode::Cat(Box::new(left), Box::new(re))
+            }
+            (left, position)
+        },
+        Expr::Alternative(subexprs) => {
+            let mut subregexes: Vec<AugmentedRegexNode> = Default::default();
+            for e in subexprs {
+                let (subregex, pos) = do_from_expr(e, position);
+                subregexes.push(subregex);
+                position = pos;
+            }
+            (AugmentedRegexNode::Or(subregexes), position)
+        },
+        Expr::Optional(subexpr) => {
+            let (subregex, position) = do_from_expr(subexpr, position);
+            (AugmentedRegexNode::Or(vec![subregex, AugmentedRegexNode::Epsilon]), position)
+        }
+        Expr::Many1(subexpr) => {
+            let (subregex, position) = do_from_expr(subexpr, position);
+            (AugmentedRegexNode::Cat(Box::new(subregex.clone()), Box::new(AugmentedRegexNode::Star(Box::new(subregex)))), position)
+        },
+    }
+}
+
+
+pub struct AugmentedRegex {
+    root: AugmentedRegexNode,
+    input_symbols: HashSet<Input>,
+    input_from_position: HashMap<Position, Input>,
+    endmarker_position: Position,
+}
+
+
+impl AugmentedRegex {
+    pub fn from_expr(e: &Expr) -> Self {
+        let (regex, _) = do_from_expr(e, 0);
+        Self {
+            root: regex,
+            input_symbols: todo!(),
+            input_from_position: todo!(),
+            endmarker_position: todo!(),
+        }
+    }
+
+    pub fn firstpos(&self) -> BTreeSet<Position> {
+        self.root.firstpos()
+    }
+
+    fn lastpos(&self) -> HashSet<Position> {
+        self.root.lastpos()
+    }
+
+    pub fn followpos(&self) -> BTreeMap<Position, RoaringBitmap> {
+        self.root.followpos()
+    }
+
+    // TODO This has to be precomputed in Self::from_expr() for efficiency.
+    pub fn get_input_symbols(&self) -> HashSet<Input> {
+        let mut output: HashSet<Input> = Default::default();
+        do_get_input_symbols(&self.root, &mut output);
+        output
+    }
+
+    pub fn get_input_from_position(&self, position: u32) -> Option<Input> {
+        self.input_from_position.get(&position).map(|input| input.clone())
+    }
+
+    pub fn get_endmarker_position(&self) -> Position {
+        self.endmarker_position
     }
 }
 
@@ -248,15 +274,15 @@ impl AugmentedRegex {
 mod tests {
     use super::*;
 
-    fn make_sample_star_regex() -> AugmentedRegex {
-        AugmentedRegex::Star(Box::new(AugmentedRegex::Or(vec![AugmentedRegex::Literal("a".to_string(), 1), AugmentedRegex::Literal("b".to_string(), 2),])))
+    fn make_sample_star_regex() -> AugmentedRegexNode {
+        AugmentedRegexNode::Star(Box::new(AugmentedRegexNode::Or(vec![AugmentedRegexNode::Literal("a".to_string(), 1), AugmentedRegexNode::Literal("b".to_string(), 2),])))
     }
 
-    fn make_sample_regex() -> AugmentedRegex {
+    fn make_sample_regex() -> AugmentedRegexNode {
         // (a|b)*a
-        AugmentedRegex::Cat(
+        AugmentedRegexNode::Cat(
             Box::new(make_sample_star_regex()),
-            Box::new(AugmentedRegex::Literal("a".to_string(), 3)),
+            Box::new(AugmentedRegexNode::Literal("a".to_string(), 3)),
         )
     }
 
@@ -281,20 +307,20 @@ mod tests {
         assert_eq!(regex.lastpos(), HashSet::from([3]));
     }
 
-    fn make_followpos_regex() -> AugmentedRegex {
+    fn make_followpos_regex() -> AugmentedRegexNode {
         // (a|b)*abb#
-        AugmentedRegex::Cat(
-            Box::new(AugmentedRegex::Cat(
-                Box::new(AugmentedRegex::Cat(
-                    Box::new(AugmentedRegex::Cat(
+        AugmentedRegexNode::Cat(
+            Box::new(AugmentedRegexNode::Cat(
+                Box::new(AugmentedRegexNode::Cat(
+                    Box::new(AugmentedRegexNode::Cat(
                         Box::new(make_sample_star_regex()),
-                        Box::new(AugmentedRegex::Literal("a".to_string(), 3)),
+                        Box::new(AugmentedRegexNode::Literal("a".to_string(), 3)),
                     )),
-                    Box::new(AugmentedRegex::Literal("b".to_string(), 4)),
+                    Box::new(AugmentedRegexNode::Literal("b".to_string(), 4)),
                 )),
-                Box::new(AugmentedRegex::Literal("b".to_string(), 5)),
+                Box::new(AugmentedRegexNode::Literal("b".to_string(), 5)),
             )),
-            Box::new(AugmentedRegex::EndMarker(6)),
+            Box::new(AugmentedRegexNode::EndMarker(6)),
         )
     }
 
