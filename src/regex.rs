@@ -162,41 +162,45 @@ impl AugmentedRegexNode {
 }
 
 
-fn do_from_expr(e: &Expr, position: &mut Position, symbols: &mut HashSet<Input>) -> AugmentedRegexNode {
+fn do_from_expr(e: &Expr, position: &mut Position, symbols: &mut HashSet<Input>, input_from_position: &mut HashMap<Position, Input>) -> AugmentedRegexNode {
     match e {
         Expr::Literal(s) => {
             let result = AugmentedRegexNode::Literal(s.to_string(), *position);
+            let input = Input::Literal(s.to_string());
+            input_from_position.insert(*position, input.clone());
             *position += 1;
-            symbols.insert(Input::Literal(s.to_string()));
+            symbols.insert(input);
             result
         },
         Expr::Variable(s) => {
             let result = AugmentedRegexNode::Variable(s.to_string(), *position);
+            let input = Input::Any;
+            input_from_position.insert(*position, input.clone());
             *position += 1;
-            symbols.insert(Input::Any);
+            symbols.insert(input);
             result
         },
         Expr::Sequence(subexprs) => {
-            let mut left = do_from_expr(&subexprs[0], position, symbols);
+            let mut left = do_from_expr(&subexprs[0], position, symbols, input_from_position);
             for right in &subexprs[1..] {
-                left = AugmentedRegexNode::Cat(Box::new(left), Box::new(do_from_expr(right, position, symbols)));
+                left = AugmentedRegexNode::Cat(Box::new(left), Box::new(do_from_expr(right, position, symbols, input_from_position)));
             }
             left
         },
         Expr::Alternative(subexprs) => {
             let mut subregexes: Vec<AugmentedRegexNode> = Default::default();
             for e in subexprs {
-                let subregex = do_from_expr(e, position, symbols);
+                let subregex = do_from_expr(e, position, symbols, input_from_position);
                 subregexes.push(subregex);
             }
             AugmentedRegexNode::Or(subregexes)
         },
         Expr::Optional(subexpr) => {
-            let subregex = do_from_expr(subexpr, position, symbols);
+            let subregex = do_from_expr(subexpr, position, symbols, input_from_position);
             AugmentedRegexNode::Or(vec![subregex, AugmentedRegexNode::Epsilon])
         }
         Expr::Many1(subexpr) => {
-            let subregex = do_from_expr(subexpr, position, symbols);
+            let subregex = do_from_expr(subexpr, position, symbols, input_from_position);
             AugmentedRegexNode::Cat(Box::new(subregex.clone()), Box::new(AugmentedRegexNode::Star(Box::new(subregex))))
         },
     }
@@ -215,11 +219,12 @@ impl AugmentedRegex {
     pub fn from_expr(e: &Expr) -> Self {
         let mut position: Position = 1;
         let mut input_symbols: HashSet<Input> = Default::default();
-        let regex = do_from_expr(e, &mut position, &mut input_symbols);
+        let mut input_from_position: HashMap<Position, Input> = Default::default();
+        let regex = do_from_expr(e, &mut position, &mut input_symbols, &mut input_from_position);
         Self {
             root: regex,
             input_symbols,
-            input_from_position: todo!(),
+            input_from_position,
             endmarker_position: todo!(),
         }
     }
