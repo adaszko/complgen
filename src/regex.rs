@@ -184,39 +184,40 @@ impl AugmentedRegexNode {
 }
 
 
-fn do_from_expr(e: &Expr, mut position: Position) -> (AugmentedRegexNode, Position) {
+fn do_from_expr(e: &Expr, position: &mut Position) -> AugmentedRegexNode {
     match e {
-        Expr::Literal(s) => (AugmentedRegexNode::Literal(s.to_string(), position), position + 1),
-        Expr::Variable(s) => (AugmentedRegexNode::Variable(s.to_string(), position), position + 1),
+        Expr::Literal(s) => {
+            let result = AugmentedRegexNode::Literal(s.to_string(), *position);
+            *position += 1;
+            result
+        },
+        Expr::Variable(s) => {
+            let result = AugmentedRegexNode::Variable(s.to_string(), *position);
+            *position + 1;
+            result
+        },
         Expr::Sequence(subexprs) => {
-            let mut left = {
-                let (re, pos) = do_from_expr(&subexprs[0], position);
-                position = pos;
-                re
-            };
+            let mut left = do_from_expr(&subexprs[0], position);
             for right in &subexprs[1..] {
-                let (re, pos) = do_from_expr(right, position);
-                position = pos;
-                left = AugmentedRegexNode::Cat(Box::new(left), Box::new(re))
+                left = AugmentedRegexNode::Cat(Box::new(left), Box::new(do_from_expr(right, position)));
             }
-            (left, position)
+            left
         },
         Expr::Alternative(subexprs) => {
             let mut subregexes: Vec<AugmentedRegexNode> = Default::default();
             for e in subexprs {
-                let (subregex, pos) = do_from_expr(e, position);
+                let subregex = do_from_expr(e, position);
                 subregexes.push(subregex);
-                position = pos;
             }
-            (AugmentedRegexNode::Or(subregexes), position)
+            AugmentedRegexNode::Or(subregexes)
         },
         Expr::Optional(subexpr) => {
-            let (subregex, position) = do_from_expr(subexpr, position);
-            (AugmentedRegexNode::Or(vec![subregex, AugmentedRegexNode::Epsilon]), position)
+            let subregex = do_from_expr(subexpr, position);
+            AugmentedRegexNode::Or(vec![subregex, AugmentedRegexNode::Epsilon])
         }
         Expr::Many1(subexpr) => {
-            let (subregex, position) = do_from_expr(subexpr, position);
-            (AugmentedRegexNode::Cat(Box::new(subregex.clone()), Box::new(AugmentedRegexNode::Star(Box::new(subregex)))), position)
+            let subregex = do_from_expr(subexpr, position);
+            AugmentedRegexNode::Cat(Box::new(subregex.clone()), Box::new(AugmentedRegexNode::Star(Box::new(subregex))))
         },
     }
 }
@@ -232,7 +233,8 @@ pub struct AugmentedRegex {
 
 impl AugmentedRegex {
     pub fn from_expr(e: &Expr) -> Self {
-        let (regex, _) = do_from_expr(e, 0);
+        let mut position: Position = 1;
+        let regex = do_from_expr(e, &mut position);
         Self {
             root: regex,
             input_symbols: todo!(),
