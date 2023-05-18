@@ -117,28 +117,6 @@ fn do_followpos(re: &AugmentedRegexNode, result: &mut BTreeMap<Position, Roaring
 }
 
 
-fn do_get_input_symbols(regex: &AugmentedRegexNode, output: &mut HashSet<Input>) {
-    match regex {
-        AugmentedRegexNode::Epsilon => {},
-        AugmentedRegexNode::Literal(s, _) => { output.insert(Input::Literal(s.to_string())); },
-        AugmentedRegexNode::Variable(_, _) => { output.insert(Input::Any); },
-        AugmentedRegexNode::Cat(left, right) => {
-            do_get_input_symbols(&left, output);
-            do_get_input_symbols(&right, output);
-        },
-        AugmentedRegexNode::Or(subregexes) => {
-            for re in subregexes {
-                do_get_input_symbols(&re, output);
-            }
-        },
-        AugmentedRegexNode::Star(re) => {
-            do_get_input_symbols(&re, output);
-        },
-        AugmentedRegexNode::EndMarker(_) => {},
-    }
-}
-
-
 impl AugmentedRegexNode {
     pub fn get_rightmost_leaf_position(&self) -> Option<Position> {
         match self {
@@ -184,39 +162,41 @@ impl AugmentedRegexNode {
 }
 
 
-fn do_from_expr(e: &Expr, position: &mut Position) -> AugmentedRegexNode {
+fn do_from_expr(e: &Expr, position: &mut Position, symbols: &mut HashSet<Input>) -> AugmentedRegexNode {
     match e {
         Expr::Literal(s) => {
             let result = AugmentedRegexNode::Literal(s.to_string(), *position);
             *position += 1;
+            symbols.insert(Input::Literal(s.to_string()));
             result
         },
         Expr::Variable(s) => {
             let result = AugmentedRegexNode::Variable(s.to_string(), *position);
-            *position + 1;
+            *position += 1;
+            symbols.insert(Input::Any);
             result
         },
         Expr::Sequence(subexprs) => {
-            let mut left = do_from_expr(&subexprs[0], position);
+            let mut left = do_from_expr(&subexprs[0], position, symbols);
             for right in &subexprs[1..] {
-                left = AugmentedRegexNode::Cat(Box::new(left), Box::new(do_from_expr(right, position)));
+                left = AugmentedRegexNode::Cat(Box::new(left), Box::new(do_from_expr(right, position, symbols)));
             }
             left
         },
         Expr::Alternative(subexprs) => {
             let mut subregexes: Vec<AugmentedRegexNode> = Default::default();
             for e in subexprs {
-                let subregex = do_from_expr(e, position);
+                let subregex = do_from_expr(e, position, symbols);
                 subregexes.push(subregex);
             }
             AugmentedRegexNode::Or(subregexes)
         },
         Expr::Optional(subexpr) => {
-            let subregex = do_from_expr(subexpr, position);
+            let subregex = do_from_expr(subexpr, position, symbols);
             AugmentedRegexNode::Or(vec![subregex, AugmentedRegexNode::Epsilon])
         }
         Expr::Many1(subexpr) => {
-            let subregex = do_from_expr(subexpr, position);
+            let subregex = do_from_expr(subexpr, position, symbols);
             AugmentedRegexNode::Cat(Box::new(subregex.clone()), Box::new(AugmentedRegexNode::Star(Box::new(subregex))))
         },
     }
@@ -234,10 +214,11 @@ pub struct AugmentedRegex {
 impl AugmentedRegex {
     pub fn from_expr(e: &Expr) -> Self {
         let mut position: Position = 1;
-        let regex = do_from_expr(e, &mut position);
+        let mut input_symbols: HashSet<Input> = Default::default();
+        let regex = do_from_expr(e, &mut position, &mut input_symbols);
         Self {
             root: regex,
-            input_symbols: todo!(),
+            input_symbols,
             input_from_position: todo!(),
             endmarker_position: todo!(),
         }
@@ -255,11 +236,8 @@ impl AugmentedRegex {
         self.root.followpos()
     }
 
-    // TODO This has to be precomputed in Self::from_expr() for efficiency.
-    pub fn get_input_symbols(&self) -> HashSet<Input> {
-        let mut output: HashSet<Input> = Default::default();
-        do_get_input_symbols(&self.root, &mut output);
-        output
+    pub fn get_input_symbols(&self) -> &HashSet<Input> {
+        &self.input_symbols
     }
 
     pub fn get_input_from_position(&self, position: u32) -> Option<Input> {

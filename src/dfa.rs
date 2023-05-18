@@ -220,7 +220,7 @@ fn dfa_from_regex(regex: &AugmentedRegex) -> DFA {
             None => break,
         };
         unmarked_states.remove(&combined_state);
-        for input in &input_symbols {
+        for input in input_symbols {
             let mut u = RoaringBitmap::new();
             for pos in &combined_state {
                 if regex.get_input_from_position(*pos) == Some(input.clone()) {
