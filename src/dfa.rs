@@ -4,6 +4,7 @@ use std::{
 };
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use bumpalo::Bump;
 use roaring::{MultiOps, RoaringBitmap};
 
 use crate::{nfa::{Input, NFA}, regex::{Position, AugmentedRegex}};
@@ -771,7 +772,8 @@ mod tests {
         fn accepts_arb_expr_input_from_regex((expr, input) in arb_expr_match(Rc::new(LITERALS.iter().map(|s|s.to_string()).collect()), Rc::new(VARIABLES.iter().map(|s|s.to_string()).collect()), 10, 3)) {
             // println!("{:?}", expr);
             // println!("{:?}", input);
-            let regex = AugmentedRegex::from_expr(&expr);
+            let arena = Bump::new();
+            let regex = AugmentedRegex::from_expr(&expr, &arena);
             let dfa = DirectDFA::from_regex(&regex);
             let input: Vec<&str> = input.iter().map(|s| {
                 let s: &str = s;
