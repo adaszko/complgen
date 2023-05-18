@@ -9,6 +9,7 @@ inherits = "release"
 debug = true
 
 [dependencies]
+bumpalo = "3.12.2"
 clap = { version = "4.2.1", features = ["derive"] }
 itertools = "0.10.5"
 nom = "7.1.3"
