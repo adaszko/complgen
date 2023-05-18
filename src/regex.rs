@@ -58,7 +58,7 @@ fn do_firstpos(re: &AugmentedRegexNode, result: &mut BTreeSet<Position>) {
 }
 
 
-fn do_lastpos(re: &AugmentedRegexNode, result: &mut HashSet<u32>) {
+fn do_lastpos(re: &AugmentedRegexNode, result: &mut HashSet<Position>) {
     match re {
         AugmentedRegexNode::Epsilon => {},
         AugmentedRegexNode::Literal(_, position) => { result.insert(*position); },
@@ -99,7 +99,7 @@ fn do_followpos(re: &AugmentedRegexNode, result: &mut BTreeMap<Position, Roaring
             let fp = right.firstpos();
             for i in left.lastpos() {
                 for j in &fp {
-                    result.entry(i).or_default().insert(u32::try_from(*j).unwrap());
+                    result.entry(i).or_default().insert(*j);
                 }
             }
         },
@@ -108,7 +108,7 @@ fn do_followpos(re: &AugmentedRegexNode, result: &mut BTreeMap<Position, Roaring
             let last = subregex.lastpos();
             for i in last {
                 for j in &first {
-                    result.entry(i).or_default().insert(u32::try_from(*j).unwrap());
+                    result.entry(i).or_default().insert(*j);
                 }
             }
         },
@@ -118,18 +118,6 @@ fn do_followpos(re: &AugmentedRegexNode, result: &mut BTreeMap<Position, Roaring
 
 
 impl AugmentedRegexNode {
-    pub fn get_rightmost_leaf_position(&self) -> Option<Position> {
-        match self {
-            AugmentedRegexNode::Epsilon => None,
-            AugmentedRegexNode::Literal(_, _) => None,
-            AugmentedRegexNode::Variable(_, _) => None,
-            AugmentedRegexNode::Cat(_, right) => right.get_rightmost_leaf_position(),
-            AugmentedRegexNode::Or(v) => v.last().and_then(|re| re.get_rightmost_leaf_position()),
-            AugmentedRegexNode::Star(re) => re.get_rightmost_leaf_position(),
-            AugmentedRegexNode::EndMarker(position) => Some(*position),
-        }
-    }
-
     fn nullable(&self) -> bool {
         match self {
             AugmentedRegexNode::Epsilon => true,
@@ -221,11 +209,12 @@ impl AugmentedRegex {
         let mut input_symbols: HashSet<Input> = Default::default();
         let mut input_from_position: HashMap<Position, Input> = Default::default();
         let regex = do_from_expr(e, &mut position, &mut input_symbols, &mut input_from_position);
+        let root = AugmentedRegexNode::Cat(Box::new(regex), Box::new(AugmentedRegexNode::EndMarker(position)));
         Self {
-            root: regex,
+            root,
             input_symbols,
             input_from_position,
-            endmarker_position: todo!(),
+            endmarker_position: position,
         }
     }
 
@@ -245,7 +234,7 @@ impl AugmentedRegex {
         &self.input_symbols
     }
 
-    pub fn get_input_from_position(&self, position: u32) -> Option<Input> {
+    pub fn get_input_from_position(&self, position: Position) -> Option<Input> {
         self.input_from_position.get(&position).map(|input| input.clone())
     }
 

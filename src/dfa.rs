@@ -6,7 +6,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use roaring::{MultiOps, RoaringBitmap};
 
-use crate::{nfa::{Input, NFA}, regex::{AugmentedRegexNode, Position, AugmentedRegex}};
+use crate::{nfa::{Input, NFA}, regex::{Position, AugmentedRegex}};
 use complgen::{StateId, START_STATE_ID};
 
 #[derive(Clone)]
