@@ -200,8 +200,18 @@ fn dfa_from_nfa(nfa: &NFA) -> DFA {
 }
 
 
+// XXX A temporary duplication of the DFA types until Regex -> DFA code works as well as the "via
+// NFA" route.
+#[derive(Clone)]
+pub struct DirectDFA {
+    pub starting_state: StateId,
+    pub transitions: BTreeMap<StateId, FxHashMap<crate::regex::Input, StateId>>,
+    pub accepting_states: RoaringBitmap,
+}
+
+
 // TODO Perform BTreeSet<>s (i.e. combined states) "interning" for efficiency, just like with Strings.
-fn dfa_from_regex(regex: &AugmentedRegex) -> DFA {
+fn dfa_from_regex(regex: &AugmentedRegex) -> DirectDFA {
     let mut dstates: FxHashMap<BTreeSet<Position>, StateId> = Default::default();
     let mut unallocated_state_id = 0;
     let combined_starting_state: BTreeSet<Position> = regex.firstpos();
@@ -212,7 +222,7 @@ fn dfa_from_regex(regex: &AugmentedRegex) -> DFA {
 
     let followpos = regex.followpos();
 
-    let mut dtran: BTreeMap<StateId, FxHashMap<Input, StateId>> = Default::default();
+    let mut dtran: BTreeMap<StateId, FxHashMap<crate::regex::Input, StateId>> = Default::default();
     let mut unmarked_states: FxHashSet<BTreeSet<Position>> = Default::default();
     loop {
         let combined_state = match unmarked_states.iter().next() {
@@ -253,20 +263,28 @@ fn dfa_from_regex(regex: &AugmentedRegex) -> DFA {
         accepting_states
     };
 
-    DFA {
+    DirectDFA {
         starting_state: *dstates.get(&combined_starting_state).unwrap(),
         transitions: dtran,
         accepting_states,
-        unallocated_state_id,
+    }
+}
+
+impl DirectDFA {
+    pub fn from_regex(regex: &AugmentedRegex) -> Self {
+        dfa_from_regex(regex)
+    }
+
+    pub fn get_transitions_from(&self, from: StateId) -> FxHashMap<crate::regex::Input, StateId> {
+        self.transitions
+            .get(&from)
+            .cloned()
+            .unwrap_or(FxHashMap::default())
     }
 }
 
 
 impl DFA {
-    pub fn from_regex(regex: &AugmentedRegex) -> Self {
-        dfa_from_regex(regex)
-    }
-
     pub fn from_nfa(nfa: &NFA) -> Self {
         dfa_from_nfa(&nfa)
     }
@@ -410,6 +428,37 @@ mod tests {
     use proptest::prelude::*;
 
     impl DFA {
+        pub fn accepts(&self, inputs: &[&str]) -> bool {
+            let mut backtracking_stack: Vec<(usize, StateId)> = vec![(0, self.starting_state)];
+            while let Some((input_index, current_state)) = backtracking_stack.pop() {
+                if input_index == inputs.len() && self.accepting_states.contains(current_state.into()) {
+                    return true;
+                }
+
+                let transitions_from_current_state = self.get_transitions_from(current_state);
+
+                if input_index < inputs.len() {
+                    let matching_consuming_transitions: Vec<StateId> = transitions_from_current_state
+                        .iter()
+                        .filter_map(|(expected_input, to)| {
+                            match expected_input.matches(inputs[input_index]) {
+                                false => None,
+                                true => Some(*to),
+                            }
+                        })
+                        .collect();
+                    backtracking_stack.extend(
+                        matching_consuming_transitions
+                            .iter()
+                            .map(|state| (input_index + 1, *state)),
+                    );
+                }
+            }
+            false
+        }
+    }
+
+    impl DirectDFA {
         pub fn accepts(&self, inputs: &[&str]) -> bool {
             let mut backtracking_stack: Vec<(usize, StateId)> = vec![(0, self.starting_state)];
             while let Some((input_index, current_state)) = backtracking_stack.pop() {
@@ -723,7 +772,7 @@ mod tests {
             // println!("{:?}", expr);
             // println!("{:?}", input);
             let regex = AugmentedRegex::from_expr(&expr);
-            let dfa = DFA::from_regex(&regex);
+            let dfa = DirectDFA::from_regex(&regex);
             let input: Vec<&str> = input.iter().map(|s| {
                 let s: &str = s;
                 s

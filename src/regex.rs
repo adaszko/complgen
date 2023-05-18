@@ -1,15 +1,24 @@
 use std::collections::{HashSet, BTreeMap, BTreeSet, HashMap};
 
+use ustr::{Ustr, ustr};
 use roaring::RoaringBitmap;
 
-use crate::{grammar::Expr, nfa::Input};
+use crate::{grammar::Expr};
 
 pub type Position = u32;
 
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd)]
+pub enum Input {
+    Literal(Ustr),
+    Any,
+}
+
+
 #[derive(Clone, PartialEq)]
 pub enum AugmentedRegexNode {
-    Literal(String, Position),
-    Variable(String, Position),
+    Literal(Ustr, Position),
+    Variable(Position),
     Cat(Box<AugmentedRegexNode>, Box<AugmentedRegexNode>),
     Or(Vec<AugmentedRegexNode>),
     Star(Box<AugmentedRegexNode>),
@@ -22,7 +31,7 @@ impl std::fmt::Debug for AugmentedRegexNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Literal(arg0, position) => f.write_fmt(format_args!(r#"Literal("{}".to_string(), {})"#, arg0, position)),
-            Self::Variable(arg0, position) => f.write_fmt(format_args!(r#"Variable("{}".to_string(), {})"#, arg0, position)),
+            Self::Variable(position) => f.write_fmt(format_args!(r#"Variable({})"#, position)),
             Self::Cat(left, right) => f.write_fmt(format_args!(r#"Cat(Box::new({:?}), Box::new({:?}))"#, left, right)),
             Self::Or(arg0) => f.write_fmt(format_args!(r#"Or(vec!{:?})"#, arg0)),
             Self::Star(arg0) => f.write_fmt(format_args!(r#"Star(Box::new({:?}))"#, arg0)),
@@ -37,7 +46,7 @@ fn do_firstpos(re: &AugmentedRegexNode, result: &mut BTreeSet<Position>) {
     match re {
         AugmentedRegexNode::Epsilon => {},
         AugmentedRegexNode::Literal(_, position) => { result.insert(*position); },
-        AugmentedRegexNode::Variable(_, position) => { result.insert(*position); },
+        AugmentedRegexNode::Variable(position) => { result.insert(*position); },
         AugmentedRegexNode::Or(subregexes) => {
             for subre in subregexes {
                 do_firstpos(subre, result);
@@ -62,7 +71,7 @@ fn do_lastpos(re: &AugmentedRegexNode, result: &mut HashSet<Position>) {
     match re {
         AugmentedRegexNode::Epsilon => {},
         AugmentedRegexNode::Literal(_, position) => { result.insert(*position); },
-        AugmentedRegexNode::Variable(_, position) => { result.insert(*position); },
+        AugmentedRegexNode::Variable(position) => { result.insert(*position); },
         AugmentedRegexNode::Or(subregexes) => {
             for subre in subregexes {
                 do_lastpos(subre, result);
@@ -87,7 +96,7 @@ fn do_followpos(re: &AugmentedRegexNode, result: &mut BTreeMap<Position, Roaring
     match re {
         AugmentedRegexNode::Epsilon => {},
         AugmentedRegexNode::Literal(_, _) => {},
-        AugmentedRegexNode::Variable(_, _) => {},
+        AugmentedRegexNode::Variable(_) => {},
         AugmentedRegexNode::Or(subregexes) => {
             for subre in subregexes {
                 do_followpos(subre, result);
@@ -122,7 +131,7 @@ impl AugmentedRegexNode {
         match self {
             AugmentedRegexNode::Epsilon => true,
             AugmentedRegexNode::Literal(_, _) => false,
-            AugmentedRegexNode::Variable(_, _) => false,
+            AugmentedRegexNode::Variable(_) => false,
             AugmentedRegexNode::Or(children) => children.iter().any(|child| child.nullable()),
             AugmentedRegexNode::Cat(left, right) => left.nullable() && right.nullable(),
             AugmentedRegexNode::Star(_) => true,
@@ -153,15 +162,15 @@ impl AugmentedRegexNode {
 fn do_from_expr(e: &Expr, position: &mut Position, symbols: &mut HashSet<Input>, input_from_position: &mut HashMap<Position, Input>) -> AugmentedRegexNode {
     match e {
         Expr::Literal(s) => {
-            let result = AugmentedRegexNode::Literal(s.to_string(), *position);
-            let input = Input::Literal(s.to_string());
+            let result = AugmentedRegexNode::Literal(ustr(&s), *position);
+            let input = Input::Literal(ustr(s));
             input_from_position.insert(*position, input.clone());
             *position += 1;
             symbols.insert(input);
             result
         },
-        Expr::Variable(s) => {
-            let result = AugmentedRegexNode::Variable(s.to_string(), *position);
+        Expr::Variable(_) => {
+            let result = AugmentedRegexNode::Variable(*position);
             let input = Input::Any;
             input_from_position.insert(*position, input.clone());
             *position += 1;
@@ -243,16 +252,26 @@ impl AugmentedRegex {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use ustr::ustr;
+
+    impl Input {
+        pub fn matches(&self, actual: &str) -> bool {
+            match self {
+                Self::Literal(expected) => actual == expected.as_str(),
+                Self::Any => true,
+            }
+        }
+    }
 
     fn make_sample_star_regex() -> AugmentedRegexNode {
-        AugmentedRegexNode::Star(Box::new(AugmentedRegexNode::Or(vec![AugmentedRegexNode::Literal("a".to_string(), 1), AugmentedRegexNode::Literal("b".to_string(), 2),])))
+        AugmentedRegexNode::Star(Box::new(AugmentedRegexNode::Or(vec![AugmentedRegexNode::Literal(ustr("a"), 1), AugmentedRegexNode::Literal(ustr("b"), 2),])))
     }
 
     fn make_sample_regex() -> AugmentedRegexNode {
         // (a|b)*a
         AugmentedRegexNode::Cat(
             Box::new(make_sample_star_regex()),
-            Box::new(AugmentedRegexNode::Literal("a".to_string(), 3)),
+            Box::new(AugmentedRegexNode::Literal(ustr("a"), 3)),
         )
     }
 
@@ -284,11 +303,11 @@ mod tests {
                 Box::new(AugmentedRegexNode::Cat(
                     Box::new(AugmentedRegexNode::Cat(
                         Box::new(make_sample_star_regex()),
-                        Box::new(AugmentedRegexNode::Literal("a".to_string(), 3)),
+                        Box::new(AugmentedRegexNode::Literal(ustr("a"), 3)),
                     )),
-                    Box::new(AugmentedRegexNode::Literal("b".to_string(), 4)),
+                    Box::new(AugmentedRegexNode::Literal(ustr("b"), 4)),
                 )),
-                Box::new(AugmentedRegexNode::Literal("b".to_string(), 5)),
+                Box::new(AugmentedRegexNode::Literal(ustr("b"), 5)),
             )),
             Box::new(AugmentedRegexNode::EndMarker(6)),
         )
