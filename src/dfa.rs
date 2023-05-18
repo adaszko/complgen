@@ -6,7 +6,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use roaring::{MultiOps, RoaringBitmap};
 
-use crate::nfa::{Input, NFA};
+use crate::{nfa::{Input, NFA}, regex::{AugmentedRegex, Position}};
 use complgen::{StateId, START_STATE_ID};
 
 #[derive(Clone)]
@@ -199,7 +199,74 @@ fn dfa_from_nfa(nfa: &NFA) -> DFA {
     dfa_from_determinized_nfa(nfa, &result_transitions, &accepting_states)
 }
 
+
+// TODO Perform BTreeSet<>s (i.e. combined states) "interning" for efficiency, just like with Strings.
+fn dfa_from_regex(regex: &AugmentedRegex) -> DFA {
+    let mut dstates: FxHashMap<BTreeSet<Position>, StateId> = Default::default();
+    let mut unallocated_state_id = 0;
+    let combined_starting_state: BTreeSet<Position> = regex.firstpos();
+    dstates.insert(combined_starting_state.clone(), unallocated_state_id);
+    unallocated_state_id += 1;
+
+    let input_symbols = regex.get_input_symbols();
+
+    let followpos = regex.followpos();
+
+    let mut dtran: BTreeMap<StateId, FxHashMap<Input, StateId>> = Default::default();
+    let mut unmarked_states: FxHashSet<BTreeSet<Position>> = Default::default();
+    loop {
+        let combined_state = match unmarked_states.iter().next() {
+            Some(state) => state.clone(),
+            None => break,
+        };
+        unmarked_states.remove(&combined_state);
+        for input in &input_symbols {
+            let mut u = RoaringBitmap::new();
+            for pos in &combined_state {
+                if regex.get_position_input(*pos) == *input {
+                    if let Some(positions) = followpos.get(&pos) {
+                        u |= positions;
+                    }
+                }
+            }
+            let u = BTreeSet::from_iter(u);
+            if !dstates.contains_key(&u) {
+                dstates.insert(u.clone(), unallocated_state_id);
+                unallocated_state_id += 1;
+                unmarked_states.insert(u.clone());
+            }
+            let from_combined_state_id = *dstates.get(&combined_state).unwrap();
+            let to_combined_state_id = dstates.get(&u).unwrap();
+            dtran.entry(from_combined_state_id).or_default().insert(input.clone(), *to_combined_state_id);
+        }
+    }
+
+    // The accepting states are those containing the position for the endmarker symbol #.
+    let accepting_states: RoaringBitmap = {
+        let mut accepting_states = RoaringBitmap::default();
+        let endmarker_position = regex.get_endmarker_position();
+        for (combined_state, state_id) in &dstates {
+            if combined_state.contains(&endmarker_position) {
+                accepting_states.insert((*state_id).into());
+            }
+        }
+        accepting_states
+    };
+
+    DFA {
+        starting_state: *dstates.get(&combined_starting_state).unwrap(),
+        transitions: dtran,
+        accepting_states,
+        unallocated_state_id,
+    }
+}
+
+
 impl DFA {
+    pub fn from_regex(regex: &AugmentedRegex) -> Self {
+        dfa_from_regex(regex)
+    }
+
     pub fn from_nfa(nfa: &NFA) -> Self {
         dfa_from_nfa(&nfa)
     }
@@ -647,6 +714,19 @@ mod tests {
             let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
             prop_assert!(nfa.accepts(&input));
             let dfa = DFA::from_nfa(&nfa);
+            prop_assert!(dfa.accepts(&input));
+        }
+
+        #[test]
+        fn accepts_arb_expr_input_from_regex((expr, input) in arb_expr_match(Rc::new(LITERALS.iter().map(|s|s.to_string()).collect()), Rc::new(VARIABLES.iter().map(|s|s.to_string()).collect()), 10, 3)) {
+            // println!("{:?}", expr);
+            // println!("{:?}", input);
+            let regex = AugmentedRegex::from_expr(&expr);
+            let dfa = DFA::from_regex(&regex);
+            let input: Vec<&str> = input.iter().map(|s| {
+                let s: &str = s;
+                s
+            }).collect();
             prop_assert!(dfa.accepts(&input));
         }
     }

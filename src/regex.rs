@@ -1,22 +1,24 @@
-use std::collections::{HashSet, BTreeMap};
+use std::collections::{HashSet, BTreeMap, BTreeSet};
 
 use roaring::RoaringBitmap;
 
-use crate::grammar::Expr;
+use crate::{grammar::Expr, nfa::Input};
+
+pub type Position = u32;
 
 #[derive(Clone, PartialEq)]
-pub enum Regex {
-    Literal(String, usize),
-    Variable(String, usize),
-    Cat(Box<Regex>, Box<Regex>),
-    Or(Vec<Regex>),
-    Star(Box<Regex>),
+pub enum AugmentedRegex {
+    Literal(String, Position),
+    Variable(String, Position),
+    Cat(Box<AugmentedRegex>, Box<AugmentedRegex>),
+    Or(Vec<AugmentedRegex>),
+    Star(Box<AugmentedRegex>),
     Epsilon,
-    RightmostLeaf(usize),
+    EndMarker(Position),
 }
 
 
-impl std::fmt::Debug for Regex {
+impl std::fmt::Debug for AugmentedRegex {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Literal(arg0, position) => f.write_fmt(format_args!(r#"Literal("{}".to_string(), {})"#, arg0, position)),
@@ -24,17 +26,17 @@ impl std::fmt::Debug for Regex {
             Self::Cat(left, right) => f.write_fmt(format_args!(r#"Cat(Box::new({:?}), Box::new({:?}))"#, left, right)),
             Self::Or(arg0) => f.write_fmt(format_args!(r#"Or(vec!{:?})"#, arg0)),
             Self::Star(arg0) => f.write_fmt(format_args!(r#"Star(Box::new({:?}))"#, arg0)),
-            Self::RightmostLeaf(position) => f.write_fmt(format_args!(r#"RightmostLeaf({})"#, position)),
+            Self::EndMarker(position) => f.write_fmt(format_args!(r#"RightmostLeaf({})"#, position)),
             Self::Epsilon => f.write_fmt(format_args!(r#"Epsilon"#)),
         }
     }
 }
 
 
-fn do_from_expr(e: &Expr, mut position: usize) -> (Regex, usize) {
+fn do_from_expr(e: &Expr, mut position: Position) -> (AugmentedRegex, Position) {
     match e {
-        Expr::Literal(s) => (Regex::Literal(s.to_string(), position), position + 1),
-        Expr::Variable(s) => (Regex::Variable(s.to_string(), position), position + 1),
+        Expr::Literal(s) => (AugmentedRegex::Literal(s.to_string(), position), position + 1),
+        Expr::Variable(s) => (AugmentedRegex::Variable(s.to_string(), position), position + 1),
         Expr::Sequence(subexprs) => {
             let mut left = {
                 let (re, pos) = do_from_expr(&subexprs[0], position);
@@ -44,42 +46,42 @@ fn do_from_expr(e: &Expr, mut position: usize) -> (Regex, usize) {
             for right in &subexprs[1..] {
                 let (re, pos) = do_from_expr(right, position);
                 position = pos;
-                left = Regex::Cat(Box::new(left), Box::new(re))
+                left = AugmentedRegex::Cat(Box::new(left), Box::new(re))
             }
             (left, position)
         },
         Expr::Alternative(subexprs) => {
-            let mut subregexes: Vec<Regex> = Default::default();
+            let mut subregexes: Vec<AugmentedRegex> = Default::default();
             for e in subexprs {
                 let (subregex, pos) = do_from_expr(e, position);
                 subregexes.push(subregex);
                 position = pos;
             }
-            (Regex::Or(subregexes), position)
+            (AugmentedRegex::Or(subregexes), position)
         },
         Expr::Optional(subexpr) => {
             let (subregex, position) = do_from_expr(subexpr, position);
-            (Regex::Or(vec![subregex, Regex::Epsilon]), position)
+            (AugmentedRegex::Or(vec![subregex, AugmentedRegex::Epsilon]), position)
         }
         Expr::Many1(subexpr) => {
             let (subregex, position) = do_from_expr(subexpr, position);
-            (Regex::Cat(Box::new(subregex.clone()), Box::new(Regex::Star(Box::new(subregex)))), position)
+            (AugmentedRegex::Cat(Box::new(subregex.clone()), Box::new(AugmentedRegex::Star(Box::new(subregex)))), position)
         },
     }
 }
 
 
-fn do_firstpos(re: &Regex, result: &mut HashSet<usize>) {
+fn do_firstpos(re: &AugmentedRegex, result: &mut BTreeSet<Position>) {
     match re {
-        Regex::Epsilon => {},
-        Regex::Literal(_, position) => { result.insert(*position); },
-        Regex::Variable(_, position) => { result.insert(*position); },
-        Regex::Or(subregexes) => {
+        AugmentedRegex::Epsilon => {},
+        AugmentedRegex::Literal(_, position) => { result.insert(*position); },
+        AugmentedRegex::Variable(_, position) => { result.insert(*position); },
+        AugmentedRegex::Or(subregexes) => {
             for subre in subregexes {
                 do_firstpos(subre, result);
             }
         },
-        Regex::Cat(left, right) => {
+        AugmentedRegex::Cat(left, right) => {
             if left.nullable() {
                 do_firstpos(left, result);
                 do_firstpos(right, result);
@@ -88,23 +90,23 @@ fn do_firstpos(re: &Regex, result: &mut HashSet<usize>) {
                 do_firstpos(left, result);
             }
         },
-        Regex::Star(subregex) => { do_firstpos(subregex, result); },
-        Regex::RightmostLeaf(position) => { result.insert(*position); },
+        AugmentedRegex::Star(subregex) => { do_firstpos(subregex, result); },
+        AugmentedRegex::EndMarker(position) => { result.insert(*position); },
     }
 }
 
 
-fn do_lastpos(re: &Regex, result: &mut HashSet<usize>) {
+fn do_lastpos(re: &AugmentedRegex, result: &mut HashSet<u32>) {
     match re {
-        Regex::Epsilon => {},
-        Regex::Literal(_, position) => { result.insert(*position); },
-        Regex::Variable(_, position) => { result.insert(*position); },
-        Regex::Or(subregexes) => {
+        AugmentedRegex::Epsilon => {},
+        AugmentedRegex::Literal(_, position) => { result.insert(*position); },
+        AugmentedRegex::Variable(_, position) => { result.insert(*position); },
+        AugmentedRegex::Or(subregexes) => {
             for subre in subregexes {
                 do_lastpos(subre, result);
             }
         },
-        Regex::Cat(left, right) => {
+        AugmentedRegex::Cat(left, right) => {
             if right.nullable() {
                 do_lastpos(right, result);
                 do_lastpos(left, result);
@@ -113,23 +115,23 @@ fn do_lastpos(re: &Regex, result: &mut HashSet<usize>) {
                 do_lastpos(right, result);
             }
         },
-        Regex::Star(subregex) => { do_lastpos(subregex, result); },
-        Regex::RightmostLeaf(position) => { result.insert(*position); },
+        AugmentedRegex::Star(subregex) => { do_lastpos(subregex, result); },
+        AugmentedRegex::EndMarker(position) => { result.insert(*position); },
     }
 }
 
 
-fn do_followpos(re: &Regex, result: &mut BTreeMap<usize, RoaringBitmap>) {
+fn do_followpos(re: &AugmentedRegex, result: &mut BTreeMap<Position, RoaringBitmap>) {
     match re {
-        Regex::Epsilon => {},
-        Regex::Literal(_, _) => {},
-        Regex::Variable(_, _) => {},
-        Regex::Or(subregexes) => {
+        AugmentedRegex::Epsilon => {},
+        AugmentedRegex::Literal(_, _) => {},
+        AugmentedRegex::Variable(_, _) => {},
+        AugmentedRegex::Or(subregexes) => {
             for subre in subregexes {
                 do_followpos(subre, result);
             }
         },
-        Regex::Cat(left, right) => {
+        AugmentedRegex::Cat(left, right) => {
             do_followpos(left, result);
             do_followpos(right, result);
             let fp = right.firstpos();
@@ -139,7 +141,7 @@ fn do_followpos(re: &Regex, result: &mut BTreeMap<usize, RoaringBitmap>) {
                 }
             }
         },
-        Regex::Star(subregex) => {
+        AugmentedRegex::Star(subregex) => {
             let first = subregex.firstpos();
             let last = subregex.lastpos();
             for i in last {
@@ -148,43 +150,94 @@ fn do_followpos(re: &Regex, result: &mut BTreeMap<usize, RoaringBitmap>) {
                 }
             }
         },
-        Regex::RightmostLeaf(_) => {},
+        AugmentedRegex::EndMarker(_) => {},
     }
 }
 
 
-impl Regex {
-    fn from_expr(e: &Expr) -> Self {
+fn do_get_input_symbols(regex: &AugmentedRegex, output: &mut HashSet<Input>) {
+    match regex {
+        AugmentedRegex::Epsilon => {},
+        AugmentedRegex::Literal(s, _) => { output.insert(Input::Literal(s.to_string())); },
+        AugmentedRegex::Variable(_, _) => { output.insert(Input::Any); },
+        AugmentedRegex::Cat(left, right) => {
+            do_get_input_symbols(&left, output);
+            do_get_input_symbols(&right, output);
+        },
+        AugmentedRegex::Or(subregexes) => {
+            for re in subregexes {
+                do_get_input_symbols(&re, output);
+            }
+        },
+        AugmentedRegex::Star(re) => {
+            do_get_input_symbols(&re, output);
+        },
+        AugmentedRegex::EndMarker(_) => {},
+    }
+}
+
+
+impl AugmentedRegex {
+    pub fn from_expr(e: &Expr) -> Self {
         let (regex, _) = do_from_expr(e, 0);
         regex
     }
 
-    fn nullable(&self) -> bool {
+    pub fn get_rightmost_leaf_position(&self) -> Option<Position> {
         match self {
-            Regex::Epsilon => true,
-            Regex::Literal(_, _) => false,
-            Regex::Variable(_, _) => false,
-            Regex::Or(children) => children.iter().any(|child| child.nullable()),
-            Regex::Cat(left, right) => left.nullable() && right.nullable(),
-            Regex::Star(_) => true,
-            Regex::RightmostLeaf(_) => true,
+            AugmentedRegex::Epsilon => None,
+            AugmentedRegex::Literal(_, _) => None,
+            AugmentedRegex::Variable(_, _) => None,
+            AugmentedRegex::Cat(_, right) => right.get_rightmost_leaf_position(),
+            AugmentedRegex::Or(v) => v.last().and_then(|re| re.get_rightmost_leaf_position()),
+            AugmentedRegex::Star(re) => re.get_rightmost_leaf_position(),
+            AugmentedRegex::EndMarker(position) => Some(*position),
         }
     }
 
-    fn firstpos(&self) -> HashSet<usize> {
-        let mut result: HashSet<usize> = Default::default();
+    // TODO This has to be precomputed in Self::from_expr() for efficiency.
+    pub fn get_input_symbols(&self) -> HashSet<Input> {
+        let mut output: HashSet<Input> = Default::default();
+        do_get_input_symbols(self, &mut output);
+        output
+    }
+
+    pub fn get_position_input(&self, position: u32) -> Input {
+        // TODO This has to be precomputed in Self::from_expr() for efficiency.
+        todo!();
+    }
+
+    pub fn get_endmarker_position(&self) -> Position {
+        // TODO This has to be precomputed in Self::from_expr() for efficiency.
+        todo!();
+    }
+
+    fn nullable(&self) -> bool {
+        match self {
+            AugmentedRegex::Epsilon => true,
+            AugmentedRegex::Literal(_, _) => false,
+            AugmentedRegex::Variable(_, _) => false,
+            AugmentedRegex::Or(children) => children.iter().any(|child| child.nullable()),
+            AugmentedRegex::Cat(left, right) => left.nullable() && right.nullable(),
+            AugmentedRegex::Star(_) => true,
+            AugmentedRegex::EndMarker(_) => true,
+        }
+    }
+
+    pub fn firstpos(&self) -> BTreeSet<Position> {
+        let mut result: BTreeSet<Position> = Default::default();
         do_firstpos(self, &mut result);
         result
     }
 
-    fn lastpos(&self) -> HashSet<usize> {
-        let mut result: HashSet<usize> = Default::default();
+    fn lastpos(&self) -> HashSet<Position> {
+        let mut result: HashSet<Position> = Default::default();
         do_lastpos(self, &mut result);
         result
     }
 
-    fn followpos(&self) -> BTreeMap<usize, RoaringBitmap> {
-        let mut result: BTreeMap<usize, RoaringBitmap> = Default::default();
+    pub fn followpos(&self) -> BTreeMap<Position, RoaringBitmap> {
+        let mut result: BTreeMap<u32, RoaringBitmap> = Default::default();
         do_followpos(self, &mut result);
         result
     }
@@ -195,15 +248,15 @@ impl Regex {
 mod tests {
     use super::*;
 
-    fn make_sample_star_regex() -> Regex {
-        Regex::Star(Box::new(Regex::Or(vec![Regex::Literal("a".to_string(), 1), Regex::Literal("b".to_string(), 2),])))
+    fn make_sample_star_regex() -> AugmentedRegex {
+        AugmentedRegex::Star(Box::new(AugmentedRegex::Or(vec![AugmentedRegex::Literal("a".to_string(), 1), AugmentedRegex::Literal("b".to_string(), 2),])))
     }
 
-    fn make_sample_regex() -> Regex {
+    fn make_sample_regex() -> AugmentedRegex {
         // (a|b)*a
-        Regex::Cat(
+        AugmentedRegex::Cat(
             Box::new(make_sample_star_regex()),
-            Box::new(Regex::Literal("a".to_string(), 3)),
+            Box::new(AugmentedRegex::Literal("a".to_string(), 3)),
         )
     }
 
@@ -219,7 +272,7 @@ mod tests {
     #[test]
     fn firstpos() {
         let regex = make_sample_regex();
-        assert_eq!(regex.firstpos(), HashSet::from([1,2,3]));
+        assert_eq!(regex.firstpos(), BTreeSet::from([1,2,3]));
     }
 
     #[test]
@@ -228,20 +281,20 @@ mod tests {
         assert_eq!(regex.lastpos(), HashSet::from([3]));
     }
 
-    fn make_followpos_regex() -> Regex {
+    fn make_followpos_regex() -> AugmentedRegex {
         // (a|b)*abb#
-        Regex::Cat(
-            Box::new(Regex::Cat(
-                Box::new(Regex::Cat(
-                    Box::new(Regex::Cat(
+        AugmentedRegex::Cat(
+            Box::new(AugmentedRegex::Cat(
+                Box::new(AugmentedRegex::Cat(
+                    Box::new(AugmentedRegex::Cat(
                         Box::new(make_sample_star_regex()),
-                        Box::new(Regex::Literal("a".to_string(), 3)),
+                        Box::new(AugmentedRegex::Literal("a".to_string(), 3)),
                     )),
-                    Box::new(Regex::Literal("b".to_string(), 4)),
+                    Box::new(AugmentedRegex::Literal("b".to_string(), 4)),
                 )),
-                Box::new(Regex::Literal("b".to_string(), 5)),
+                Box::new(AugmentedRegex::Literal("b".to_string(), 5)),
             )),
-            Box::new(Regex::RightmostLeaf(6)),
+            Box::new(AugmentedRegex::EndMarker(6)),
         )
     }
 

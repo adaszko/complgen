@@ -58,11 +58,13 @@ Patterns may also include *variables*:
 
 # Roadmap
 
- * Implement strings interning to speed it up and to deduplicate strings in resulting scripts.
  * Generate DFA directly from the grammar instead of going through Grammar -> ᵋ-NFA -> NFA -> DFA.
+ * Implement strings interning to speed it up and to deduplicate strings in resulting scripts.
  * Implement DFA minimization
     * https://www.uobabylon.edu.iq/eprints/paper_12_2714_213.pdf
     * https://people.csail.mit.edu/rrw/6.045-2019/notemindfa.pdf
+
+ * Show completion hints in ZSH and Fish
 
  * End-to-end tests that excercise the generation completion scripts and check they behave properly.
 
