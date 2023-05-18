@@ -222,10 +222,6 @@ impl AugmentedRegex {
         self.root.firstpos()
     }
 
-    fn lastpos(&self) -> HashSet<Position> {
-        self.root.lastpos()
-    }
-
     pub fn followpos(&self) -> BTreeMap<Position, RoaringBitmap> {
         self.root.followpos()
     }
