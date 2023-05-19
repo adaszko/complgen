@@ -275,13 +275,6 @@ impl DirectDFA {
         dfa_from_regex(regex)
     }
 
-    pub fn get_transitions_from(&self, from: StateId) -> FxHashMap<crate::regex::Input, StateId> {
-        self.transitions
-            .get(&from)
-            .cloned()
-            .unwrap_or(FxHashMap::default())
-    }
-
     pub fn get_all_states(&self) -> RoaringBitmap {
         let mut states: RoaringBitmap = Default::default();
         for (from, to) in &self.transitions {
@@ -523,29 +516,24 @@ mod tests {
 
     impl DirectDFA {
         pub fn accepts(&self, inputs: &[&str]) -> bool {
-            let mut backtracking_stack: Vec<(usize, StateId)> = vec![(0, self.starting_state)];
+            let mut backtracking_stack = Vec::from_iter([(0, self.starting_state)]);
             while let Some((input_index, current_state)) = backtracking_stack.pop() {
                 if input_index == inputs.len() && self.accepting_states.contains(current_state.into()) {
                     return true;
                 }
 
-                let transitions_from_current_state = self.get_transitions_from(current_state);
+                for (transition_input, to) in self.transitions.get(&current_state).unwrap_or(&FxHashMap::default()) {
+                    if let crate::regex::Input::Any = transition_input {
+                        backtracking_stack.push((input_index + 1, *to));
+                    }
+                }
 
-                if input_index < inputs.len() {
-                    let matching_consuming_transitions: Vec<StateId> = transitions_from_current_state
-                        .iter()
-                        .filter_map(|(expected_input, to)| {
-                            match expected_input.matches(inputs[input_index]) {
-                                false => None,
-                                true => Some(*to),
-                            }
-                        })
-                        .collect();
-                    backtracking_stack.extend(
-                        matching_consuming_transitions
-                            .iter()
-                            .map(|state| (input_index + 1, *state)),
-                    );
+                for (transition_input, to) in self.transitions.get(&current_state).unwrap_or(&FxHashMap::default()) {
+                    if let crate::regex::Input::Literal(s) = transition_input {
+                        if s.as_str() == inputs[input_index] {
+                            backtracking_stack.push((input_index + 1, *to));
+                        }
+                    }
                 }
             }
             false

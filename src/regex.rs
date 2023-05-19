@@ -255,15 +255,6 @@ mod tests {
     use super::*;
     use ustr::ustr;
 
-    impl Input {
-        pub fn matches(&self, actual: &str) -> bool {
-            match self {
-                Self::Literal(expected) => actual == expected.as_str(),
-                Self::Any => true,
-            }
-        }
-    }
-
     fn make_sample_star_regex(arena: &Bump) -> AugmentedRegexNode {
         AugmentedRegexNode::Star(arena.alloc(AugmentedRegexNode::Or(vec![AugmentedRegexNode::Literal(ustr("a"), 1), AugmentedRegexNode::Literal(ustr("b"), 2),])))
     }
