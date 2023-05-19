@@ -58,6 +58,7 @@ Patterns may also include *variables*:
 
 # Roadmap
 
+ * Replace FxHashMap with hashbrown::HashMap
  * Generate DFA directly from the grammar instead of going through Grammar -> ᵋ-NFA -> NFA -> DFA.
  * Intern string in Expr to speed it up and to deduplicate strings in resulting scripts.
  * Use an arena in Expr tree to reduce heap allocations.

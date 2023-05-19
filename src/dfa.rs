@@ -844,4 +844,56 @@ mod tests {
             prop_assert!(dfa.accepts(&input));
         }
     }
+
+    #[test]
+    fn accept_hangs() {
+        use Expr::*;
+        let expr = Sequence(vec![Alternative(vec![Sequence(vec![Optional(Box::new(Alternative(vec![Many1(Box::new(Optional(Box::new(Many1(Box::new(Sequence(vec![Literal("foo".to_string()), Literal("foo".to_string())]))))))), Literal("bar".to_string())]))), Variable("DIRECTORY".to_string())]), Many1(Box::new(Literal("--quux".to_string())))]), Sequence(vec![Sequence(vec![Many1(Box::new(Many1(Box::new(Many1(Box::new(Literal("bar".to_string()))))))), Many1(Box::new(Sequence(vec![Many1(Box::new(Many1(Box::new(Literal("--baz".to_string()))))), Sequence(vec![Alternative(vec![Variable("DIRECTORY".to_string()), Variable("PATH".to_string())]), Alternative(vec![Literal("--baz".to_string()), Sequence(vec![Sequence(vec![Literal("--baz".to_string()), Variable("FILE".to_string())]), Sequence(vec![Literal("foo".to_string()), Variable("FILE".to_string())])])])])])))]), Literal("bar".to_string())])]);
+        let input = [
+            "--quux",
+            "--quux",
+            "--quux",
+            "bar",
+            "bar",
+            "bar",
+            "bar",
+            "bar",
+            "bar",
+            "bar",
+            "bar",
+            "bar",
+            "bar",
+            "bar",
+            "--baz",
+            "--baz",
+            "--baz",
+            "--baz",
+            "--baz",
+            "--baz",
+            "anything",
+            "--baz",
+            "--baz",
+            "--baz",
+            "--baz",
+            "anything",
+            "--baz",
+            "--baz",
+            "--baz",
+            "--baz",
+            "anything",
+            "--baz",
+            "anything",
+            "foo",
+            "anything",
+            "bar",
+        ];
+        let arena = Bump::new();
+        let regex = AugmentedRegex::from_expr(&expr, &arena);
+        let dfa = DirectDFA::from_regex(&regex);
+        let input: Vec<&str> = input.iter().map(|s| {
+            let s: &str = s;
+            s
+        }).collect();
+        assert!(dfa.accepts(&input));
+    }
 }
