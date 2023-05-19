@@ -16,6 +16,16 @@ pub enum Input {
 }
 
 
+impl std::fmt::Display for Input {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Input::Literal(s) => write!(f, "{}", s),
+            Input::Any => write!(f, "*"),
+        }
+    }
+}
+
+
 #[derive(Clone, PartialEq)]
 pub enum AugmentedRegexNode<'a> {
     Epsilon,
@@ -36,7 +46,7 @@ impl<'a> std::fmt::Debug for AugmentedRegexNode<'a> {
             Self::Cat(left, right) => f.write_fmt(format_args!(r#"Cat({:?}, {:?})"#, left, right)),
             Self::Or(arg0) => f.write_fmt(format_args!(r#"Or(vec!{:?})"#, arg0)),
             Self::Star(arg0) => f.write_fmt(format_args!(r#"Star({:?})"#, arg0)),
-            Self::EndMarker(position) => f.write_fmt(format_args!(r#"RightmostLeaf({})"#, position)),
+            Self::EndMarker(position) => f.write_fmt(format_args!(r#"EndMarker({})"#, position)),
             Self::Epsilon => f.write_fmt(format_args!(r#"Epsilon"#)),
         }
     }
@@ -207,6 +217,7 @@ fn do_from_expr<'a>(e: &Expr, arena: &'a Bump, position: &mut Position, symbols:
 }
 
 
+#[derive(Debug)]
 pub struct AugmentedRegex<'a> {
     root: AugmentedRegexNode<'a>,
     input_symbols: HashSet<Input>,

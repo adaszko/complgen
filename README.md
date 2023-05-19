@@ -59,7 +59,8 @@ Patterns may also include *variables*:
 # Roadmap
 
  * Generate DFA directly from the grammar instead of going through Grammar -> ᵋ-NFA -> NFA -> DFA.
- * Implement strings interning to speed it up and to deduplicate strings in resulting scripts.
+ * Intern string in Expr to speed it up and to deduplicate strings in resulting scripts.
+ * Use an arena in Expr tree to reduce heap allocations.
  * Implement DFA minimization
     * https://www.uobabylon.edu.iq/eprints/paper_12_2714_213.pdf
     * https://people.csail.mit.edu/rrw/6.045-2019/notemindfa.pdf

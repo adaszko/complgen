@@ -225,6 +225,7 @@ fn dfa_from_regex(regex: &AugmentedRegex) -> DirectDFA {
 
     let mut dtran: BTreeMap<StateId, FxHashMap<crate::regex::Input, StateId>> = Default::default();
     let mut unmarked_states: FxHashSet<BTreeSet<Position>> = Default::default();
+    unmarked_states.insert(combined_starting_state.clone());
     loop {
         let combined_state = match unmarked_states.iter().next() {
             Some(state) => state.clone(),
@@ -281,6 +282,69 @@ impl DirectDFA {
             .get(&from)
             .cloned()
             .unwrap_or(FxHashMap::default())
+    }
+
+    pub fn get_all_states(&self) -> RoaringBitmap {
+        let mut states: RoaringBitmap = Default::default();
+        for (from, to) in &self.transitions {
+            states.insert((*from).into());
+            to.iter().for_each(|(_, to)| {
+                states.insert((*to).into());
+            });
+        }
+        states
+    }
+
+    pub fn to_dot<W: Write>(&self, output: &mut W) -> std::result::Result<(), std::io::Error> {
+        writeln!(output, "digraph nfa {{")?;
+        writeln!(output, "\trankdir=LR;")?;
+
+        if self.accepting_states.contains(self.starting_state.into()) {
+            writeln!(output, "\tnode [shape = doubleoctagon];")?;
+        }
+        else {
+            writeln!(output, "\tnode [shape = octagon];")?;
+        }
+        writeln!(output, "\t_{}[label=\"{}\"];", self.starting_state, self.starting_state)?;
+
+        let regular_states = {
+            let mut states = [&self.get_all_states(), &self.accepting_states].difference();
+            states.remove(self.starting_state.into());
+            states
+        };
+
+        writeln!(output, "\tnode [shape = circle];")?;
+        for state in regular_states {
+            writeln!(output, "\t_{}[label=\"{}\"];", state, state)?;
+        }
+
+        write!(output, "\n")?;
+
+        writeln!(output, "\tnode [shape = doublecircle];")?;
+        for state in &self.accepting_states {
+            writeln!(output, "\t_{}[label=\"{}\"];", state, state)?;
+        }
+
+        write!(output, "\n")?;
+
+        for (from, to) in &self.transitions {
+            for (input, to) in to {
+                writeln!(output, "\t_{} -> _{} [label = \"{}\"];", from, to, input)?;
+            }
+        }
+
+        writeln!(output, "}}")?;
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub fn to_dot_file<P: AsRef<std::path::Path>>(
+        &self,
+        path: P,
+    ) -> std::result::Result<(), std::io::Error> {
+        let mut file = std::fs::File::create(path)?;
+        self.to_dot(&mut file)?;
+        Ok(())
     }
 }
 
