@@ -1,4 +1,4 @@
-use std::collections::{HashSet, BTreeMap, BTreeSet, HashMap};
+use std::collections::{HashSet, BTreeMap, BTreeSet};
 
 use bumpalo::Bump;
 use ustr::{Ustr, ustr};
@@ -170,28 +170,26 @@ impl<'a> AugmentedRegexNode<'a> {
 }
 
 
-fn do_from_expr<'a>(e: &Expr, arena: &'a Bump, position: &mut Position, symbols: &mut HashSet<Input>, input_from_position: &mut HashMap<Position, Input>) -> AugmentedRegexNode<'a> {
+fn do_from_expr<'a>(e: &Expr, arena: &'a Bump, symbols: &mut HashSet<Input>, input_from_position: &mut Vec<Input>) -> AugmentedRegexNode<'a> {
     match e {
         Expr::Literal(s) => {
-            let result = AugmentedRegexNode::Literal(ustr(&s), *position);
+            let result = AugmentedRegexNode::Literal(ustr(&s), Position::try_from(input_from_position.len()).unwrap());
             let input = Input::Literal(ustr(s));
-            input_from_position.insert(*position, input.clone());
-            *position += 1;
+            input_from_position.push(input.clone());
             symbols.insert(input);
             result
         },
         Expr::Variable(_) => {
-            let result = AugmentedRegexNode::Variable(*position);
+            let result = AugmentedRegexNode::Variable(Position::try_from(input_from_position.len()).unwrap());
             let input = Input::Any;
-            input_from_position.insert(*position, input.clone());
-            *position += 1;
+            input_from_position.push(input.clone());
             symbols.insert(input);
             result
         },
         Expr::Sequence(subexprs) => {
-            let mut left_regex = do_from_expr(&subexprs[0], arena, position, symbols, input_from_position);
+            let mut left_regex = do_from_expr(&subexprs[0], arena, symbols, input_from_position);
             for right_expr in &subexprs[1..] {
-                let right_regex = arena.alloc(do_from_expr(right_expr, arena, position, symbols, input_from_position));
+                let right_regex = arena.alloc(do_from_expr(right_expr, arena, symbols, input_from_position));
                 left_regex = AugmentedRegexNode::Cat(arena.alloc(left_regex), right_regex);
             }
             left_regex
@@ -199,17 +197,17 @@ fn do_from_expr<'a>(e: &Expr, arena: &'a Bump, position: &mut Position, symbols:
         Expr::Alternative(subexprs) => {
             let mut subregexes: Vec<AugmentedRegexNode> = Default::default();
             for e in subexprs {
-                let subregex = do_from_expr(e, arena, position, symbols, input_from_position);
+                let subregex = do_from_expr(e, arena, symbols, input_from_position);
                 subregexes.push(subregex);
             }
             AugmentedRegexNode::Or(subregexes)
         },
         Expr::Optional(subexpr) => {
-            let subregex = do_from_expr(subexpr, arena, position, symbols, input_from_position);
+            let subregex = do_from_expr(subexpr, arena, symbols, input_from_position);
             AugmentedRegexNode::Or(vec![subregex, AugmentedRegexNode::Epsilon])
         }
         Expr::Many1(subexpr) => {
-            let subregex = arena.alloc(do_from_expr(subexpr, arena, position, symbols, input_from_position));
+            let subregex = arena.alloc(do_from_expr(subexpr, arena, symbols, input_from_position));
             let star = arena.alloc(AugmentedRegexNode::Star(subregex));
             AugmentedRegexNode::Cat(subregex, star)
         },
@@ -219,26 +217,26 @@ fn do_from_expr<'a>(e: &Expr, arena: &'a Bump, position: &mut Position, symbols:
 
 #[derive(Debug)]
 pub struct AugmentedRegex<'a> {
-    root: AugmentedRegexNode<'a>,
-    input_symbols: HashSet<Input>,
-    input_from_position: HashMap<Position, Input>,
-    endmarker_position: Position,
+    pub root: AugmentedRegexNode<'a>,
+    pub input_symbols: HashSet<Input>,
+    pub input_from_position: Vec<Input>,
+    pub endmarker_position: Position,
 }
 
 
 impl<'a> AugmentedRegex<'a> {
     pub fn from_expr(e: &Expr, arena: &'a Bump) -> Self {
-        let mut position: Position = 1;
         let mut input_symbols: HashSet<Input> = Default::default();
-        let mut input_from_position: HashMap<Position, Input> = Default::default();
-        let regex = arena.alloc(do_from_expr(e, arena, &mut position, &mut input_symbols, &mut input_from_position));
-        let endmarker = arena.alloc(AugmentedRegexNode::EndMarker(position));
+        let mut input_from_position: Vec<Input> = Default::default();
+        let regex = arena.alloc(do_from_expr(e, arena, &mut input_symbols, &mut input_from_position));
+        let endmarker_position = Position::try_from(input_from_position.len()).unwrap();
+        let endmarker = arena.alloc(AugmentedRegexNode::EndMarker(endmarker_position));
         let root = AugmentedRegexNode::Cat(regex, endmarker);
         Self {
             root,
             input_symbols,
+            endmarker_position,
             input_from_position,
-            endmarker_position: position,
         }
     }
 
@@ -248,18 +246,6 @@ impl<'a> AugmentedRegex<'a> {
 
     pub fn followpos(&self) -> BTreeMap<Position, RoaringBitmap> {
         self.root.followpos()
-    }
-
-    pub fn get_input_symbols(&self) -> &HashSet<Input> {
-        &self.input_symbols
-    }
-
-    pub fn get_input_from_position(&self, position: Position) -> Option<Input> {
-        self.input_from_position.get(&position).map(|input| input.clone())
-    }
-
-    pub fn get_endmarker_position(&self) -> Position {
-        self.endmarker_position
     }
 }
 

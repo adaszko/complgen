@@ -203,7 +203,7 @@ fn dfa_from_nfa(nfa: &NFA) -> DFA {
 
 // XXX A temporary duplication of the DFA types until Regex -> DFA code works as well as the "via
 // NFA" route.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct DirectDFA {
     pub starting_state: StateId,
     pub transitions: BTreeMap<StateId, FxHashMap<crate::regex::Input, StateId>>,
@@ -219,8 +219,6 @@ fn dfa_from_regex(regex: &AugmentedRegex) -> DirectDFA {
     dstates.insert(combined_starting_state.clone(), unallocated_state_id);
     unallocated_state_id += 1;
 
-    let input_symbols = regex.get_input_symbols();
-
     let followpos = regex.followpos();
 
     let mut dtran: BTreeMap<StateId, FxHashMap<crate::regex::Input, StateId>> = Default::default();
@@ -232,10 +230,11 @@ fn dfa_from_regex(regex: &AugmentedRegex) -> DirectDFA {
             None => break,
         };
         unmarked_states.remove(&combined_state);
-        for input in input_symbols {
+        for input in &regex.input_symbols {
             let mut u = RoaringBitmap::new();
             for pos in &combined_state {
-                if regex.get_input_from_position(*pos) == Some(input.clone()) {
+                let pos_usize = usize::try_from(*pos).unwrap();
+                if regex.input_from_position.get(pos_usize) == Some(input) {
                     if let Some(positions) = followpos.get(&pos) {
                         u |= positions;
                     }
@@ -256,9 +255,8 @@ fn dfa_from_regex(regex: &AugmentedRegex) -> DirectDFA {
     // The accepting states are those containing the position for the endmarker symbol #.
     let accepting_states: RoaringBitmap = {
         let mut accepting_states = RoaringBitmap::default();
-        let endmarker_position = regex.get_endmarker_position();
         for (combined_state, state_id) in &dstates {
-            if combined_state.contains(&endmarker_position) {
+            if combined_state.contains(&regex.endmarker_position) {
                 accepting_states.insert((*state_id).into());
             }
         }
