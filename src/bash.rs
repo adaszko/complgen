@@ -1,8 +1,8 @@
 use std::fmt::Write;
 
 use complgen::{StateId, Result};
-use crate::dfa::DFA;
-use crate::nfa::Input;
+use crate::dfa::DirectDFA;
+
 
 
 // `transitions`: an associative array where:
@@ -13,10 +13,10 @@ use crate::nfa::Input;
 //      value: state number
 // An entry in the `asterisk_transitions` array indicates that there's a fallback transition that
 // accepts any word
-fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
+fn write_tables<W: Write>(buffer: &mut W, dfa: &DirectDFA) -> Result<()> {
     writeln!(buffer, r#"    declare -A transitions"#)?;
     for state in dfa.get_all_states() {
-        let mut transitions: Vec<(Input, StateId)> = dfa.get_transitions_from(state as StateId).into_iter().filter(|(input, _)| !input.is_any()).collect();
+        let mut transitions: Vec<(crate::regex::Input, StateId)> = dfa.transitions.get(&StateId::try_from(state).unwrap()).unwrap().iter().filter(|(input, _)| !input.is_any()).map(|(input, state)| (*input, *state)).collect();
         if transitions.is_empty() {
             continue;
         }
@@ -35,7 +35,7 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
 }
 
 
-pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
+pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DirectDFA) -> Result<()> {
     write!(buffer, r#"_{command} () {{
 "#)?;
 

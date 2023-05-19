@@ -286,6 +286,18 @@ impl DirectDFA {
         states
     }
 
+    pub fn get_asterisk_transitions(&self) -> Vec<(StateId, StateId)> {
+        let mut result: Vec<(StateId, StateId)> = Default::default();
+        for (from, tos) in &self.transitions {
+            for (input, to) in tos {
+                if input.is_any() {
+                    result.push((*from, *to));
+                }
+            }
+        }
+        result
+    }
+
     pub fn to_dot<W: Write>(&self, output: &mut W) -> std::result::Result<(), std::io::Error> {
         writeln!(output, "digraph nfa {{")?;
         writeln!(output, "\trankdir=LR;")?;
@@ -377,18 +389,6 @@ impl DFA {
             });
         }
         states
-    }
-
-    pub fn get_asterisk_transitions(&self) -> Vec<(StateId, StateId)> {
-        let mut result: Vec<(StateId, StateId)> = Default::default();
-        for (from, tos) in &self.transitions {
-            for (input, to) in tos {
-                if input.is_any() {
-                    result.push((*from, *to));
-                }
-            }
-        }
-        result
     }
 
     pub fn get_reachable_states(&self) -> RoaringBitmap {

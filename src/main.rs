@@ -1,13 +1,13 @@
 use std::io::Write;
 
+use bumpalo::Bump;
 use clap::Parser;
 
 use complgen::{Result};
 
-use crate::dfa::DFA;
-use crate::nfa::NFA;
+use crate::dfa::DirectDFA;
 use crate::grammar::parse;
-use crate::epsilon_nfa::EpsilonNFA;
+use crate::regex::AugmentedRegex;
 
 mod grammar;
 mod epsilon_nfa;
@@ -66,15 +66,13 @@ fn compile(args: &CompileArgs) -> Result<()> {
     let input = std::fs::read_to_string(&args.usage_file_path).unwrap();
     let grammar = parse(&input)?;
     let (command, expr) = grammar.into_command_expr();
+    let arena = Bump::new();
 
-    println!("Grammar -> EpsilonNFA");
-    let epsilon_nfa = EpsilonNFA::from_expr(&expr);
+    println!("Grammar -> Regex");
+    let regex = AugmentedRegex::from_expr(&expr, &arena);
 
-    println!("EpsilonNFA -> NFA");
-    let nfa = NFA::from_epsilon_nfa(&epsilon_nfa);
-
-    println!("NFA -> DFA");
-    let dfa = DFA::from_nfa(&nfa);
+    println!("Regex -> DFA");
+    let dfa = DirectDFA::from_regex(&regex);
 
     let mut output = String::default();
 

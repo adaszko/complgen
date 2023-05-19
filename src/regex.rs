@@ -1,4 +1,4 @@
-use std::collections::{HashSet, BTreeMap, BTreeSet};
+use std::{collections::{HashSet, BTreeMap, BTreeSet}, cmp::Ordering};
 
 use bumpalo::Bump;
 use ustr::{Ustr, ustr};
@@ -13,6 +13,25 @@ pub type Position = u32;
 pub enum Input {
     Literal(Ustr),
     Any,
+}
+
+
+impl Ord for Input {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            (Input::Literal(left), Input::Literal(right)) => left.cmp(right),
+            (Input::Literal(_), Input::Any) => Ordering::Less,
+            (Input::Any, Input::Literal(_)) => Ordering::Greater,
+            (Input::Any, Input::Any) => Ordering::Equal,
+        }
+    }
+}
+
+
+impl Input {
+    pub fn is_any(&self) -> bool {
+        matches!(self, Self::Any)
+    }
 }
 
 
