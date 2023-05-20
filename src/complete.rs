@@ -101,7 +101,7 @@ pub fn get_completions<'a, 'b>(expr: &'a Expr, words_before_cursor: &'b [&'a str
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
+    use hashbrown::HashSet;
 
     use crate::grammar::parse;
 

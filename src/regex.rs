@@ -1,4 +1,5 @@
-use std::{collections::{HashSet, BTreeMap, BTreeSet}, cmp::Ordering};
+use hashbrown::HashSet;
+use std::{collections::{BTreeMap, BTreeSet}, cmp::Ordering};
 
 use bumpalo::Bump;
 use ustr::{Ustr, ustr};
