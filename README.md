@@ -9,12 +9,19 @@ tool.  No additional software needs to be installed in order to use those custom
 
 ## Usage
 
-The command:
+There are two ways to use complgen:
 
-    cargo run --release <usage/darcs.usage
+1. To generate standalone completion scripts for bash and/or fish:
 
-will generate `darcs.bash` and `darcs.fish` in the current directory that can be sourced in the respective
-shells to get `darcs` completions.
+```
+cargo run --release -- compile --bash-script-path darcs.bash --fish-script-path darcs.fish usage/darcs.usage
+```
+
+2. To generate completions on stdout by interpreting the grammar "just-in-time" (just like [compleat](https://github.com/mbrubeck/compleat/) works):
+
+```
+cargo run --release -- complete usage/darcs.usage [ARGS...]
+```
 
 ## Rationale
 
@@ -27,7 +34,8 @@ maintained separately from each other risking divergence.  On balance, it is dee
 
  * Generates working completion scripts for `bash` and `fish`.  `zsh` can use `bash` script [via bash
    compatibility mode](https://stackoverflow.com/a/8492043).
- * The implementation is still a bit dirty.  There's lots of room for optimization.
+
+ * The generated script can be huge because the DFA isn't optimal (yet).
 
 # Syntax
 
@@ -58,16 +66,12 @@ Patterns may also include *variables*:
 
 # Roadmap
 
- * Generate DFA directly from the grammar instead of going through Grammar -> ᵋ-NFA -> NFA -> DFA.
- * Intern string in Expr to speed it up and to deduplicate strings in resulting scripts.
  * Use an arena in Expr tree to reduce heap allocations.
- * Implement DFA minimization
-    * https://www.uobabylon.edu.iq/eprints/paper_12_2714_213.pdf
-    * https://people.csail.mit.edu/rrw/6.045-2019/notemindfa.pdf
+ * Implement DFA minimization (The Dragon Book, 3.9.6 Minimizing the Number of States of a DFA)
 
  * Show completion hints in ZSH and Fish
 
- * End-to-end tests that excercise the generation completion scripts and check they behave properly.
+ * End-to-end tests that excercise the generation completion scripts and check that they behave properly.
 
  * `name ::= expression;` defines a new production that can be referred to from other productions via `<name>`
    syntax.  Referring to a production recursively won't be supported as that would take us outside of regular languages.
@@ -77,5 +81,3 @@ Patterns may also include *variables*:
    `$COMP_CWORD` environment will contain the input line and the current word being completed.
 
  * If no value is defined for `name`, then the pattern `<name>` will match any word.
-
- * DRY to_dot fns into a trait fn
