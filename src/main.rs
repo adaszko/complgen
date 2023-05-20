@@ -10,8 +10,6 @@ use crate::grammar::parse;
 use crate::regex::AugmentedRegex;
 
 mod grammar;
-mod epsilon_nfa;
-mod nfa;
 mod dfa;
 mod bash;
 mod fish;
