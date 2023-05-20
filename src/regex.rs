@@ -2,7 +2,7 @@ use hashbrown::HashSet;
 use std::{collections::{BTreeMap, BTreeSet}, cmp::Ordering};
 
 use bumpalo::Bump;
-use ustr::{Ustr, ustr};
+use ustr::Ustr;
 use roaring::RoaringBitmap;
 
 use crate::grammar::Expr;
@@ -193,8 +193,8 @@ impl<'a> AugmentedRegexNode<'a> {
 fn do_from_expr<'a>(e: &Expr, arena: &'a Bump, symbols: &mut HashSet<Input>, input_from_position: &mut Vec<Input>) -> AugmentedRegexNode<'a> {
     match e {
         Expr::Literal(s) => {
-            let result = AugmentedRegexNode::Literal(ustr(&s), Position::try_from(input_from_position.len()).unwrap());
-            let input = Input::Literal(ustr(s));
+            let result = AugmentedRegexNode::Literal(*s, Position::try_from(input_from_position.len()).unwrap());
+            let input = Input::Literal(*s);
             input_from_position.push(input.clone());
             symbols.insert(input);
             result

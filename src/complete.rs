@@ -6,7 +6,7 @@ use crate::grammar::Expr;
 fn match_against_regex<'a, 'b>(expr: &'a Expr, mut words: &'b [&'a str], completions: Rc<RefCell<Vec<&'a str>>>) -> Option<&'b [&'a str]> {
     match expr {
         Expr::Literal(s) => {
-            return if words[0] == s {
+            return if words[0] == s.as_str() {
                 Some(&words[1..])
             }
             else {

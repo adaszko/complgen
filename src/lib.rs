@@ -1,4 +1,5 @@
 use std::string::FromUtf8Error;
+use ustr::Ustr;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -9,7 +10,7 @@ pub enum Error {
     EmptyGrammar,
 
     #[error("One one command is allowed in completions definition")]
-    VaryingCommandNames(Vec<String>),
+    VaryingCommandNames(Vec<Ustr>),
 
     #[error("UTF-8 conversion error")]
     FromUtf8Error(#[from] FromUtf8Error),

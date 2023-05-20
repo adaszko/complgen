@@ -170,6 +170,7 @@ mod tests {
     use super::*;
 
     use bumpalo::Bump;
+    use ustr::ustr as u;
     use proptest::prelude::*;
 
     impl DirectDFA {
@@ -203,7 +204,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn accepts_arb_expr_input_from_regex((expr, input) in arb_expr_match(Rc::new(LITERALS.iter().map(|s|s.to_string()).collect()), Rc::new(VARIABLES.iter().map(|s|s.to_string()).collect()), 10, 3)) {
+        fn accepts_arb_expr_input_from_regex((expr, input) in arb_expr_match(Rc::new(LITERALS.iter().map(|s| u(s)).collect()), Rc::new(VARIABLES.iter().map(|s| u(s)).collect()), 10, 3)) {
             // println!("{:?}", expr);
             // println!("{:?}", input);
             let arena = Bump::new();
@@ -220,7 +221,7 @@ mod tests {
     #[test]
     fn accept_hangs() {
         use Expr::*;
-        let expr = Sequence(vec![Alternative(vec![Sequence(vec![Optional(Box::new(Alternative(vec![Many1(Box::new(Optional(Box::new(Many1(Box::new(Sequence(vec![Literal("foo".to_string()), Literal("foo".to_string())]))))))), Literal("bar".to_string())]))), Variable("DIRECTORY".to_string())]), Many1(Box::new(Literal("--quux".to_string())))]), Sequence(vec![Sequence(vec![Many1(Box::new(Many1(Box::new(Many1(Box::new(Literal("bar".to_string()))))))), Many1(Box::new(Sequence(vec![Many1(Box::new(Many1(Box::new(Literal("--baz".to_string()))))), Sequence(vec![Alternative(vec![Variable("DIRECTORY".to_string()), Variable("PATH".to_string())]), Alternative(vec![Literal("--baz".to_string()), Sequence(vec![Sequence(vec![Literal("--baz".to_string()), Variable("FILE".to_string())]), Sequence(vec![Literal("foo".to_string()), Variable("FILE".to_string())])])])])])))]), Literal("bar".to_string())])]);
+        let expr = Sequence(vec![Alternative(vec![Sequence(vec![Optional(Box::new(Alternative(vec![Many1(Box::new(Optional(Box::new(Many1(Box::new(Sequence(vec![Literal(u("foo")), Literal(u("foo"))]))))))), Literal(u("bar"))]))), Variable(u("DIRECTORY"))]), Many1(Box::new(Literal(u("--quux"))))]), Sequence(vec![Sequence(vec![Many1(Box::new(Many1(Box::new(Many1(Box::new(Literal(u("bar")))))))), Many1(Box::new(Sequence(vec![Many1(Box::new(Many1(Box::new(Literal(u("--baz")))))), Sequence(vec![Alternative(vec![Variable(u("DIRECTORY")), Variable(u("PATH"))]), Alternative(vec![Literal(u("--baz")), Sequence(vec![Sequence(vec![Literal(u("--baz")), Variable(u("FILE"))]), Sequence(vec![Literal(u("foo")), Variable(u("FILE"))])])])])])))]), Literal(u("bar"))])]);
         let input = [
             "--quux",
             "--quux",

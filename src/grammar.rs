@@ -7,29 +7,30 @@ use nom::{
 };
 
 use complgen::{Error, Result};
+use ustr::{Ustr, ustr};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Grammar {
-    pub command: String,
+    pub command: Ustr,
     pub args: Vec<Expr>, // alternatives
 }
 
 impl Grammar {
-    pub fn into_command_expr(self) -> (String, Expr) {
+    pub fn into_command_expr(self) -> (Ustr, Expr) {
         (self.command, Expr::Alternative(self.args))
     }
 }
 
 #[derive(Debug, PartialEq)]
 struct Variant {
-    lhs: String,
+    lhs: Ustr,
     rhs: Expr,
 }
 
 #[derive(Clone, PartialEq)]
 pub enum Expr {
-    Literal(String), // e.g. an option: "--help", or a command: "build"
-    Variable(String), // e.g. <FILE>, <PATH>, <DIR>, etc.
+    Literal(Ustr), // e.g. an option: "--help", or a command: "build"
+    Variable(Ustr), // e.g. <FILE>, <PATH>, <DIR>, etc.
     Sequence(Vec<Expr>),
     Alternative(Vec<Expr>),
     Optional(Box<Expr>),
@@ -39,8 +40,8 @@ pub enum Expr {
 impl std::fmt::Debug for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Literal(arg0) => f.write_fmt(format_args!(r#"Literal("{}".to_string())"#, arg0)),
-            Self::Variable(arg0) => f.write_fmt(format_args!(r#"Variable("{}".to_string())"#, arg0)),
+            Self::Literal(arg0) => f.write_fmt(format_args!(r#"Literal(ustr("{}"))"#, arg0)),
+            Self::Variable(arg0) => f.write_fmt(format_args!(r#"Variable(ustr("{}"))"#, arg0)),
             Self::Sequence(arg0) => f.write_fmt(format_args!(r#"Sequence(vec!{:?})"#, arg0)),
             Self::Alternative(arg0) => f.write_fmt(format_args!(r#"Alternative(vec!{:?})"#, arg0)),
             Self::Optional(arg0) => f.write_fmt(format_args!(r#"Optional(Box::new({:?}))"#, arg0)),
@@ -62,7 +63,7 @@ fn terminal(input: &str) -> IResult<&str, &str> {
 
 fn terminal_expr(input: &str) -> IResult<&str, Expr> {
     let (input, literal) = context("terminal", terminal)(input)?;
-    Ok((input, Expr::Literal(literal.to_string())))
+    Ok((input, Expr::Literal(ustr(literal))))
 }
 
 fn symbol(input: &str) -> IResult<&str, &str> {
@@ -74,7 +75,7 @@ fn symbol(input: &str) -> IResult<&str, &str> {
 
 fn symbol_expr(input: &str) -> IResult<&str, Expr> {
     let (input, nonterm) = context("symbol", symbol)(input)?;
-    Ok((input, Expr::Variable(nonterm.to_string())))
+    Ok((input, Expr::Variable(ustr(nonterm))))
 }
 
 fn optional_expr(input: &str) -> IResult<&str, Expr> {
@@ -173,7 +174,7 @@ fn variant(input: &str) -> IResult<&str, Variant> {
     let (input, _) = multispace0(input)?;
     let (input, _) = char(';')(input)?;
     let production = Variant {
-        lhs: name.to_string(),
+        lhs: ustr(name),
         rhs: expr,
     };
     Ok((input, production))
@@ -192,12 +193,12 @@ pub fn parse(input: &str) -> Result<Grammar> {
         Err(e) => return Err(Error::ParsingError(e.to_string())),
     };
 
-    let mut commands: Vec<String> = variants.iter().map(|v| v.lhs.to_string()).collect();
+    let mut commands: Vec<Ustr> = variants.iter().map(|v| v.lhs).collect();
     commands.sort();
     commands.dedup();
     if commands.len() > 1 {
         return Err(Error::VaryingCommandNames(
-            commands.into_iter().map(|s| s.to_string()).collect(),
+            commands.into_iter().collect(),
         ));
     }
 
@@ -207,7 +208,7 @@ pub fn parse(input: &str) -> Result<Grammar> {
 
     let v: Vec<Expr> = variants.into_iter().map(|v| v.rhs).collect();
     let g = Grammar {
-        command: commands[0].clone(),
+        command: ustr(&commands[0]),
         args: v,
     };
     Ok(g)
@@ -218,40 +219,41 @@ pub mod tests {
     use std::{rc::Rc, ops::Rem};
     use proptest::{strategy::BoxedStrategy, test_runner::TestRng};
     use proptest::prelude::*;
+    use ustr::ustr as u;
 
     use super::*;
 
-    fn arb_literal(inputs: Rc<Vec<String>>) -> BoxedStrategy<Expr> {
-        (0..inputs.len()).prop_map(move |index| Expr::Literal(inputs[index].clone())).boxed()
+    fn arb_literal(inputs: Rc<Vec<Ustr>>) -> BoxedStrategy<Expr> {
+        (0..inputs.len()).prop_map(move |index| Expr::Literal(ustr(&inputs[index]))).boxed()
     }
 
-    fn arb_variable(variables: Rc<Vec<String>>) -> BoxedStrategy<Expr> {
-        (0..variables.len()).prop_map(move |index| Expr::Variable(variables[index].clone())).boxed()
+    fn arb_variable(variables: Rc<Vec<Ustr>>) -> BoxedStrategy<Expr> {
+        (0..variables.len()).prop_map(move |index| Expr::Variable(ustr(&variables[index]))).boxed()
     }
 
-    fn arb_optional(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
+    fn arb_optional(inputs: Rc<Vec<Ustr>>, variables: Rc<Vec<Ustr>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
         arb_expr(inputs, variables, remaining_depth-1, max_width).prop_map(|e| Expr::Optional(Box::new(e))).boxed()
     }
 
-    fn arb_many1(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
+    fn arb_many1(inputs: Rc<Vec<Ustr>>, variables: Rc<Vec<Ustr>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
         arb_expr(inputs, variables, remaining_depth-1, max_width).prop_map(|e| Expr::Many1(Box::new(e))).boxed()
     }
 
-    fn arb_sequence(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
+    fn arb_sequence(inputs: Rc<Vec<Ustr>>, variables: Rc<Vec<Ustr>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
         (2..max_width).prop_flat_map(move |width| {
             let e = arb_expr(inputs.clone(), variables.clone(), remaining_depth-1, max_width);
             prop::collection::vec(e, width).prop_map(Expr::Sequence)
         }).boxed()
     }
 
-    fn arb_alternative(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
+    fn arb_alternative(inputs: Rc<Vec<Ustr>>, variables: Rc<Vec<Ustr>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
         (2..max_width).prop_flat_map(move |width| {
             let e = arb_expr(inputs.clone(), variables.clone(), remaining_depth-1, max_width);
             prop::collection::vec(e, width).prop_map(Expr::Alternative)
         }).boxed()
     }
 
-    pub fn arb_expr(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
+    pub fn arb_expr(inputs: Rc<Vec<Ustr>>, variables: Rc<Vec<Ustr>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
         if remaining_depth <= 1 {
             prop_oneof![
                 arb_literal(Rc::clone(&inputs)),
@@ -270,10 +272,10 @@ pub mod tests {
         }
     }
 
-    pub fn do_arb_match(e: &Expr, rng: &mut TestRng, max_width: usize, output: &mut Vec<String>) {
+    pub fn do_arb_match(e: &Expr, rng: &mut TestRng, max_width: usize, output: &mut Vec<Ustr>) {
         match e {
-            Expr::Literal(s) => output.push(s.to_string()),
-            Expr::Variable(_) => output.push("anything".to_string()),
+            Expr::Literal(s) => output.push(*s),
+            Expr::Variable(_) => output.push(ustr("anything")),
             Expr::Sequence(v) => {
                 for subexpr in v {
                     do_arb_match(subexpr, rng, max_width, output);
@@ -298,14 +300,14 @@ pub mod tests {
         }
     }
 
-    pub fn arb_match(e: Expr, mut rng: TestRng, max_width: usize) -> (Expr, Vec<String>) {
-        let mut output: Vec<String> = Default::default();
+    pub fn arb_match(e: Expr, mut rng: TestRng, max_width: usize) -> (Expr, Vec<Ustr>) {
+        let mut output: Vec<Ustr> = Default::default();
         do_arb_match(&e, &mut rng, max_width, &mut output);
         (e, output)
     }
 
     // Produce an arbitrary sequence matching `e`.
-    pub fn arb_expr_match(inputs: Rc<Vec<String>>, variables: Rc<Vec<String>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<(Expr, Vec<String>)> {
+    pub fn arb_expr_match(inputs: Rc<Vec<Ustr>>, variables: Rc<Vec<Ustr>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<(Expr, Vec<Ustr>)> {
         arb_expr(inputs, variables, remaining_depth, max_width).prop_perturb(move |e, rng| arb_match(e, rng, max_width)).boxed()
     }
 
@@ -314,42 +316,42 @@ pub mod tests {
     fn parses_word_terminal() {
         const INPUT: &str = r#"foo"#;
         let ("", e) = terminal_expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Expr::Literal("foo".to_string()));
+        assert_eq!(e, Expr::Literal(u("foo")));
     }
 
     #[test]
     fn parses_short_option_terminal() {
         const INPUT: &str = r#"-f"#;
         let ("", e) = terminal_expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Expr::Literal("-f".to_string()));
+        assert_eq!(e, Expr::Literal(u("-f")));
     }
 
     #[test]
     fn parses_long_option_terminal() {
         const INPUT: &str = r#"--foo"#;
         let ("", e) = terminal_expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Expr::Literal("--foo".to_string()));
+        assert_eq!(e, Expr::Literal(u("--foo")));
     }
 
     #[test]
     fn parses_symbol() {
         const INPUT: &str = "<FILE>";
         let ("", e) = symbol_expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Expr::Variable("FILE".to_string()));
+        assert_eq!(e, Expr::Variable(u("FILE")));
     }
 
     #[test]
     fn parses_optional_expr() {
         const INPUT: &str = "[<foo>]";
         let ("", e) = expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Expr::Optional(Box::new(Expr::Variable("foo".to_string()))));
+        assert_eq!(e, Expr::Optional(Box::new(Expr::Variable(u("foo")))));
     }
 
     #[test]
     fn parses_one_or_more_expr() {
         const INPUT: &str = "<foo>...";
         let ("", e) = expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Expr::Many1(Box::new(Expr::Variable("foo".to_string()))));
+        assert_eq!(e, Expr::Many1(Box::new(Expr::Variable(u("foo")))));
     }
 
     #[test]
@@ -359,8 +361,8 @@ pub mod tests {
         assert_eq!(
             e,
             Expr::Sequence(vec![
-                Expr::Variable("first-symbol".to_string()),
-                Expr::Variable("second symbol".to_string())
+                Expr::Variable(u("first-symbol")),
+                Expr::Variable(u("second symbol"))
             ])
         );
     }
@@ -372,8 +374,8 @@ pub mod tests {
         assert_eq!(
             e,
             Expr::Alternative(vec![
-                Expr::Sequence(vec![Expr::Literal("a".to_string()), Expr::Literal("b".to_string())]),
-                Expr::Literal("c".to_string())
+                Expr::Sequence(vec![Expr::Literal(u("a")), Expr::Literal(u("b"))]),
+                Expr::Literal(u("c"))
             ])
         );
     }
@@ -385,8 +387,8 @@ pub mod tests {
         assert_eq!(
             e,
             Expr::Sequence(vec![
-                Expr::Literal("a".to_string()),
-                Expr::Alternative(vec![Expr::Literal("b".to_string()), Expr::Literal("c".to_string())]),
+                Expr::Literal(u("a")),
+                Expr::Alternative(vec![Expr::Literal(u("b")), Expr::Literal(u("c"))]),
             ])
         );
     }
@@ -398,8 +400,8 @@ pub mod tests {
         assert_eq!(
             v,
             Variant {
-                lhs: "foo".to_string(),
-                rhs: Expr::Literal("bar".to_string())
+                lhs: u("foo"),
+                rhs: Expr::Literal(u("bar"))
             }
         );
     }
@@ -414,8 +416,8 @@ foo baz;
         assert_eq!(
             g,
             Grammar {
-                command: "foo".to_string(),
-                args: vec![Expr::Literal("bar".to_string()), Expr::Literal("baz".to_string())],
+                command: u("foo"),
+                args: vec![Expr::Literal(u("bar")), Expr::Literal(u("baz"))],
             }
         );
     }
@@ -429,17 +431,17 @@ foo baz;
         assert_eq!(
             g,
             Grammar {
-                command: "darcs".to_string(),
+                command: u("darcs"),
                 args: vec![Sequence(vec![
-                    Literal("help".to_string()),
+                    Literal(u("help")),
                     Sequence(vec![
                         Many1(Box::new(Alternative(vec![
-                            Alternative(vec![Literal("-v".to_string()), Literal("--verbose".to_string())]),
-                            Alternative(vec![Literal("-q".to_string()), Literal("--quiet".to_string())]),
+                            Alternative(vec![Literal(u("-v")), Literal(u("--verbose"))]),
+                            Alternative(vec![Literal(u("-q")), Literal(u("--quiet"))]),
                         ],)),),
                         Optional(Box::new(Sequence(vec![
-                            Variable("DARCS_COMMAND".to_string()),
-                            Optional(Box::new(Literal("DARCS_SUBCOMMAND".to_string()))),
+                            Variable(u("DARCS_COMMAND")),
+                            Optional(Box::new(Literal(u("DARCS_SUBCOMMAND")))),
                         ]))),
                     ]),
                 ])],
