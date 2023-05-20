@@ -22,4 +22,3 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub type StateId = u16;
-pub const START_STATE_ID: StateId = 0;
