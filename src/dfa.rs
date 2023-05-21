@@ -18,7 +18,6 @@ pub struct DirectDFA {
 }
 
 
-// TODO Perform BTreeSet<>s (i.e. combined states) "interning" for efficiency, just like with Strings.
 fn dfa_from_regex(regex: &AugmentedRegex) -> DirectDFA {
     let mut unallocated_state_id = 0;
     let combined_starting_state: BTreeSet<Position> = regex.firstpos();
@@ -38,6 +37,8 @@ fn dfa_from_regex(regex: &AugmentedRegex) -> DirectDFA {
             None => break,
         };
         unmarked_states.remove(&combined_state);
+        let from_combined_state_id = *dstates.get(&combined_state).unwrap();
+        let from_entry = dtran.entry(from_combined_state_id).or_default();
         for input in &regex.input_symbols {
             let mut u = RoaringBitmap::new();
             for pos in &combined_state {
@@ -54,9 +55,8 @@ fn dfa_from_regex(regex: &AugmentedRegex) -> DirectDFA {
                 unallocated_state_id += 1;
                 unmarked_states.insert(u.clone());
             }
-            let from_combined_state_id = *dstates.get(&combined_state).unwrap();
             let to_combined_state_id = dstates.get(&u).unwrap();
-            dtran.entry(from_combined_state_id).or_default().insert(input.clone(), *to_combined_state_id);
+            from_entry.insert(input.clone(), *to_combined_state_id);
         }
     }
 
