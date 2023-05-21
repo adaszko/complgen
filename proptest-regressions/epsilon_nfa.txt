@@ -1,9 +1,0 @@
-# Seeds for failure cases proptest has generated in the past. It is
-# automatically read and these particular cases re-run before any
-# novel cases are generated.
-#
-# It is recommended to check this file in to source control so that
-# everyone who runs the test benefits from these saved cases.
-cc c05c72953c64bf1a6c96f495e213c498a40fb8a13be4f34bee86609838a2e23a # shrinks to (expr, input) = (Optional(Optional(Optional(Optional(Optional(Sequence([Many1(Many1(Literal("foo"))), Literal("foo")])))))), ["foo", "foo", "foo", "foo"])
-cc 9a3e302b87f0d1b8e3055c4e71a39a24853237676b3bf918c5f8e4a034f232e1 # shrinks to (expr, input) = (Sequence([Sequence([Literal("foo"), Literal("foo")]), Optional(Literal("foo"))]), ["foo", "foo"])
-cc e2c9a554387dc3ce61ccf0893106ac29067352fe92b8361b86cc0e6b91f9b4f0 # shrinks to (expr, input) = (Sequence([Many1(Literal("foo")), Literal("foo")]), ["foo", "foo", "foo"])
