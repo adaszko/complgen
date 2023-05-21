@@ -27,6 +27,7 @@ struct Variant {
     rhs: Expr,
 }
 
+// Can't use an arena here until proptest supports non-owned types: https://github.com/proptest-rs/proptest/issues/9
 #[derive(Clone, PartialEq)]
 pub enum Expr {
     Literal(Ustr), // e.g. an option: "--help", or a command: "build"

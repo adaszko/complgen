@@ -55,8 +55,6 @@ Use parentheses to group patterns:
  * `(a | b) ...` matches `a` or `b` followed by any number of additional
    `a` or `b`.
 
-Patterns may also include *variables*:
-
 # Limitations
 
  * Grouping single character options into a single shell parameter isn't supported, e.g. `tar -xvf`.  You need
@@ -66,7 +64,6 @@ Patterns may also include *variables*:
 
 # Roadmap
 
- * Use an arena in Expr tree to reduce heap allocations.
  * Implement DFA minimization (The Dragon Book, 3.9.6 Minimizing the Number of States of a DFA)
 
  * Show completion hints in ZSH and Fish
