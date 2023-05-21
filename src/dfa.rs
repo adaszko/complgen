@@ -1,34 +1,35 @@
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::BTreeSet,
     io::Write
 };
 use hashbrown::{HashMap, HashSet};
 
 use roaring::{MultiOps, RoaringBitmap};
 
-use crate::regex::{Position, AugmentedRegex};
+use crate::regex::{Position, AugmentedRegex, Input};
 use complgen::StateId;
 
 
 #[derive(Debug, Clone)]
 pub struct DirectDFA {
     pub starting_state: StateId,
-    pub transitions: BTreeMap<StateId, HashMap<crate::regex::Input, StateId>>,
+    pub transitions: HashMap<StateId, HashMap<Input, StateId>>,
     pub accepting_states: RoaringBitmap,
 }
 
 
 // TODO Perform BTreeSet<>s (i.e. combined states) "interning" for efficiency, just like with Strings.
 fn dfa_from_regex(regex: &AugmentedRegex) -> DirectDFA {
-    let mut dstates: HashMap<BTreeSet<Position>, StateId> = Default::default();
     let mut unallocated_state_id = 0;
     let combined_starting_state: BTreeSet<Position> = regex.firstpos();
-    dstates.insert(combined_starting_state.clone(), unallocated_state_id);
+    let combined_starting_state_id = unallocated_state_id;
     unallocated_state_id += 1;
+
+    let mut dstates: HashMap<BTreeSet<Position>, StateId> = HashMap::from_iter([(combined_starting_state.clone(), combined_starting_state_id)]);
 
     let followpos = regex.followpos();
 
-    let mut dtran: BTreeMap<StateId, HashMap<crate::regex::Input, StateId>> = Default::default();
+    let mut dtran: HashMap<StateId, HashMap<Input, StateId>> = Default::default();
     let mut unmarked_states: HashSet<BTreeSet<Position>> = Default::default();
     unmarked_states.insert(combined_starting_state.clone());
     loop {
@@ -182,13 +183,13 @@ mod tests {
                 }
 
                 for (transition_input, to) in self.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
-                    if let crate::regex::Input::Any = transition_input {
+                    if let Input::Any = transition_input {
                         backtracking_stack.push((input_index + 1, *to));
                     }
                 }
 
                 for (transition_input, to) in self.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
-                    if let crate::regex::Input::Literal(s) = transition_input {
+                    if let Input::Literal(s) = transition_input {
                         if s.as_str() == inputs[input_index] {
                             backtracking_stack.push((input_index + 1, *to));
                         }
