@@ -1,6 +1,6 @@
 use std::{
     collections::BTreeSet,
-    io::Write, cmp::Ordering
+    io::Write, cmp::Ordering, rc::Rc
 };
 use hashbrown::{HashMap, HashSet};
 
@@ -92,34 +92,64 @@ fn make_inverse_transitions_lookup_table(transitions: &HashMap<StateId, HashMap<
 }
 
 
+struct StateSet(Rc<RoaringBitmap>);
+
+
+impl PartialEq for StateSet {
+    fn eq(&self, other: &Self) -> bool {
+        if self.0.len() != other.0.len() {
+            return false;
+        }
+        self.0.iter().zip(other.0.iter()).all(|(left, right)| left == right)
+    }
+}
+
+impl Eq for StateSet {
+}
+
+
+impl std::hash::Hash for StateSet {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        for elem in self.0.iter() {
+            elem.hash(state);
+        }
+    }
+}
+
+
 #[derive(PartialEq, Eq, Clone, Copy, Hash)]
 struct SetInternId(usize);
 
 
 #[derive(Default)]
 struct SetInternPool {
-    pool: Vec<RoaringBitmap>,
+    pool: Vec<Rc<RoaringBitmap>>,
+    id_from_set: HashMap<StateSet, usize>,
 }
 
 impl SetInternPool {
     fn intern(&mut self, set: RoaringBitmap) -> SetInternId {
-        debug_assert!(!self.pool.contains(&set));
-        self.pool.push(set);
-        SetInternId(self.pool.len() - 1)
+        let rc = Rc::new(set);
+        let id = *self.id_from_set.entry(StateSet(Rc::clone(&rc))).or_insert_with(|| {
+            let id = self.pool.len();
+            self.pool.push(rc);
+            id
+        });
+        SetInternId(id)
     }
 
-    fn get(&self, id: SetInternId) -> Option<&RoaringBitmap> {
-        self.pool.get(id.0)
+    fn get(&self, id: SetInternId) -> Option<Rc<RoaringBitmap>> {
+        self.pool.get(id.0).cloned()
     }
 }
-
-
 
 // Hopcroft's DFA minimization algorithm.
 // References:
 //  * The Dragon Book: Minimizing the Number of states of a DFA
 //  * Engineering a Compiler, 3rd ed, 2.4.4 DFA to Minimal DFA
 //  * https://github.com/BurntSushi/regex-automata/blob/master/src/dfa/minimize.rs
+//
+// TODO Use https://docs.rs/nohash-hasher/ for Hash{Map,Set}<StateId, ...>?
 fn minimize(dfa: &DirectDFA) -> DirectDFA {
     let mut pool = SetInternPool::default();
     let mut partition: HashSet<SetInternId> = {
@@ -140,15 +170,15 @@ fn minimize(dfa: &DirectDFA) -> DirectDFA {
         let group_min = group.min().unwrap();
         let group_max = group.max().unwrap();
         let index = match inverse_transitions.binary_search_by(|(to, _, _)| {
-                    let to: u32 = (*to).into();
-                    if to < group_min {
-                        return Ordering::Less;
-                    }
-                    if to > group_max {
-                        return Ordering::Greater;
-                    }
-                    Ordering::Equal
-                    }) {
+            let to: u32 = (*to).into();
+            if to < group_min {
+                return Ordering::Less;
+            }
+            if to > group_max {
+                return Ordering::Greater;
+            }
+            Ordering::Equal
+        }) {
             Ok(index) => index,
             Err(_) => continue,
         };
@@ -179,14 +209,14 @@ fn minimize(dfa: &DirectDFA) -> DirectDFA {
             let q1_len = q1.len();
             let q2_len = q2.len();
 
-            partition.remove(&q_id); // XXX decrements refcount?
+            partition.remove(&q_id);
             let q1_id = pool.intern(q1);
             let q2_id = pool.intern(q2);
             partition.insert(q1_id);
             partition.insert(q2_id);
 
             if worklist.contains(&q_id) {
-                worklist.remove(&q_id); // XXX decrements refcount?
+                worklist.remove(&q_id);
                 worklist.insert(q1_id);
                 worklist.insert(q2_id);
             }
@@ -196,7 +226,7 @@ fn minimize(dfa: &DirectDFA) -> DirectDFA {
             else {
                 worklist.insert(q2_id);
             }
-            if group_id == q_id { // XXX this is iffy
+            if group_id == q_id {
                 break;
             }
         }
