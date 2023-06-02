@@ -66,9 +66,9 @@ Use parentheses to group patterns:
 
  * Implement DFA minimization (The Dragon Book, 3.9.6 Minimizing the Number of States of a DFA)
 
- * Show completion hints in ZSH and Fish
+ * Reuse Fish's parsing of man pages to generate completions (https://github.com/fish-shell/fish-shell/blob/946ecf235c002cff596fbbb2c03f9693c30744da/share/tools/create_manpage_completions.py).
 
- * End-to-end tests that excercise the generation completion scripts and check that they behave properly.
+ * Show completion hints in ZSH and Fish
 
  * `name ::= expression;` defines a new production that can be referred to from other productions via `<name>`
    syntax.  Referring to a production recursively won't be supported as that would take us outside of regular languages.
@@ -78,3 +78,5 @@ Use parentheses to group patterns:
    `$COMP_CWORD` environment will contain the input line and the current word being completed.
 
  * If no value is defined for `name`, then the pattern `<name>` will match any word.
+
+ * End-to-end tests that excercise the generation completion scripts and check that they behave properly.
