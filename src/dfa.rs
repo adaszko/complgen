@@ -1,6 +1,6 @@
 use std::{
     collections::BTreeSet,
-    io::Write
+    io::Write, cmp::Ordering
 };
 use hashbrown::{HashMap, HashSet};
 
@@ -77,6 +77,133 @@ fn dfa_from_regex(regex: &AugmentedRegex) -> DirectDFA {
         accepting_states,
     }
 }
+
+
+fn make_inverse_transitions_lookup_table(transitions: &HashMap<StateId, HashMap<Input, StateId>>) -> Vec<(StateId, Input, StateId)> {
+    let mut result: Vec<(StateId, Input, StateId)> = Default::default();
+    for (from, tos) in transitions {
+        for (input, to) in tos {
+            result.push((*to, *input, *from));
+        }
+    }
+    result.sort_unstable();
+    result.dedup(); // should be redundant
+    result
+}
+
+
+#[derive(PartialEq, Eq, Clone, Copy, Hash)]
+struct SetInternId(usize);
+
+
+#[derive(Default)]
+struct SetInternPool {
+    pool: Vec<RoaringBitmap>,
+}
+
+impl SetInternPool {
+    fn intern(&mut self, set: RoaringBitmap) -> SetInternId {
+        debug_assert!(!self.pool.contains(&set));
+        self.pool.push(set);
+        SetInternId(self.pool.len() - 1)
+    }
+
+    fn get(&self, id: SetInternId) -> Option<&RoaringBitmap> {
+        self.pool.get(id.0)
+    }
+}
+
+
+
+// Hopcroft's DFA minimization algorithm.
+// References:
+//  * The Dragon Book: Minimizing the Number of states of a DFA
+//  * Engineering a Compiler, 3rd ed, 2.4.4 DFA to Minimal DFA
+//  * https://github.com/BurntSushi/regex-automata/blob/master/src/dfa/minimize.rs
+fn minimize(dfa: &DirectDFA) -> DirectDFA {
+    let mut pool = SetInternPool::default();
+    let mut partition: HashSet<SetInternId> = {
+        let all_states = dfa.get_all_states();
+        let nonaccepting_states = [&all_states, &dfa.accepting_states].difference();
+        let nonaccepting_states_id = pool.intern(nonaccepting_states);
+        let accepting_states_id = pool.intern(dfa.accepting_states.clone());
+        HashSet::from_iter([accepting_states_id, nonaccepting_states_id])
+    };
+    let mut worklist = partition.clone();
+    let inverse_transitions = make_inverse_transitions_lookup_table(&dfa.transitions);
+    loop {
+        let group_id = match worklist.iter().next() {
+            Some(group_id) => *group_id,
+            None => break,
+        };
+        let group = pool.get(group_id).unwrap();
+        let group_min = group.min().unwrap();
+        let group_max = group.max().unwrap();
+        let index = match inverse_transitions.binary_search_by(|(to, _, _)| {
+                    let to: u32 = (*to).into();
+                    if to < group_min {
+                        return Ordering::Less;
+                    }
+                    if to > group_max {
+                        return Ordering::Greater;
+                    }
+                    Ordering::Equal
+                    }) {
+            Ok(index) => index,
+            Err(_) => continue,
+        };
+        let lower_bound = {
+            let mut lower_bound = index;
+            while lower_bound > 0 && u32::from(inverse_transitions[lower_bound-1].0) >= group_min {
+                lower_bound -= 1;
+            }
+            lower_bound
+        };
+        let upper_bound = {
+            let mut upper_bound = index;
+            while upper_bound < inverse_transitions.len() - 1 && u32::from(inverse_transitions[upper_bound+1].0) <= group_max {
+                upper_bound += 1;
+            }
+            upper_bound
+        };
+        let image = RoaringBitmap::from_iter(inverse_transitions[lower_bound..=upper_bound].iter().map(|(_, _, from)| u32::from(*from)));
+        let qs: Vec<SetInternId> = partition.iter().filter(|q| pool.get(**q).unwrap().intersection_len(&image) > 0).cloned().collect();
+        for q_id in qs {
+            let q = pool.get(q_id).unwrap();
+            let q1 = [&q, &image].intersection(); // elements to remove from q and put into a separate set in a partiton
+            let q2 = [&q, &q1].difference(); // what to replace q with
+            if q2.is_empty() {
+                continue;
+            }
+
+            let q1_len = q1.len();
+            let q2_len = q2.len();
+
+            partition.remove(&q_id); // XXX decrements refcount?
+            let q1_id = pool.intern(q1);
+            let q2_id = pool.intern(q2);
+            partition.insert(q1_id);
+            partition.insert(q2_id);
+
+            if worklist.contains(&q_id) {
+                worklist.remove(&q_id); // XXX decrements refcount?
+                worklist.insert(q1_id);
+                worklist.insert(q2_id);
+            }
+            else if q1_len <= q2_len {
+                worklist.insert(q1_id);
+            }
+            else {
+                worklist.insert(q2_id);
+            }
+            if group_id == q_id { // XXX this is iffy
+                break;
+            }
+        }
+    }
+    todo!();
+}
+
 
 impl DirectDFA {
     pub fn from_regex(regex: &AugmentedRegex) -> Self {
