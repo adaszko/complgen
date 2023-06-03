@@ -92,10 +92,10 @@ fn make_inverse_transitions_lookup_table(transitions: &HashMap<StateId, HashMap<
 }
 
 
-struct StateSet(Rc<RoaringBitmap>);
+struct HashableRoaringBitmap(Rc<RoaringBitmap>);
 
 
-impl PartialEq for StateSet {
+impl PartialEq for HashableRoaringBitmap {
     fn eq(&self, other: &Self) -> bool {
         if self.0.len() != other.0.len() {
             return false;
@@ -104,11 +104,11 @@ impl PartialEq for StateSet {
     }
 }
 
-impl Eq for StateSet {
+impl Eq for HashableRoaringBitmap {
 }
 
 
-impl std::hash::Hash for StateSet {
+impl std::hash::Hash for HashableRoaringBitmap {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         for elem in self.0.iter() {
             elem.hash(state);
@@ -124,13 +124,13 @@ struct SetInternId(usize);
 #[derive(Default)]
 struct SetInternPool {
     pool: Vec<Rc<RoaringBitmap>>,
-    id_from_set: HashMap<StateSet, usize>,
+    id_from_set: HashMap<HashableRoaringBitmap, usize>,
 }
 
 impl SetInternPool {
     fn intern(&mut self, set: RoaringBitmap) -> SetInternId {
         let rc = Rc::new(set);
-        let id = *self.id_from_set.entry(StateSet(Rc::clone(&rc))).or_insert_with(|| {
+        let id = *self.id_from_set.entry(HashableRoaringBitmap(Rc::clone(&rc))).or_insert_with(|| {
             let id = self.pool.len();
             self.pool.push(rc);
             id
