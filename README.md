@@ -57,10 +57,14 @@ Use parentheses to group patterns:
 
 # Limitations
 
- * Grouping single character options into a single shell parameter isn't supported, e.g. `tar -xvf`.  You need
-   to pass each option in a separate shell argument instead: `tar -x -v -f`
+ * Grouping single character options into a single shell parameter isn't supported, e.g. `tar -xvf` (unless
+   you manually enumerate all the permutations in the grammar).  You need to pass each option in a separate
+   shell argument instead: `tar -x -v -f`
 
  * Passing option arguments using `=` is not supported.  E.g. `--foo=bar` doesn't work, but `--foo bar` does.
+
+ * Non-regular grammars are not supported, e.g. `find(1)`'s arguments can't be completed precisely by
+   complgen.
 
 # Roadmap
 
