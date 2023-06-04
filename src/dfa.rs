@@ -79,19 +79,6 @@ fn dfa_from_regex(regex: &AugmentedRegex) -> DirectDFA {
 }
 
 
-fn make_inverse_transitions_lookup_table(transitions: &HashMap<StateId, HashMap<Input, StateId>>) -> Vec<(StateId, Input, StateId)> {
-    let mut result: Vec<(StateId, Input, StateId)> = Default::default();
-    for (from, tos) in transitions {
-        for (input, to) in tos {
-            result.push((*to, *input, *from));
-        }
-    }
-    result.sort_unstable();
-    result.dedup(); // should be redundant
-    result
-}
-
-
 struct HashableRoaringBitmap(Rc<RoaringBitmap>);
 
 
@@ -143,6 +130,31 @@ impl SetInternPool {
     }
 }
 
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Transition {
+    from: StateId,
+    to: StateId,
+    input: Input,
+}
+
+
+fn make_inverse_transitions_lookup_table(transitions: &HashMap<StateId, HashMap<Input, StateId>>) -> Vec<Transition> {
+    let mut result: Vec<Transition> = Default::default();
+    for (from, tos) in transitions {
+        for (input, to) in tos {
+            result.push(Transition {
+                from: *from,
+                to: *to,
+                input: *input,
+            });
+        }
+    }
+    result.sort_unstable_by_key(|transition| transition.to);
+    result.dedup(); // should be redundant
+    result
+}
+
 // Hopcroft's DFA minimization algorithm.
 // References:
 //  * The Dragon Book: Minimizing the Number of states of a DFA
@@ -155,6 +167,9 @@ fn do_minimize(dfa: &DirectDFA) -> DirectDFA {
     let mut partition: HashSet<SetInternId> = {
         let all_states = dfa.get_all_states();
         let nonaccepting_states = [&all_states, &dfa.accepting_states].difference();
+        if nonaccepting_states.is_empty() {
+            return dfa.clone();
+        }
         let nonaccepting_states_id = pool.intern(nonaccepting_states);
         let accepting_states_id = pool.intern(dfa.accepting_states.clone());
         HashSet::from_iter([accepting_states_id, nonaccepting_states_id])
@@ -166,11 +181,12 @@ fn do_minimize(dfa: &DirectDFA) -> DirectDFA {
             Some(group_id) => *group_id,
             None => break,
         };
-        let group = pool.get(group_id).unwrap();
+        worklist.remove(&group_id);
+        let group = pool.get(group_id).unwrap(); // group is a better name for 's' in the book
         let group_min = group.min().unwrap();
         let group_max = group.max().unwrap();
-        let index = match inverse_transitions.binary_search_by(|(to, _, _)| {
-            let to: u32 = (*to).into();
+        let inbetween_index = match inverse_transitions.binary_search_by(|transition| {
+            let to: u32 = transition.to.into();
             if to < group_min {
                 return Ordering::Less;
             }
@@ -183,51 +199,57 @@ fn do_minimize(dfa: &DirectDFA) -> DirectDFA {
             Err(_) => continue,
         };
         let lower_bound = {
-            let mut lower_bound = index;
-            while lower_bound > 0 && u32::from(inverse_transitions[lower_bound-1].0) >= group_min {
+            let mut lower_bound = inbetween_index;
+            while lower_bound > 0 && u32::from(inverse_transitions[lower_bound-1].to) >= group_min {
                 lower_bound -= 1;
             }
             lower_bound
         };
         let upper_bound = {
-            let mut upper_bound = index;
-            while upper_bound < inverse_transitions.len() - 1 && u32::from(inverse_transitions[upper_bound+1].0) <= group_max {
+            let mut upper_bound = inbetween_index;
+            while upper_bound < inverse_transitions.len() - 1 && u32::from(inverse_transitions[upper_bound+1].to) <= group_max {
                 upper_bound += 1;
             }
             upper_bound
         };
-        let image = RoaringBitmap::from_iter(inverse_transitions[lower_bound..=upper_bound].iter().map(|(_, _, from)| u32::from(*from)));
-        let qs: Vec<SetInternId> = partition.iter().filter(|q_id| pool.get(**q_id).unwrap().intersection_len(&image) > 0).cloned().collect();
-        for q_id in qs {
-            let q = pool.get(q_id).unwrap();
-            let q1 = [&q, &image].intersection(); // elements to remove from q and put into a separate set in a partiton
-            let q2 = [&q, &q1].difference(); // what to replace q with
-            if q2.is_empty() {
-                continue;
-            }
 
-            let q1_len = q1.len();
-            let q2_len = q2.len();
+        let group_transitions: Vec<Transition> = inverse_transitions[lower_bound..=upper_bound].iter().filter(|transition| group.contains(transition.to.into())).copied().collect();
 
-            partition.remove(&q_id);
-            let q1_id = pool.intern(q1);
-            let q2_id = pool.intern(q2);
-            partition.insert(q1_id);
-            partition.insert(q2_id);
+        let inputs: HashSet<Input> = group_transitions.iter().map(|transition| transition.input).collect();
+        for input in inputs {
+            let image: RoaringBitmap = group_transitions.iter().filter(|transition| transition.input == input).map(|transition| u32::from(transition.from)).collect();
+            let qs: Vec<SetInternId> = partition.iter().filter(|q_id| pool.get(**q_id).unwrap().intersection_len(&image) > 0).cloned().collect();
+            for q_id in qs {
+                let q = pool.get(q_id).unwrap();
+                let q1 = [&q, &image].intersection(); // elements to remove from q and put into a separate set in a partiton
+                let q2 = [&q, &q1].difference(); // what to replace q with
+                if q2.is_empty() {
+                    continue;
+                }
 
-            if worklist.contains(&q_id) {
-                worklist.remove(&q_id);
-                worklist.insert(q1_id);
-                worklist.insert(q2_id);
-            }
-            else if q1_len <= q2_len {
-                worklist.insert(q1_id);
-            }
-            else {
-                worklist.insert(q2_id);
-            }
-            if group_id == q_id {
-                break;
+                let q1_len = q1.len();
+                let q2_len = q2.len();
+
+                partition.remove(&q_id);
+                let q1_id = pool.intern(q1);
+                let q2_id = pool.intern(q2);
+                partition.insert(q1_id);
+                partition.insert(q2_id);
+
+                if worklist.contains(&q_id) {
+                    worklist.remove(&q_id);
+                    worklist.insert(q1_id);
+                    worklist.insert(q2_id);
+                }
+                else if q1_len <= q2_len {
+                    worklist.insert(q1_id);
+                }
+                else {
+                    worklist.insert(q2_id);
+                }
+                if group_id == q_id {
+                    break;
+                }
             }
         }
     }
