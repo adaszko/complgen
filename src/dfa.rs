@@ -117,7 +117,7 @@ impl std::hash::Hash for HashableRoaringBitmap {
 }
 
 
-#[derive(PartialEq, Eq, Clone, Copy, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 struct SetInternId(usize);
 
 
@@ -412,6 +412,22 @@ mod tests {
                 s
             }).collect();
             prop_assert!(dfa.accepts(&input));
+        }
+
+        #[test]
+        fn minimized_dfa_equivalent_to_input_one((expr, input) in arb_expr_match(Rc::new(LITERALS.iter().map(|s| u(s)).collect()), Rc::new(VARIABLES.iter().map(|s| u(s)).collect()), 10, 3)) {
+            println!("{:?}", expr);
+            println!("{:?}", input);
+            let arena = Bump::new();
+            let regex = AugmentedRegex::from_expr(&expr, &arena);
+            let dfa = DirectDFA::from_regex(&regex);
+            let input: Vec<&str> = input.iter().map(|s| {
+                let s: &str = s;
+                s
+            }).collect();
+            prop_assert!(dfa.accepts(&input));
+            let minimimal_dfa = dfa.minimize();
+            prop_assert!(minimimal_dfa.accepts(&input));
         }
     }
 
