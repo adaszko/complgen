@@ -150,7 +150,7 @@ impl SetInternPool {
 //  * https://github.com/BurntSushi/regex-automata/blob/master/src/dfa/minimize.rs
 //
 // TODO Use https://docs.rs/nohash-hasher/ for Hash{Map,Set}<StateId, ...>?
-fn minimize(dfa: &DirectDFA) -> DirectDFA {
+fn do_minimize(dfa: &DirectDFA) -> DirectDFA {
     let mut pool = SetInternPool::default();
     let mut partition: HashSet<SetInternId> = {
         let all_states = dfa.get_all_states();
@@ -197,7 +197,7 @@ fn minimize(dfa: &DirectDFA) -> DirectDFA {
             upper_bound
         };
         let image = RoaringBitmap::from_iter(inverse_transitions[lower_bound..=upper_bound].iter().map(|(_, _, from)| u32::from(*from)));
-        let qs: Vec<SetInternId> = partition.iter().filter(|q| pool.get(**q).unwrap().intersection_len(&image) > 0).cloned().collect();
+        let qs: Vec<SetInternId> = partition.iter().filter(|q_id| pool.get(**q_id).unwrap().intersection_len(&image) > 0).cloned().collect();
         for q_id in qs {
             let q = pool.get(q_id).unwrap();
             let q1 = [&q, &image].intersection(); // elements to remove from q and put into a separate set in a partiton
@@ -231,13 +231,52 @@ fn minimize(dfa: &DirectDFA) -> DirectDFA {
             }
         }
     }
-    todo!();
+
+    let representative_id_from_state_id = {
+        let mut representative_id_from_state_id: HashMap<StateId, StateId> = Default::default();
+        for q_id in &partition {
+            let q = pool.get(*q_id).unwrap();
+            let representative_state_id = q.min().unwrap();
+            for state_id in q.iter() {
+                representative_id_from_state_id.insert(StateId::try_from(state_id).unwrap(), StateId::try_from(representative_state_id).unwrap());
+            }
+        }
+        representative_id_from_state_id
+    };
+
+    let starting_state = *representative_id_from_state_id.get(&dfa.starting_state).unwrap();
+
+    let accepting_states = {
+        let mut accepting_states: RoaringBitmap = Default::default();
+        for state_id in &dfa.accepting_states {
+            accepting_states.insert((*representative_id_from_state_id.get(&u16::try_from(state_id).unwrap()).unwrap()).into());
+        }
+        accepting_states
+    };
+
+    let transitions = {
+        let mut transitions: HashMap<StateId, HashMap<Input, StateId>> = Default::default();
+        for (from, tos) in &dfa.transitions {
+            let entry = transitions.entry(*from).or_default();
+            for (input, to) in tos {
+                let representative = representative_id_from_state_id.get(to).unwrap();
+                entry.insert(*input, *representative);
+            }
+        }
+        transitions
+    };
+
+    DirectDFA { starting_state, transitions, accepting_states }
 }
 
 
 impl DirectDFA {
     pub fn from_regex(regex: &AugmentedRegex) -> Self {
         dfa_from_regex(regex)
+    }
+
+    pub fn minimize(&self) -> Self {
+        do_minimize(self)
     }
 
     pub fn get_all_states(&self) -> RoaringBitmap {
