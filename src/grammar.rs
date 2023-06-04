@@ -17,7 +17,13 @@ pub struct Grammar {
 
 impl Grammar {
     pub fn into_command_expr(self) -> (Ustr, Expr) {
-        (self.command, Expr::Alternative(self.args))
+        let expr = if self.args.len() == 1 {
+            self.args[0].clone()
+        }
+        else {
+            Expr::Alternative(self.args)
+        };
+        (self.command, expr)
     }
 }
 

@@ -131,7 +131,7 @@ impl SetInternPool {
 }
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct Transition {
     from: StateId,
     to: StateId,
@@ -392,6 +392,14 @@ mod tests {
     use ustr::ustr as u;
     use proptest::prelude::*;
 
+    impl Transition {
+        fn new(from: StateId, input: &str, to: StateId) -> Self {
+            Self {
+                from, input: Input::Literal(ustr::ustr(input)), to
+            }
+        }
+    }
+
     impl DirectDFA {
         pub fn accepts(&self, inputs: &[&str]) -> bool {
             let mut backtracking_stack = Vec::from_iter([(0, self.starting_state)]);
@@ -417,6 +425,21 @@ mod tests {
             false
         }
 
+        fn get_transitions(&self) -> Vec<Transition> {
+            let mut result: Vec<Transition> = Default::default();
+            for (from, tos) in &self.transitions {
+                for (input, to) in tos {
+                    result.push(Transition {
+                        from: *from,
+                        to: *to,
+                        input: *input,
+                    });
+                }
+            }
+            result.sort_unstable();
+            result
+        }
+
         pub fn has_transition(&self, from: StateId, input: Input, to: StateId) -> bool {
             *self.transitions.get(&from).unwrap().get(&input).unwrap() == to
         }
@@ -424,6 +447,19 @@ mod tests {
         pub fn has_literal_transition(&self, from: StateId, input: &str, to: StateId) -> bool {
             self.has_transition(from, Input::Literal(ustr::ustr(input)), to)
         }
+    }
+
+    #[test]
+    fn minimal_example() {
+        use ustr::ustr;
+        let expr = Expr::Literal(ustr("foo"));
+        let arena = Bump::new();
+        let regex = AugmentedRegex::from_expr(&expr, &arena);
+        let dfa = DirectDFA::from_regex(&regex);
+        let transitions = dfa.get_transitions();
+        assert_eq!(transitions, vec![Transition::new(0, "foo", 1)]);
+        assert_eq!(dfa.accepting_states, RoaringBitmap::from_iter([0]));
+        assert_eq!(dfa.starting_state, 0);
     }
 
     const LITERALS: &[&str] = &["foo", "bar", "--baz", "--quux"];
