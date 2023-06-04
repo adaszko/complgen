@@ -394,6 +394,14 @@ mod tests {
             }
             false
         }
+
+        pub fn has_transition(&self, from: StateId, input: Input, to: StateId) -> bool {
+            *self.transitions.get(&from).unwrap().get(&input).unwrap() == to
+        }
+
+        pub fn has_literal_transition(&self, from: StateId, input: &str, to: StateId) -> bool {
+            self.has_transition(from, Input::Literal(ustr::ustr(input)), to)
+        }
     }
 
     const LITERALS: &[&str] = &["foo", "bar", "--baz", "--quux"];
@@ -481,5 +489,28 @@ mod tests {
             s
         }).collect();
         assert!(dfa.accepts(&input));
+    }
+
+    #[test]
+    fn engineering_a_compiler_book_dfa_minimization_example() {
+        use ustr::ustr;
+        let dfa = {
+            let starting_state = 0;
+            let mut transitions: HashMap<StateId, HashMap<Input, StateId>> = Default::default();
+            transitions.entry(0).or_default().insert(Input::Literal(ustr("f")), 1);
+            transitions.entry(1).or_default().insert(Input::Literal(ustr("e")), 2);
+            transitions.entry(1).or_default().insert(Input::Literal(ustr("i")), 4);
+            transitions.entry(2).or_default().insert(Input::Literal(ustr("e")), 3);
+            transitions.entry(4).or_default().insert(Input::Literal(ustr("e")), 5);
+            let accepting_states = RoaringBitmap::from_iter([3,5]);
+            DirectDFA { starting_state, transitions, accepting_states }
+        };
+        let minimized = dfa.minimize();
+        assert_eq!(minimized.starting_state, 0);
+        assert_eq!(minimized.accepting_states, RoaringBitmap::from_iter([3]));
+        assert!(minimized.has_literal_transition(0, "f", 1));
+        assert!(minimized.has_literal_transition(1, "e", 2));
+        assert!(minimized.has_literal_transition(1, "i", 2));
+        assert!(minimized.has_literal_transition(2, "e", 3));
     }
 }
