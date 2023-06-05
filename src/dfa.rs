@@ -618,4 +618,22 @@ mod tests {
         assert!(minimized.has_literal_transition(1, "i", 2));
         assert!(minimized.has_literal_transition(2, "e", 3));
     }
+
+    #[test]
+    fn minimization_fails() {
+        use Expr::*;
+        let (expr, input) = (Alternative(vec![Many1(Box::new(Alternative(vec![Literal(u("--quux")), Sequence(vec![Optional(Box::new(Sequence(vec![Many1(Box::new(Many1(Box::new(Alternative(vec![Literal(u("--baz")), Variable(u("FILE"))]))))), Variable(u("FILE"))]))), Sequence(vec![Variable(u("FILE")), Literal(u("foo"))])])]))), Variable(u("FILE"))]), [u("--quux"), u("--baz"), u("anything"), u("anything"), u("foo")]);
+        dbg!(&expr);
+        dbg!(&input);
+        let arena = Bump::new();
+        let regex = AugmentedRegex::from_expr(&expr, &arena);
+        let dfa = DirectDFA::from_regex(&regex);
+        let input: Vec<&str> = input.iter().map(|s| {
+            let s: &str = s;
+            s
+        }).collect();
+        assert!(dfa.accepts(&input));
+        let minimimal_dfa = dfa.minimize();
+        assert!(minimimal_dfa.accepts(&input));
+    }
 }
