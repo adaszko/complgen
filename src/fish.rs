@@ -10,7 +10,11 @@ use crate::dfa::DirectDFA;
 
 fn write_tables<W: Write>(buffer: &mut W, dfa: &DirectDFA) -> Result<()> {
     for state in dfa.get_all_states() {
-        let transitions: Vec<(crate::regex::Input, StateId)> = dfa.transitions.get(&StateId::try_from(state).unwrap()).unwrap().iter().filter(|(input, _)| !input.is_any()).map(|(input, state)| (*input, *state)).collect();
+        let map = match dfa.transitions.get(&StateId::try_from(state).unwrap()) {
+            Some(map) => map,
+            None => continue,
+        };
+        let transitions: Vec<(crate::regex::Input, StateId)> = map.iter().filter(|(input, _)| !input.is_any()).map(|(input, state)| (*input, *state)).collect();
         if transitions.is_empty() {
             continue;
         }

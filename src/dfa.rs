@@ -157,6 +157,44 @@ fn make_inverse_transitions_lookup_table(transitions: &HashMap<StateId, HashMap<
     result
 }
 
+fn keep_only_states_with_input_transitions(starting_state: StateId, transitions: &[Transition], accepting_states: &RoaringBitmap) -> (Vec<Transition>, RoaringBitmap) {
+    let states_with_input_transition = RoaringBitmap::from_iter(transitions.iter().map(|transition| u32::from(transition.to)));
+
+    let alive_accepting_states = RoaringBitmap::from_sorted_iter(accepting_states.iter().filter(|state| *state == starting_state.into() || states_with_input_transition.contains(*state))).unwrap();
+
+    let alive_transitions: Vec<Transition> = transitions.iter().filter(|transition|
+        if transition.from == starting_state || transition.to == starting_state {
+            true
+        } else if !states_with_input_transition.contains(transition.from.into()) || !states_with_input_transition.contains(transition.to.into()) {
+            false
+        } else {
+            true
+        }
+    ).copied().collect();
+
+    (alive_transitions, alive_accepting_states)
+}
+
+fn eliminate_nonaccepting_states_without_output_transitions(transitions: &[Transition], accepting_states: &RoaringBitmap) -> Vec<Transition> {
+    let states_with_output_transition = RoaringBitmap::from_iter(transitions.iter().map(|transition| u32::from(transition.from)));
+    let alive_transitions: Vec<Transition> = transitions.iter().filter(|transition| accepting_states.contains(transition.to.into()) || states_with_output_transition.contains(transition.to.into())).copied().collect();
+    alive_transitions
+}
+
+// fn renumber_states(starting_state: StateId, transitions: &[Transition], accepting_states: &RoaringBitmap) -> (StateId, Vec<Transition>, RoaringBitmap) {
+//     todo!();
+// }
+
+fn hashmap_transitions_from_vec(transitions: &[Transition]) -> HashMap<StateId, HashMap<Input, StateId>> {
+    let mut result: HashMap<StateId, HashMap<Input, StateId>> = Default::default();
+
+    for transition in transitions {
+        result.entry(transition.from).or_default().insert(transition.input, transition.to);
+    }
+
+    result
+}
+
 // Hopcroft's DFA minimization algorithm.
 // References:
 //  * The Dragon Book: Minimizing the Number of states of a DFA
@@ -278,18 +316,21 @@ fn do_minimize(dfa: &DirectDFA) -> DirectDFA {
         accepting_states
     };
 
+
     let transitions = {
-        let mut transitions: HashMap<StateId, HashMap<Input, StateId>> = Default::default();
+        let mut transitions: Vec<Transition> = Default::default();
         for (from, tos) in &dfa.transitions {
-            let entry = transitions.entry(*from).or_default();
             for (input, to) in tos {
                 let representative = representative_id_from_state_id.get(to).unwrap();
-                entry.insert(*input, *representative);
+                transitions.push(Transition { from: *from, to: *representative, input: *input });
             }
         }
         transitions
     };
 
+    let (transitions, accepting_states) = keep_only_states_with_input_transitions(starting_state, &transitions, &accepting_states);
+    let transitions = eliminate_nonaccepting_states_without_output_transitions(&transitions, &accepting_states);
+    let transitions = hashmap_transitions_from_vec(&transitions);
     DirectDFA { starting_state, transitions, accepting_states }
 }
 
@@ -408,6 +449,10 @@ mod tests {
             while let Some((input_index, current_state)) = backtracking_stack.pop() {
                 if input_index == inputs.len() && self.accepting_states.contains(current_state.into()) {
                     return true;
+                }
+
+                if input_index >= inputs.len() {
+                    continue;
                 }
 
                 for (transition_input, to) in self.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
