@@ -49,14 +49,16 @@ fn dfa_from_regex(regex: &AugmentedRegex) -> DirectDFA {
                     }
                 }
             }
-            let u = BTreeSet::from_iter(u);
-            if !dstates.contains_key(&u) {
-                dstates.insert(u.clone(), unallocated_state_id);
-                unallocated_state_id += 1;
-                unmarked_states.insert(u.clone());
+            if !u.is_empty() {
+                let u = BTreeSet::from_iter(u);
+                if !dstates.contains_key(&u) {
+                    dstates.insert(u.clone(), unallocated_state_id);
+                    unallocated_state_id += 1;
+                    unmarked_states.insert(u.clone());
+                }
+                let to_combined_state_id = dstates.get(&u).unwrap();
+                from_entry.insert(input.clone(), *to_combined_state_id);
             }
-            let to_combined_state_id = dstates.get(&u).unwrap();
-            from_entry.insert(input.clone(), *to_combined_state_id);
         }
     }
 
@@ -458,7 +460,7 @@ mod tests {
         let dfa = DirectDFA::from_regex(&regex);
         let transitions = dfa.get_transitions();
         assert_eq!(transitions, vec![Transition::new(0, "foo", 1)]);
-        assert_eq!(dfa.accepting_states, RoaringBitmap::from_iter([0]));
+        assert_eq!(dfa.accepting_states, RoaringBitmap::from_iter([1]));
         assert_eq!(dfa.starting_state, 0);
     }
 
