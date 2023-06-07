@@ -28,11 +28,9 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DirectDFA) -> Result<()> {
     };
 
     writeln!(buffer, r#"    declare -A symbols"#)?;
-    for (symbol, id) in &id_from_input {
-        writeln!(buffer, r#"    symbols[{symbol}]={id}"#)?;
-    }
+    let symbols: String = itertools::join(id_from_input.iter().map(|(symbol, id)| format!("[{symbol}]={id}")), " ");
+    writeln!(buffer, r#"    symbols=({symbols})"#)?;
     writeln!(buffer, "")?;
-
 
     writeln!(buffer, r#"    declare -A transitions"#)?;
     for state in dfa.get_all_states() {
