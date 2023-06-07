@@ -1,7 +1,7 @@
 use std::fmt::Write;
 
 use complgen::{StateId, Result};
-use crate::dfa::DirectDFA;
+use crate::{dfa::DirectDFA, regex::Input};
 
 
 
@@ -14,17 +14,39 @@ use crate::dfa::DirectDFA;
 // An entry in the `asterisk_transitions` array indicates that there's a fallback transition that
 // accepts any word
 fn write_tables<W: Write>(buffer: &mut W, dfa: &DirectDFA) -> Result<()> {
+    let id_from_input = {
+        let mut id_from_input: ustr::UstrMap<usize> = Default::default();
+        let mut unallocated_input_id = 0;
+        for ustr in dfa.input_symbols.iter().filter_map(|input| match input {
+            Input::Literal(ustr) => Some(ustr),
+            Input::Any => None,
+        }) {
+            id_from_input.insert(*ustr, unallocated_input_id);
+            unallocated_input_id += 1;
+        }
+        id_from_input
+    };
+
+    writeln!(buffer, r#"    declare -A symbols"#)?;
+    for (symbol, id) in &id_from_input {
+        writeln!(buffer, r#"    symbols[{symbol}]={id}"#)?;
+    }
+    writeln!(buffer, "")?;
+
+
     writeln!(buffer, r#"    declare -A transitions"#)?;
     for state in dfa.get_all_states() {
         let map = match dfa.transitions.get(&StateId::try_from(state).unwrap()) {
             Some(map) => map,
             None => continue,
         };
-        let mut transitions: Vec<(crate::regex::Input, StateId)> = map.iter().filter(|(input, _)| !input.is_any()).map(|(input, state)| (*input, *state)).collect();
+        let transitions: Vec<(usize, StateId)> = map.iter().filter_map(|(input, to)| match input {
+            Input::Literal(ustr) => Some((*id_from_input.get(ustr).unwrap(), *to)),
+            Input::Any => None,
+        }).collect();
         if transitions.is_empty() {
             continue;
         }
-        transitions.sort_by_key(|(input, _)| input.clone());
         let state_transitions: String = itertools::join(transitions.into_iter().map(|(input, to)| format!("[{}]={}", input, to)), " ");
         writeln!(buffer, r#"    transitions[{state}]="({state_transitions})""#)?;
     }
@@ -54,8 +76,12 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &Di
         declare -A state_transitions
         eval "state_transitions=$state_transitions_initializer"
         local word=${{COMP_WORDS[$word_index]}}
-        if [[ -v "state_transitions[$word]" ]]; then
-            state=${{state_transitions[$word]}}
+        if [[ ! -v "symbols[$word]" ]]; then
+            return 1
+        fi
+        local symbol_id=${{symbols[$word]}}
+        if [[ -v "state_transitions[$symbol_id]" ]]; then
+            state=${{state_transitions[$symbol_id]}}
             word_index=$((word_index + 1))
             continue
         fi
@@ -71,7 +97,19 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &Di
     local state_transitions_initializer=${{transitions[$state]}}
     declare -A state_transitions
     eval "state_transitions=$state_transitions_initializer"
-    local completions=${{!state_transitions[@]}}
+
+    local -A inverted_symbols=()
+    for key in "${{!symbols[@]}}"; do
+        local value=${{symbols[$key]}}
+        inverted_symbols+=([$value]=$key)
+    done
+
+    local completions=()
+    for symbol_id in ${{!state_transitions[@]}}; do
+        completions+=(${{inverted_symbols[$symbol_id]}})
+    done
+    completions=${{completions[@]}}
+
     COMPREPLY=($(compgen -W "$completions" -- "${{COMP_WORDS[$COMP_CWORD]}}"))
     return 0
 }}
