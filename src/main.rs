@@ -72,6 +72,9 @@ fn compile(args: &CompileArgs) -> Result<()> {
     println!("Regex -> DFA");
     let dfa = DirectDFA::from_regex(&regex);
 
+    println!("Minimizing DFA");
+    let dfa = dfa.minimize();
+
     let mut output = String::default();
 
     if let Some(path) = &args.bash_script_path {
