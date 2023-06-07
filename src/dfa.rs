@@ -174,9 +174,44 @@ fn eliminate_nonaccepting_states_without_output_transitions(transitions: &[Trans
     alive_transitions
 }
 
-// fn renumber_states(starting_state: StateId, transitions: &[Transition], accepting_states: &RoaringBitmap) -> (StateId, Vec<Transition>, RoaringBitmap) {
-//     todo!();
-// }
+fn renumber_states(starting_state: StateId, transitions: &[Transition], accepting_states: &RoaringBitmap) -> (StateId, Vec<Transition>, RoaringBitmap) {
+    let new_from_old_state_id = {
+        let mut new_from_old_state_id: HashMap<StateId, StateId> = Default::default();
+        let mut unallocated_state_id = 0;
+
+        new_from_old_state_id.entry(starting_state).or_insert_with(|| {
+            let result = unallocated_state_id;
+            unallocated_state_id += 1;
+            result
+        });
+
+        for transition in transitions {
+            new_from_old_state_id.entry(transition.from).or_insert_with(|| {
+                let result = unallocated_state_id;
+                unallocated_state_id += 1;
+                result
+            });
+            new_from_old_state_id.entry(transition.to).or_insert_with(|| {
+                let result = unallocated_state_id;
+                unallocated_state_id += 1;
+                result
+            });
+        }
+        new_from_old_state_id
+    };
+
+    let new_starting_state = *new_from_old_state_id.get(&starting_state).unwrap();
+
+    let new_transitions: Vec<Transition> = transitions.iter().map(|Transition { from, to, input }| Transition {
+        from: *new_from_old_state_id.get(from).unwrap(),
+        to: *new_from_old_state_id.get(to).unwrap(),
+        input: *input,
+    }).collect();
+
+    let new_accepting_states: RoaringBitmap = RoaringBitmap::from_iter(accepting_states.iter().map(|old| u32::from(*new_from_old_state_id.get(&u16::try_from(old).unwrap()).unwrap())));
+
+    (new_starting_state, new_transitions, new_accepting_states)
+}
 
 fn hashmap_transitions_from_vec(transitions: &[Transition]) -> HashMap<StateId, HashMap<Input, StateId>> {
     let mut result: HashMap<StateId, HashMap<Input, StateId>> = Default::default();
@@ -345,6 +380,7 @@ fn do_minimize(dfa: &DirectDFA) -> DirectDFA {
 
     let (transitions, accepting_states) = keep_only_states_with_input_transitions(starting_state, &transitions, &accepting_states);
     let transitions = eliminate_nonaccepting_states_without_output_transitions(&transitions, &accepting_states);
+    let (starting_state, transitions, accepting_states) = renumber_states(starting_state, &transitions, &accepting_states);
     let transitions = hashmap_transitions_from_vec(&transitions);
     DirectDFA {
         starting_state,
