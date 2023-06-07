@@ -41,6 +41,9 @@ See the [subdirectory](usage/) for examples.
 
 The grammar is based on [compleat](https://github.com/mbrubeck/compleat/blob/master/README.markdown#syntax)'s one.
 
+A grammar is a series of line terminated by a semicolon (;).  Each line (roughly) represents a single variant of
+invoking the command.
+
  * `a b` matches `a` followed by `b`.
  * `a b | c` matches either `a b` or `c`.
  * `[a]` matches zero or one occurrences of `a`.
@@ -66,17 +69,21 @@ Use parentheses to group patterns:
 
 # Roadmap
 
- * Generate grammars automatically from man pages similarly to [how Fish shell is does it](https://github.com/fish-shell/fish-shell/blob/946ecf235c002cff596fbbb2c03f9693c30744da/share/tools/create_manpage_completions.py).
-
- * Show completion hints in ZSH and Fish (Bash does not support them).
+ * Printing of undefined variables as a gentle warning.
 
  * `name ::= expression;` defines a new production that can be referred to from other productions via `<name>`
    syntax.  Referring to a production recursively won't be supported as that would take us outside of regular languages.
 
+ * Produce [railroad diagrams](https://github.com/lukaslueg/railroad) to ease grammar development.
+
+ * Automatic completion of standard objects, e.g. <FILE>, <PATH>, etc.
+
+ * Generate grammars automatically from man pages similarly to [how Fish shell is does it](https://github.com/fish-shell/fish-shell/blob/946ecf235c002cff596fbbb2c03f9693c30744da/share/tools/create_manpage_completions.py).
+
+ * Show completion hints in ZSH and Fish (Bash does not support them).
+
  * `name = { shell-command... }` defines a variable that uses a shell command to generate suggested
    completions.  The shell command should print one suggested completion per line.  The `$COMP_LINE` and
    `$COMP_CWORD` environment will contain the input line and the current word being completed.
-
- * If no value is defined for `name`, then the pattern `<name>` will match any word.
 
  * End-to-end tests that excercise the generation completion scripts and check that they behave properly.
