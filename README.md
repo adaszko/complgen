@@ -35,8 +35,6 @@ maintained separately from each other risking divergence.  On balance, it is dee
  * Generates working completion scripts for `bash` and `fish`.  `zsh` can use `bash` script [via bash
    compatibility mode](https://stackoverflow.com/a/8492043).
 
- * The generated script can be huge because the DFA isn't optimal (yet).
-
 # Syntax
 
 See the [subdirectory](usage/) for examples.
