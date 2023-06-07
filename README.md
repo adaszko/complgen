@@ -56,8 +56,8 @@ Use parentheses to group patterns:
 # Limitations
 
  * Grouping single character options into a single shell parameter isn't supported, e.g. `tar -xvf` (unless
-   you manually enumerate all the permutations in the grammar).  You need to pass each option in a separate
-   shell argument instead: `tar -x -v -f`
+   you manually enumerate all the combinations in the grammar which isn't very practical).  You need to pass
+   each option in a separate shell argument instead: `tar -x -v -f`
 
  * Passing option arguments using `=` is not supported.  E.g. `--foo=bar` doesn't work, but `--foo bar` does.
 
@@ -66,9 +66,9 @@ Use parentheses to group patterns:
 
 # Roadmap
 
- * Generate grammars automatically based on man pages (https://github.com/fish-shell/fish-shell/blob/946ecf235c002cff596fbbb2c03f9693c30744da/share/tools/create_manpage_completions.py).
+ * Generate grammars automatically from man pages similarly to [how Fish shell is does it](https://github.com/fish-shell/fish-shell/blob/946ecf235c002cff596fbbb2c03f9693c30744da/share/tools/create_manpage_completions.py).
 
- * Show completion hints in ZSH and Fish
+ * Show completion hints in ZSH and Fish (Bash does not support them).
 
  * `name ::= expression;` defines a new production that can be referred to from other productions via `<name>`
    syntax.  Referring to a production recursively won't be supported as that would take us outside of regular languages.
