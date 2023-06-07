@@ -18,7 +18,7 @@ pub const FIRST_STATE_ID: StateId = 1;
 
 
 #[derive(Debug, Clone)]
-pub struct DirectDFA {
+pub struct DFA {
     pub starting_state: StateId,
     pub transitions: HashMap<StateId, HashMap<Input, StateId>>,
     pub accepting_states: RoaringBitmap,
@@ -26,7 +26,7 @@ pub struct DirectDFA {
 }
 
 
-fn dfa_from_regex(regex: &AugmentedRegex) -> DirectDFA {
+fn dfa_from_regex(regex: &AugmentedRegex) -> DFA {
     let mut unallocated_state_id = FIRST_STATE_ID;
     let combined_starting_state: BTreeSet<Position> = regex.firstpos();
     let combined_starting_state_id = unallocated_state_id;
@@ -81,7 +81,7 @@ fn dfa_from_regex(regex: &AugmentedRegex) -> DirectDFA {
         accepting_states
     };
 
-    DirectDFA {
+    DFA {
         starting_state: *dstates.get(&combined_starting_state).unwrap(),
         transitions: dtran,
         accepting_states,
@@ -254,7 +254,7 @@ fn make_inverse_transitions_lookup_table(transitions: &HashMap<StateId, HashMap<
 //  * https://github.com/BurntSushi/regex-automata/blob/c61a6d0f19b013dc832755375709023dfb9d5a8f/src/dfa/minimize.rs#L87
 //
 // TODO Use https://docs.rs/nohash-hasher/ for Hash{Map,Set}<StateId, ...>?
-fn do_minimize(dfa: &DirectDFA) -> DirectDFA {
+fn do_minimize(dfa: &DFA) -> DFA {
     let mut pool = SetInternPool::default();
     let mut partition: HashSet<SetInternId> = {
         let all_states = dfa.get_all_states();
@@ -382,7 +382,7 @@ fn do_minimize(dfa: &DirectDFA) -> DirectDFA {
     let transitions = eliminate_nonaccepting_states_without_output_transitions(&transitions, &accepting_states);
     let (starting_state, transitions, accepting_states) = renumber_states(starting_state, &transitions, &accepting_states);
     let transitions = hashmap_transitions_from_vec(&transitions);
-    DirectDFA {
+    DFA {
         starting_state,
         transitions,
         accepting_states,
@@ -391,7 +391,7 @@ fn do_minimize(dfa: &DirectDFA) -> DirectDFA {
 }
 
 
-impl DirectDFA {
+impl DFA {
     pub fn from_regex(regex: &AugmentedRegex) -> Self {
         dfa_from_regex(regex)
     }
@@ -500,7 +500,7 @@ mod tests {
         }
     }
 
-    impl DirectDFA {
+    impl DFA {
         pub fn accepts(&self, inputs: &[&str]) -> bool {
             let mut backtracking_stack = Vec::from_iter([(0, self.starting_state)]);
             while let Some((input_index, current_state)) = backtracking_stack.pop() {
@@ -559,7 +559,7 @@ mod tests {
         let expr = Expr::Literal(ustr("foo"));
         let arena = Bump::new();
         let regex = AugmentedRegex::from_expr(&expr, &arena);
-        let dfa = DirectDFA::from_regex(&regex);
+        let dfa = DFA::from_regex(&regex);
         let transitions = dfa.get_transitions();
         assert_eq!(transitions, vec![Transition::new(1, "foo", 2)]);
         assert_eq!(dfa.accepting_states, RoaringBitmap::from_iter([2]));
@@ -576,7 +576,7 @@ mod tests {
             // println!("{:?}", input);
             let arena = Bump::new();
             let regex = AugmentedRegex::from_expr(&expr, &arena);
-            let dfa = DirectDFA::from_regex(&regex);
+            let dfa = DFA::from_regex(&regex);
             let input: Vec<&str> = input.iter().map(|s| {
                 let s: &str = s;
                 s
@@ -590,7 +590,7 @@ mod tests {
             println!("{:?}", input);
             let arena = Bump::new();
             let regex = AugmentedRegex::from_expr(&expr, &arena);
-            let dfa = DirectDFA::from_regex(&regex);
+            let dfa = DFA::from_regex(&regex);
             let input: Vec<&str> = input.iter().map(|s| {
                 let s: &str = s;
                 s
@@ -645,7 +645,7 @@ mod tests {
         ];
         let arena = Bump::new();
         let regex = AugmentedRegex::from_expr(&expr, &arena);
-        let dfa = DirectDFA::from_regex(&regex);
+        let dfa = DFA::from_regex(&regex);
         let input: Vec<&str> = input.iter().map(|s| {
             let s: &str = s;
             s
@@ -666,7 +666,7 @@ mod tests {
             transitions.entry(4).or_default().insert(Input::Literal(ustr("e")), 5);
             let accepting_states = RoaringBitmap::from_iter([3,5]);
             let input_symbols = Rc::new(HashSet::from_iter([Input::Literal(ustr("f")), Input::Literal(ustr("e")), Input::Literal(ustr("i"))]));
-            DirectDFA { starting_state, transitions, accepting_states, input_symbols }
+            DFA { starting_state, transitions, accepting_states, input_symbols }
         };
         let minimized = dfa.minimize();
         assert_eq!(minimized.starting_state, 0);
@@ -685,7 +685,7 @@ mod tests {
         dbg!(&input);
         let arena = Bump::new();
         let regex = AugmentedRegex::from_expr(&expr, &arena);
-        let dfa = DirectDFA::from_regex(&regex);
+        let dfa = DFA::from_regex(&regex);
         let input: Vec<&str> = input.iter().map(|s| {
             let s: &str = s;
             s

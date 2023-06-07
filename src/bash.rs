@@ -1,7 +1,7 @@
 use std::fmt::Write;
 
 use complgen::{StateId, Result};
-use crate::{dfa::DirectDFA, regex::Input};
+use crate::{dfa::DFA, regex::Input};
 
 
 
@@ -13,7 +13,7 @@ use crate::{dfa::DirectDFA, regex::Input};
 //      value: state number
 // An entry in the `asterisk_transitions` array indicates that there's a fallback transition that
 // accepts any word
-fn write_tables<W: Write>(buffer: &mut W, dfa: &DirectDFA) -> Result<()> {
+fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
     let id_from_input = {
         let mut id_from_input: ustr::UstrMap<usize> = Default::default();
         let mut unallocated_input_id = 0;
@@ -59,7 +59,7 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DirectDFA) -> Result<()> {
 }
 
 
-pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DirectDFA) -> Result<()> {
+pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
     write!(buffer, r#"_{command} () {{
 "#)?;
 

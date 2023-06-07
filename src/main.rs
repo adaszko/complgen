@@ -5,7 +5,7 @@ use clap::Parser;
 
 use complgen::Result;
 
-use crate::dfa::DirectDFA;
+use crate::dfa::DFA;
 use crate::grammar::parse;
 use crate::regex::AugmentedRegex;
 
@@ -70,7 +70,7 @@ fn compile(args: &CompileArgs) -> Result<()> {
     let regex = AugmentedRegex::from_expr(&expr, &arena);
 
     println!("Regex -> DFA");
-    let dfa = DirectDFA::from_regex(&regex);
+    let dfa = DFA::from_regex(&regex);
 
     println!("Minimizing DFA");
     let dfa = dfa.minimize();
