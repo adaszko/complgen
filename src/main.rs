@@ -3,7 +3,7 @@ use std::io::Write;
 use bumpalo::Bump;
 use clap::Parser;
 
-use complgen::{Result};
+use complgen::Result;
 
 use crate::dfa::DirectDFA;
 use crate::grammar::parse;

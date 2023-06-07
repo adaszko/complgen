@@ -68,7 +68,7 @@ Use parentheses to group patterns:
 
 # Roadmap
 
- * Reuse Fish's parsing of man pages to generate completions (https://github.com/fish-shell/fish-shell/blob/946ecf235c002cff596fbbb2c03f9693c30744da/share/tools/create_manpage_completions.py).
+ * Generate grammars automatically based on man pages (https://github.com/fish-shell/fish-shell/blob/946ecf235c002cff596fbbb2c03f9693c30744da/share/tools/create_manpage_completions.py).
 
  * Show completion hints in ZSH and Fish
 
