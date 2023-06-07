@@ -308,7 +308,7 @@ fn do_minimize(dfa: &DFA) -> DFA {
         let group_transitions: Vec<Transition> = inverse_transitions[lower_bound..=upper_bound].iter().filter(|transition| group.contains(transition.to.into())).copied().collect();
         for input in dfa.input_symbols.iter() {
             let image: RoaringBitmap = group_transitions.iter().filter(|transition| transition.input == *input).map(|transition| u32::from(transition.from)).collect();
-            let qs: Vec<SetInternId> = partition.iter().filter(|q_id| pool.get(**q_id).unwrap().intersection_len(&image) > 0).cloned().collect();
+            let qs: Vec<SetInternId> = partition.iter().filter(|q_id| !pool.get(**q_id).unwrap().is_disjoint(&image)).copied().collect();
             for q_id in qs {
                 let q = pool.get(q_id).unwrap();
                 let q1 = [&q, &image].intersection(); // elements to remove from q and put into a separate set in a partiton
