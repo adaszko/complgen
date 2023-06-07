@@ -10,16 +10,24 @@ use crate::regex::{Position, AugmentedRegex, Input};
 use complgen::StateId;
 
 
+// Every state in a DFA is formally defined to have a transition on *every* input symbol.  In
+// our applications that's not the case, so we add artificial transitions to a special, designated
+// "dead" state.  Otherwise the minimization algorithm doesn't work as intended.
+pub const DEAD_STATE_ID: StateId = 0;
+pub const FIRST_STATE_ID: StateId = 1;
+
+
 #[derive(Debug, Clone)]
 pub struct DirectDFA {
     pub starting_state: StateId,
     pub transitions: HashMap<StateId, HashMap<Input, StateId>>,
     pub accepting_states: RoaringBitmap,
+    pub input_symbols: Rc<HashSet<Input>>,
 }
 
 
 fn dfa_from_regex(regex: &AugmentedRegex) -> DirectDFA {
-    let mut unallocated_state_id = 0;
+    let mut unallocated_state_id = FIRST_STATE_ID;
     let combined_starting_state: BTreeSet<Position> = regex.firstpos();
     let combined_starting_state_id = unallocated_state_id;
     unallocated_state_id += 1;
@@ -39,7 +47,7 @@ fn dfa_from_regex(regex: &AugmentedRegex) -> DirectDFA {
         unmarked_states.remove(&combined_state);
         let from_combined_state_id = *dstates.get(&combined_state).unwrap();
         let from_entry = dtran.entry(from_combined_state_id).or_default();
-        for input in &regex.input_symbols {
+        for input in regex.input_symbols.iter() {
             let mut u = RoaringBitmap::new();
             for pos in &combined_state {
                 let pos_usize = usize::try_from(*pos).unwrap();
@@ -77,6 +85,7 @@ fn dfa_from_regex(regex: &AugmentedRegex) -> DirectDFA {
         starting_state: *dstates.get(&combined_starting_state).unwrap(),
         transitions: dtran,
         accepting_states,
+        input_symbols: Rc::clone(&regex.input_symbols),
     }
 }
 
@@ -141,22 +150,6 @@ struct Transition {
 }
 
 
-fn make_inverse_transitions_lookup_table(transitions: &HashMap<StateId, HashMap<Input, StateId>>) -> Vec<Transition> {
-    let mut result: Vec<Transition> = Default::default();
-    for (from, tos) in transitions {
-        for (input, to) in tos {
-            result.push(Transition {
-                from: *from,
-                to: *to,
-                input: *input,
-            });
-        }
-    }
-    result.sort_unstable_by_key(|transition| transition.to);
-    result.dedup(); // should be redundant
-    result
-}
-
 fn keep_only_states_with_input_transitions(starting_state: StateId, transitions: &[Transition], accepting_states: &RoaringBitmap) -> (Vec<Transition>, RoaringBitmap) {
     let states_with_input_transition = RoaringBitmap::from_iter(transitions.iter().map(|transition| u32::from(transition.to)));
 
@@ -195,11 +188,35 @@ fn hashmap_transitions_from_vec(transitions: &[Transition]) -> HashMap<StateId, 
     result
 }
 
+fn make_inverse_transitions_lookup_table(transitions: &HashMap<StateId, HashMap<Input, StateId>>, input_symbols: Rc<HashSet<Input>>) -> Vec<Transition> {
+    let mut result: Vec<Transition> = Default::default();
+    for (from, tos) in transitions {
+        let meaningful_inputs: HashSet<Input> = tos.keys().copied().collect();
+        for (input, to) in tos {
+            result.push(Transition {
+                from: *from,
+                to: *to,
+                input: *input,
+            });
+        }
+        for input in input_symbols.difference(&meaningful_inputs) {
+            result.push(Transition {
+                from: *from,
+                to: DEAD_STATE_ID,
+                input: *input,
+            });
+        }
+    }
+    result.sort_unstable_by_key(|transition| transition.to);
+    result.dedup(); // should be redundant
+    result
+}
+
 // Hopcroft's DFA minimization algorithm.
 // References:
 //  * The Dragon Book: Minimizing the Number of states of a DFA
 //  * Engineering a Compiler, 3rd ed, 2.4.4 DFA to Minimal DFA
-//  * https://github.com/BurntSushi/regex-automata/blob/master/src/dfa/minimize.rs
+//  * https://github.com/BurntSushi/regex-automata/blob/c61a6d0f19b013dc832755375709023dfb9d5a8f/src/dfa/minimize.rs#L87
 //
 // TODO Use https://docs.rs/nohash-hasher/ for Hash{Map,Set}<StateId, ...>?
 fn do_minimize(dfa: &DirectDFA) -> DirectDFA {
@@ -215,14 +232,14 @@ fn do_minimize(dfa: &DirectDFA) -> DirectDFA {
         HashSet::from_iter([accepting_states_id, nonaccepting_states_id])
     };
     let mut worklist = partition.clone();
-    let inverse_transitions = make_inverse_transitions_lookup_table(&dfa.transitions);
+    let inverse_transitions = make_inverse_transitions_lookup_table(&dfa.transitions, Rc::clone(&dfa.input_symbols));
     loop {
         let group_id = match worklist.iter().next() {
             Some(group_id) => *group_id,
             None => break,
         };
         worklist.remove(&group_id);
-        let group = pool.get(group_id).unwrap(); // group is a better name for 's' in the book
+        let group = pool.get(group_id).unwrap(); // group is a better name for 's' from the book
         let group_min = group.min().unwrap();
         let group_max = group.max().unwrap();
         let inbetween_index = match inverse_transitions.binary_search_by(|transition| {
@@ -254,10 +271,8 @@ fn do_minimize(dfa: &DirectDFA) -> DirectDFA {
         };
 
         let group_transitions: Vec<Transition> = inverse_transitions[lower_bound..=upper_bound].iter().filter(|transition| group.contains(transition.to.into())).copied().collect();
-
-        let inputs: HashSet<Input> = group_transitions.iter().map(|transition| transition.input).collect();
-        for input in inputs {
-            let image: RoaringBitmap = group_transitions.iter().filter(|transition| transition.input == input).map(|transition| u32::from(transition.from)).collect();
+        for input in dfa.input_symbols.iter() {
+            let image: RoaringBitmap = group_transitions.iter().filter(|transition| transition.input == *input).map(|transition| u32::from(transition.from)).collect();
             let qs: Vec<SetInternId> = partition.iter().filter(|q_id| pool.get(**q_id).unwrap().intersection_len(&image) > 0).cloned().collect();
             for q_id in qs {
                 let q = pool.get(q_id).unwrap();
@@ -331,7 +346,12 @@ fn do_minimize(dfa: &DirectDFA) -> DirectDFA {
     let (transitions, accepting_states) = keep_only_states_with_input_transitions(starting_state, &transitions, &accepting_states);
     let transitions = eliminate_nonaccepting_states_without_output_transitions(&transitions, &accepting_states);
     let transitions = hashmap_transitions_from_vec(&transitions);
-    DirectDFA { starting_state, transitions, accepting_states }
+    DirectDFA {
+        starting_state,
+        transitions,
+        accepting_states,
+        input_symbols: Rc::clone(&dfa.input_symbols),
+    }
 }
 
 
@@ -352,6 +372,7 @@ impl DirectDFA {
                 states.insert((*to).into());
             });
         }
+        states.insert(DEAD_STATE_ID.into());
         states
     }
 
@@ -504,9 +525,9 @@ mod tests {
         let regex = AugmentedRegex::from_expr(&expr, &arena);
         let dfa = DirectDFA::from_regex(&regex);
         let transitions = dfa.get_transitions();
-        assert_eq!(transitions, vec![Transition::new(0, "foo", 1)]);
-        assert_eq!(dfa.accepting_states, RoaringBitmap::from_iter([1]));
-        assert_eq!(dfa.starting_state, 0);
+        assert_eq!(transitions, vec![Transition::new(1, "foo", 2)]);
+        assert_eq!(dfa.accepting_states, RoaringBitmap::from_iter([2]));
+        assert_eq!(dfa.starting_state, 1);
     }
 
     const LITERALS: &[&str] = &["foo", "bar", "--baz", "--quux"];
@@ -608,7 +629,8 @@ mod tests {
             transitions.entry(2).or_default().insert(Input::Literal(ustr("e")), 3);
             transitions.entry(4).or_default().insert(Input::Literal(ustr("e")), 5);
             let accepting_states = RoaringBitmap::from_iter([3,5]);
-            DirectDFA { starting_state, transitions, accepting_states }
+            let input_symbols = Rc::new(HashSet::from_iter([Input::Literal(ustr("f")), Input::Literal(ustr("e")), Input::Literal(ustr("i"))]));
+            DirectDFA { starting_state, transitions, accepting_states, input_symbols }
         };
         let minimized = dfa.minimize();
         assert_eq!(minimized.starting_state, 0);

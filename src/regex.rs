@@ -1,5 +1,5 @@
 use hashbrown::HashSet;
-use std::{collections::{BTreeMap, BTreeSet}, cmp::Ordering};
+use std::{collections::{BTreeMap, BTreeSet}, cmp::Ordering, rc::Rc};
 
 use bumpalo::Bump;
 use ustr::Ustr;
@@ -238,7 +238,7 @@ fn do_from_expr<'a>(e: &Expr, arena: &'a Bump, symbols: &mut HashSet<Input>, inp
 #[derive(Debug)]
 pub struct AugmentedRegex<'a> {
     pub root: AugmentedRegexNode<'a>,
-    pub input_symbols: HashSet<Input>,
+    pub input_symbols: Rc<HashSet<Input>>,
     pub input_from_position: Vec<Input>,
     pub endmarker_position: Position,
 }
@@ -254,7 +254,7 @@ impl<'a> AugmentedRegex<'a> {
         let root = AugmentedRegexNode::Cat(regex, endmarker);
         Self {
             root,
-            input_symbols,
+            input_symbols: Rc::new(input_symbols),
             endmarker_position,
             input_from_position,
         }

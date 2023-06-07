@@ -68,8 +68,6 @@ Use parentheses to group patterns:
 
 # Roadmap
 
- * Implement DFA minimization (The Dragon Book, 3.9.6 Minimizing the Number of States of a DFA)
-
  * Reuse Fish's parsing of man pages to generate completions (https://github.com/fish-shell/fish-shell/blob/946ecf235c002cff596fbbb2c03f9693c30744da/share/tools/create_manpage_completions.py).
 
  * Show completion hints in ZSH and Fish
