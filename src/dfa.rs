@@ -242,6 +242,7 @@ fn make_inverse_transitions_lookup_table(transitions: &HashMap<StateId, HashMap<
             });
         }
     }
+
     result.sort_unstable_by_key(|transition| transition.to);
     result.dedup(); // should be redundant
     result
@@ -257,14 +258,17 @@ fn make_inverse_transitions_lookup_table(transitions: &HashMap<StateId, HashMap<
 fn do_minimize(dfa: &DFA) -> DFA {
     let mut pool = SetInternPool::default();
     let mut partition: HashSet<SetInternId> = {
+        let dead_state_group = RoaringBitmap::from_iter([u32::from(DEAD_STATE_ID)]);
         let all_states = dfa.get_all_states();
-        let nonaccepting_states = [&all_states, &dfa.accepting_states].difference();
+        let nonaccepting_states = [&all_states, &dfa.accepting_states, &dead_state_group].difference();
         if nonaccepting_states.is_empty() {
+            // Nothing to minimize
             return dfa.clone();
         }
-        let nonaccepting_states_id = pool.intern(nonaccepting_states);
-        let accepting_states_id = pool.intern(dfa.accepting_states.clone());
-        HashSet::from_iter([accepting_states_id, nonaccepting_states_id])
+        let nonaccepting_states_intern_id = pool.intern(nonaccepting_states);
+        let accepting_states_intern_id = pool.intern(dfa.accepting_states.clone());
+        let dead_state_intern_id = pool.intern(dead_state_group);
+        HashSet::from_iter([dead_state_intern_id, accepting_states_intern_id, nonaccepting_states_intern_id])
     };
     let mut worklist = partition.clone();
     let inverse_transitions = make_inverse_transitions_lookup_table(&dfa.transitions, Rc::clone(&dfa.input_symbols));
@@ -596,8 +600,8 @@ mod tests {
                 s
             }).collect();
             prop_assert!(dfa.accepts(&input));
-            let minimimal_dfa = dfa.minimize();
-            prop_assert!(minimimal_dfa.accepts(&input));
+            let minimal_dfa = dfa.minimize();
+            prop_assert!(minimal_dfa.accepts(&input));
         }
     }
 
@@ -691,7 +695,45 @@ mod tests {
             s
         }).collect();
         assert!(dfa.accepts(&input));
-        let minimimal_dfa = dfa.minimize();
-        assert!(minimimal_dfa.accepts(&input));
+        let minimal_dfa = dfa.minimize();
+        assert!(minimal_dfa.accepts(&input));
+    }
+
+    #[test]
+    fn minimization_counterexample1() {
+        use Expr::*;
+        let (expr, input) = (Alternative(vec![Many1(Box::new(Sequence(vec![Variable(u("FILE")), Variable(u("FILE"))]))), Variable(u("FILE"))]), [u("anything"), u("anything"), u("anything"), u("anything"), u("anything"), u("anything")]);
+        dbg!(&expr);
+        let arena = Bump::new();
+        let regex = AugmentedRegex::from_expr(&expr, &arena);
+        let dfa = DFA::from_regex(&regex);
+        dfa.to_dot_file("pre.dot").unwrap();
+        let input: Vec<&str> = input.iter().map(|s| {
+            let s: &str = s;
+            s
+        }).collect();
+        assert!(dfa.accepts(&input));
+        let minimal_dfa = dfa.minimize();
+        minimal_dfa.to_dot_file("post.dot").unwrap();
+        assert!(minimal_dfa.accepts(&input));
+    }
+
+    #[test]
+    fn minimization_counterexample2() {
+        use Expr::*;
+        let (expr, input) = (Sequence(vec![Sequence(vec![Alternative(vec![Many1(Box::new(Many1(Box::new(Literal(u("--baz")))))), Variable(u("FILE"))]), Literal(u("--baz"))]), Many1(Box::new(Alternative(vec![Variable(u("FILE")), Variable(u("FILE"))])))]), [u("anything"), u("--baz"), u("anything"), u("anything")]);
+        dbg!(&expr);
+        let arena = Bump::new();
+        let regex = AugmentedRegex::from_expr(&expr, &arena);
+        let dfa = DFA::from_regex(&regex);
+        dfa.to_dot_file("pre.dot").unwrap();
+        let input: Vec<&str> = input.iter().map(|s| {
+            let s: &str = s;
+            s
+        }).collect();
+        assert!(dfa.accepts(&input));
+        let minimal_dfa = dfa.minimize();
+        minimal_dfa.to_dot_file("post.dot").unwrap();
+        assert!(minimal_dfa.accepts(&input));
     }
 }
