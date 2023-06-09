@@ -2,7 +2,7 @@ use nom::{
     branch::alt,
     bytes::complete::{is_not, tag, take_while1, escaped},
     character::{complete::{char, multispace0, multispace1, one_of}, is_alphanumeric},
-    multi::separated_list1,
+    multi::many0,
     IResult, combinator::fail, error::context,
 };
 
@@ -13,6 +13,7 @@ use ustr::{Ustr, ustr};
 pub struct Grammar {
     pub command: Ustr,
     pub args: Vec<Expr>, // alternatives
+    pub vars: Vec<(Ustr, Expr)>,
 }
 
 impl Grammar {
@@ -28,9 +29,15 @@ impl Grammar {
 }
 
 #[derive(Debug, PartialEq)]
-struct Variant {
-    lhs: Ustr,
-    rhs: Expr,
+enum Statement {
+    CallVariant {
+        lhs: Ustr,
+        rhs: Expr,
+    },
+    VariableDefinition {
+        symbol: Ustr,
+        rhs: Expr,
+    },
 }
 
 // Can't use an arena here until proptest supports non-owned types: https://github.com/proptest-rs/proptest/issues/9
@@ -174,34 +181,68 @@ fn expr(input: &str) -> IResult<&str, Expr> {
     alternative_expr(input)
 }
 
-fn variant(input: &str) -> IResult<&str, Variant> {
+fn call_variant(input: &str) -> IResult<&str, Statement> {
     let (input, name) = terminal(input)?;
     let (input, _) = multispace1(input)?;
     let (input, expr) = expr(input)?;
     let (input, _) = multispace0(input)?;
     let (input, _) = char(';')(input)?;
-    let production = Variant {
+
+    let production = Statement::CallVariant {
         lhs: ustr(name),
         rhs: expr,
     };
+
     Ok((input, production))
 }
 
-fn grammar(input: &str) -> IResult<&str, Vec<Variant>> {
+fn variable_definition(input: &str) -> IResult<&str, Statement> {
+    let (input, symbol) = symbol(input)?;
     let (input, _) = multispace0(input)?;
-    let (input, variants) = separated_list1(multispace1, variant)(input)?;
+    let (input, _) = tag("::=")(input)?;
     let (input, _) = multispace0(input)?;
-    Ok((input, variants))
+    let (input, e) = expr(input)?;
+    let (input, _) = multispace0(input)?;
+    let (input, _) = char(';')(input)?;
+
+    let stmt = Statement::VariableDefinition {
+        symbol: ustr(symbol),
+        rhs: e,
+    };
+
+    Ok((input, stmt))
+}
+
+fn statement(input: &str) -> IResult<&str, Statement> {
+    let (input, stmt) = alt((call_variant, variable_definition))(input)?;
+    let (input, _) = multispace0(input)?;
+    Ok((input, stmt))
+}
+
+fn grammar(input: &str) -> IResult<&str, Vec<Statement>> {
+    let (input, _) = multispace0(input)?;
+    let (input, statements) = many0(statement)(input)?;
+    let (input, _) = multispace0(input)?;
+    Ok((input, statements))
 }
 
 pub fn parse(input: &str) -> Result<Grammar> {
-    let (_, variants) = match grammar(input) {
-        Ok((input, variants)) => (input, variants),
+    let (input, statements) = match grammar(input) {
+        Ok((input, statements)) => (input, statements),
         Err(e) => return Err(Error::ParsingError(e.to_string())),
     };
 
-    let mut commands: Vec<Ustr> = variants.iter().map(|v| v.lhs).collect();
-    commands.sort();
+    if !input.is_empty() {
+        return Err(Error::TrailingInput(input.to_owned()));
+    }
+
+    let mut commands: Vec<Ustr> = statements.iter().filter_map(|v|
+        match v {
+            Statement::CallVariant { lhs, .. } => Some(*lhs),
+            Statement::VariableDefinition { .. } => None,
+        }
+    ).collect();
+    commands.sort_unstable();
     commands.dedup();
     if commands.len() > 1 {
         return Err(Error::VaryingCommandNames(
@@ -213,10 +254,24 @@ pub fn parse(input: &str) -> Result<Grammar> {
         return Err(Error::EmptyGrammar);
     }
 
-    let v: Vec<Expr> = variants.into_iter().map(|v| v.rhs).collect();
+    let call_variants: Vec<Expr> = statements.iter().filter_map(|v|
+        match v {
+            Statement::CallVariant { rhs, .. } => Some(rhs.clone()),
+            Statement::VariableDefinition { .. } => None,
+        }
+    ).collect();
+
+    let variable_definitions: Vec<(Ustr, Expr)> = statements.iter().filter_map(|v|
+        match v {
+            Statement::CallVariant { .. } => None,
+            Statement::VariableDefinition { symbol, rhs } => Some((*symbol, rhs.clone())),
+        }
+    ).collect();
+
     let g = Grammar {
         command: ustr(&commands[0]),
-        args: v,
+        args: call_variants,
+        vars: variable_definitions,
     };
     Ok(g)
 }
@@ -403,10 +458,10 @@ pub mod tests {
     #[test]
     fn parses_variant() {
         const INPUT: &str = r#"foo bar;"#;
-        let ("", v) = variant(INPUT).unwrap() else { panic!("parsing error"); };
+        let ("", v) = call_variant(INPUT).unwrap() else { panic!("parsing error"); };
         assert_eq!(
             v,
-            Variant {
+            Statement::CallVariant {
                 lhs: u("foo"),
                 rhs: Expr::Literal(u("bar"))
             }
@@ -425,6 +480,7 @@ foo baz;
             Grammar {
                 command: u("foo"),
                 args: vec![Expr::Literal(u("bar")), Expr::Literal(u("baz"))],
+                vars: vec![],
             }
         );
     }
@@ -452,6 +508,7 @@ foo baz;
                         ]))),
                     ]),
                 ])],
+                vars: vec![],
             },
         );
     }
@@ -492,8 +549,29 @@ darcs initialize ( ( --hashed | --darcs-2 | --old-fashioned-inventory ) | --repo
 darcs optimize ( --repodir <DIRECTORY> | --reorder-patches | --sibling <URL> | --relink | --relink-pristine | --upgrade | --pristine | ( --compress | --dont-compress | --uncompress ) | --umask <UMASK> | ( --debug | --debug-verbose | --debug-http | ( -v | --verbose ) | ( -q | --quiet ) | --standard-verbosity ) | --timings | ( --posthook <COMMAND> | --no-posthook ) | ( --prompt-posthook | --run-posthook ) | ( --prehook <COMMAND> | --no-prehook ) | ( --prompt-prehook | --run-prehook ) ) ... ;
 darcs check ( ( --complete | --partial ) | ( --no-test | --test ) | ( --leave-test-directory | --remove-test-directory ) | --repodir <DIRECTORY> | --ignore-times | ( --debug | --debug-verbose | --debug-http | ( -v | --verbose ) | ( -q | --quiet ) | --standard-verbosity ) | --timings | ( --posthook <COMMAND> | --no-posthook ) | ( --prompt-posthook | --run-posthook ) | ( --prehook <COMMAND> | --no-prehook ) | ( --prompt-prehook | --run-prehook ) ) ... ;
 darcs repair ( --repodir <DIRECTORY> | --umask <UMASK> | ( --debug | --debug-verbose | --debug-http | ( -v | --verbose ) | ( -q | --quiet ) | --standard-verbosity ) | --timings | ( --posthook <COMMAND> | --no-posthook ) | ( --prompt-posthook | --run-posthook ) | ( --prehook <COMMAND> | --no-prehook ) | ( --prompt-prehook | --run-prehook ) ) ... ;
-darcs convert ( ( --repo-name <DIRECTORY> | --repodir <DIRECTORY> ) | ( --set-scripts-executable | --dont-set-scripts-executable ) | ( --ssh-cm | --no-ssh-cm ) | ( --http-pipelining | --no-http-pipelining ) | --no-cache | ( --debug | --debug-verbose | --debug-http | ( -v | --verbose ) | ( -q | --quiet ) | --standard-verbosity ) | --timings | ( --posthook <COMMAND> | --no-posthook ) | ( --prompt-posthook | --run-posthook ) | ( --prehook <COMMAND> | --no-prehook ) | ( --prompt-prehook | --run-prehook ) ) ... <SOURCE> [<DESTINATION>]
+darcs convert ( ( --repo-name <DIRECTORY> | --repodir <DIRECTORY> ) | ( --set-scripts-executable | --dont-set-scripts-executable ) | ( --ssh-cm | --no-ssh-cm ) | ( --http-pipelining | --no-http-pipelining ) | --no-cache | ( --debug | --debug-verbose | --debug-http | ( -v | --verbose ) | ( -q | --quiet ) | --standard-verbosity ) | --timings | ( --posthook <COMMAND> | --no-posthook ) | ( --prompt-posthook | --run-posthook ) | ( --prehook <COMMAND> | --no-prehook ) | ( --prompt-prehook | --run-prehook ) ) ... <SOURCE> [<DESTINATION>];
 "#;
         let _ = parse(INPUT).unwrap();
+    }
+
+    #[test]
+    fn parses_variable_definition() {
+        use Expr::*;
+        const INPUT: &str = r#"
+grep [<OPTION>]... <PATTERNS> [<FILE>]...;
+<OPTION> ::= --color <WHEN>;
+<WHEN> ::= always | never | auto;
+"#;
+        let g = parse(INPUT).unwrap();
+        assert_eq!(g.vars, [
+            (
+                u("OPTION"),
+                Sequence(vec![Literal(ustr("--color")), Variable(ustr("WHEN"))]),
+            ),
+            (
+                u("WHEN"),
+                Alternative(vec![Literal(ustr("always")), Literal(ustr("never")), Literal(ustr("auto"))]),
+            ),
+        ]);
     }
 }

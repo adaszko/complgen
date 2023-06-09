@@ -9,6 +9,9 @@ pub enum Error {
     #[error("Empty grammar")]
     EmptyGrammar,
 
+    #[error("Trailing input")]
+    TrailingInput(String),
+
     #[error("One one command is allowed in completions definition")]
     VaryingCommandNames(Vec<Ustr>),
 

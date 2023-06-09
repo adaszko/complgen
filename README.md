@@ -71,7 +71,7 @@ Use parentheses to group patterns:
 
  * Printing of undefined variables as a gentle warning.
 
- * `name ::= expression;` defines a new production that can be referred to from other productions via `<name>`
+ * `<name> ::= expression;` defines a new production that can be referred to from other productions via `<name>`
    syntax.  Referring to a production recursively won't be supported as that would take us outside of regular languages.
 
  * Produce [railroad diagrams](https://github.com/lukaslueg/railroad) to ease grammar development.
@@ -80,7 +80,7 @@ Use parentheses to group patterns:
 
  * Generate grammars automatically from man pages similarly to [how Fish shell is does it](https://github.com/fish-shell/fish-shell/blob/946ecf235c002cff596fbbb2c03f9693c30744da/share/tools/create_manpage_completions.py).
 
- * Show completion hints in ZSH and Fish (Bash does not support them).
+ * Show completion hints in ZSH and Fish (Bash does not support them): `--invert-match "select non-matching lines"`
 
  * `name = { shell-command... }` defines a variable that uses a shell command to generate suggested
    completions.  The shell command should print one suggested completion per line.  The `$COMP_LINE` and
