@@ -311,37 +311,37 @@ fn do_minimize(dfa: &DFA) -> DFA {
 
         let group_transitions: Vec<Transition> = inverse_transitions[lower_bound..=upper_bound].iter().filter(|transition| group.contains(transition.to.into())).copied().collect();
         for input in dfa.input_symbols.iter() {
-            let image: RoaringBitmap = group_transitions.iter().filter(|transition| transition.input == *input).map(|transition| u32::from(transition.from)).collect();
-            let qs: Vec<SetInternId> = partition.iter().filter(|q_id| !pool.get(**q_id).unwrap().is_disjoint(&image)).copied().collect();
-            for q_id in qs {
-                let q = pool.get(q_id).unwrap();
-                let q1 = [&q, &image].intersection(); // elements to remove from q and put into a separate set in a partiton
-                let q2 = [&q, &q1].difference(); // what to replace q with
-                if q2.is_empty() {
+            let from_states: RoaringBitmap = group_transitions.iter().filter(|transition| transition.input == *input).map(|transition| u32::from(transition.from)).collect();
+            let overlapping_sets: Vec<SetInternId> = partition.iter().filter(|set_id| !pool.get(**set_id).unwrap().is_disjoint(&from_states)).copied().collect();
+            for intern_id in overlapping_sets {
+                let states = pool.get(intern_id).unwrap();
+                let states_to_remove = [&states, &from_states].intersection();
+                let remaining_states = [&states, &states_to_remove].difference();
+                if remaining_states.is_empty() {
                     continue;
                 }
 
-                let q1_len = q1.len();
-                let q2_len = q2.len();
+                let num_states_to_remove = states_to_remove.len();
+                let num_remaining_states = remaining_states.len();
 
-                partition.remove(&q_id);
-                let q1_id = pool.intern(q1);
-                let q2_id = pool.intern(q2);
-                partition.insert(q1_id);
-                partition.insert(q2_id);
+                partition.remove(&intern_id);
+                let states_to_remove_intern_id = pool.intern(states_to_remove);
+                let remaining_states_intern_id = pool.intern(remaining_states);
+                partition.insert(states_to_remove_intern_id);
+                partition.insert(remaining_states_intern_id);
 
-                if worklist.contains(&q_id) {
-                    worklist.remove(&q_id);
-                    worklist.insert(q1_id);
-                    worklist.insert(q2_id);
+                if worklist.contains(&intern_id) {
+                    worklist.remove(&intern_id);
+                    worklist.insert(states_to_remove_intern_id);
+                    worklist.insert(remaining_states_intern_id);
                 }
-                else if q1_len <= q2_len {
-                    worklist.insert(q1_id);
+                else if num_states_to_remove <= num_remaining_states {
+                    worklist.insert(states_to_remove_intern_id);
                 }
                 else {
-                    worklist.insert(q2_id);
+                    worklist.insert(remaining_states_intern_id);
                 }
-                if group_id == q_id {
+                if group_id == intern_id {
                     break;
                 }
             }
@@ -350,10 +350,10 @@ fn do_minimize(dfa: &DFA) -> DFA {
 
     let representative_id_from_state_id = {
         let mut representative_id_from_state_id: HashMap<StateId, StateId> = Default::default();
-        for q_id in &partition {
-            let q = pool.get(*q_id).unwrap();
-            let representative_state_id = q.min().unwrap();
-            for state_id in q.iter() {
+        for intern_id in &partition {
+            let partition_element = pool.get(*intern_id).unwrap();
+            let representative_state_id = partition_element.min().unwrap();
+            for state_id in partition_element.iter() {
                 representative_id_from_state_id.insert(StateId::try_from(state_id).unwrap(), StateId::try_from(representative_state_id).unwrap());
             }
         }
