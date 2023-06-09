@@ -69,18 +69,26 @@ Use parentheses to group patterns:
 
 # Roadmap
 
- * Printing of undefined variables as a gentle warning.
+ * Grammar validation:
+    * Detect cycles in variable definitions
+    * Warn about undefined variables
+    * Warn about duplicate variables
 
  * Produce [railroad diagrams](https://github.com/lukaslueg/railroad) to ease grammar development.
 
- * Automatic completion of standard objects, e.g. <FILE>, <PATH>, etc.
-
- * Generate grammars automatically from man pages similarly to [how Fish shell is does it](https://github.com/fish-shell/fish-shell/blob/946ecf235c002cff596fbbb2c03f9693c30744da/share/tools/create_manpage_completions.py).
+ * Generate grammars automatically from man pages similarly to [how Fish shell does it](https://github.com/fish-shell/fish-shell/blob/946ecf235c002cff596fbbb2c03f9693c30744da/share/tools/create_manpage_completions.py).
 
  * Show completion hints in ZSH and Fish (Bash does not support them): `--invert-match "select non-matching lines"`
 
- * `name = { shell-command... }` defines a variable that uses a shell command to generate suggested
+ * `<name> ::= { shell-command... }` defines a variable that uses a shell command to generate suggested
    completions.  The shell command should print one suggested completion per line.  The `$COMP_LINE` and
    `$COMP_CWORD` environment will contain the input line and the current word being completed.
+
+ * Automatic completion of standard objects, e.g. <FILE>, <PATH>, etc.
+    * e.g. <DIR> => compgen -A directory [<PREFIX>]
+    * <FILE>, <PATH> => compgen -A file [<PREFIX>]
+    * <HOST>, <HOSTNAME> => compgen -A host [<PREFIX>]
+    * <SIGNAL> => compgen -A signal [<PREFIX>]
+    * <USER> => compgen -A user [<PREFIX>]
 
  * End-to-end tests that excercise the generation completion scripts and check that they behave properly.
