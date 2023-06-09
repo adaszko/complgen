@@ -71,9 +71,6 @@ Use parentheses to group patterns:
 
  * Printing of undefined variables as a gentle warning.
 
- * `<name> ::= expression;` defines a new production that can be referred to from other productions via `<name>`
-   syntax.  Referring to a production recursively won't be supported as that would take us outside of regular languages.
-
  * Produce [railroad diagrams](https://github.com/lukaslueg/railroad) to ease grammar development.
 
  * Automatic completion of standard objects, e.g. <FILE>, <PATH>, etc.

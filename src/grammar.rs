@@ -7,13 +7,48 @@ use nom::{
 };
 
 use complgen::{Error, Result};
-use ustr::{Ustr, ustr};
+use ustr::{Ustr, ustr, UstrMap};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Grammar {
     pub command: Ustr,
     pub args: Vec<Expr>, // alternatives
     pub vars: Vec<(Ustr, Expr)>,
+}
+
+// XXX Due to lots of necesasry .clones(), replace Box<> in Expr with Rc<>s.
+fn do_resolve_variables(expr: &Expr, vars: &UstrMap<Expr>, at_least_one_variable_resolved: &mut bool) -> Expr {
+    match expr {
+        Expr::Literal(s) => Expr::Literal(*s),
+        Expr::Variable(varname) => {
+            match vars.get(varname) {
+                Some(e) => {
+                    *at_least_one_variable_resolved = true;
+                    e.clone()
+                },
+                None => {
+                    Expr::Variable(*varname)
+                },
+            }
+        },
+        Expr::Sequence(children) => Expr::Sequence(children.iter().map(|child| do_resolve_variables(child, vars, at_least_one_variable_resolved)).collect()),
+        Expr::Alternative(children) => Expr::Alternative(children.iter().map(|child| do_resolve_variables(child, vars, at_least_one_variable_resolved)).collect()),
+        Expr::Optional(child) => Expr::Optional(Box::new(do_resolve_variables(child, vars, at_least_one_variable_resolved))),
+        Expr::Many1(child) => Expr::Many1(Box::new(do_resolve_variables(child, vars, at_least_one_variable_resolved))),
+    }
+}
+
+
+fn resolve_variables(expr: &Expr, vars: &UstrMap<Expr>) -> Expr {
+    let mut e = expr.clone();
+    loop {
+        let mut at_least_one_variable_resolved: bool = false;
+        e = do_resolve_variables(&e, vars, &mut at_least_one_variable_resolved);
+        if !at_least_one_variable_resolved {
+            break;
+        }
+    };
+    e
 }
 
 impl Grammar {
@@ -24,6 +59,12 @@ impl Grammar {
         else {
             Expr::Alternative(self.args)
         };
+
+        // XXX Perform topological sort, ensure there are no cycles, then resolve variables
+        // bottom-up, according to the topological order.  That's the most efficient way.
+        let vardefs = UstrMap::from_iter(self.vars);
+        let expr = resolve_variables(&expr, &vardefs);
+
         (self.command, expr)
     }
 }
