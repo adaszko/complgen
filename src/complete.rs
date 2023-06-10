@@ -111,11 +111,11 @@ mod tests {
     fn completes_darcs_add() {
         const GRAMMAR: &str = r#"darcs add ( --boring | ( --case-ok | --reserved-ok ) | ( ( -r | --recursive ) | --not-recursive ) | ( --date-trick | --no-date-trick ) | --repodir <DIRECTORY> | --dry-run | --umask <UMASK> | ( --debug | --debug-verbose | --debug-http | ( -v | --verbose ) | ( -q | --quiet ) | --standard-verbosity ) | --timings | ( --posthook <COMMAND> | --no-posthook ) | ( --prompt-posthook | --run-posthook ) | ( --prehook <COMMAND> | --no-prehook ) | ( --prompt-prehook | --run-prehook ) ) ... ( <FILE> | <DIRECTORY> )...;"#;
         let g = parse(GRAMMAR).unwrap();
-        let (_, expr) = g.into_command_expr();
-        assert_eq!(get_completions(&expr, &vec![]), vec!["add"]);
+        let v = g.validate().unwrap();
+        assert_eq!(get_completions(&v.expr, &vec![]), vec!["add"]);
 
         let input = vec!["add"];
-        let generated: HashSet<&str> = HashSet::from_iter(get_completions(&expr, &input));
+        let generated: HashSet<&str> = HashSet::from_iter(get_completions(&v.expr, &input));
         let expected = HashSet::from_iter(["--boring", "--debug", "--dry-run", "--no-prehook", "--prehook", "--quiet", "--reserved-ok", "--standard-verbosity", "--verbose", "-v", "--case-ok", "--debug-http", "--no-date-trick", "--not-recursive", "--prompt-posthook", "--recursive", "--run-posthook", "--timings", "-q", "--date-trick", "--debug-verbose", "--no-posthook", "--posthook", "--prompt-prehook", "--repodir", "--run-prehook", "--umask", "-r"]);
         assert_eq!(generated, expected);
     }

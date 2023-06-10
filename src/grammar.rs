@@ -9,67 +9,7 @@ use nom::{
 use complgen::{Error, Result};
 use ustr::{Ustr, ustr, UstrMap};
 
-#[derive(Debug, PartialEq, Clone)]
-pub struct Grammar {
-    pub command: Ustr,
-    pub args: Vec<Expr>, // alternatives
-    pub vars: Vec<(Ustr, Expr)>,
-}
-
-// XXX Due to lots of necesasry .clones(), replace Box<> in Expr with Rc<>s.
-fn do_resolve_variables(expr: &Expr, vars: &UstrMap<Expr>, at_least_one_variable_resolved: &mut bool) -> Expr {
-    match expr {
-        Expr::Literal(s) => Expr::Literal(*s),
-        Expr::Variable(varname) => {
-            match vars.get(varname) {
-                Some(e) => {
-                    *at_least_one_variable_resolved = true;
-                    e.clone()
-                },
-                None => {
-                    Expr::Variable(*varname)
-                },
-            }
-        },
-        Expr::Sequence(children) => Expr::Sequence(children.iter().map(|child| do_resolve_variables(child, vars, at_least_one_variable_resolved)).collect()),
-        Expr::Alternative(children) => Expr::Alternative(children.iter().map(|child| do_resolve_variables(child, vars, at_least_one_variable_resolved)).collect()),
-        Expr::Optional(child) => Expr::Optional(Box::new(do_resolve_variables(child, vars, at_least_one_variable_resolved))),
-        Expr::Many1(child) => Expr::Many1(Box::new(do_resolve_variables(child, vars, at_least_one_variable_resolved))),
-    }
-}
-
-
-fn resolve_variables(expr: &Expr, vars: &UstrMap<Expr>) -> Expr {
-    let mut e = expr.clone();
-    loop {
-        let mut at_least_one_variable_resolved: bool = false;
-        e = do_resolve_variables(&e, vars, &mut at_least_one_variable_resolved);
-        if !at_least_one_variable_resolved {
-            break;
-        }
-    };
-    e
-}
-
-impl Grammar {
-    pub fn into_command_expr(self) -> (Ustr, Expr) {
-        let expr = if self.args.len() == 1 {
-            self.args[0].clone()
-        }
-        else {
-            Expr::Alternative(self.args)
-        };
-
-        // XXX Perform topological sort, ensure there are no cycles, then resolve variables
-        // bottom-up, according to the topological order.  That's the most efficient way.
-        let vardefs = UstrMap::from_iter(self.vars);
-        let expr = resolve_variables(&expr, &vardefs);
-
-        (self.command, expr)
-    }
-}
-
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 enum Statement {
     CallVariant {
         lhs: Ustr,
@@ -267,6 +207,111 @@ fn grammar(input: &str) -> IResult<&str, Vec<Statement>> {
     Ok((input, statements))
 }
 
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Grammar {
+    statements: Vec<Statement>,
+}
+
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Validated {
+    pub command: Ustr,
+    pub expr: Expr,
+}
+
+
+// XXX Due to lots of necesasry .clones(), replace Box<> in Expr with Rc<>s.
+fn do_resolve_variables(expr: &Expr, vars: &UstrMap<Expr>, at_least_one_variable_resolved: &mut bool) -> Expr {
+    match expr {
+        Expr::Literal(s) => Expr::Literal(*s),
+        Expr::Variable(varname) => {
+            match vars.get(varname) {
+                Some(e) => {
+                    *at_least_one_variable_resolved = true;
+                    e.clone()
+                },
+                None => {
+                    Expr::Variable(*varname)
+                },
+            }
+        },
+        Expr::Sequence(children) => Expr::Sequence(children.iter().map(|child| do_resolve_variables(child, vars, at_least_one_variable_resolved)).collect()),
+        Expr::Alternative(children) => Expr::Alternative(children.iter().map(|child| do_resolve_variables(child, vars, at_least_one_variable_resolved)).collect()),
+        Expr::Optional(child) => Expr::Optional(Box::new(do_resolve_variables(child, vars, at_least_one_variable_resolved))),
+        Expr::Many1(child) => Expr::Many1(Box::new(do_resolve_variables(child, vars, at_least_one_variable_resolved))),
+    }
+}
+
+
+fn resolve_variables(expr: &Expr, vars: &UstrMap<Expr>) -> Expr {
+    let mut e = expr.clone();
+    loop {
+        let mut at_least_one_variable_resolved: bool = false;
+        e = do_resolve_variables(&e, vars, &mut at_least_one_variable_resolved);
+        if !at_least_one_variable_resolved {
+            break;
+        }
+    };
+    e
+}
+
+
+impl Grammar {
+    pub fn validate(&self) -> Result<Validated> {
+        let mut commands: Vec<Ustr> = self.statements.iter().filter_map(|v|
+            match v {
+                Statement::CallVariant { lhs, .. } => Some(*lhs),
+                Statement::VariableDefinition { .. } => None,
+            }
+        ).collect();
+        commands.sort_unstable();
+        commands.dedup();
+        if commands.len() > 1 {
+            return Err(Error::VaryingCommandNames(
+                commands.into_iter().collect(),
+            ));
+        }
+
+        if commands.is_empty() {
+            return Err(Error::EmptyGrammar);
+        }
+
+        let call_variants: Vec<Expr> = self.statements.iter().filter_map(|v|
+            match v {
+                Statement::CallVariant { rhs, .. } => Some(rhs.clone()),
+                Statement::VariableDefinition { .. } => None,
+            }
+        ).collect();
+
+        let variable_definitions: UstrMap<Expr> = self.statements.iter().filter_map(|v|
+            match v {
+                Statement::CallVariant { .. } => None,
+                Statement::VariableDefinition { symbol, rhs } => Some((*symbol, rhs.clone())),
+            }
+        ).collect();
+
+        let expr = if call_variants.len() == 1 {
+            call_variants[0].clone()
+        }
+        else {
+            Expr::Alternative(call_variants)
+        };
+
+        // XXX Perform topological sort, ensure there are no cycles, then resolve variables
+        // bottom-up, according to the topological order.  That's the most efficient way.
+        let expr = resolve_variables(&expr, &variable_definitions);
+
+        let g = Validated {
+            command: ustr(&commands[0]),
+            expr,
+        };
+        Ok(g)
+
+    }
+}
+
+
 pub fn parse(input: &str) -> Result<Grammar> {
     let (input, statements) = match grammar(input) {
         Ok((input, statements)) => (input, statements),
@@ -277,45 +322,13 @@ pub fn parse(input: &str) -> Result<Grammar> {
         return Err(Error::TrailingInput(input.to_owned()));
     }
 
-    let mut commands: Vec<Ustr> = statements.iter().filter_map(|v|
-        match v {
-            Statement::CallVariant { lhs, .. } => Some(*lhs),
-            Statement::VariableDefinition { .. } => None,
-        }
-    ).collect();
-    commands.sort_unstable();
-    commands.dedup();
-    if commands.len() > 1 {
-        return Err(Error::VaryingCommandNames(
-            commands.into_iter().collect(),
-        ));
-    }
-
-    if commands.is_empty() {
-        return Err(Error::EmptyGrammar);
-    }
-
-    let call_variants: Vec<Expr> = statements.iter().filter_map(|v|
-        match v {
-            Statement::CallVariant { rhs, .. } => Some(rhs.clone()),
-            Statement::VariableDefinition { .. } => None,
-        }
-    ).collect();
-
-    let variable_definitions: Vec<(Ustr, Expr)> = statements.iter().filter_map(|v|
-        match v {
-            Statement::CallVariant { .. } => None,
-            Statement::VariableDefinition { symbol, rhs } => Some((*symbol, rhs.clone())),
-        }
-    ).collect();
-
     let g = Grammar {
-        command: ustr(&commands[0]),
-        args: call_variants,
-        vars: variable_definitions,
+        statements,
     };
+
     Ok(g)
 }
+
 
 #[cfg(test)]
 pub mod tests {
@@ -519,9 +532,10 @@ foo baz;
         assert_eq!(
             g,
             Grammar {
-                command: u("foo"),
-                args: vec![Expr::Literal(u("bar")), Expr::Literal(u("baz"))],
-                vars: vec![],
+                statements: vec![
+                    Statement::CallVariant { lhs: u("foo"), rhs: Expr::Literal(u("bar")) },
+                    Statement::CallVariant { lhs: u("foo"), rhs: Expr::Literal(u("baz")) }
+                ],
             }
         );
     }
@@ -535,8 +549,8 @@ foo baz;
         assert_eq!(
             g,
             Grammar {
-                command: u("darcs"),
-                args: vec![Sequence(vec![
+                statements: vec![
+                    Statement::CallVariant { lhs: u("darcs"), rhs: Sequence(vec![
                     Literal(u("help")),
                     Sequence(vec![
                         Many1(Box::new(Alternative(vec![
@@ -548,9 +562,9 @@ foo baz;
                             Optional(Box::new(Literal(u("DARCS_SUBCOMMAND")))),
                         ]))),
                     ]),
-                ])],
-                vars: vec![],
-            },
+                ]) },
+                ],
+            }
         );
     }
 
@@ -604,15 +618,15 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
 <WHEN> ::= always | never | auto;
 "#;
         let g = parse(INPUT).unwrap();
-        assert_eq!(g.vars, [
-            (
-                u("OPTION"),
-                Sequence(vec![Literal(ustr("--color")), Variable(ustr("WHEN"))]),
-            ),
-            (
-                u("WHEN"),
-                Alternative(vec![Literal(ustr("always")), Literal(ustr("never")), Literal(ustr("auto"))]),
-            ),
-        ]);
+        assert_eq!(
+            g,
+            Grammar {
+                statements: vec![
+                    Statement::CallVariant { lhs: u("grep"), rhs: Sequence(vec![Many1(Box::new(Optional(Box::new(Variable(ustr("OPTION")))))), Sequence(vec![Variable(ustr("PATTERNS")), Many1(Box::new(Optional(Box::new(Variable(ustr("FILE"))))))])]) },
+                    Statement::VariableDefinition { symbol: u("OPTION"), rhs: Sequence(vec![Literal(ustr("--color")), Variable(ustr("WHEN"))]) },
+                    Statement::VariableDefinition { symbol: u("WHEN"), rhs: Alternative(vec![Literal(ustr("always")), Literal(ustr("never")), Literal(ustr("auto"))]) },
+                ],
+            }
+        );
     }
 }

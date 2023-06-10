@@ -52,8 +52,8 @@ struct CompileArgs {
 fn complete(args: &[&str], usage_file_path: &str) -> Result<()> {
     let input = std::fs::read_to_string(usage_file_path).unwrap();
     let grammar = parse(&input)?;
-    let (_, expr) = grammar.into_command_expr();
-    for completion in complete::get_completions(&expr, args) {
+    let validated = grammar.validate()?;
+    for completion in complete::get_completions(&validated.expr, args) {
         println!("{}", completion);
     }
     Ok(())
@@ -63,11 +63,11 @@ fn complete(args: &[&str], usage_file_path: &str) -> Result<()> {
 fn compile(args: &CompileArgs) -> Result<()> {
     let input = std::fs::read_to_string(&args.usage_file_path).unwrap();
     let grammar = parse(&input)?;
-    let (command, expr) = grammar.into_command_expr();
+    let validated = grammar.validate()?;
     let arena = Bump::new();
 
     println!("Grammar -> Regex");
-    let regex = AugmentedRegex::from_expr(&expr, &arena);
+    let regex = AugmentedRegex::from_expr(&validated.expr, &arena);
 
     println!("Regex -> DFA");
     let dfa = DFA::from_regex(&regex);
@@ -79,7 +79,7 @@ fn compile(args: &CompileArgs) -> Result<()> {
 
     if let Some(path) = &args.bash_script_path {
         println!("Writing Bash completion script");
-        bash::write_completion_script(&mut output, &command, &dfa).unwrap();
+        bash::write_completion_script(&mut output, &validated.command, &dfa).unwrap();
         let mut bash_completion_script = std::fs::File::create(path).unwrap();
         bash_completion_script.write_all(output.as_bytes()).unwrap();
     }
@@ -88,7 +88,7 @@ fn compile(args: &CompileArgs) -> Result<()> {
 
     if let Some(path) = &args.fish_script_path {
         println!("Writing Fish completion script");
-        fish::write_completion_script(&mut output, &command, &dfa).unwrap();
+        fish::write_completion_script(&mut output, &validated.command, &dfa).unwrap();
         let mut fish_completion_script = std::fs::File::create(path).unwrap();
         fish_completion_script.write_all(output.as_bytes()).unwrap();
     }
