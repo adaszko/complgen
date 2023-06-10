@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use nom::{
     branch::alt,
     bytes::complete::{is_not, tag, take_while1, escaped},
@@ -9,18 +11,6 @@ use nom::{
 use complgen::{Error, Result};
 use ustr::{Ustr, ustr, UstrMap};
 
-#[derive(Debug, Clone, PartialEq)]
-enum Statement {
-    CallVariant {
-        lhs: Ustr,
-        rhs: Expr,
-    },
-    VariableDefinition {
-        symbol: Ustr,
-        rhs: Expr,
-    },
-}
-
 // Can't use an arena here until proptest supports non-owned types: https://github.com/proptest-rs/proptest/issues/9
 #[derive(Clone, PartialEq)]
 pub enum Expr {
@@ -28,8 +18,8 @@ pub enum Expr {
     Variable(Ustr), // e.g. <FILE>, <PATH>, <DIR>, etc.
     Sequence(Vec<Expr>),
     Alternative(Vec<Expr>),
-    Optional(Box<Expr>),
-    Many1(Box<Expr>),
+    Optional(Rc<Expr>),
+    Many1(Rc<Expr>),
 }
 
 impl std::fmt::Debug for Expr {
@@ -79,7 +69,7 @@ fn optional_expr(input: &str) -> IResult<&str, Expr> {
     let (input, expr) = expr(input)?;
     let (input, _) = multispace0(input)?;
     let (input, _) = char(']')(input)?;
-    Ok((input, Expr::Optional(Box::new(expr))))
+    Ok((input, Expr::Optional(Rc::new(expr))))
 }
 
 fn parenthesized_expr(input: &str) -> IResult<&str, Expr> {
@@ -106,7 +96,7 @@ fn expr_no_alternative_no_sequence(input: &str) -> IResult<&str, Expr> {
     ))(input)?;
 
     if let Ok((input, ())) = one_or_more_tag(input) {
-        return Ok((input, Expr::Many1(Box::new(e))));
+        return Ok((input, Expr::Many1(Rc::new(e))));
     }
 
     Ok((input, e))
@@ -161,6 +151,20 @@ fn alternative_expr(input: &str) -> IResult<&str, Expr> {
 fn expr(input: &str) -> IResult<&str, Expr> {
     alternative_expr(input)
 }
+
+
+#[derive(Debug, Clone, PartialEq)]
+enum Statement {
+    CallVariant {
+        lhs: Ustr,
+        rhs: Expr,
+    },
+    VariableDefinition {
+        symbol: Ustr,
+        rhs: Expr,
+    },
+}
+
 
 fn call_variant(input: &str) -> IResult<&str, Statement> {
     let (input, name) = terminal(input)?;
@@ -221,7 +225,6 @@ pub struct Validated {
 }
 
 
-// XXX Due to lots of necesasry .clones(), replace Box<> in Expr with Rc<>s.
 fn do_resolve_variables(expr: &Expr, vars: &UstrMap<Expr>, at_least_one_variable_resolved: &mut bool) -> Expr {
     match expr {
         Expr::Literal(s) => Expr::Literal(*s),
@@ -238,8 +241,8 @@ fn do_resolve_variables(expr: &Expr, vars: &UstrMap<Expr>, at_least_one_variable
         },
         Expr::Sequence(children) => Expr::Sequence(children.iter().map(|child| do_resolve_variables(child, vars, at_least_one_variable_resolved)).collect()),
         Expr::Alternative(children) => Expr::Alternative(children.iter().map(|child| do_resolve_variables(child, vars, at_least_one_variable_resolved)).collect()),
-        Expr::Optional(child) => Expr::Optional(Box::new(do_resolve_variables(child, vars, at_least_one_variable_resolved))),
-        Expr::Many1(child) => Expr::Many1(Box::new(do_resolve_variables(child, vars, at_least_one_variable_resolved))),
+        Expr::Optional(child) => Expr::Optional(Rc::new(do_resolve_variables(child, vars, at_least_one_variable_resolved))),
+        Expr::Many1(child) => Expr::Many1(Rc::new(do_resolve_variables(child, vars, at_least_one_variable_resolved))),
     }
 }
 
@@ -348,11 +351,11 @@ pub mod tests {
     }
 
     fn arb_optional(inputs: Rc<Vec<Ustr>>, variables: Rc<Vec<Ustr>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
-        arb_expr(inputs, variables, remaining_depth-1, max_width).prop_map(|e| Expr::Optional(Box::new(e))).boxed()
+        arb_expr(inputs, variables, remaining_depth-1, max_width).prop_map(|e| Expr::Optional(Rc::new(e))).boxed()
     }
 
     fn arb_many1(inputs: Rc<Vec<Ustr>>, variables: Rc<Vec<Ustr>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
-        arb_expr(inputs, variables, remaining_depth-1, max_width).prop_map(|e| Expr::Many1(Box::new(e))).boxed()
+        arb_expr(inputs, variables, remaining_depth-1, max_width).prop_map(|e| Expr::Many1(Rc::new(e))).boxed()
     }
 
     fn arb_sequence(inputs: Rc<Vec<Ustr>>, variables: Rc<Vec<Ustr>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Expr> {
@@ -460,14 +463,14 @@ pub mod tests {
     fn parses_optional_expr() {
         const INPUT: &str = "[<foo>]";
         let ("", e) = expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Expr::Optional(Box::new(Expr::Variable(u("foo")))));
+        assert_eq!(e, Expr::Optional(Rc::new(Expr::Variable(u("foo")))));
     }
 
     #[test]
     fn parses_one_or_more_expr() {
         const INPUT: &str = "<foo>...";
         let ("", e) = expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Expr::Many1(Box::new(Expr::Variable(u("foo")))));
+        assert_eq!(e, Expr::Many1(Rc::new(Expr::Variable(u("foo")))));
     }
 
     #[test]
@@ -553,13 +556,13 @@ foo baz;
                     Statement::CallVariant { lhs: u("darcs"), rhs: Sequence(vec![
                     Literal(u("help")),
                     Sequence(vec![
-                        Many1(Box::new(Alternative(vec![
+                        Many1(Rc::new(Alternative(vec![
                             Alternative(vec![Literal(u("-v")), Literal(u("--verbose"))]),
                             Alternative(vec![Literal(u("-q")), Literal(u("--quiet"))]),
                         ],)),),
-                        Optional(Box::new(Sequence(vec![
+                        Optional(Rc::new(Sequence(vec![
                             Variable(u("DARCS_COMMAND")),
-                            Optional(Box::new(Literal(u("DARCS_SUBCOMMAND")))),
+                            Optional(Rc::new(Literal(u("DARCS_SUBCOMMAND")))),
                         ]))),
                     ]),
                 ]) },
@@ -622,7 +625,7 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
             g,
             Grammar {
                 statements: vec![
-                    Statement::CallVariant { lhs: u("grep"), rhs: Sequence(vec![Many1(Box::new(Optional(Box::new(Variable(ustr("OPTION")))))), Sequence(vec![Variable(ustr("PATTERNS")), Many1(Box::new(Optional(Box::new(Variable(ustr("FILE"))))))])]) },
+                    Statement::CallVariant { lhs: u("grep"), rhs: Sequence(vec![Many1(Rc::new(Optional(Rc::new(Variable(ustr("OPTION")))))), Sequence(vec![Variable(ustr("PATTERNS")), Many1(Rc::new(Optional(Rc::new(Variable(ustr("FILE"))))))])]) },
                     Statement::VariableDefinition { symbol: u("OPTION"), rhs: Sequence(vec![Literal(ustr("--color")), Variable(ustr("WHEN"))]) },
                     Statement::VariableDefinition { symbol: u("WHEN"), rhs: Alternative(vec![Literal(ustr("always")), Literal(ustr("never")), Literal(ustr("auto"))]) },
                 ],
