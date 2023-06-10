@@ -71,6 +71,7 @@ Use parentheses to group patterns:
 
  * Grammar validation:
     * Detect cycles in variable definitions
+    * Resolve variables bottom-up for efficiency
     * Warn about undefined variables
     * Warn about duplicate variables
 
@@ -85,10 +86,7 @@ Use parentheses to group patterns:
    `$COMP_CWORD` environment will contain the input line and the current word being completed.
 
  * Automatic completion of standard objects, e.g. <FILE>, <PATH>, etc.
-    * e.g. <DIR> => compgen -A directory [<PREFIX>]
+    * e.g. <DIR>, <DIRECTORY> => compgen -A directory [<PREFIX>]
     * <FILE>, <PATH> => compgen -A file [<PREFIX>]
-    * <HOST>, <HOSTNAME> => compgen -A host [<PREFIX>]
-    * <SIGNAL> => compgen -A signal [<PREFIX>]
-    * <USER> => compgen -A user [<PREFIX>]
 
  * End-to-end tests that excercise the generation completion scripts and check that they behave properly.
