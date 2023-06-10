@@ -262,30 +262,44 @@ fn resolve_variables(expr: &Expr, vars: &UstrMap<Expr>) -> Expr {
 
 impl Grammar {
     pub fn validate(&self) -> Result<Validated> {
-        let mut commands: Vec<Ustr> = self.statements.iter().filter_map(|v|
-            match v {
-                Statement::CallVariant { lhs, .. } => Some(*lhs),
-                Statement::VariableDefinition { .. } => None,
-            }
-        ).collect();
-        commands.sort_unstable();
-        commands.dedup();
-        if commands.len() > 1 {
-            return Err(Error::VaryingCommandNames(
-                commands.into_iter().collect(),
-            ));
-        }
+        let command = {
+            let mut commands: Vec<Ustr> = self.statements.iter().filter_map(|v|
+                match v {
+                    Statement::CallVariant { lhs, .. } => Some(*lhs),
+                    Statement::VariableDefinition { .. } => None,
+                }
+            ).collect();
 
-        if commands.is_empty() {
-            return Err(Error::EmptyGrammar);
-        }
-
-        let call_variants: Vec<Expr> = self.statements.iter().filter_map(|v|
-            match v {
-                Statement::CallVariant { rhs, .. } => Some(rhs.clone()),
-                Statement::VariableDefinition { .. } => None,
+            if commands.is_empty() {
+                return Err(Error::EmptyGrammar);
             }
-        ).collect();
+
+            commands.sort_unstable();
+            commands.dedup();
+
+            if commands.len() > 1 {
+                return Err(Error::VaryingCommandNames(
+                    commands.into_iter().collect(),
+                ));
+            }
+            commands[0]
+        };
+
+        let expr = {
+            let call_variants: Vec<Expr> = self.statements.iter().filter_map(|v|
+                match v {
+                    Statement::CallVariant { rhs, .. } => Some(rhs.clone()),
+                    Statement::VariableDefinition { .. } => None,
+                }
+            ).collect();
+
+            if call_variants.len() == 1 {
+                call_variants[0].clone()
+            }
+            else {
+                Expr::Alternative(call_variants)
+            }
+        };
 
         let variable_definitions: UstrMap<Expr> = self.statements.iter().filter_map(|v|
             match v {
@@ -294,19 +308,12 @@ impl Grammar {
             }
         ).collect();
 
-        let expr = if call_variants.len() == 1 {
-            call_variants[0].clone()
-        }
-        else {
-            Expr::Alternative(call_variants)
-        };
-
         // XXX Perform topological sort, ensure there are no cycles, then resolve variables
         // bottom-up, according to the topological order.  That's the most efficient way.
         let expr = resolve_variables(&expr, &variable_definitions);
 
         let g = Validated {
-            command: ustr(&commands[0]),
+            command,
             expr,
         };
         Ok(g)
