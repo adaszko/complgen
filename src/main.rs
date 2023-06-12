@@ -66,19 +66,19 @@ fn compile(args: &CompileArgs) -> Result<()> {
     let validated = grammar.validate()?;
     let arena = Bump::new();
 
-    println!("Grammar -> Regex");
+    log::debug!("Grammar -> Regex");
     let regex = AugmentedRegex::from_expr(&validated.expr, &arena);
 
-    println!("Regex -> DFA");
+    log::debug!("Regex -> DFA");
     let dfa = DFA::from_regex(&regex);
 
-    println!("Minimizing DFA");
+    log::debug!("Minimizing DFA");
     let dfa = dfa.minimize();
 
     let mut output = String::default();
 
     if let Some(path) = &args.bash_script_path {
-        println!("Writing Bash completion script");
+        log::debug!("Writing Bash completion script");
         bash::write_completion_script(&mut output, &validated.command, &dfa).unwrap();
         let mut bash_completion_script = std::fs::File::create(path).unwrap();
         bash_completion_script.write_all(output.as_bytes()).unwrap();
@@ -87,7 +87,7 @@ fn compile(args: &CompileArgs) -> Result<()> {
     output.clear();
 
     if let Some(path) = &args.fish_script_path {
-        println!("Writing Fish completion script");
+        log::debug!("Writing Fish completion script");
         fish::write_completion_script(&mut output, &validated.command, &dfa).unwrap();
         let mut fish_completion_script = std::fs::File::create(path).unwrap();
         fish_completion_script.write_all(output.as_bytes()).unwrap();
@@ -98,6 +98,7 @@ fn compile(args: &CompileArgs) -> Result<()> {
 
 
 fn main() -> Result<()> {
+    env_logger::init();
     let args = Cli::parse();
     match args.mode {
         Mode::Complete(args) => {
