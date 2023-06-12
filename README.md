@@ -73,15 +73,17 @@ Use parentheses to group patterns:
     * Warn about undefined variables
     * Warn about duplicate variables
 
+ * `<name> ::= { shell-command... }` defines a variable that uses a shell command to generate suggested
+   completions.  The shell command should print one suggested completion per line.  The `$COMP_LINE` and
+   `$COMP_CWORD` environment will contain the input line and the current word being completed.
+
+ * Support comments (# foo) in usage files.
+
  * Produce [railroad diagrams](https://github.com/lukaslueg/railroad) to ease grammar development.
 
  * Generate grammars automatically from man pages similarly to [how Fish shell does it](https://github.com/fish-shell/fish-shell/blob/946ecf235c002cff596fbbb2c03f9693c30744da/share/tools/create_manpage_completions.py).
 
  * Show completion hints in ZSH and Fish (Bash does not support them): `--invert-match "select non-matching lines"`
-
- * `<name> ::= { shell-command... }` defines a variable that uses a shell command to generate suggested
-   completions.  The shell command should print one suggested completion per line.  The `$COMP_LINE` and
-   `$COMP_CWORD` environment will contain the input line and the current word being completed.
 
  * Automatic completion of standard objects, e.g. <FILE>, <PATH>, etc.
     * e.g. <DIR>, <DIRECTORY> => compgen -A directory [<PREFIX>]

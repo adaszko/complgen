@@ -781,6 +781,33 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
     }
 
     #[test]
+    fn parses_comments() {
+        const INPUT: &str = r#"
+# sample comment
+<OPTION> ::= --extended-regexp                      # "PATTERNS are extended regular expressions"
+           | --fixed-strings                        # "PATTERNS are strings"
+           | --basic-regexp                         # "PATTERNS are basic regular expressions"
+           | --perl-regexp                          # "PATTERNS are Perl regular expressions"
+# another comment
+           ;
+"#;
+        let g = parse(INPUT).unwrap();
+        assert_eq!(
+            g,
+            Grammar {
+                statements: vec![
+                    Statement::VariableDefinition { symbol: u("OPTION"), rhs: Rc::new(Alternative(vec![
+                        Rc::new(Literal(u("--extended-regexp"))),
+                        Rc::new(Literal(u("--fixed-strings"))),
+                        Rc::new(Literal(u("--basic-regexp"))),
+                        Rc::new(Literal(u("--perl-regexp"))),
+                    ]))},
+                ],
+            }
+        );
+    }
+
+    #[test]
     fn variable_resolution_order_detects_trivial_cycle() {
         let variable_definitions = UstrMap::from_iter([
             (u("FOO"), Rc::new(Variable(u("BAR")))),
