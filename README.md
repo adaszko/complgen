@@ -70,8 +70,6 @@ Use parentheses to group patterns:
 # Roadmap
 
  * Grammar validation:
-    * Detect cycles in variable definitions
-    * Resolve variables bottom-up for efficiency
     * Warn about undefined variables
     * Warn about duplicate variables
 

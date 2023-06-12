@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{rc::Rc, debug_assert};
 
 use nom::{
     branch::alt,
@@ -9,7 +9,7 @@ use nom::{
 };
 
 use complgen::{Error, Result};
-use ustr::{Ustr, ustr, UstrMap};
+use ustr::{Ustr, ustr, UstrMap, UstrSet};
 
 // Can't use an arena here until proptest supports non-owned types: https://github.com/proptest-rs/proptest/issues/9
 #[derive(Clone, PartialEq)]
@@ -292,8 +292,110 @@ fn resolve_variables(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>) -> Rc<Expr> {
 }
 
 
-fn get_topologically_ordered_variables(variable_definitions: &UstrMap<Rc<Expr>>) -> Result<Vec<Ustr>> {
-    todo!();
+fn do_get_expression_variables(expr: Rc<Expr>, deps: &mut UstrSet) {
+    match expr.as_ref() {
+        Expr::Literal(_) => {},
+        Expr::Variable(varname) => {
+            deps.insert(*varname);
+        },
+        Expr::Sequence(children) => {
+            for child in children {
+                do_get_expression_variables(Rc::clone(&child), deps);
+            }
+        },
+        Expr::Alternative(children) => {
+            for child in children {
+                do_get_expression_variables(Rc::clone(&child), deps);
+            }
+        },
+        Expr::Optional(child) => { do_get_expression_variables(Rc::clone(&child), deps); }
+        Expr::Many1(child) => { do_get_expression_variables(Rc::clone(&child), deps); }
+    }
+}
+
+
+fn get_expression_variables(expr: Rc<Expr>) -> UstrSet {
+    let mut result: UstrSet = Default::default();
+    do_get_expression_variables(expr, &mut result);
+    result
+}
+
+
+pub fn get_not_depended_on_variables(dependency_graph: &UstrMap<UstrSet>) -> UstrSet {
+    let num_depending_variables = {
+        let mut num_depending_variables: UstrMap<usize> = dependency_graph.keys().map(|vertex| (*vertex, 0)).collect();
+        for (_, variable_depependencies) in dependency_graph.iter() {
+            for dep in variable_depependencies {
+                *num_depending_variables.get_mut(dep).unwrap() += 1;
+            }
+        }
+        num_depending_variables
+    };
+
+    let vertices_without_incoming_edges: UstrSet = num_depending_variables
+        .into_iter()
+        .filter(|(_, indegree)| *indegree == 0)
+        .map(|(vertex, _)| vertex)
+        .collect();
+
+    vertices_without_incoming_edges
+}
+
+
+fn traverse_variable_dependencies_dfs(vertex: Ustr, graph: &UstrMap<UstrSet>, path: &mut Vec<Ustr>, visited: &mut UstrSet, result: &mut Vec<Ustr>) -> Result<()> {
+    visited.insert(vertex);
+    let dummy = UstrSet::default();
+    for child in graph.get(&vertex).unwrap_or_else(|| &dummy) {
+        if path.contains(child) {
+            let mut path = path.clone();
+            path.push(vertex);
+            return Err(Error::VariableDefinitionsCycle(Some(path)));
+        }
+        if visited.contains(child) {
+            continue;
+        }
+        path.push(*child);
+        traverse_variable_dependencies_dfs(*child, graph, path, visited, result)?;
+        path.pop().unwrap();
+        result.push(*child);
+    }
+    Ok(())
+}
+
+
+// A topological order but without the initial variables that don't depend on any other variables.
+fn get_variables_resolution_order(variable_definitions: &UstrMap<Rc<Expr>>) -> Result<Vec<Ustr>> {
+    if variable_definitions.is_empty() {
+        return Ok(Vec::default());
+    }
+
+    let mut dependency_graph: UstrMap<UstrSet> = Default::default();
+    for (varname, expr) in variable_definitions {
+        let mut vars = get_expression_variables(Rc::clone(&expr));
+        vars.retain(|var| variable_definitions.contains_key(var));
+        dependency_graph.insert(*varname, vars);
+    }
+
+    let not_depended_on_vars = get_not_depended_on_variables(&dependency_graph);
+    if not_depended_on_vars.is_empty() {
+        return Err(Error::VariableDefinitionsCycle(None));
+    }
+
+    let mut visited: UstrSet = Default::default();
+    let mut result: Vec<Ustr> = Default::default();
+    let mut path: Vec<Ustr> = Default::default();
+    for vertex in not_depended_on_vars {
+        debug_assert!(!visited.contains(&vertex));
+        traverse_variable_dependencies_dfs(vertex, &dependency_graph, &mut path, &mut visited, &mut result)?;
+        result.push(vertex);
+        debug_assert!(path.is_empty());
+    }
+
+    // Filter out variables that don't depend on any other as they are already fully resolved.
+    result.retain(|vertex| dependency_graph.get(vertex).map(|children| !children.is_empty()).unwrap_or(true));
+
+    log::debug!("Variables expansion order: {:?}", result);
+    Ok(result)
 }
 
 
@@ -345,7 +447,7 @@ impl Grammar {
             }
         ).collect();
 
-        for variable in get_topologically_ordered_variables(&variable_definitions)? {
+        for variable in get_variables_resolution_order(&variable_definitions)? {
             let e = Rc::clone(variable_definitions.get(&variable).unwrap());
             *variable_definitions.get_mut(&variable).unwrap() = resolve_variables(e, &variable_definitions);
         }
@@ -676,5 +778,33 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
                 ],
             }
         );
+    }
+
+    #[test]
+    fn variable_resolution_order_detects_trivial_cycle() {
+        let variable_definitions = UstrMap::from_iter([
+            (u("FOO"), Rc::new(Variable(u("BAR")))),
+            (u("BAR"), Rc::new(Variable(u("FOO")))),
+        ]);
+        assert!(matches!(get_variables_resolution_order(&variable_definitions), Err(Error::VariableDefinitionsCycle(None))));
+    }
+
+    #[test]
+    fn variable_resolution_order_detects_simple_cycle() {
+        let variable_definitions = UstrMap::from_iter([
+            (u("FOO"), Rc::new(Variable(u("BAR")))),
+            (u("BAR"), Rc::new(Variable(u("BAR")))),
+        ]);
+        assert!(matches!(&get_variables_resolution_order(&variable_definitions), Err(Error::VariableDefinitionsCycle(Some(path))) if path == &[u("BAR"), u("BAR")]));
+    }
+
+    #[test]
+    fn computes_variables_resolution_order() {
+        let variable_definitions = UstrMap::from_iter([
+            (u("WHEN"), Rc::new(Alternative(vec![Rc::new(Literal(u("always"))), Rc::new(Literal(u("never"))), Rc::new(Literal(u("auto")))]))),
+            (u("FOO"), Rc::new(Variable(u("WHEN")))),
+            (u("OPTION"), Rc::new(Sequence(vec![Rc::new(Literal(u("--color"))), Rc::new(Variable(u("FOO")))]))),
+        ]);
+        assert_eq!(get_variables_resolution_order(&variable_definitions).unwrap(), vec![u("FOO"), u("OPTION")]);
     }
 }
