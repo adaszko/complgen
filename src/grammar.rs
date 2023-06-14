@@ -2,8 +2,8 @@ use std::{rc::Rc, debug_assert};
 
 use nom::{
     branch::alt,
-    bytes::complete::{is_not, tag, take_while1, escaped},
-    character::{complete::{char, multispace0, multispace1, one_of}, is_alphanumeric},
+    bytes::complete::{is_not, tag, take_while1, escaped, take_till},
+    character::{complete::{char, multispace1, one_of}, is_alphanumeric},
     multi::many0,
     IResult, combinator::fail, error::context,
 };
@@ -33,6 +33,30 @@ impl std::fmt::Debug for Expr {
             Self::Many1(arg0) => f.write_fmt(format_args!(r#"Rc::new(Many1({:?}))"#, arg0)),
         }
     }
+}
+
+fn comment(input: &str) -> IResult<&str, &str> {
+    let (input, _) = char('#')(input)?;
+    let (input, content) = take_till(|c| c == '\n')(input)?;
+    Ok((input, content))
+}
+
+fn blanks(input: &str) -> IResult<&str, ()> {
+    let (input, _) = alt((multispace1, comment))(input)?;
+    Ok((input, ()))
+}
+
+fn multiblanks0(mut input: &str) -> IResult<&str, ()> {
+    while let Ok((rest, _)) = blanks(input) {
+        input = rest;
+    }
+    Ok((input, ()))
+}
+
+fn multiblanks1(input: &str) -> IResult<&str, ()> {
+    let (input, _) = blanks(input)?;
+    let (input, _) = multiblanks0(input)?;
+    Ok((input, ()))
 }
 
 fn terminal(input: &str) -> IResult<&str, &str> {
@@ -65,24 +89,24 @@ fn symbol_expr(input: &str) -> IResult<&str, Expr> {
 
 fn optional_expr(input: &str) -> IResult<&str, Expr> {
     let (input, _) = char('[')(input)?;
-    let (input, _) = multispace0(input)?;
+    let (input, _) = multiblanks0(input)?;
     let (input, expr) = expr(input)?;
-    let (input, _) = multispace0(input)?;
+    let (input, _) = multiblanks0(input)?;
     let (input, _) = char(']')(input)?;
     Ok((input, Expr::Optional(Rc::new(expr))))
 }
 
 fn parenthesized_expr(input: &str) -> IResult<&str, Expr> {
     let (input, _) = char('(')(input)?;
-    let (input, _) = multispace0(input)?;
+    let (input, _) = multiblanks0(input)?;
     let (input, e) = expr(input)?;
-    let (input, _) = multispace0(input)?;
+    let (input, _) = multiblanks0(input)?;
     let (input, _) = char(')')(input)?;
     Ok((input, e))
 }
 
 fn one_or_more_tag(input: &str) -> IResult<&str, ()> {
-    let (input, _) = multispace0(input)?;
+    let (input, _) = multiblanks0(input)?;
     let (input, _) = tag("...")(input)?;
     Ok((input, ()))
 }
@@ -104,7 +128,7 @@ fn expr_no_alternative_no_sequence(input: &str) -> IResult<&str, Expr> {
 
 fn sequence_expr(input: &str) -> IResult<&str, Expr> {
     fn do_sequence_expr(input: &str) -> IResult<&str, Expr> {
-        let (input, _) = multispace0(input)?;
+        let (input, _) = multiblanks0(input)?;
         let (input, right) = sequence_expr(input)?;
         Ok((input, right))
     }
@@ -126,9 +150,9 @@ fn sequence_expr(input: &str) -> IResult<&str, Expr> {
 
 fn alternative_expr(input: &str) -> IResult<&str, Expr> {
     fn do_alternative_expr(input: &str) -> IResult<&str, Expr> {
-        let (input, _) = multispace0(input)?;
+        let (input, _) = multiblanks0(input)?;
         let (input, _) = char('|')(input)?;
-        let (input, _) = multispace0(input)?;
+        let (input, _) = multiblanks0(input)?;
         let (input, right) = sequence_expr(input)?;
         Ok((input, right))
     }
@@ -168,9 +192,9 @@ enum Statement {
 
 fn call_variant(input: &str) -> IResult<&str, Statement> {
     let (input, name) = terminal(input)?;
-    let (input, _) = multispace1(input)?;
+    let (input, _) = multiblanks1(input)?;
     let (input, expr) = expr(input)?;
-    let (input, _) = multispace0(input)?;
+    let (input, _) = multiblanks0(input)?;
     let (input, _) = char(';')(input)?;
 
     let production = Statement::CallVariant {
@@ -183,11 +207,11 @@ fn call_variant(input: &str) -> IResult<&str, Statement> {
 
 fn variable_definition(input: &str) -> IResult<&str, Statement> {
     let (input, symbol) = symbol(input)?;
-    let (input, _) = multispace0(input)?;
+    let (input, _) = multiblanks0(input)?;
     let (input, _) = tag("::=")(input)?;
-    let (input, _) = multispace0(input)?;
+    let (input, _) = multiblanks0(input)?;
     let (input, e) = expr(input)?;
-    let (input, _) = multispace0(input)?;
+    let (input, _) = multiblanks0(input)?;
     let (input, _) = char(';')(input)?;
 
     let stmt = Statement::VariableDefinition {
@@ -200,14 +224,14 @@ fn variable_definition(input: &str) -> IResult<&str, Statement> {
 
 fn statement(input: &str) -> IResult<&str, Statement> {
     let (input, stmt) = alt((call_variant, variable_definition))(input)?;
-    let (input, _) = multispace0(input)?;
+    let (input, _) = multiblanks0(input)?;
     Ok((input, stmt))
 }
 
 fn grammar(input: &str) -> IResult<&str, Vec<Statement>> {
-    let (input, _) = multispace0(input)?;
+    let (input, _) = multiblanks0(input)?;
     let (input, statements) = many0(statement)(input)?;
-    let (input, _) = multispace0(input)?;
+    let (input, _) = multiblanks0(input)?;
     Ok((input, statements))
 }
 
@@ -778,6 +802,12 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
                 ],
             }
         );
+    }
+
+    #[test]
+    fn skips_comment() {
+        const INPUT: &str = r#"#foo"#;
+        assert_eq!(comment(INPUT).unwrap(), ("", "foo"));
     }
 
     #[test]

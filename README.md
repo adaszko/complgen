@@ -79,8 +79,6 @@ Use parentheses to group patterns:
    take any arguments and should produce all possible completions on stdout.  The actual shell the function is
    run under, is responsible for filtering the results according to the shell settings.
 
- * Support comments (# foo) in usage files.
-
  * Produce [railroad diagrams](https://github.com/lukaslueg/railroad) to ease grammar development.
 
  * Show completion hints in ZSH and Fish (Bash does not support them): `--invert-match "select non-matching lines"`

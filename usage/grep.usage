@@ -1,0 +1,59 @@
+grep [<OPTION>]... <PATTERNS> [<FILE>]...;
+
+<OPTION> ::= --extended-regexp                      # PATTERNS are extended regular expressions
+           | --fixed-strings                        # PATTERNS are strings
+           | --basic-regexp                         # PATTERNS are basic regular expressions
+           | --perl-regexp                          # PATTERNS are Perl regular expressions
+           | (--regexp <PATTERNS>)                  # use PATTERNS for matching
+           | (--file <FILE>)                        # take PATTERNS from FILE
+           | --ignore-case                          # ignore case distinctions in patterns and data
+           | --no-ignore-case                       # do not ignore case distinctions (default)
+           | --word-regexp                          # match only whole words
+           | --line-regexp                          # match only whole lines
+           | --null-data                            # a data line ends in 0 byte, not newline
+           | --no-messages                          # suppress error messages
+           | --invert-match                         # select non-matching lines
+           | --version                              # display version information and exit
+           | --help                                 # display this help text and exit
+           | (--max-count <NUM>)                    # stop after NUM selected lines
+           | --byte-offset                          # print the byte offset with output lines
+           | --line-number                          # print line number with output lines
+           | --line-buffered                        # flush output on every line
+           | --with-filename                        # print file name with output lines
+           | --no-filename                          # suppress the file name prefix on output
+           | (--label <LABEL>)                      # use LABEL as the standard input file name prefix
+           | --only-matching                        # show only nonempty parts of lines that match
+           | --quiet                                # suppress all normal output
+           | --silent                               # suppress all normal output
+           | (--binary-files <TYPE>)                # assume that binary files are TYPE; TYPE is 'binary', 'text', or 'without-match'
+           | --text                                 # equivalent to --binary-files=text
+           | (--directories <ACTION-DIRECTORIES>)   # how to handle directories;
+           | (--devices <ACTION-DEVICES>)           # how to handle devices, FIFOs and sockets;
+           | --recursive                            # like --directories=recurse
+           | --dereference-recursive                # likewise, but follow all symlinks
+           | (--include <GLOB>)                     # search only files that match GLOB (a file pattern)
+           | (--exclude <GLOB>)                     # skip files that match GLOB
+           | (--exclude-from <FILE>)                # skip files that match any file pattern from FILE
+           | (--exclude-dir <GLOB>)                 # skip directories that match GLOB
+           | --files-without-match                  # print only names of FILEs with no selected lines
+           | --files-with-matches                   # print only names of FILEs with selected lines
+           | --count                                # print only a count of selected lines per FILE
+           | --initial-tab                          # make tabs line up (if needed)
+           | --null                                 # print 0 byte after FILE name
+           | (--before-context <NUM>)               # print NUM lines of leading context
+           | (--after-context <NUM>)                # print NUM lines of trailing context
+           | (--context NUM)                        # print NUM lines of output context
+           | (--group-separator <SEP>)              # print SEP on line between matches with context
+           | --no-group-separator                   # do not print separator for matches with context
+           | (--color [<WHEN>])                     # use markers to highlight the matching strings;
+           | (--colour [<WHEN>])                    # WHEN is 'always', 'never', or 'auto'
+           | --binary                               # do not strip CR characters at EOL (MSDOS/Windows)
+	   ;
+
+<ACTION-DIRECTORIES> ::= read | recurse | skip;
+
+<ACTION-DEVICES> ::= read | skip;
+
+<TYPE> ::= binary | text | without-match;
+
+<WHEN> ::= always | never | auto;
