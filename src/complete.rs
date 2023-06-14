@@ -65,6 +65,19 @@ fn match_against_regex<'a, 'b>(expr: &'a Expr, mut words: &'b [&'a str], complet
 }
 
 
+fn is_optional(expr: &Expr) -> bool {
+    match expr {
+        Expr::Literal(_) => false,
+        Expr::Variable(_) => false,
+        Expr::Command(_) => false,
+        Expr::Sequence(subexprs) => subexprs.iter().all(|e| is_optional(e)),
+        Expr::Alternative(subexprs) => subexprs.iter().all(|e| is_optional(e)),
+        Expr::Optional(_) => true,
+        Expr::Many1(subexpr) => is_optional(&subexpr),
+    }
+}
+
+
 fn generate_completions<'a, 'b>(expr: &'a Expr, completions: Rc<RefCell<Vec<&'a str>>>) {
     match expr {
         Expr::Literal(s) => completions.borrow_mut().push(s),
@@ -77,7 +90,14 @@ fn generate_completions<'a, 'b>(expr: &'a Expr, completions: Rc<RefCell<Vec<&'a 
                 println!("{}", line);
             }
         },
-        Expr::Sequence(subexpr) => generate_completions(&subexpr[0], completions),
+        Expr::Sequence(subexprs) => {
+            for e in subexprs {
+                generate_completions(e, Rc::clone(&completions));
+                if !is_optional(e) {
+                    break;
+                }
+            }
+        }
         Expr::Alternative(subexprs) => {
             for e in subexprs {
                 generate_completions(e, Rc::clone(&completions));

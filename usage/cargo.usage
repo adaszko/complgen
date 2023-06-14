@@ -2,6 +2,54 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
 
 <toolchain> ::= { rustup toolchain list | cut -d' ' -f1 };
 <OPTIONS> ::= [-V | --version] [--list] [--explain <CODE>] [-v | --verbose...] [-q | --quiet] [--color <WHEN>] [--frozen] [--locked] [--offline] [--config <KEY_VALUE>] [-Z <FLAG>] [-h | --help];
-<COMMAND> ::= (build | b) | (check | c) | clean | (doc | d) | new | init | add | remove | (run | r) | (test | t) <TEST_OPTIONS> <TESTNAME> | bench | update | search | publish | install | uninstall;
-<TEST_OPTIONS> ::= [-q | --quiet] [--lib] [--bin [<NAME>]] [--bins] [-v | --verbose]... [--example [<NAME>]] [--color <WHEN>] [--examples] [--frozen] [--test [<NAME>]] [--locked] [--tests] [--bench [<NAME>]] [--offline] [--benches] [--config <KEY=VALUE>] [--all-targets] [-Z <FLAG>] [--doc] [--no-run] [--no-fail-fast] [-p | --package [<SPEC>]] [--workspace] [--exclude <SPEC>] [--all] [-j | --jobs <N>] [--keep-going] [-r | --release] [--profile <PROFILE-NAME>] [-F | --features <FEATURES>] [--all-features] [--no-default-features] [--target <TRIPLE>] [--target-dir <DIRECTORY>] [--manifest-path <PATH>] [--ignore-rust-version] [--message-format <FMT>] [--unit-graph] [--future-incompat-report] [--timings [<FMTS>]] [-h | --help];
-<TESTNAME> ::= { RUSTFLAGS=-Awarnings cargo test --quiet -- --list };
+<COMMAND> ::= (build | b) | (check | c) | clean | (doc | d) | new | init | add | remove | (run | r) | (test | t) [<TEST_OPTIONS>]... <TESTNAME> | bench | update | search | publish | install | uninstall;
+<TESTNAME> ::= { RUSTFLAGS=-Awarnings cargo test --quiet -- --list | sed 's/^\(.*\): .*/\1/' };
+<TEST_OPTIONS> ::= -q
+                 | --quiet
+                 | --lib
+                 | (--bin [<NAME>])
+                 | --bins
+                 | -v...
+                 | --verbose...
+                 | (--example [<NAME>])
+                 | (--color <WHEN>)
+                 | --examples
+                 | --frozen
+                 | (--test [<NAME>])
+                 | --locked
+                 | --tests
+                 | (--bench [<NAME>])
+                 | --offline
+                 | --benches
+                 | (--config <KEY=VALUE>)
+                 | --all-targets
+                 | (-Z <FLAG>)
+                 | --doc
+                 | --no-run
+                 | --no-fail-fast
+                 | -p
+                 | (--package [<SPEC>])
+                 | --workspace
+                 | (--exclude <SPEC>)
+                 | --all
+                 | -j
+                 | (--jobs <N>)
+                 | --keep-going
+                 | -r
+                 | --release
+                 | (--profile <PROFILE-NAME>)
+                 | -F
+                 | (--features <FEATURES>)
+                 | --all-features
+                 | --no-default-features
+                 | (--target <TRIPLE>)
+                 | (--target-dir <DIRECTORY>)
+                 | (--manifest-path <PATH>)
+                 | (--ignore-rust-version)
+                 | (--message-format <FMT>)
+                 | --unit-graph
+                 | --future-incompat-report
+                 | (--timings [<FMTS>])
+                 | -h
+                 | --help
+                 ;
