@@ -4,10 +4,6 @@ use complgen::{StateId, Result};
 use crate::dfa::DFA;
 
 
-// TODO https://stackoverflow.com/a/40019138
-// TODO Renumber DFA states to save on fish shell memory
-
-
 fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
     for state in dfa.get_all_states() {
         let map = match dfa.transitions.get(&StateId::try_from(state).unwrap()) {
