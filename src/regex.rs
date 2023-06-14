@@ -51,6 +51,7 @@ pub enum AugmentedRegexNode<'a> {
     Epsilon,
     Literal(Ustr, Position),
     Variable(Position),
+    Command(Ustr, Position),
     Cat(&'a AugmentedRegexNode<'a>, &'a AugmentedRegexNode<'a>),
     Or(Vec<AugmentedRegexNode<'a>>),
     Star(&'a AugmentedRegexNode<'a>),
@@ -63,6 +64,7 @@ impl<'a> std::fmt::Debug for AugmentedRegexNode<'a> {
         match self {
             Self::Literal(arg0, position) => f.write_fmt(format_args!(r#"Literal("{}".to_string(), {})"#, arg0, position)),
             Self::Variable(position) => f.write_fmt(format_args!(r#"Variable({})"#, position)),
+            Self::Command(code, position) => f.write_fmt(format_args!(r#"Command({}.to_string(), {})"#, code, position)),
             Self::Cat(left, right) => f.write_fmt(format_args!(r#"Cat({:?}, {:?})"#, left, right)),
             Self::Or(arg0) => f.write_fmt(format_args!(r#"Or(vec!{:?})"#, arg0)),
             Self::Star(arg0) => f.write_fmt(format_args!(r#"Star({:?})"#, arg0)),
@@ -78,6 +80,7 @@ fn do_firstpos(re: &AugmentedRegexNode, result: &mut BTreeSet<Position>) {
         AugmentedRegexNode::Epsilon => {},
         AugmentedRegexNode::Literal(_, position) => { result.insert(*position); },
         AugmentedRegexNode::Variable(position) => { result.insert(*position); },
+        AugmentedRegexNode::Command(_, position) => { result.insert(*position); },
         AugmentedRegexNode::Or(subregexes) => {
             for subre in subregexes {
                 do_firstpos(subre, result);
@@ -103,6 +106,7 @@ fn do_lastpos(re: &AugmentedRegexNode, result: &mut HashSet<Position>) {
         AugmentedRegexNode::Epsilon => {},
         AugmentedRegexNode::Literal(_, position) => { result.insert(*position); },
         AugmentedRegexNode::Variable(position) => { result.insert(*position); },
+        AugmentedRegexNode::Command(_, position) => { result.insert(*position); },
         AugmentedRegexNode::Or(subregexes) => {
             for subre in subregexes {
                 do_lastpos(subre, result);
@@ -128,6 +132,7 @@ fn do_followpos(re: &AugmentedRegexNode, result: &mut BTreeMap<Position, Roaring
         AugmentedRegexNode::Epsilon => {},
         AugmentedRegexNode::Literal(_, _) => {},
         AugmentedRegexNode::Variable(_) => {},
+        AugmentedRegexNode::Command(..) => {},
         AugmentedRegexNode::Or(subregexes) => {
             for subre in subregexes {
                 do_followpos(subre, result);
@@ -163,6 +168,7 @@ impl<'a> AugmentedRegexNode<'a> {
             AugmentedRegexNode::Epsilon => true,
             AugmentedRegexNode::Literal(_, _) => false,
             AugmentedRegexNode::Variable(_) => false,
+            AugmentedRegexNode::Command(..) => false,
             AugmentedRegexNode::Or(children) => children.iter().any(|child| child.nullable()),
             AugmentedRegexNode::Cat(left, right) => left.nullable() && right.nullable(),
             AugmentedRegexNode::Star(_) => true,
@@ -201,6 +207,13 @@ fn do_from_expr<'a>(e: &Expr, arena: &'a Bump, symbols: &mut HashSet<Input>, inp
         },
         Expr::Variable(_) => {
             let result = AugmentedRegexNode::Variable(Position::try_from(input_from_position.len()).unwrap());
+            let input = Input::Any;
+            input_from_position.push(input.clone());
+            symbols.insert(input);
+            result
+        },
+        Expr::Command(code) => {
+            let result = AugmentedRegexNode::Command(*code, Position::try_from(input_from_position.len()).unwrap());
             let input = Input::Any;
             input_from_position.push(input.clone());
             symbols.insert(input);

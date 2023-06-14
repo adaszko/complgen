@@ -16,6 +16,7 @@ use ustr::{Ustr, ustr, UstrMap, UstrSet};
 pub enum Expr {
     Literal(Ustr), // e.g. an option: "--help", or a command: "build"
     Variable(Ustr), // e.g. <FILE>, <PATH>, <DIR>, etc.
+    Command(Ustr),
     Sequence(Vec<Rc<Expr>>),
     Alternative(Vec<Rc<Expr>>),
     Optional(Rc<Expr>),
@@ -27,6 +28,7 @@ impl std::fmt::Debug for Expr {
         match self {
             Self::Literal(arg0) => f.write_fmt(format_args!(r#"Rc::new(Literal(ustr("{}")))"#, arg0)),
             Self::Variable(arg0) => f.write_fmt(format_args!(r#"Rc::new(Variable(ustr("{}")))"#, arg0)),
+            Self::Command(arg0) => f.write_fmt(format_args!(r#"Rc::new(Command(ustr("{}")))"#, arg0)),
             Self::Sequence(arg0) => f.write_fmt(format_args!(r#"Rc::new(Sequence(vec!{:?}))"#, arg0)),
             Self::Alternative(arg0) => f.write_fmt(format_args!(r#"Rc::new(Alternative(vec!{:?}))"#, arg0)),
             Self::Optional(arg0) => f.write_fmt(format_args!(r#"Rc::new(Optional({:?}))"#, arg0)),
@@ -262,6 +264,7 @@ fn resolve_variables(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>) -> Rc<Expr> {
                 },
             }
         },
+        Expr::Command(_) => Rc::clone(&expr),
         Expr::Sequence(children) => {
             let mut new_children: Vec<Rc<Expr>> = Default::default();
             let mut any_child_replaced = false;
@@ -322,6 +325,7 @@ fn do_get_expression_variables(expr: Rc<Expr>, deps: &mut UstrSet) {
         Expr::Variable(varname) => {
             deps.insert(*varname);
         },
+        Expr::Command(_) => {},
         Expr::Sequence(children) => {
             for child in children {
                 do_get_expression_variables(Rc::clone(&child), deps);
@@ -568,6 +572,7 @@ pub mod tests {
         match e.as_ref() {
             Literal(s) => output.push(*s),
             Variable(_) => output.push(ustr("anything")),
+            Command(_) => output.push(ustr("anything")),
             Sequence(v) => {
                 for subexpr in v {
                     do_arb_match(Rc::clone(&subexpr), rng, max_width, output);
@@ -863,5 +868,48 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
             (u("OPTION"), Rc::new(Sequence(vec![Rc::new(Literal(u("--color"))), Rc::new(Variable(u("FOO")))]))),
         ]);
         assert_eq!(get_variables_resolution_order(&variable_definitions).unwrap(), vec![u("FOO"), u("OPTION")]);
+    }
+
+    #[test]
+    fn parses_inline_shell_command() {
+        const INPUT: &str = r#"
+cargo [+{ rustup toolchain list | cut -d' ' -f1 }] [<OPTIONS>] [<COMMAND>];
+"#;
+        let g = parse(INPUT).unwrap();
+        assert_eq!(
+            g,
+            Grammar {
+                statements: vec![
+                    Statement::CallVariant {
+                        lhs: u("cargo"),
+                        rhs: Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Literal(ustr("+"))), Rc::new(Command(u("rustup toolchain list | cut -d' ' -f1")))])))), Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Variable(ustr("OPTIONS"))))), Rc::new(Optional(Rc::new(Variable(ustr("COMMAND")))))]))])),
+                    },
+                ],
+            }
+        );
+    }
+
+    #[test]
+    fn parses_shell_command_variable_definition() {
+        const INPUT: &str = r#"
+cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
+<toolchain> ::= { rustup toolchain list | cut -d' ' -f1 };
+"#;
+        let g = parse(INPUT).unwrap();
+        assert_eq!(
+            g,
+            Grammar {
+                statements: vec![
+                    Statement::CallVariant {
+                        lhs: u("cargo"),
+                        rhs: Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Literal(ustr("+"))), Rc::new(Variable(ustr("toolchain")))])))), Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Variable(ustr("OPTIONS"))))), Rc::new(Optional(Rc::new(Variable(ustr("COMMAND")))))]))])),
+                    },
+                    Statement::VariableDefinition {
+                        symbol: u("toolchain"),
+                        rhs: Rc::new(Command(u("rustup toolchain list | cut -d' ' -f1"))),
+                    },
+                ],
+            }
+        );
     }
 }

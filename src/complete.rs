@@ -14,6 +14,7 @@ fn match_against_regex<'a, 'b>(expr: &'a Expr, mut words: &'b [&'a str], complet
             }
         },
         Expr::Variable(_) => Some(&words[1..]),
+        Expr::Command(_) => Some(&words[1..]),
         Expr::Sequence(subexprs) => {
             let mut rest = words;
             for e in subexprs {
@@ -63,6 +64,7 @@ fn generate_completions<'a, 'b>(expr: &'a Expr, completions: Rc<RefCell<Vec<&'a 
     match expr {
         Expr::Literal(s) => completions.borrow_mut().push(s),
         Expr::Variable(_) => (),
+        Expr::Command(_) => (),
         Expr::Sequence(subexpr) => generate_completions(&subexpr[0], completions),
         Expr::Alternative(subexprs) => {
             for e in subexprs {
