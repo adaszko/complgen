@@ -2,7 +2,7 @@ use std::{rc::Rc, debug_assert};
 
 use nom::{
     branch::alt,
-    bytes::complete::{is_not, tag, take_while1, escaped, take_till},
+    bytes::complete::{is_not, tag, take_while1, escaped, take_till, take_while},
     character::{complete::{char, multispace1, one_of}, is_alphanumeric},
     multi::many0,
     IResult, combinator::fail, error::context,
@@ -89,6 +89,22 @@ fn symbol_expr(input: &str) -> IResult<&str, Expr> {
     Ok((input, Expr::Variable(ustr(nonterm))))
 }
 
+fn command(input: &str) -> IResult<&str, &str> {
+    fn is_command_char(c: char) -> bool {
+        c != '}'
+    }
+
+    let (input, _) = char('{')(input)?;
+    let (input, cmd) = escaped(take_while(is_command_char), '\\', one_of("{}"))(input)?;
+    let (input, _) = char('}')(input)?;
+    Ok((input, cmd))
+}
+
+fn command_expr(input: &str) -> IResult<&str, Expr> {
+    let (input, cmd) = command(input)?;
+    Ok((input, Expr::Command(ustr(cmd))))
+}
+
 fn optional_expr(input: &str) -> IResult<&str, Expr> {
     let (input, _) = char('[')(input)?;
     let (input, _) = multiblanks0(input)?;
@@ -118,6 +134,7 @@ fn expr_no_alternative_no_sequence(input: &str) -> IResult<&str, Expr> {
         symbol_expr,
         optional_expr,
         parenthesized_expr,
+        command_expr,
         terminal_expr,
     ))(input)?;
 
@@ -638,6 +655,13 @@ pub mod tests {
     }
 
     #[test]
+    fn parses_command() {
+        const INPUT: &str = "{ rustup toolchain list | cut -d' ' -f1 }";
+        let ("", e) = command_expr(INPUT).unwrap() else { panic!("parsing error"); };
+        assert_eq!(e, Command(u(" rustup toolchain list | cut -d' ' -f1 ")));
+    }
+
+    #[test]
     fn parses_optional_expr() {
         const INPUT: &str = "[<foo>]";
         let ("", e) = expr(INPUT).unwrap() else { panic!("parsing error"); };
@@ -882,7 +906,7 @@ cargo [+{ rustup toolchain list | cut -d' ' -f1 }] [<OPTIONS>] [<COMMAND>];
                 statements: vec![
                     Statement::CallVariant {
                         lhs: u("cargo"),
-                        rhs: Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Literal(ustr("+"))), Rc::new(Command(u("rustup toolchain list | cut -d' ' -f1")))])))), Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Variable(ustr("OPTIONS"))))), Rc::new(Optional(Rc::new(Variable(ustr("COMMAND")))))]))])),
+                        rhs: Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Literal(ustr("+"))), Rc::new(Command(u(" rustup toolchain list | cut -d' ' -f1 ")))])))), Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Variable(ustr("OPTIONS"))))), Rc::new(Optional(Rc::new(Variable(ustr("COMMAND")))))]))])),
                     },
                 ],
             }
@@ -906,7 +930,7 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
                     },
                     Statement::VariableDefinition {
                         symbol: u("toolchain"),
-                        rhs: Rc::new(Command(u("rustup toolchain list | cut -d' ' -f1"))),
+                        rhs: Rc::new(Command(u(" rustup toolchain list | cut -d' ' -f1 "))),
                     },
                 ],
             }
