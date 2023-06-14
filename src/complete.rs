@@ -18,7 +18,7 @@ fn match_against_regex<'a, 'b>(expr: &'a Expr, mut words: &'b [&'a str], complet
         Expr::Sequence(subexprs) => {
             let mut rest = words;
             for e in subexprs {
-                if let Some(r) = do_get_completions(e, rest, completions.clone()) {
+                if let Some(r) = do_get_completions(e, rest, Rc::clone(&completions)) {
                     rest = r;
                 }
                 else {
@@ -29,7 +29,7 @@ fn match_against_regex<'a, 'b>(expr: &'a Expr, mut words: &'b [&'a str], complet
         },
         Expr::Alternative(subexpr) => {
             for e in subexpr {
-                if let Some(r) = do_get_completions(e, words, completions.clone()) {
+                if let Some(r) = do_get_completions(e, words, Rc::clone(&completions)) {
                     return Some(r);
                 }
             }
@@ -45,7 +45,12 @@ fn match_against_regex<'a, 'b>(expr: &'a Expr, mut words: &'b [&'a str], complet
         },
         Expr::Many1(subexpr) => {
             let mut matched_count = 0;
-            while let Some(rest) = do_get_completions(subexpr, words, completions.clone()) {
+            while let Some(rest) = do_get_completions(subexpr, words, Rc::clone(&completions)) {
+                if std::ptr::eq(words, rest) {
+                    // If we did not progress matching, there's no point in trying to match the
+                    // exact same thing again.
+                    break;
+                }
                 words = rest;
                 matched_count += 1;
             }
@@ -68,7 +73,7 @@ fn generate_completions<'a, 'b>(expr: &'a Expr, completions: Rc<RefCell<Vec<&'a 
         Expr::Sequence(subexpr) => generate_completions(&subexpr[0], completions),
         Expr::Alternative(subexprs) => {
             for e in subexprs {
-                generate_completions(e, completions.clone());
+                generate_completions(e, Rc::clone(&completions));
             }
         },
         Expr::Optional(subexpr) => generate_completions(subexpr, completions),
@@ -78,12 +83,12 @@ fn generate_completions<'a, 'b>(expr: &'a Expr, completions: Rc<RefCell<Vec<&'a 
 
 
 pub fn do_get_completions<'a, 'b>(expr: &'a Expr, words_before_cursor: &'b [&'a str], completions: Rc<RefCell<Vec<&'a str>>>) -> Option<&'b [&'a str]> {
-    if !words_before_cursor.is_empty() {
-        match_against_regex(expr, words_before_cursor, completions)
-    }
-    else {
+    if words_before_cursor.is_empty() {
         generate_completions(expr, completions);
         None
+    }
+    else {
+        match_against_regex(expr, words_before_cursor, completions)
     }
 }
 
@@ -120,5 +125,15 @@ mod tests {
         let generated: HashSet<&str> = HashSet::from_iter(get_completions(&v.expr, &input));
         let expected = HashSet::from_iter(["--boring", "--debug", "--dry-run", "--no-prehook", "--prehook", "--quiet", "--reserved-ok", "--standard-verbosity", "--verbose", "-v", "--case-ok", "--debug-http", "--no-date-trick", "--not-recursive", "--prompt-posthook", "--recursive", "--run-posthook", "--timings", "-q", "--date-trick", "--debug-verbose", "--no-posthook", "--posthook", "--prompt-prehook", "--repodir", "--run-prehook", "--umask", "-r"]);
         assert_eq!(generated, expected);
+    }
+
+    #[test]
+    fn does_not_hang_on_many1_of_optional() {
+        const GRAMMAR: &str = r#"grep [--help]...;"#;
+        let g = parse(GRAMMAR).unwrap();
+        let v = g.validate().unwrap();
+        let input = vec!["--version"];
+        let generated: HashSet<&str> = HashSet::from_iter(get_completions(&v.expr, &input));
+        assert!(generated.is_empty());
     }
 }
