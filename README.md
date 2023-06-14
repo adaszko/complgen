@@ -76,8 +76,8 @@ Use parentheses to group patterns:
  * `<name> ::= { shell-command... };` defines a variable that uses a shell command to generate suggested
    completions.  The shell command should print one suggested completion per line.  The shell script is a sh
    shell function that is going to be copied to the resulting completion script.  The shell function does not
-   take any arguments and should produce all possible completions on stdout.  The actual shell the function is
-   run under, is responsible for filtering the results according to the shell settings.
+   take any arguments and should produce all possible completions on stdout.  The actual shell, the function
+   is run under, is responsible for filtering the results according to the shell settings.
 
  * Produce [railroad diagrams](https://github.com/lukaslueg/railroad) to ease grammar development.
 

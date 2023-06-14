@@ -69,7 +69,14 @@ fn generate_completions<'a, 'b>(expr: &'a Expr, completions: Rc<RefCell<Vec<&'a 
     match expr {
         Expr::Literal(s) => completions.borrow_mut().push(s),
         Expr::Variable(_) => (),
-        Expr::Command(_) => (),
+        Expr::Command(cmd) => {
+            use std::process::Command;
+            let output = Command::new("sh").arg("-c").arg(cmd.as_str()).output().unwrap();
+            let compls = String::from_utf8(output.stdout).unwrap();
+            for line in compls.lines() {
+                println!("{}", line);
+            }
+        },
         Expr::Sequence(subexpr) => generate_completions(&subexpr[0], completions),
         Expr::Alternative(subexprs) => {
             for e in subexprs {
