@@ -157,15 +157,15 @@ fn keep_only_states_with_input_transitions(starting_state: StateId, transitions:
 
     let alive_accepting_states = RoaringBitmap::from_sorted_iter(accepting_states.iter().filter(|state| *state == starting_state.into() || states_with_input_transition.contains(*state))).unwrap();
 
-    let alive_transitions: Vec<Transition> = transitions.iter().filter(|transition|
-        if transition.from == starting_state || transition.to == starting_state {
-            true
-        } else if !states_with_input_transition.contains(transition.from.into()) || !states_with_input_transition.contains(transition.to.into()) {
-            false
-        } else {
-            true
+    let alive_transitions: Vec<Transition> = transitions.iter().filter(|transition| {
+        if transition.from == starting_state {
+            return true;
         }
-    ).copied().collect();
+        if !states_with_input_transition.contains(transition.from.into()) || !states_with_input_transition.contains(transition.to.into()) {
+            return false;
+        }
+        true
+    }).copied().collect();
 
     (alive_transitions, alive_accepting_states)
 }
