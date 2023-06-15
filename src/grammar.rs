@@ -37,6 +37,50 @@ impl std::fmt::Debug for Expr {
     }
 }
 
+fn do_to_railroad_diagram(expr: Rc<Expr>) -> Box<dyn railroad::Node> {
+    match expr.as_ref() {
+        Expr::Terminal(s) => Box::new(railroad::Terminal::new(s.as_str().to_string())),
+        Expr::Nonterminal(s) => Box::new(railroad::NonTerminal::new(s.as_str().to_string())),
+        Expr::Command(s) => Box::new(railroad::Comment::new(s.as_str().to_string())),
+        Expr::Sequence(subexprs) => {
+            let subnodes: Vec<Box<dyn railroad::Node>> = subexprs.iter().map(|e| do_to_railroad_diagram(Rc::clone(e))).collect();
+            Box::new(railroad::Sequence::new(subnodes))
+        },
+        Expr::Alternative(subexprs) => {
+            let subnodes: Vec<Box<dyn railroad::Node>> = subexprs.iter().map(|e| do_to_railroad_diagram(Rc::clone(e))).collect();
+            Box::new(railroad::Choice::new(subnodes))
+        },
+        Expr::Optional(subexpr) => Box::new(railroad::Optional::new(do_to_railroad_diagram(Rc::clone(subexpr)))),
+        Expr::Many1(subexpr) => {
+            let subnode = do_to_railroad_diagram(Rc::clone(subexpr));
+            Box::new(railroad::Repeat::new(subnode, Box::new(railroad::Empty)))
+        },
+    }
+}
+
+pub fn to_railroad_diagram<W: std::io::Write>(expr: Rc<Expr>, output: &mut W) -> std::result::Result<(), std::io::Error> {
+    let root = {
+        let node = do_to_railroad_diagram(expr);
+        let mut seq: railroad::Sequence<Box<dyn railroad::Node>> = Default::default();
+        seq.push(Box::new(railroad::Start));
+        seq.push(node);
+        seq.push(Box::new(railroad::End));
+        seq
+    };
+    let mut dia = railroad::Diagram::new(root);
+    dia.add_element(railroad::svg::Element::new("style").set("type", "text/css").text(railroad::DEFAULT_CSS));
+    dia.write(output)
+}
+
+pub fn to_railroad_diagram_file<P: AsRef<std::path::Path>>(
+    expr: Rc<Expr>,
+    path: P,
+) -> std::result::Result<(), std::io::Error> {
+    let mut file = std::fs::File::create(path)?;
+    to_railroad_diagram(expr, &mut file)?;
+    Ok(())
+}
+
 fn comment(input: &str) -> IResult<&str, &str> {
     let (input, _) = char('#')(input)?;
     let (input, content) = take_till(|c| c == '\n')(input)?;

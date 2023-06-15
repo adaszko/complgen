@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::rc::Rc;
 
 use bumpalo::Bump;
 use clap::Parser;
@@ -34,6 +35,9 @@ enum Mode {
 struct CompleteArgs {
     usage_file_path: String,
     args: Vec<String>,
+
+    #[clap(long)]
+    railroad_svg: Option<String>,
 }
 
 
@@ -49,14 +53,23 @@ struct CompileArgs {
 
     #[clap(long)]
     dfa_dot: Option<String>,
+
+    #[clap(long)]
+    railroad_svg: Option<String>,
 }
 
 
-fn complete(args: &[&str], usage_file_path: &str) -> Result<()> {
-    let input = std::fs::read_to_string(usage_file_path).unwrap();
+fn complete(args: &CompleteArgs) -> Result<()> {
+    let input = std::fs::read_to_string(&args.usage_file_path).unwrap();
     let grammar = parse(&input)?;
     let validated = grammar.validate()?;
-    for completion in complete::get_completions(&validated.expr, args) {
+
+    if let Some(railroad_svg_path) = &args.railroad_svg {
+        grammar::to_railroad_diagram_file(Rc::clone(&validated.expr), railroad_svg_path)?;
+    }
+
+    let words_before_cursor: Vec<&str> = args.args.iter().map(|s| s.as_ref()).collect();
+    for completion in complete::get_completions(&validated.expr, &words_before_cursor) {
         println!("{}", completion);
     }
     Ok(())
@@ -68,6 +81,10 @@ fn compile(args: &CompileArgs) -> Result<()> {
     let grammar = parse(&input)?;
     let validated = grammar.validate()?;
     let arena = Bump::new();
+
+    if let Some(railroad_svg_path) = &args.railroad_svg {
+        grammar::to_railroad_diagram_file(Rc::clone(&validated.expr), railroad_svg_path)?;
+    }
 
     log::debug!("Grammar -> Regex");
     let regex = AugmentedRegex::from_expr(&validated.expr, &arena);
@@ -108,10 +125,7 @@ fn main() -> Result<()> {
     env_logger::init();
     let args = Cli::parse();
     match args.mode {
-        Mode::Complete(args) => {
-            let v: Vec<&str> = args.args.iter().map(|s| s.as_ref()).collect();
-            complete(&v, &args.usage_file_path)?
-        },
+        Mode::Complete(args) => complete(&args)?,
         Mode::Compile(args) => compile(&args)?,
     };
     Ok(())
