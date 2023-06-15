@@ -163,4 +163,19 @@ mod tests {
         let generated: HashSet<&str> = HashSet::from_iter(get_completions(&v.expr, &input));
         assert!(generated.is_empty());
     }
+
+    #[test]
+    fn falls_through_optionals() {
+        const GRAMMAR: &str = r#"
+grep [<OPTION>]...;
+<OPTION> ::= (--color [<WHEN>]) | --extended-regexp;
+<WHEN> ::= always | never | auto;
+"#;
+        let g = parse(GRAMMAR).unwrap();
+        let v = g.validate().unwrap();
+        let input = vec!["--color"];
+        let generated: HashSet<&str> = HashSet::from_iter(get_completions(&v.expr, &input));
+        let expected = HashSet::from_iter(["always", "auto", "never", "--extended-regexp"]);
+        assert_eq!(generated, expected);
+    }
 }
