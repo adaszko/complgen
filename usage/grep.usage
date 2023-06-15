@@ -57,3 +57,5 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
 <TYPE> ::= binary | text | without-match;
 
 <WHEN> ::= always | never | auto;
+
+<FILE> ::= { ls };
