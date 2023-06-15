@@ -42,10 +42,13 @@ struct CompileArgs {
     usage_file_path: String,
 
     #[clap(long)]
-    bash_script_path: Option<String>,
+    bash_script: Option<String>,
 
     #[clap(long)]
-    fish_script_path: Option<String>,
+    fish_script: Option<String>,
+
+    #[clap(long)]
+    dfa_dot: Option<String>,
 }
 
 
@@ -75,9 +78,13 @@ fn compile(args: &CompileArgs) -> Result<()> {
     log::debug!("Minimizing DFA");
     let dfa = dfa.minimize();
 
+    if let Some(dot_file_path) = &args.dfa_dot {
+        dfa.to_dot_file(dot_file_path)?;
+    }
+
     let mut output = String::default();
 
-    if let Some(path) = &args.bash_script_path {
+    if let Some(path) = &args.bash_script {
         log::debug!("Writing Bash completion script");
         bash::write_completion_script(&mut output, &validated.command, &dfa).unwrap();
         let mut bash_completion_script = std::fs::File::create(path).unwrap();
@@ -86,7 +93,7 @@ fn compile(args: &CompileArgs) -> Result<()> {
 
     output.clear();
 
-    if let Some(path) = &args.fish_script_path {
+    if let Some(path) = &args.fish_script {
         log::debug!("Writing Fish completion script");
         fish::write_completion_script(&mut output, &validated.command, &dfa).unwrap();
         let mut fish_completion_script = std::fs::File::create(path).unwrap();

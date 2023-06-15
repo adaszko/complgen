@@ -23,6 +23,9 @@ pub enum Error {
 
     #[error("Formatting error")]
     FmtError(#[from] std::fmt::Error),
+
+    #[error("IO error")]
+    IoError(#[from] std::io::Error),
 }
 
 pub type Result<T> = std::result::Result<T, Error>;

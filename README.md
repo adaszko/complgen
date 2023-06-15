@@ -89,8 +89,6 @@ Use parentheses to group patterns:
  * Add an option to the compile subcommand to output a SVG file with a [railroad
    diagram](https://github.com/lukaslueg/railroad) to ease grammar development.
 
- * Add an option to the compile subcommand to output a DOT file depicting the DFA
-
  * Show completion hints in ZSH and Fish (Bash does not support them): `--invert-match "select non-matching lines"`
 
  * Support copying pieces of shell scripts that can define shell functions callable from inline shell commands ({[...]}):
