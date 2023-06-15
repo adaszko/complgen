@@ -81,6 +81,8 @@ fn dfa_from_regex(regex: &AugmentedRegex) -> DFA {
         accepting_states
     };
 
+    // TODO Retain a mapping StateId => Command to store in the shell script
+
     DFA {
         starting_state: *dstates.get(&combined_starting_state).unwrap(),
         transitions: dtran,
@@ -561,7 +563,7 @@ mod tests {
     #[test]
     fn minimal_example() {
         use ustr::ustr;
-        let expr = Literal(ustr("foo"));
+        let expr = Terminal(ustr("foo"));
         let arena = Bump::new();
         let regex = AugmentedRegex::from_expr(&expr, &arena);
         let dfa = DFA::from_regex(&regex);
@@ -571,12 +573,12 @@ mod tests {
         assert_eq!(dfa.starting_state, 1);
     }
 
-    const LITERALS: &[&str] = &["foo", "bar", "--baz", "--quux"];
-    const VARIABLES: &[&str] = &["FILE", "DIRECTORY", "PATH"];
+    const TERMINALS: &[&str] = &["foo", "bar", "--baz", "--quux"];
+    const NONTERMINALS: &[&str] = &["FILE", "DIRECTORY", "PATH"];
 
     proptest! {
         #[test]
-        fn accepts_arb_expr_input_from_regex((expr, input) in arb_expr_match(Rc::new(LITERALS.iter().map(|s| u(s)).collect()), Rc::new(VARIABLES.iter().map(|s| u(s)).collect()), 10, 3)) {
+        fn accepts_arb_expr_input_from_regex((expr, input) in arb_expr_match(Rc::new(TERMINALS.iter().map(|s| u(s)).collect()), Rc::new(NONTERMINALS.iter().map(|s| u(s)).collect()), 10, 3)) {
             // println!("{:?}", expr);
             // println!("{:?}", input);
             let arena = Bump::new();
@@ -590,7 +592,7 @@ mod tests {
         }
 
         #[test]
-        fn minimized_dfa_equivalent_to_input_one((expr, input) in arb_expr_match(Rc::new(LITERALS.iter().map(|s| u(s)).collect()), Rc::new(VARIABLES.iter().map(|s| u(s)).collect()), 10, 3)) {
+        fn minimized_dfa_equivalent_to_input_one((expr, input) in arb_expr_match(Rc::new(TERMINALS.iter().map(|s| u(s)).collect()), Rc::new(NONTERMINALS.iter().map(|s| u(s)).collect()), 10, 3)) {
             println!("{:?}", expr);
             println!("{:?}", input);
             let arena = Bump::new();
@@ -608,7 +610,7 @@ mod tests {
 
     #[test]
     fn accept_hangs() {
-        let expr = Sequence(vec![Rc::new(Alternative(vec![Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Alternative(vec![Rc::new(Many1(Rc::new(Optional(Rc::new(Many1(Rc::new(Sequence(vec![Rc::new(Literal(u("foo"))), Rc::new(Literal(u("foo")))])))))))), Rc::new(Literal(u("bar")))])))), Rc::new(Variable(u("DIRECTORY")))])), Rc::new(Many1(Rc::new(Literal(u("--quux")))))])), Rc::new(Sequence(vec![Rc::new(Sequence(vec![Rc::new(Many1(Rc::new(Many1(Rc::new(Many1(Rc::new(Literal(u("bar"))))))))), Rc::new(Many1(Rc::new(Sequence(vec![Rc::new(Many1(Rc::new(Many1(Rc::new(Literal(u("--baz"))))))), Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Variable(u("DIRECTORY"))), Rc::new(Variable(u("PATH")))])), Rc::new(Alternative(vec![Rc::new(Literal(u("--baz"))), Rc::new(Sequence(vec![Rc::new(Sequence(vec![Rc::new(Literal(u("--baz"))), Rc::new(Variable(u("FILE")))])), Rc::new(Sequence(vec![Rc::new(Literal(u("foo"))), Rc::new(Variable(u("FILE")))]))]))]))]))]))))])), Rc::new(Literal(u("bar")))]))]);
+        let expr = Sequence(vec![Rc::new(Alternative(vec![Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Alternative(vec![Rc::new(Many1(Rc::new(Optional(Rc::new(Many1(Rc::new(Sequence(vec![Rc::new(Terminal(u("foo"))), Rc::new(Terminal(u("foo")))])))))))), Rc::new(Terminal(u("bar")))])))), Rc::new(Nonterminal(u("DIRECTORY")))])), Rc::new(Many1(Rc::new(Terminal(u("--quux")))))])), Rc::new(Sequence(vec![Rc::new(Sequence(vec![Rc::new(Many1(Rc::new(Many1(Rc::new(Many1(Rc::new(Terminal(u("bar"))))))))), Rc::new(Many1(Rc::new(Sequence(vec![Rc::new(Many1(Rc::new(Many1(Rc::new(Terminal(u("--baz"))))))), Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Nonterminal(u("DIRECTORY"))), Rc::new(Nonterminal(u("PATH")))])), Rc::new(Alternative(vec![Rc::new(Terminal(u("--baz"))), Rc::new(Sequence(vec![Rc::new(Sequence(vec![Rc::new(Terminal(u("--baz"))), Rc::new(Nonterminal(u("FILE")))])), Rc::new(Sequence(vec![Rc::new(Terminal(u("foo"))), Rc::new(Nonterminal(u("FILE")))]))]))]))]))]))))])), Rc::new(Terminal(u("bar")))]))]);
         let input = [
             "--quux",
             "--quux",
@@ -683,7 +685,7 @@ mod tests {
 
     #[test]
     fn minimization_fails() {
-        let (expr, input) = (Alternative(vec![Rc::new(Many1(Rc::new(Alternative(vec![Rc::new(Literal(u("--quux"))), Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Many1(Rc::new(Many1(Rc::new(Alternative(vec![Rc::new(Literal(u("--baz"))), Rc::new(Variable(u("FILE")))])))))), Rc::new(Variable(u("FILE")))])))), Rc::new(Sequence(vec![Rc::new(Variable(u("FILE"))), Rc::new(Literal(u("foo")))]))]))])))), Rc::new(Variable(u("FILE")))]), [u("--quux"), u("--baz"), u("anything"), u("anything"), u("foo")]);
+        let (expr, input) = (Alternative(vec![Rc::new(Many1(Rc::new(Alternative(vec![Rc::new(Terminal(u("--quux"))), Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Many1(Rc::new(Many1(Rc::new(Alternative(vec![Rc::new(Terminal(u("--baz"))), Rc::new(Nonterminal(u("FILE")))])))))), Rc::new(Nonterminal(u("FILE")))])))), Rc::new(Sequence(vec![Rc::new(Nonterminal(u("FILE"))), Rc::new(Terminal(u("foo")))]))]))])))), Rc::new(Nonterminal(u("FILE")))]), [u("--quux"), u("--baz"), u("anything"), u("anything"), u("foo")]);
         dbg!(&expr);
         dbg!(&input);
         let arena = Bump::new();
@@ -700,7 +702,7 @@ mod tests {
 
     #[test]
     fn minimization_counterexample1() {
-        let (expr, input) = (Alternative(vec![Rc::new(Many1(Rc::new(Sequence(vec![Rc::new(Variable(u("FILE"))), Rc::new(Variable(u("FILE")))])))), Rc::new(Variable(u("FILE")))]), [u("anything"), u("anything"), u("anything"), u("anything"), u("anything"), u("anything")]);
+        let (expr, input) = (Alternative(vec![Rc::new(Many1(Rc::new(Sequence(vec![Rc::new(Nonterminal(u("FILE"))), Rc::new(Nonterminal(u("FILE")))])))), Rc::new(Nonterminal(u("FILE")))]), [u("anything"), u("anything"), u("anything"), u("anything"), u("anything"), u("anything")]);
         dbg!(&expr);
         let arena = Bump::new();
         let regex = AugmentedRegex::from_expr(&expr, &arena);
@@ -718,7 +720,7 @@ mod tests {
 
     #[test]
     fn minimization_counterexample2() {
-        let (expr, input) = (Sequence(vec![Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Many1(Rc::new(Many1(Rc::new(Literal(u("--baz"))))))), Rc::new(Variable(u("FILE")))])), Rc::new(Literal(u("--baz")))])), Rc::new(Many1(Rc::new(Alternative(vec![Rc::new(Variable(u("FILE"))), Rc::new(Variable(u("FILE")))]))))]), [u("anything"), u("--baz"), u("anything"), u("anything")]);
+        let (expr, input) = (Sequence(vec![Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Many1(Rc::new(Many1(Rc::new(Terminal(u("--baz"))))))), Rc::new(Nonterminal(u("FILE")))])), Rc::new(Terminal(u("--baz")))])), Rc::new(Many1(Rc::new(Alternative(vec![Rc::new(Nonterminal(u("FILE"))), Rc::new(Nonterminal(u("FILE")))]))))]), [u("anything"), u("--baz"), u("anything"), u("anything")]);
         dbg!(&expr);
         let arena = Bump::new();
         let regex = AugmentedRegex::from_expr(&expr, &arena);

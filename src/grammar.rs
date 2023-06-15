@@ -14,9 +14,9 @@ use ustr::{Ustr, ustr, UstrMap, UstrSet};
 // Can't use an arena here until proptest supports non-owned types: https://github.com/proptest-rs/proptest/issues/9
 #[derive(Clone, PartialEq)]
 pub enum Expr {
-    Literal(Ustr), // e.g. an option: "--help", or a command: "build"
-    Variable(Ustr), // e.g. <FILE>, <PATH>, <DIR>, etc.
-    Command(Ustr),
+    Terminal(Ustr), // e.g. an option: "--help", or a command: "build"
+    Nonterminal(Ustr), // e.g. <FILE>, <PATH>, <DIR>, etc.
+    Command(Ustr), // e.g. { ls }
     Sequence(Vec<Rc<Expr>>),
     Alternative(Vec<Rc<Expr>>),
     Optional(Rc<Expr>),
@@ -26,8 +26,8 @@ pub enum Expr {
 impl std::fmt::Debug for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Literal(arg0) => f.write_fmt(format_args!(r#"Rc::new(Literal(ustr("{}")))"#, arg0)),
-            Self::Variable(arg0) => f.write_fmt(format_args!(r#"Rc::new(Variable(ustr("{}")))"#, arg0)),
+            Self::Terminal(arg0) => f.write_fmt(format_args!(r#"Rc::new(Terminal(ustr("{}")))"#, arg0)),
+            Self::Nonterminal(arg0) => f.write_fmt(format_args!(r#"Rc::new(Nonterminal(ustr("{}")))"#, arg0)),
             Self::Command(arg0) => f.write_fmt(format_args!(r#"Rc::new(Command(ustr("{}")))"#, arg0)),
             Self::Sequence(arg0) => f.write_fmt(format_args!(r#"Rc::new(Sequence(vec!{:?}))"#, arg0)),
             Self::Alternative(arg0) => f.write_fmt(format_args!(r#"Rc::new(Alternative(vec!{:?}))"#, arg0)),
@@ -74,19 +74,19 @@ fn terminal(input: &str) -> IResult<&str, &str> {
 
 fn terminal_expr(input: &str) -> IResult<&str, Expr> {
     let (input, literal) = context("terminal", terminal)(input)?;
-    Ok((input, Expr::Literal(ustr(literal))))
+    Ok((input, Expr::Terminal(ustr(literal))))
 }
 
-fn symbol(input: &str) -> IResult<&str, &str> {
+fn nonterminal(input: &str) -> IResult<&str, &str> {
     let (input, _) = char('<')(input)?;
     let (input, name) = is_not(">")(input)?;
     let (input, _) = char('>')(input)?;
     Ok((input, name))
 }
 
-fn symbol_expr(input: &str) -> IResult<&str, Expr> {
-    let (input, nonterm) = context("symbol", symbol)(input)?;
-    Ok((input, Expr::Variable(ustr(nonterm))))
+fn nonterminal_expr(input: &str) -> IResult<&str, Expr> {
+    let (input, nonterm) = context("symbol", nonterminal)(input)?;
+    Ok((input, Expr::Nonterminal(ustr(nonterm))))
 }
 
 fn command(input: &str) -> IResult<&str, &str> {
@@ -131,7 +131,7 @@ fn one_or_more_tag(input: &str) -> IResult<&str, ()> {
 
 fn expr_no_alternative_no_sequence(input: &str) -> IResult<&str, Expr> {
     let (input, e) = alt((
-        symbol_expr,
+        nonterminal_expr,
         optional_expr,
         parenthesized_expr,
         command_expr,
@@ -199,12 +199,12 @@ fn expr(input: &str) -> IResult<&str, Expr> {
 #[derive(Debug, Clone, PartialEq)]
 enum Statement {
     CallVariant {
-        lhs: Ustr,
-        rhs: Rc<Expr>,
+        head: Ustr,
+        expr: Rc<Expr>,
     },
-    VariableDefinition {
+    NonterminalDefinition {
         symbol: Ustr,
-        rhs: Rc<Expr>,
+        expr: Rc<Expr>,
     },
 }
 
@@ -217,15 +217,15 @@ fn call_variant(input: &str) -> IResult<&str, Statement> {
     let (input, _) = char(';')(input)?;
 
     let production = Statement::CallVariant {
-        lhs: ustr(name),
-        rhs: Rc::new(expr),
+        head: ustr(name),
+        expr: Rc::new(expr),
     };
 
     Ok((input, production))
 }
 
-fn variable_definition(input: &str) -> IResult<&str, Statement> {
-    let (input, symbol) = symbol(input)?;
+fn nonterminal_definition(input: &str) -> IResult<&str, Statement> {
+    let (input, symbol) = nonterminal(input)?;
     let (input, _) = multiblanks0(input)?;
     let (input, _) = tag("::=")(input)?;
     let (input, _) = multiblanks0(input)?;
@@ -233,16 +233,16 @@ fn variable_definition(input: &str) -> IResult<&str, Statement> {
     let (input, _) = multiblanks0(input)?;
     let (input, _) = char(';')(input)?;
 
-    let stmt = Statement::VariableDefinition {
+    let stmt = Statement::NonterminalDefinition {
         symbol: ustr(symbol),
-        rhs: Rc::new(e),
+        expr: Rc::new(e),
     };
 
     Ok((input, stmt))
 }
 
 fn statement(input: &str) -> IResult<&str, Statement> {
-    let (input, stmt) = alt((call_variant, variable_definition))(input)?;
+    let (input, stmt) = alt((call_variant, nonterminal_definition))(input)?;
     let (input, _) = multiblanks0(input)?;
     Ok((input, stmt))
 }
@@ -268,10 +268,10 @@ pub struct Validated {
 }
 
 
-fn resolve_variables(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>) -> Rc<Expr> {
+fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>) -> Rc<Expr> {
     match expr.as_ref() {
-        Expr::Literal(_) => Rc::clone(&expr),
-        Expr::Variable(name) => {
+        Expr::Terminal(_) => Rc::clone(&expr),
+        Expr::Nonterminal(name) => {
             match vars.get(&name) {
                 Some(replacement) => {
                     Rc::clone(&replacement)
@@ -286,7 +286,7 @@ fn resolve_variables(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>) -> Rc<Expr> {
             let mut new_children: Vec<Rc<Expr>> = Default::default();
             let mut any_child_replaced = false;
             for child in children {
-                let new_child = resolve_variables(Rc::clone(child), vars);
+                let new_child = resolve_nonterminals(Rc::clone(child), vars);
                 if !Rc::ptr_eq(&child, &new_child) {
                     any_child_replaced = true;
                 }
@@ -302,7 +302,7 @@ fn resolve_variables(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>) -> Rc<Expr> {
             let mut new_children: Vec<Rc<Expr>> = Default::default();
             let mut any_child_replaced = false;
             for child in children {
-                let new_child = resolve_variables(Rc::clone(child), vars);
+                let new_child = resolve_nonterminals(Rc::clone(child), vars);
                 if !Rc::ptr_eq(&child, &new_child) {
                     any_child_replaced = true;
                 }
@@ -315,7 +315,7 @@ fn resolve_variables(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>) -> Rc<Expr> {
             }
         },
         Expr::Optional(child) => {
-            let new_child = resolve_variables(Rc::clone(child), vars);
+            let new_child = resolve_nonterminals(Rc::clone(child), vars);
             if Rc::ptr_eq(&child, &new_child) {
                 Rc::clone(&expr)
             }
@@ -324,7 +324,7 @@ fn resolve_variables(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>) -> Rc<Expr> {
             }
         },
         Expr::Many1(child) => {
-            let new_child = resolve_variables(Rc::clone(child), vars);
+            let new_child = resolve_nonterminals(Rc::clone(child), vars);
             if Rc::ptr_eq(&child, &new_child) {
                 Rc::clone(&expr)
             }
@@ -336,48 +336,48 @@ fn resolve_variables(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>) -> Rc<Expr> {
 }
 
 
-fn do_get_expression_variables(expr: Rc<Expr>, deps: &mut UstrSet) {
+fn do_get_expression_nonterminals(expr: Rc<Expr>, deps: &mut UstrSet) {
     match expr.as_ref() {
-        Expr::Literal(_) => {},
-        Expr::Variable(varname) => {
+        Expr::Terminal(_) => {},
+        Expr::Nonterminal(varname) => {
             deps.insert(*varname);
         },
         Expr::Command(_) => {},
         Expr::Sequence(children) => {
             for child in children {
-                do_get_expression_variables(Rc::clone(&child), deps);
+                do_get_expression_nonterminals(Rc::clone(&child), deps);
             }
         },
         Expr::Alternative(children) => {
             for child in children {
-                do_get_expression_variables(Rc::clone(&child), deps);
+                do_get_expression_nonterminals(Rc::clone(&child), deps);
             }
         },
-        Expr::Optional(child) => { do_get_expression_variables(Rc::clone(&child), deps); }
-        Expr::Many1(child) => { do_get_expression_variables(Rc::clone(&child), deps); }
+        Expr::Optional(child) => { do_get_expression_nonterminals(Rc::clone(&child), deps); }
+        Expr::Many1(child) => { do_get_expression_nonterminals(Rc::clone(&child), deps); }
     }
 }
 
 
-fn get_expression_variables(expr: Rc<Expr>) -> UstrSet {
+fn get_expression_nonterminals(expr: Rc<Expr>) -> UstrSet {
     let mut result: UstrSet = Default::default();
-    do_get_expression_variables(expr, &mut result);
+    do_get_expression_nonterminals(expr, &mut result);
     result
 }
 
 
-pub fn get_not_depended_on_variables(dependency_graph: &UstrMap<UstrSet>) -> UstrSet {
-    let num_depending_variables = {
-        let mut num_depending_variables: UstrMap<usize> = dependency_graph.keys().map(|vertex| (*vertex, 0)).collect();
-        for (_, variable_depependencies) in dependency_graph.iter() {
-            for dep in variable_depependencies {
-                *num_depending_variables.get_mut(dep).unwrap() += 1;
+pub fn get_not_depended_on_nonterminals(dependency_graph: &UstrMap<UstrSet>) -> UstrSet {
+    let num_depending_nonterminals = {
+        let mut num_depending_nonterminals: UstrMap<usize> = dependency_graph.keys().map(|vertex| (*vertex, 0)).collect();
+        for (_, nonterminal_depependencies) in dependency_graph.iter() {
+            for dep in nonterminal_depependencies {
+                *num_depending_nonterminals.get_mut(dep).unwrap() += 1;
             }
         }
-        num_depending_variables
+        num_depending_nonterminals
     };
 
-    let vertices_without_incoming_edges: UstrSet = num_depending_variables
+    let vertices_without_incoming_edges: UstrSet = num_depending_nonterminals
         .into_iter()
         .filter(|(_, indegree)| *indegree == 0)
         .map(|(vertex, _)| vertex)
@@ -387,20 +387,20 @@ pub fn get_not_depended_on_variables(dependency_graph: &UstrMap<UstrSet>) -> Ust
 }
 
 
-fn traverse_variable_dependencies_dfs(vertex: Ustr, graph: &UstrMap<UstrSet>, path: &mut Vec<Ustr>, visited: &mut UstrSet, result: &mut Vec<Ustr>) -> Result<()> {
+fn traverse_nonterminal_dependencies_dfs(vertex: Ustr, graph: &UstrMap<UstrSet>, path: &mut Vec<Ustr>, visited: &mut UstrSet, result: &mut Vec<Ustr>) -> Result<()> {
     visited.insert(vertex);
     let dummy = UstrSet::default();
     for child in graph.get(&vertex).unwrap_or_else(|| &dummy) {
         if path.contains(child) {
             let mut path = path.clone();
             path.push(vertex);
-            return Err(Error::VariableDefinitionsCycle(Some(path)));
+            return Err(Error::NonterminalDefinitionsCycle(Some(path)));
         }
         if visited.contains(child) {
             continue;
         }
         path.push(*child);
-        traverse_variable_dependencies_dfs(*child, graph, path, visited, result)?;
+        traverse_nonterminal_dependencies_dfs(*child, graph, path, visited, result)?;
         path.pop().unwrap();
         result.push(*child);
     }
@@ -408,22 +408,23 @@ fn traverse_variable_dependencies_dfs(vertex: Ustr, graph: &UstrMap<UstrSet>, pa
 }
 
 
-// A topological order but without the initial variables that don't depend on any other variables.
-fn get_variables_resolution_order(variable_definitions: &UstrMap<Rc<Expr>>) -> Result<Vec<Ustr>> {
+// A topological order but without the initial nonterminals that don't depend on any other
+// nonterminals.
+fn get_nonterminals_resolution_order(variable_definitions: &UstrMap<Rc<Expr>>) -> Result<Vec<Ustr>> {
     if variable_definitions.is_empty() {
         return Ok(Vec::default());
     }
 
     let mut dependency_graph: UstrMap<UstrSet> = Default::default();
     for (varname, expr) in variable_definitions {
-        let mut vars = get_expression_variables(Rc::clone(&expr));
+        let mut vars = get_expression_nonterminals(Rc::clone(&expr));
         vars.retain(|var| variable_definitions.contains_key(var));
         dependency_graph.insert(*varname, vars);
     }
 
-    let not_depended_on_vars = get_not_depended_on_variables(&dependency_graph);
+    let not_depended_on_vars = get_not_depended_on_nonterminals(&dependency_graph);
     if not_depended_on_vars.is_empty() {
-        return Err(Error::VariableDefinitionsCycle(None));
+        return Err(Error::NonterminalDefinitionsCycle(None));
     }
 
     let mut visited: UstrSet = Default::default();
@@ -431,15 +432,15 @@ fn get_variables_resolution_order(variable_definitions: &UstrMap<Rc<Expr>>) -> R
     let mut path: Vec<Ustr> = Default::default();
     for vertex in not_depended_on_vars {
         debug_assert!(!visited.contains(&vertex));
-        traverse_variable_dependencies_dfs(vertex, &dependency_graph, &mut path, &mut visited, &mut result)?;
+        traverse_nonterminal_dependencies_dfs(vertex, &dependency_graph, &mut path, &mut visited, &mut result)?;
         result.push(vertex);
         debug_assert!(path.is_empty());
     }
 
-    // Filter out variables that don't depend on any other as they are already fully resolved.
+    // Filter out nonterminals that don't depend on any other as they are already fully resolved.
     result.retain(|vertex| dependency_graph.get(vertex).map(|children| !children.is_empty()).unwrap_or(true));
 
-    log::debug!("Variables expansion order: {:?}", result);
+    log::debug!("nonterminals expansion order: {:?}", result);
     Ok(result)
 }
 
@@ -449,8 +450,8 @@ impl Grammar {
         let command = {
             let mut commands: Vec<Ustr> = self.statements.iter().filter_map(|v|
                 match v {
-                    Statement::CallVariant { lhs, .. } => Some(*lhs),
-                    Statement::VariableDefinition { .. } => None,
+                    Statement::CallVariant { head: lhs, .. } => Some(*lhs),
+                    Statement::NonterminalDefinition { .. } => None,
                 }
             ).collect();
 
@@ -472,8 +473,8 @@ impl Grammar {
         let expr = {
             let call_variants: Vec<Rc<Expr>> = self.statements.iter().filter_map(|v|
                 match v {
-                    Statement::CallVariant { rhs, .. } => Some(rhs.clone()),
-                    Statement::VariableDefinition { .. } => None,
+                    Statement::CallVariant { expr: rhs, .. } => Some(rhs.clone()),
+                    Statement::NonterminalDefinition { .. } => None,
                 }
             ).collect();
 
@@ -488,15 +489,15 @@ impl Grammar {
         let mut variable_definitions: UstrMap<Rc<Expr>> = self.statements.iter().filter_map(|v|
             match v {
                 Statement::CallVariant { .. } => None,
-                Statement::VariableDefinition { symbol, rhs } => Some((*symbol, Rc::clone(&rhs))),
+                Statement::NonterminalDefinition { symbol, expr: rhs } => Some((*symbol, Rc::clone(&rhs))),
             }
         ).collect();
 
-        for variable in get_variables_resolution_order(&variable_definitions)? {
+        for variable in get_nonterminals_resolution_order(&variable_definitions)? {
             let e = Rc::clone(variable_definitions.get(&variable).unwrap());
-            *variable_definitions.get_mut(&variable).unwrap() = resolve_variables(e, &variable_definitions);
+            *variable_definitions.get_mut(&variable).unwrap() = resolve_nonterminals(e, &variable_definitions);
         }
-        let expr = resolve_variables(expr, &variable_definitions);
+        let expr = resolve_nonterminals(expr, &variable_definitions);
 
         let g = Validated {
             command,
@@ -537,58 +538,58 @@ pub mod tests {
     use super::*;
 
     fn arb_literal(inputs: Rc<Vec<Ustr>>) -> BoxedStrategy<Rc<Expr>> {
-        (0..inputs.len()).prop_map(move |index| Rc::new(Literal(ustr(&inputs[index])))).boxed()
+        (0..inputs.len()).prop_map(move |index| Rc::new(Terminal(ustr(&inputs[index])))).boxed()
     }
 
-    fn arb_variable(variables: Rc<Vec<Ustr>>) -> BoxedStrategy<Rc<Expr>> {
-        (0..variables.len()).prop_map(move |index| Rc::new(Variable(ustr(&variables[index])))).boxed()
+    fn arb_variable(nonterminals: Rc<Vec<Ustr>>) -> BoxedStrategy<Rc<Expr>> {
+        (0..nonterminals.len()).prop_map(move |index| Rc::new(Nonterminal(ustr(&nonterminals[index])))).boxed()
     }
 
-    fn arb_optional(inputs: Rc<Vec<Ustr>>, variables: Rc<Vec<Ustr>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Rc<Expr>> {
-        arb_expr(inputs, variables, remaining_depth-1, max_width).prop_map(|e| Rc::new(Optional(e))).boxed()
+    fn arb_optional(inputs: Rc<Vec<Ustr>>, nonterminals: Rc<Vec<Ustr>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Rc<Expr>> {
+        arb_expr(inputs, nonterminals, remaining_depth-1, max_width).prop_map(|e| Rc::new(Optional(e))).boxed()
     }
 
-    fn arb_many1(inputs: Rc<Vec<Ustr>>, variables: Rc<Vec<Ustr>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Rc<Expr>> {
-        arb_expr(inputs, variables, remaining_depth-1, max_width).prop_map(|e| Rc::new(Many1(e))).boxed()
+    fn arb_many1(inputs: Rc<Vec<Ustr>>, nonterminals: Rc<Vec<Ustr>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Rc<Expr>> {
+        arb_expr(inputs, nonterminals, remaining_depth-1, max_width).prop_map(|e| Rc::new(Many1(e))).boxed()
     }
 
-    fn arb_sequence(inputs: Rc<Vec<Ustr>>, variables: Rc<Vec<Ustr>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Rc<Expr>> {
+    fn arb_sequence(inputs: Rc<Vec<Ustr>>, nonterminals: Rc<Vec<Ustr>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Rc<Expr>> {
         (2..max_width).prop_flat_map(move |width| {
-            let e = arb_expr(inputs.clone(), variables.clone(), remaining_depth-1, max_width);
+            let e = arb_expr(inputs.clone(), nonterminals.clone(), remaining_depth-1, max_width);
             prop::collection::vec(e, width).prop_map(|v| Rc::new(Sequence(v)))
         }).boxed()
     }
 
-    fn arb_alternative(inputs: Rc<Vec<Ustr>>, variables: Rc<Vec<Ustr>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Rc<Expr>> {
+    fn arb_alternative(inputs: Rc<Vec<Ustr>>, nonterminals: Rc<Vec<Ustr>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Rc<Expr>> {
         (2..max_width).prop_flat_map(move |width| {
-            let e = arb_expr(inputs.clone(), variables.clone(), remaining_depth-1, max_width);
+            let e = arb_expr(inputs.clone(), nonterminals.clone(), remaining_depth-1, max_width);
             prop::collection::vec(e, width).prop_map(|v| Rc::new(Alternative(v)))
         }).boxed()
     }
 
-    pub fn arb_expr(inputs: Rc<Vec<Ustr>>, variables: Rc<Vec<Ustr>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Rc<Expr>> {
+    pub fn arb_expr(inputs: Rc<Vec<Ustr>>, nonterminals: Rc<Vec<Ustr>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Rc<Expr>> {
         if remaining_depth <= 1 {
             prop_oneof![
                 arb_literal(Rc::clone(&inputs)),
-                arb_variable(variables),
+                arb_variable(nonterminals),
             ].boxed()
         }
         else {
             prop_oneof![
                 arb_literal(inputs.clone()),
-                arb_variable(variables.clone()),
-                arb_optional(inputs.clone(), variables.clone(), remaining_depth, max_width),
-                arb_many1(inputs.clone(), variables.clone(), remaining_depth, max_width),
-                arb_sequence(inputs.clone(), variables.clone(), remaining_depth, max_width),
-                arb_alternative(inputs, variables, remaining_depth, max_width),
+                arb_variable(nonterminals.clone()),
+                arb_optional(inputs.clone(), nonterminals.clone(), remaining_depth, max_width),
+                arb_many1(inputs.clone(), nonterminals.clone(), remaining_depth, max_width),
+                arb_sequence(inputs.clone(), nonterminals.clone(), remaining_depth, max_width),
+                arb_alternative(inputs, nonterminals, remaining_depth, max_width),
             ].boxed()
         }
     }
 
     pub fn do_arb_match(e: Rc<Expr>, rng: &mut TestRng, max_width: usize, output: &mut Vec<Ustr>) {
         match e.as_ref() {
-            Literal(s) => output.push(*s),
-            Variable(_) => output.push(ustr("anything")),
+            Terminal(s) => output.push(*s),
+            Nonterminal(_) => output.push(ustr("anything")),
             Command(_) => output.push(ustr("anything")),
             Sequence(v) => {
                 for subexpr in v {
@@ -621,8 +622,8 @@ pub mod tests {
     }
 
     // Produce an arbitrary sequence matching `e`.
-    pub fn arb_expr_match(inputs: Rc<Vec<Ustr>>, variables: Rc<Vec<Ustr>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<(Rc<Expr>, Vec<Ustr>)> {
-        arb_expr(inputs, variables, remaining_depth, max_width).prop_perturb(move |e, rng| arb_match(e, rng, max_width)).boxed()
+    pub fn arb_expr_match(inputs: Rc<Vec<Ustr>>, nonterminals: Rc<Vec<Ustr>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<(Rc<Expr>, Vec<Ustr>)> {
+        arb_expr(inputs, nonterminals, remaining_depth, max_width).prop_perturb(move |e, rng| arb_match(e, rng, max_width)).boxed()
     }
 
 
@@ -630,28 +631,28 @@ pub mod tests {
     fn parses_word_terminal() {
         const INPUT: &str = r#"foo"#;
         let ("", e) = terminal_expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Literal(u("foo")));
+        assert_eq!(e, Terminal(u("foo")));
     }
 
     #[test]
     fn parses_short_option_terminal() {
         const INPUT: &str = r#"-f"#;
         let ("", e) = terminal_expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Literal(u("-f")));
+        assert_eq!(e, Terminal(u("-f")));
     }
 
     #[test]
     fn parses_long_option_terminal() {
         const INPUT: &str = r#"--foo"#;
         let ("", e) = terminal_expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Literal(u("--foo")));
+        assert_eq!(e, Terminal(u("--foo")));
     }
 
     #[test]
     fn parses_symbol() {
         const INPUT: &str = "<FILE>";
-        let ("", e) = symbol_expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Variable(u("FILE")));
+        let ("", e) = nonterminal_expr(INPUT).unwrap() else { panic!("parsing error"); };
+        assert_eq!(e, Nonterminal(u("FILE")));
     }
 
     #[test]
@@ -665,14 +666,14 @@ pub mod tests {
     fn parses_optional_expr() {
         const INPUT: &str = "[<foo>]";
         let ("", e) = expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Optional(Rc::new(Variable(u("foo")))));
+        assert_eq!(e, Optional(Rc::new(Nonterminal(u("foo")))));
     }
 
     #[test]
     fn parses_one_or_more_expr() {
         const INPUT: &str = "<foo>...";
         let ("", e) = expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Many1(Rc::new(Variable(u("foo")))));
+        assert_eq!(e, Many1(Rc::new(Nonterminal(u("foo")))));
     }
 
     #[test]
@@ -682,8 +683,8 @@ pub mod tests {
         assert_eq!(
             e,
             Sequence(vec![
-                Rc::new(Variable(u("first-symbol"))),
-                Rc::new(Variable(u("second symbol"))),
+                Rc::new(Nonterminal(u("first-symbol"))),
+                Rc::new(Nonterminal(u("second symbol"))),
             ])
         );
     }
@@ -695,8 +696,8 @@ pub mod tests {
         assert_eq!(
             e,
             Alternative(vec![
-                Rc::new(Sequence(vec![Rc::new(Literal(u("a"))), Rc::new(Literal(u("b")))])),
-                Rc::new(Literal(u("c")))
+                Rc::new(Sequence(vec![Rc::new(Terminal(u("a"))), Rc::new(Terminal(u("b")))])),
+                Rc::new(Terminal(u("c")))
             ])
         );
     }
@@ -708,8 +709,8 @@ pub mod tests {
         assert_eq!(
             e,
             Sequence(vec![
-                Rc::new(Literal(u("a"))),
-                Rc::new(Alternative(vec![Rc::new(Literal(u("b"))), Rc::new(Literal(u("c")))])),
+                Rc::new(Terminal(u("a"))),
+                Rc::new(Alternative(vec![Rc::new(Terminal(u("b"))), Rc::new(Terminal(u("c")))])),
             ])
         );
     }
@@ -721,8 +722,8 @@ pub mod tests {
         assert_eq!(
             v,
             Statement::CallVariant {
-                lhs: u("foo"),
-                rhs: Rc::new(Literal(u("bar")))
+                head: u("foo"),
+                expr: Rc::new(Terminal(u("bar")))
             }
         );
     }
@@ -738,8 +739,8 @@ foo baz;
             g,
             Grammar {
                 statements: vec![
-                    Statement::CallVariant { lhs: u("foo"), rhs: Rc::new(Literal(u("bar"))) },
-                    Statement::CallVariant { lhs: u("foo"), rhs: Rc::new(Literal(u("baz"))) }
+                    Statement::CallVariant { head: u("foo"), expr: Rc::new(Terminal(u("bar"))) },
+                    Statement::CallVariant { head: u("foo"), expr: Rc::new(Terminal(u("baz"))) }
                 ],
             }
         );
@@ -754,16 +755,16 @@ foo baz;
             g,
             Grammar {
                 statements: vec![
-                    Statement::CallVariant { lhs: u("darcs"), rhs: Rc::new(Sequence(vec![
-                    Rc::new(Literal(u("help"))),
+                    Statement::CallVariant { head: u("darcs"), expr: Rc::new(Sequence(vec![
+                    Rc::new(Terminal(u("help"))),
                     Rc::new(Sequence(vec![
                         Rc::new(Many1(Rc::new(Alternative(vec![
-                            Rc::new(Alternative(vec![Rc::new(Literal(u("-v"))), Rc::new(Literal(u("--verbose")))])),
-                            Rc::new(Alternative(vec![Rc::new(Literal(u("-q"))), Rc::new(Literal(u("--quiet")))])),
+                            Rc::new(Alternative(vec![Rc::new(Terminal(u("-v"))), Rc::new(Terminal(u("--verbose")))])),
+                            Rc::new(Alternative(vec![Rc::new(Terminal(u("-q"))), Rc::new(Terminal(u("--quiet")))])),
                         ],)),)),
                         Rc::new(Optional(Rc::new(Sequence(vec![
-                            Rc::new(Variable(u("DARCS_COMMAND"))),
-                            Rc::new(Optional(Rc::new(Literal(u("DARCS_SUBCOMMAND"))))),
+                            Rc::new(Nonterminal(u("DARCS_COMMAND"))),
+                            Rc::new(Optional(Rc::new(Terminal(u("DARCS_SUBCOMMAND"))))),
                         ])))),
                     ])),
                 ])) },
@@ -825,9 +826,9 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
             g,
             Grammar {
                 statements: vec![
-                    Statement::CallVariant { lhs: u("grep"), rhs: Rc::new(Sequence(vec![Rc::new(Many1(Rc::new(Optional(Rc::new(Variable(ustr("OPTION"))))))), Rc::new(Sequence(vec![Rc::new(Variable(ustr("PATTERNS"))), Rc::new(Many1(Rc::new(Optional(Rc::new(Variable(ustr("FILE")))))))]))])) },
-                    Statement::VariableDefinition { symbol: u("OPTION"), rhs: Rc::new(Sequence(vec![Rc::new(Literal(ustr("--color"))), Rc::new(Variable(ustr("WHEN")))])) },
-                    Statement::VariableDefinition { symbol: u("WHEN"), rhs: Rc::new(Alternative(vec![Rc::new(Literal(ustr("always"))), Rc::new(Literal(ustr("never"))), Rc::new(Literal(ustr("auto")))])) },
+                    Statement::CallVariant { head: u("grep"), expr: Rc::new(Sequence(vec![Rc::new(Many1(Rc::new(Optional(Rc::new(Nonterminal(ustr("OPTION"))))))), Rc::new(Sequence(vec![Rc::new(Nonterminal(ustr("PATTERNS"))), Rc::new(Many1(Rc::new(Optional(Rc::new(Nonterminal(ustr("FILE")))))))]))])) },
+                    Statement::NonterminalDefinition { symbol: u("OPTION"), expr: Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color"))), Rc::new(Nonterminal(ustr("WHEN")))])) },
+                    Statement::NonterminalDefinition { symbol: u("WHEN"), expr: Rc::new(Alternative(vec![Rc::new(Terminal(ustr("always"))), Rc::new(Terminal(ustr("never"))), Rc::new(Terminal(ustr("auto")))])) },
                 ],
             }
         );
@@ -855,11 +856,11 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
             g,
             Grammar {
                 statements: vec![
-                    Statement::VariableDefinition { symbol: u("OPTION"), rhs: Rc::new(Alternative(vec![
-                        Rc::new(Literal(u("--extended-regexp"))),
-                        Rc::new(Literal(u("--fixed-strings"))),
-                        Rc::new(Literal(u("--basic-regexp"))),
-                        Rc::new(Literal(u("--perl-regexp"))),
+                    Statement::NonterminalDefinition { symbol: u("OPTION"), expr: Rc::new(Alternative(vec![
+                        Rc::new(Terminal(u("--extended-regexp"))),
+                        Rc::new(Terminal(u("--fixed-strings"))),
+                        Rc::new(Terminal(u("--basic-regexp"))),
+                        Rc::new(Terminal(u("--perl-regexp"))),
                     ]))},
                 ],
             }
@@ -869,29 +870,29 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
     #[test]
     fn variable_resolution_order_detects_trivial_cycle() {
         let variable_definitions = UstrMap::from_iter([
-            (u("FOO"), Rc::new(Variable(u("BAR")))),
-            (u("BAR"), Rc::new(Variable(u("FOO")))),
+            (u("FOO"), Rc::new(Nonterminal(u("BAR")))),
+            (u("BAR"), Rc::new(Nonterminal(u("FOO")))),
         ]);
-        assert!(matches!(get_variables_resolution_order(&variable_definitions), Err(Error::VariableDefinitionsCycle(None))));
+        assert!(matches!(get_nonterminals_resolution_order(&variable_definitions), Err(Error::NonterminalDefinitionsCycle(None))));
     }
 
     #[test]
     fn variable_resolution_order_detects_simple_cycle() {
         let variable_definitions = UstrMap::from_iter([
-            (u("FOO"), Rc::new(Variable(u("BAR")))),
-            (u("BAR"), Rc::new(Variable(u("BAR")))),
+            (u("FOO"), Rc::new(Nonterminal(u("BAR")))),
+            (u("BAR"), Rc::new(Nonterminal(u("BAR")))),
         ]);
-        assert!(matches!(&get_variables_resolution_order(&variable_definitions), Err(Error::VariableDefinitionsCycle(Some(path))) if path == &[u("BAR"), u("BAR")]));
+        assert!(matches!(&get_nonterminals_resolution_order(&variable_definitions), Err(Error::NonterminalDefinitionsCycle(Some(path))) if path == &[u("BAR"), u("BAR")]));
     }
 
     #[test]
-    fn computes_variables_resolution_order() {
+    fn computes_nonterminals_resolution_order() {
         let variable_definitions = UstrMap::from_iter([
-            (u("WHEN"), Rc::new(Alternative(vec![Rc::new(Literal(u("always"))), Rc::new(Literal(u("never"))), Rc::new(Literal(u("auto")))]))),
-            (u("FOO"), Rc::new(Variable(u("WHEN")))),
-            (u("OPTION"), Rc::new(Sequence(vec![Rc::new(Literal(u("--color"))), Rc::new(Variable(u("FOO")))]))),
+            (u("WHEN"), Rc::new(Alternative(vec![Rc::new(Terminal(u("always"))), Rc::new(Terminal(u("never"))), Rc::new(Terminal(u("auto")))]))),
+            (u("FOO"), Rc::new(Nonterminal(u("WHEN")))),
+            (u("OPTION"), Rc::new(Sequence(vec![Rc::new(Terminal(u("--color"))), Rc::new(Nonterminal(u("FOO")))]))),
         ]);
-        assert_eq!(get_variables_resolution_order(&variable_definitions).unwrap(), vec![u("FOO"), u("OPTION")]);
+        assert_eq!(get_nonterminals_resolution_order(&variable_definitions).unwrap(), vec![u("FOO"), u("OPTION")]);
     }
 
     #[test]
@@ -905,8 +906,8 @@ cargo [+{ rustup toolchain list | cut -d' ' -f1 }] [<OPTIONS>] [<COMMAND>];
             Grammar {
                 statements: vec![
                     Statement::CallVariant {
-                        lhs: u("cargo"),
-                        rhs: Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Literal(ustr("+"))), Rc::new(Command(u(" rustup toolchain list | cut -d' ' -f1 ")))])))), Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Variable(ustr("OPTIONS"))))), Rc::new(Optional(Rc::new(Variable(ustr("COMMAND")))))]))])),
+                        head: u("cargo"),
+                        expr: Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("+"))), Rc::new(Command(u(" rustup toolchain list | cut -d' ' -f1 ")))])))), Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Nonterminal(ustr("OPTIONS"))))), Rc::new(Optional(Rc::new(Nonterminal(ustr("COMMAND")))))]))])),
                     },
                 ],
             }
@@ -925,12 +926,12 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
             Grammar {
                 statements: vec![
                     Statement::CallVariant {
-                        lhs: u("cargo"),
-                        rhs: Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Literal(ustr("+"))), Rc::new(Variable(ustr("toolchain")))])))), Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Variable(ustr("OPTIONS"))))), Rc::new(Optional(Rc::new(Variable(ustr("COMMAND")))))]))])),
+                        head: u("cargo"),
+                        expr: Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("+"))), Rc::new(Nonterminal(ustr("toolchain")))])))), Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Nonterminal(ustr("OPTIONS"))))), Rc::new(Optional(Rc::new(Nonterminal(ustr("COMMAND")))))]))])),
                     },
-                    Statement::VariableDefinition {
+                    Statement::NonterminalDefinition {
                         symbol: u("toolchain"),
-                        rhs: Rc::new(Command(u(" rustup toolchain list | cut -d' ' -f1 "))),
+                        expr: Rc::new(Command(u(" rustup toolchain list | cut -d' ' -f1 "))),
                     },
                 ],
             }

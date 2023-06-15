@@ -16,7 +16,7 @@ pub enum Error {
     VaryingCommandNames(Vec<Ustr>),
 
     #[error("Variable definitions depend on each other cyclically")]
-    VariableDefinitionsCycle(Option<Vec<Ustr>>),
+    NonterminalDefinitionsCycle(Option<Vec<Ustr>>),
 
     #[error("UTF-8 conversion error")]
     FromUtf8Error(#[from] FromUtf8Error),

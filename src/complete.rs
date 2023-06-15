@@ -5,7 +5,7 @@ use crate::grammar::Expr;
 
 fn match_against_regex<'a, 'b>(expr: &'a Expr, mut words: &'b [&'a str], completions: Rc<RefCell<Vec<&'a str>>>) -> Option<&'b [&'a str]> {
     match expr {
-        Expr::Literal(s) => {
+        Expr::Terminal(s) => {
             return if words[0] == s.as_str() {
                 Some(&words[1..])
             }
@@ -13,7 +13,7 @@ fn match_against_regex<'a, 'b>(expr: &'a Expr, mut words: &'b [&'a str], complet
                 None
             }
         },
-        Expr::Variable(_) => Some(&words[1..]),
+        Expr::Nonterminal(_) => Some(&words[1..]),
         Expr::Command(_) => Some(&words[1..]),
         Expr::Sequence(subexprs) => {
             let mut rest = words;
@@ -67,8 +67,8 @@ fn match_against_regex<'a, 'b>(expr: &'a Expr, mut words: &'b [&'a str], complet
 
 fn is_optional(expr: &Expr) -> bool {
     match expr {
-        Expr::Literal(_) => false,
-        Expr::Variable(_) => false,
+        Expr::Terminal(_) => false,
+        Expr::Nonterminal(_) => false,
         Expr::Command(_) => false,
         Expr::Sequence(subexprs) => subexprs.iter().all(|e| is_optional(e)),
         Expr::Alternative(subexprs) => subexprs.iter().all(|e| is_optional(e)),
@@ -80,8 +80,8 @@ fn is_optional(expr: &Expr) -> bool {
 
 fn generate_completions<'a, 'b>(expr: &'a Expr, completions: Rc<RefCell<Vec<&'a str>>>) {
     match expr {
-        Expr::Literal(s) => completions.borrow_mut().push(s),
-        Expr::Variable(_) => (),
+        Expr::Terminal(s) => completions.borrow_mut().push(s),
+        Expr::Nonterminal(_) => (),
         Expr::Command(cmd) => {
             use std::process::Command;
             let output = Command::new("sh").arg("-c").arg(cmd.as_str()).output().unwrap();
