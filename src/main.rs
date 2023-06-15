@@ -68,8 +68,13 @@ fn complete(args: &CompleteArgs) -> Result<()> {
         grammar::to_railroad_diagram_file(Rc::clone(&validated.expr), railroad_svg_path)?;
     }
 
+    let arena = Bump::new();
+    let regex = AugmentedRegex::from_expr(&validated.expr, &arena);
+    let dfa = DFA::from_regex(&regex);
+    let dfa = dfa.minimize();
+
     let words_before_cursor: Vec<&str> = args.args.iter().map(|s| s.as_ref()).collect();
-    for completion in complete::get_completions(&validated.expr, &words_before_cursor) {
+    for completion in complete::get_completions(&dfa, &words_before_cursor) {
         println!("{}", completion);
     }
     Ok(())

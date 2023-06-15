@@ -1,143 +1,55 @@
-use std::{rc::Rc, cell::RefCell};
+use complgen::StateId;
+use hashbrown::HashMap;
 
-use crate::grammar::Expr;
-
-
-fn match_words_against_regex<'a, 'b>(expr: &'a Expr, mut words: &'b [&'a str], completions: Rc<RefCell<Vec<&'a str>>>) -> Option<&'b [&'a str]> {
-    match expr {
-        Expr::Terminal(s) => {
-            return if words[0] == s.as_str() {
-                Some(&words[1..])
-            }
-            else {
-                None
-            }
-        },
-        Expr::Nonterminal(_) => Some(&words[1..]),
-        Expr::Command(_) => Some(&words[1..]),
-        Expr::Sequence(subexprs) => {
-            let mut rest = words;
-            for e in subexprs {
-                if let Some(r) = do_get_completions(e, rest, Rc::clone(&completions)) {
-                    rest = r;
-                }
-                else {
-                    return None;
-                }
-            }
-            return Some(rest);
-        },
-        Expr::Alternative(subexpr) => {
-            for e in subexpr {
-                if let Some(r) = do_get_completions(e, words, Rc::clone(&completions)) {
-                    return Some(r);
-                }
-            }
-            return None;
-        },
-        Expr::Optional(subexpr) => {
-            if let Some(rest) = do_get_completions(subexpr, words, completions) {
-                return Some(rest);
-            }
-            else {
-                return Some(words);
-            }
-        },
-        Expr::Many1(subexpr) => {
-            let mut matched_count = 0;
-            while let Some(rest) = do_get_completions(subexpr, words, Rc::clone(&completions)) {
-                if std::ptr::eq(words, rest) {
-                    // If we did not progress matching, there's no point in trying to match the
-                    // exact same thing again.
-                    break;
-                }
-                words = rest;
-                matched_count += 1;
-            }
-            if matched_count >= 1 {
-                return Some(words);
-            }
-            else {
-                return None;
-            }
-        },
-    }
-}
+use crate::{dfa::DFA, regex::Input};
 
 
-fn is_optional(expr: &Expr) -> bool {
-    match expr {
-        Expr::Terminal(_) => false,
-        Expr::Nonterminal(_) => false,
-        Expr::Command(_) => false,
-        Expr::Sequence(subexprs) => subexprs.iter().all(|e| is_optional(e)),
-        Expr::Alternative(subexprs) => subexprs.iter().all(|e| is_optional(e)),
-        Expr::Optional(_) => true,
-        Expr::Many1(subexpr) => is_optional(&subexpr),
-    }
-}
+pub fn get_match_final_state(dfa: &DFA, inputs: &[&str]) -> Option<StateId> {
+    let mut backtracking_stack = Vec::from_iter([(0, dfa.starting_state)]);
+    while let Some((input_index, current_state)) = backtracking_stack.pop() {
+        if input_index >= inputs.len() {
+            return Some(current_state);
+        }
 
-
-fn generate_completions<'a, 'b>(expr: &'a Expr, completions: Rc<RefCell<Vec<&'a str>>>) {
-    match expr {
-        Expr::Terminal(s) => completions.borrow_mut().push(s),
-        Expr::Nonterminal(_) => (),
-        Expr::Command(cmd) => {
-            use std::process::Command;
-            let output = Command::new("sh").arg("-c").arg(cmd.as_str()).output().unwrap();
-            let compls = String::from_utf8(output.stdout).unwrap();
-            for line in compls.lines() {
-                println!("{}", line);
+        for (transition_input, to) in dfa.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
+            if let Input::Any = transition_input {
+                backtracking_stack.push((input_index + 1, *to));
             }
-        },
-        Expr::Sequence(subexprs) => {
-            for e in subexprs {
-                generate_completions(e, Rc::clone(&completions));
-                if !is_optional(e) {
-                    break;
+        }
+
+        for (transition_input, to) in dfa.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
+            if let Input::Literal(s) = transition_input {
+                if s.as_str() == inputs[input_index] {
+                    backtracking_stack.push((input_index + 1, *to));
                 }
             }
         }
-        Expr::Alternative(subexprs) => {
-            for e in subexprs {
-                generate_completions(e, Rc::clone(&completions));
-            }
-        },
-        Expr::Optional(subexpr) => generate_completions(subexpr, completions),
-        Expr::Many1(subexpr) => generate_completions(subexpr, completions),
     }
+    None
 }
 
 
-pub fn do_get_completions<'a, 'b>(expr: &'a Expr, words_before_cursor: &'b [&'a str], completions: Rc<RefCell<Vec<&'a str>>>) -> Option<&'b [&'a str]> {
-    if words_before_cursor.is_empty() {
-        generate_completions(expr, completions);
-        None
+pub fn get_completions<'a, 'b>(dfa: &DFA, words_before_cursor: &'b [&'a str]) -> Vec<&'a str> {
+    if let Some(state_id) = get_match_final_state(dfa, words_before_cursor) {
+        let mut inputs: Vec<&str> = dfa.transitions.get(&state_id).unwrap_or(&HashMap::default()).iter().filter_map(|(input, _)| match input {
+            Input::Literal(s) => Some(s.as_str()),
+            Input::Any => None,
+        }).collect();
+        inputs.sort_unstable();
+        inputs
     }
     else {
-        match_words_against_regex(expr, words_before_cursor, completions)
+        vec![]
     }
-}
-
-
-pub fn get_completions<'a, 'b>(expr: &'a Expr, words_before_cursor: &'b [&'a str]) -> Vec<&'a str> {
-    // The borrow checker isn't happy with passing a mut ref in a loop inside of
-    // match_words_against_regex().  The reason for that is we're using indirect recursion and borrow
-    // checker's scope is limited to a single function so it isn't aware of the indirect recursion.
-    // We work around it using Rc<RefCell<>>.
-    let completions: Rc<RefCell<Vec<&'a str>>> = Default::default();
-    do_get_completions(expr, words_before_cursor, completions.clone());
-    let mut result = Rc::<RefCell<Vec<&str>>>::try_unwrap(completions).unwrap().into_inner();
-    result.sort();
-    result
 }
 
 
 #[cfg(test)]
 mod tests {
+    use bumpalo::Bump;
     use hashbrown::HashSet;
 
-    use crate::grammar::parse;
+    use crate::{grammar::parse, regex::AugmentedRegex, dfa::DFA};
 
     use super::*;
 
@@ -145,11 +57,15 @@ mod tests {
     fn completes_darcs_add() {
         const GRAMMAR: &str = r#"darcs add ( --boring | ( --case-ok | --reserved-ok ) | ( ( -r | --recursive ) | --not-recursive ) | ( --date-trick | --no-date-trick ) | --repodir <DIRECTORY> | --dry-run | --umask <UMASK> | ( --debug | --debug-verbose | --debug-http | ( -v | --verbose ) | ( -q | --quiet ) | --standard-verbosity ) | --timings | ( --posthook <COMMAND> | --no-posthook ) | ( --prompt-posthook | --run-posthook ) | ( --prehook <COMMAND> | --no-prehook ) | ( --prompt-prehook | --run-prehook ) ) ... ( <FILE> | <DIRECTORY> )...;"#;
         let g = parse(GRAMMAR).unwrap();
-        let v = g.validate().unwrap();
-        assert_eq!(get_completions(&v.expr, &vec![]), vec!["add"]);
+        let validated = g.validate().unwrap();
+        let arena = Bump::new();
+        let regex = AugmentedRegex::from_expr(&validated.expr, &arena);
+        let dfa = DFA::from_regex(&regex);
+        let dfa = dfa.minimize();
+        assert_eq!(get_completions(&dfa, &vec![]), vec!["add"]);
 
         let input = vec!["add"];
-        let generated: HashSet<&str> = HashSet::from_iter(get_completions(&v.expr, &input));
+        let generated: HashSet<&str> = HashSet::from_iter(get_completions(&dfa, &input));
         let expected = HashSet::from_iter(["--boring", "--debug", "--dry-run", "--no-prehook", "--prehook", "--quiet", "--reserved-ok", "--standard-verbosity", "--verbose", "-v", "--case-ok", "--debug-http", "--no-date-trick", "--not-recursive", "--prompt-posthook", "--recursive", "--run-posthook", "--timings", "-q", "--date-trick", "--debug-verbose", "--no-posthook", "--posthook", "--prompt-prehook", "--repodir", "--run-prehook", "--umask", "-r"]);
         assert_eq!(generated, expected);
     }
@@ -158,9 +74,13 @@ mod tests {
     fn does_not_hang_on_many1_of_optional() {
         const GRAMMAR: &str = r#"grep [--help]...;"#;
         let g = parse(GRAMMAR).unwrap();
-        let v = g.validate().unwrap();
+        let validated = g.validate().unwrap();
+        let arena = Bump::new();
+        let regex = AugmentedRegex::from_expr(&validated.expr, &arena);
+        let dfa = DFA::from_regex(&regex);
+        let dfa = dfa.minimize();
         let input = vec!["--version"];
-        let generated: HashSet<&str> = HashSet::from_iter(get_completions(&v.expr, &input));
+        let generated: HashSet<&str> = HashSet::from_iter(get_completions(&dfa, &input));
         assert!(generated.is_empty());
     }
 
@@ -172,10 +92,14 @@ grep [<OPTION>]...;
 <WHEN> ::= always | never | auto;
 "#;
         let g = parse(GRAMMAR).unwrap();
-        let v = g.validate().unwrap();
+        let validated = g.validate().unwrap();
+        let arena = Bump::new();
+        let regex = AugmentedRegex::from_expr(&validated.expr, &arena);
+        let dfa = DFA::from_regex(&regex);
+        let dfa = dfa.minimize();
         let input = vec!["--color"];
-        let generated: HashSet<&str> = HashSet::from_iter(get_completions(&v.expr, &input));
-        let expected = HashSet::from_iter(["always", "auto", "never", "--extended-regexp"]);
+        let generated: HashSet<&str> = HashSet::from_iter(get_completions(&dfa, &input));
+        let expected = HashSet::from_iter(["always", "auto", "never", "--extended-regexp", "--color"]);
         assert_eq!(generated, expected);
     }
 }
