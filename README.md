@@ -14,13 +14,20 @@ There are two ways to use complgen:
 1. To generate standalone completion scripts for bash and/or fish:
 
 ```
-complgen compile --bash-script-path darcs.bash usage/darcs.usage
+$ compile --bash-script grep.bash usage/small.usage
+$ bash
+$$ source grep.bash
+$$ grep --color <TAB>
+always auto never
 ```
 
 2. To generate completions on stdout by interpreting the grammar "just-in-time" (just like [compleat](https://github.com/mbrubeck/compleat/) works):
 
 ```
-complgen complete usage/darcs.usage [ARGS...]
+$ complgen complete usage/small.usage -- --color
+always
+auto
+never
 ```
 
 ## Installation
