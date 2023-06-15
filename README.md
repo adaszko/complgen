@@ -14,13 +14,19 @@ There are two ways to use complgen:
 1. To generate standalone completion scripts for bash and/or fish:
 
 ```
-cargo run --release -- compile --bash-script-path darcs.bash --fish-script-path darcs.fish usage/darcs.usage
+complgen compile --bash-script-path darcs.bash usage/darcs.usage
 ```
 
 2. To generate completions on stdout by interpreting the grammar "just-in-time" (just like [compleat](https://github.com/mbrubeck/compleat/) works):
 
 ```
-cargo run --release -- complete usage/darcs.usage [ARGS...]
+complgen complete usage/darcs.usage [ARGS...]
+```
+
+## Installation
+
+```
+cargo install --git https://github.com/adaszko/complgen complgen
 ```
 
 ## Rationale
@@ -30,7 +36,7 @@ you (e.g. clap), `complgen` has the advantage of being just a command line tool 
 particular implementation language.  The disadvantage, of course, is that now, parsing and completions are
 maintained separately from each other risking divergence.  On balance, it is deemed still worth it.
 
-# Status
+# Project Status
 
  * Generates working completion scripts for `bash` and `fish`.  `zsh` can use `bash` script [via bash
    compatibility mode](https://stackoverflow.com/a/8492043).
@@ -58,11 +64,12 @@ Use parentheses to group patterns:
 
 # Limitations
 
+ * Passing option arguments using `=` is not currently supported.  E.g. `--foo=bar` doesn't work, but `--foo
+   bar` does.
+
  * Grouping single character options into a single shell parameter isn't supported, e.g. `tar -xvf` (unless
    you manually enumerate all the combinations in the grammar which isn't very practical).  You need to pass
    each option in a separate shell argument instead: `tar -x -v -f`
-
- * Passing option arguments using `=` is not supported.  E.g. `--foo=bar` doesn't work, but `--foo bar` does.
 
  * Non-regular grammars are not supported, e.g. `find(1)`'s arguments can't be completed precisely by
    complgen.
@@ -79,12 +86,16 @@ Use parentheses to group patterns:
    take any arguments and should produce all possible completions on stdout.  The actual shell, the function
    is run under, is responsible for filtering the results according to the shell settings.
 
- * Produce [railroad diagrams](https://github.com/lukaslueg/railroad) to ease grammar development.
+ * Add an option to the compile subcommand to output a SVG file with a [railroad
+   diagram](https://github.com/lukaslueg/railroad) to ease grammar development.
+
+ * Add an option to the compile subcommand to output a DOT file depicting the DFA
 
  * Show completion hints in ZSH and Fish (Bash does not support them): `--invert-match "select non-matching lines"`
 
- * Automatic completion of standard objects, e.g. <FILE>, <PATH>, etc.
-    * e.g. <DIR>, <DIRECTORY> => compgen -A directory [<PREFIX>]
-    * <FILE>, <PATH> => compgen -A file [<PREFIX>]
+ * Support copying pieces of shell scripts that can define shell functions callable from inline shell commands ({[...]}):
+    * @bash {{{ ... }}}
+    * @fish {{{ ... }}}
+    * @zsh {{{ ... }}}
 
  * End-to-end tests that excercise the generated completion scripts and check that they behave properly.
