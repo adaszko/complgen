@@ -3,7 +3,7 @@ use std::{rc::Rc, cell::RefCell};
 use crate::grammar::Expr;
 
 
-fn match_against_regex<'a, 'b>(expr: &'a Expr, mut words: &'b [&'a str], completions: Rc<RefCell<Vec<&'a str>>>) -> Option<&'b [&'a str]> {
+fn match_words_against_regex<'a, 'b>(expr: &'a Expr, mut words: &'b [&'a str], completions: Rc<RefCell<Vec<&'a str>>>) -> Option<&'b [&'a str]> {
     match expr {
         Expr::Terminal(s) => {
             return if words[0] == s.as_str() {
@@ -115,14 +115,14 @@ pub fn do_get_completions<'a, 'b>(expr: &'a Expr, words_before_cursor: &'b [&'a 
         None
     }
     else {
-        match_against_regex(expr, words_before_cursor, completions)
+        match_words_against_regex(expr, words_before_cursor, completions)
     }
 }
 
 
 pub fn get_completions<'a, 'b>(expr: &'a Expr, words_before_cursor: &'b [&'a str]) -> Vec<&'a str> {
     // The borrow checker isn't happy with passing a mut ref in a loop inside of
-    // match_against_regex().  The reason for that is we're using indirect recursion and borrow
+    // match_words_against_regex().  The reason for that is we're using indirect recursion and borrow
     // checker's scope is limited to a single function so it isn't aware of the indirect recursion.
     // We work around it using Rc<RefCell<>>.
     let completions: Rc<RefCell<Vec<&'a str>>> = Default::default();
