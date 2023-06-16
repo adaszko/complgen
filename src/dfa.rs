@@ -7,7 +7,7 @@ use hashbrown::{HashMap, HashSet};
 use roaring::{MultiOps, RoaringBitmap};
 use ustr::Ustr;
 
-use crate::regex::{Position, AugmentedRegex, Input};
+use crate::regex::{Position, AugmentedRegex, Input, AnyInput};
 use complgen::StateId;
 
 
@@ -407,11 +407,26 @@ impl DFA {
         do_minimize(self)
     }
 
-    pub fn get_literal_inputs(&self) -> Vec<Ustr> {
+    pub fn get_all_literals(&self) -> Vec<Ustr> {
         self.input_symbols.iter().filter_map(|input| match input {
             Input::Literal(ustr) => Some(*ustr),
             Input::Any(_) => None,
         }).collect()
+    }
+
+    pub fn get_command_transitions(&self) -> Vec<(StateId, Ustr)> {
+        let mut result: Vec<(StateId, Ustr)> = Default::default();
+        for (from, tos) in &self.transitions {
+            for (input, _) in tos {
+                let cmd = match input {
+                    Input::Any(AnyInput::Command(cmd)) => *cmd,
+                    Input::Any(AnyInput::Any) => continue,
+                    Input::Literal(_) => continue,
+                };
+                result.push((*from, cmd));
+            }
+        }
+        result
     }
 
     pub fn get_literal_transitions_from(&self, from: StateId) -> Vec<(Ustr, StateId)> {
@@ -438,7 +453,7 @@ impl DFA {
         states
     }
 
-    pub fn get_asterisk_transitions(&self) -> Vec<(StateId, StateId)> {
+    pub fn get_match_anything_transitions(&self) -> Vec<(StateId, StateId)> {
         let mut result: Vec<(StateId, StateId)> = Default::default();
         for (from, tos) in &self.transitions {
             for (input, to) in tos {

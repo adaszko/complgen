@@ -20,11 +20,11 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
 
     writeln!(buffer, "")?;
 
-    let asterisk_transitions = dfa.get_asterisk_transitions();
-    let asterisk_transitions_from = itertools::join(asterisk_transitions.iter().map(|(from, _)| format!("{}", from+1)), " ");
-    writeln!(buffer, r#"    set --local asterisk_transitions_from {asterisk_transitions_from}"#)?;
-    let asterisk_transitions_to = itertools::join(asterisk_transitions.iter().map(|(_, to)| format!("{}", to+1)), " ");
-    writeln!(buffer, r#"    set --local asterisk_transitions_to {asterisk_transitions_to}"#)?;
+    let match_anything_transitions = dfa.get_match_anything_transitions();
+    let match_anything_transitions_from = itertools::join(match_anything_transitions.iter().map(|(from, _)| format!("{}", from+1)), " ");
+    writeln!(buffer, r#"    set --local match_anything_transitions_from {match_anything_transitions_from}"#)?;
+    let match_anything_transitions_to = itertools::join(match_anything_transitions.iter().map(|(_, to)| format!("{}", to+1)), " ");
+    writeln!(buffer, r#"    set --local match_anything_transitions_to {match_anything_transitions_to}"#)?;
 
     Ok(())
 }
@@ -60,9 +60,9 @@ function _{command}
             set word_index (math $word_index + 1)
             continue
         end
-        if set --query asterisk_transitions_from[$state]
-            set --local index (contains --index -- $state $asterisk_transitions_from)
-            set state $asterisk_transitions_to[$index]
+        if set --query match_anything_transitions_from[$state]
+            set --local index (contains --index -- $state $match_anything_transitions_from)
+            set state $match_anything_transitions_to[$index]
             set word_index (math $word_index + 1)
             continue
         end
