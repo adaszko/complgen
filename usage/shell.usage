@@ -1,0 +1,3 @@
+foo [--version | --help] <PATH>;
+
+<PATH> ::= { cat /etc/passwd | cut -d: -f1 };
