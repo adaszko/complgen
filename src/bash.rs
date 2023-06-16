@@ -1,7 +1,8 @@
 use std::fmt::Write;
 
 use complgen::{StateId, Result};
-use crate::{dfa::DFA, regex::Input};
+use ustr::UstrMap;
+use crate::dfa::DFA;
 
 
 
@@ -14,14 +15,12 @@ use crate::{dfa::DFA, regex::Input};
 // An entry in the `asterisk_transitions` array indicates that there's a fallback transition that
 // accepts any word
 fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
-    let id_from_input = {
-        let mut id_from_input: ustr::UstrMap<usize> = Default::default();
+    // Deduplicate inputs
+    let id_from_input: UstrMap<usize> = {
+        let mut id_from_input: UstrMap<usize> = Default::default();
         let mut unallocated_input_id = 0;
-        for ustr in dfa.input_symbols.iter().filter_map(|input| match input {
-            Input::Literal(ustr) => Some(ustr),
-            Input::Any => None,
-        }) {
-            id_from_input.insert(*ustr, unallocated_input_id);
+        for ustr in dfa.get_literal_inputs() {
+            id_from_input.insert(ustr, unallocated_input_id);
             unallocated_input_id += 1;
         }
         id_from_input
@@ -34,17 +33,11 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
 
     writeln!(buffer, r#"    declare -A transitions"#)?;
     for state in dfa.get_all_states() {
-        let map = match dfa.transitions.get(&StateId::try_from(state).unwrap()) {
-            Some(map) => map,
-            None => continue,
-        };
-        let transitions: Vec<(usize, StateId)> = map.iter().filter_map(|(input, to)| match input {
-            Input::Literal(ustr) => Some((*id_from_input.get(ustr).unwrap(), *to)),
-            Input::Any => None,
-        }).collect();
+        let transitions = dfa.get_literal_transitions_from(StateId::try_from(state).unwrap());
         if transitions.is_empty() {
             continue;
         }
+        let transitions: Vec<(usize, StateId)> = transitions.into_iter().map(|(input, to)| (*id_from_input.get(&input).unwrap(), to)).collect();
         let state_transitions: String = itertools::join(transitions.into_iter().map(|(input, to)| format!("[{}]={}", input, to)), " ");
         writeln!(buffer, r#"    transitions[{state}]="({state_transitions})""#)?;
     }

@@ -1,5 +1,6 @@
-use hashbrown::HashSet;
-use std::{collections::{BTreeMap, BTreeSet}, cmp::Ordering, rc::Rc};
+use hashbrown::{HashSet, HashMap};
+use std::rc::Rc;
+use std::collections::{BTreeMap, BTreeSet};
 
 use bumpalo::Bump;
 use ustr::Ustr;
@@ -9,29 +10,35 @@ use crate::grammar::Expr;
 
 pub type Position = u32;
 
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd)]
-pub enum Input {
-    Literal(Ustr),
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum AnyInput {
     Any,
+    Command(Ustr),
 }
 
-
-impl Ord for Input {
-    fn cmp(&self, other: &Self) -> Ordering {
-        match (self, other) {
-            (Input::Literal(left), Input::Literal(right)) => left.cmp(right),
-            (Input::Literal(_), Input::Any) => Ordering::Less,
-            (Input::Any, Input::Literal(_)) => Ordering::Greater,
-            (Input::Any, Input::Any) => Ordering::Equal,
+impl std::fmt::Display for AnyInput {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AnyInput::Any => write!(f, "*"),
+            AnyInput::Command(cmd) => write!(f, "{}", cmd),
         }
     }
 }
 
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum Input {
+    Literal(Ustr),
+    Any(AnyInput),
+}
+
+
 impl Input {
-    pub fn is_any(&self) -> bool {
-        matches!(self, Self::Any)
+    pub fn matches_anything(&self) -> bool {
+        match self {
+            Input::Literal(_) => false,
+            Input::Any(_) => true,
+        }
     }
 }
 
@@ -40,7 +47,7 @@ impl std::fmt::Display for Input {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Input::Literal(s) => write!(f, "{}", s),
-            Input::Any => write!(f, "*"),
+            Input::Any(any) => write!(f, "{}", any),
         }
     }
 }
@@ -62,9 +69,9 @@ pub enum AugmentedRegexNode<'a> {
 impl<'a> std::fmt::Debug for AugmentedRegexNode<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Terminal(arg0, position) => f.write_fmt(format_args!(r#"Terminal("{}".to_string(), {})"#, arg0, position)),
+            Self::Terminal(arg0, position) => f.write_fmt(format_args!(r#"Terminal({:?}.to_string(), {})"#, arg0, position)),
             Self::Nonterminal(position) => f.write_fmt(format_args!(r#"Nonterminal({})"#, position)),
-            Self::Command(code, position) => f.write_fmt(format_args!(r#"Command({}.to_string(), {})"#, code, position)),
+            Self::Command(code, position) => f.write_fmt(format_args!(r#"Command({:?}.to_string(), {})"#, code, position)),
             Self::Cat(left, right) => f.write_fmt(format_args!(r#"Cat({:?}, {:?})"#, left, right)),
             Self::Or(arg0) => f.write_fmt(format_args!(r#"Or(vec!{:?})"#, arg0)),
             Self::Star(arg0) => f.write_fmt(format_args!(r#"Star({:?})"#, arg0)),
@@ -196,7 +203,7 @@ impl<'a> AugmentedRegexNode<'a> {
 }
 
 
-fn do_from_expr<'a>(e: &Expr, arena: &'a Bump, symbols: &mut HashSet<Input>, input_from_position: &mut Vec<Input>) -> AugmentedRegexNode<'a> {
+fn do_from_expr<'a>(e: &Expr, arena: &'a Bump, symbols: &mut HashSet<Input>, input_from_position: &mut Vec<Input>, command_from_position: &mut HashMap<Position, Ustr>) -> AugmentedRegexNode<'a> {
     match e {
         Expr::Terminal(s) => {
             let result = AugmentedRegexNode::Terminal(*s, Position::try_from(input_from_position.len()).unwrap());
@@ -207,22 +214,23 @@ fn do_from_expr<'a>(e: &Expr, arena: &'a Bump, symbols: &mut HashSet<Input>, inp
         },
         Expr::Nonterminal(_) => {
             let result = AugmentedRegexNode::Nonterminal(Position::try_from(input_from_position.len()).unwrap());
-            let input = Input::Any;
+            let input = Input::Any(AnyInput::Any);
             input_from_position.push(input.clone());
             symbols.insert(input);
             result
         },
         Expr::Command(code) => {
             let result = AugmentedRegexNode::Command(*code, Position::try_from(input_from_position.len()).unwrap());
-            let input = Input::Any;
+            let input = Input::Any(AnyInput::Command(*code));
+            command_from_position.insert(u32::try_from(input_from_position.len()).unwrap(), *code);
             input_from_position.push(input.clone());
             symbols.insert(input);
             result
         },
         Expr::Sequence(subexprs) => {
-            let mut left_regex = do_from_expr(&subexprs[0], arena, symbols, input_from_position);
+            let mut left_regex = do_from_expr(&subexprs[0], arena, symbols, input_from_position, command_from_position);
             for right_expr in &subexprs[1..] {
-                let right_regex = arena.alloc(do_from_expr(right_expr, arena, symbols, input_from_position));
+                let right_regex = arena.alloc(do_from_expr(right_expr, arena, symbols, input_from_position, command_from_position));
                 left_regex = AugmentedRegexNode::Cat(arena.alloc(left_regex), right_regex);
             }
             left_regex
@@ -230,17 +238,17 @@ fn do_from_expr<'a>(e: &Expr, arena: &'a Bump, symbols: &mut HashSet<Input>, inp
         Expr::Alternative(subexprs) => {
             let mut subregexes: Vec<AugmentedRegexNode> = Default::default();
             for e in subexprs {
-                let subregex = do_from_expr(e, arena, symbols, input_from_position);
+                let subregex = do_from_expr(e, arena, symbols, input_from_position, command_from_position);
                 subregexes.push(subregex);
             }
             AugmentedRegexNode::Or(subregexes)
         },
         Expr::Optional(subexpr) => {
-            let subregex = do_from_expr(subexpr, arena, symbols, input_from_position);
+            let subregex = do_from_expr(subexpr, arena, symbols, input_from_position, command_from_position);
             AugmentedRegexNode::Or(vec![subregex, AugmentedRegexNode::Epsilon])
         }
         Expr::Many1(subexpr) => {
-            let subregex = arena.alloc(do_from_expr(subexpr, arena, symbols, input_from_position));
+            let subregex = arena.alloc(do_from_expr(subexpr, arena, symbols, input_from_position, command_from_position));
             let star = arena.alloc(AugmentedRegexNode::Star(subregex));
             AugmentedRegexNode::Cat(subregex, star)
         },
@@ -254,6 +262,7 @@ pub struct AugmentedRegex<'a> {
     pub input_symbols: Rc<HashSet<Input>>,
     pub input_from_position: Vec<Input>,
     pub endmarker_position: Position,
+    pub command_from_position: HashMap<Position, Ustr>,
 }
 
 
@@ -261,7 +270,8 @@ impl<'a> AugmentedRegex<'a> {
     pub fn from_expr(e: &Expr, arena: &'a Bump) -> Self {
         let mut input_symbols: HashSet<Input> = Default::default();
         let mut input_from_position: Vec<Input> = Default::default();
-        let regex = arena.alloc(do_from_expr(e, arena, &mut input_symbols, &mut input_from_position));
+        let mut command_from_position: HashMap<Position, Ustr> = Default::default();
+        let regex = arena.alloc(do_from_expr(e, arena, &mut input_symbols, &mut input_from_position, &mut command_from_position));
         let endmarker_position = Position::try_from(input_from_position.len()).unwrap();
         let endmarker = arena.alloc(AugmentedRegexNode::EndMarker(endmarker_position));
         let root = AugmentedRegexNode::Cat(regex, endmarker);
@@ -270,6 +280,7 @@ impl<'a> AugmentedRegex<'a> {
             input_symbols: Rc::new(input_symbols),
             endmarker_position,
             input_from_position,
+            command_from_position,
         }
     }
 

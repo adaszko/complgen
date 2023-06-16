@@ -5,6 +5,7 @@ use std::{
 use hashbrown::{HashMap, HashSet};
 
 use roaring::{MultiOps, RoaringBitmap};
+use ustr::Ustr;
 
 use crate::regex::{Position, AugmentedRegex, Input};
 use complgen::StateId;
@@ -26,6 +27,8 @@ pub struct DFA {
 }
 
 
+// Reference:
+//  * The Dragon Book: 3.9.5 Converting a Regular Expression Directly to a DFA
 fn dfa_from_regex(regex: &AugmentedRegex) -> DFA {
     let mut unallocated_state_id = FIRST_STATE_ID;
     let combined_starting_state: BTreeSet<Position> = regex.firstpos();
@@ -80,8 +83,6 @@ fn dfa_from_regex(regex: &AugmentedRegex) -> DFA {
         }
         accepting_states
     };
-
-    // TODO Retain a mapping StateId => Command to store in the shell script
 
     DFA {
         starting_state: *dstates.get(&combined_starting_state).unwrap(),
@@ -406,6 +407,25 @@ impl DFA {
         do_minimize(self)
     }
 
+    pub fn get_literal_inputs(&self) -> Vec<Ustr> {
+        self.input_symbols.iter().filter_map(|input| match input {
+            Input::Literal(ustr) => Some(*ustr),
+            Input::Any(_) => None,
+        }).collect()
+    }
+
+    pub fn get_literal_transitions_from(&self, from: StateId) -> Vec<(Ustr, StateId)> {
+        let map = match self.transitions.get(&StateId::try_from(from).unwrap()) {
+            Some(map) => map,
+            None => return vec![],
+        };
+        let transitions: Vec<(Ustr, StateId)> = map.iter().filter_map(|(input, to)| match input {
+            Input::Literal(ustr) => Some((*ustr, *to)),
+            Input::Any(_) => None,
+        }).collect();
+        transitions
+    }
+
     pub fn get_all_states(&self) -> RoaringBitmap {
         let mut states: RoaringBitmap = Default::default();
         for (from, to) in &self.transitions {
@@ -422,7 +442,7 @@ impl DFA {
         let mut result: Vec<(StateId, StateId)> = Default::default();
         for (from, tos) in &self.transitions {
             for (input, to) in tos {
-                if input.is_any() {
+                if input.matches_anything() {
                     result.push((*from, *to));
                 }
             }
@@ -519,7 +539,7 @@ mod tests {
                 }
 
                 for (transition_input, to) in self.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
-                    if let Input::Any = transition_input {
+                    if transition_input.matches_anything() {
                         backtracking_stack.push((input_index + 1, *to));
                     }
                 }

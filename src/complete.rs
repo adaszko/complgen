@@ -1,7 +1,7 @@
 use complgen::StateId;
 use hashbrown::HashMap;
 
-use crate::{dfa::DFA, regex::Input};
+use crate::{dfa::DFA, regex::{Input, AnyInput}};
 
 
 pub fn get_match_final_state(dfa: &DFA, inputs: &[&str]) -> Option<StateId> {
@@ -12,7 +12,7 @@ pub fn get_match_final_state(dfa: &DFA, inputs: &[&str]) -> Option<StateId> {
         }
 
         for (transition_input, to) in dfa.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
-            if let Input::Any = transition_input {
+            if transition_input.matches_anything() {
                 backtracking_stack.push((input_index + 1, *to));
             }
         }
@@ -29,12 +29,18 @@ pub fn get_match_final_state(dfa: &DFA, inputs: &[&str]) -> Option<StateId> {
 }
 
 
-pub fn get_completions<'a, 'b>(dfa: &DFA, words_before_cursor: &'b [&'a str]) -> Vec<&'a str> {
+pub fn get_completions<'a, 'b>(dfa: &DFA, words_before_cursor: &'b [&'a str]) -> Vec<String> {
     if let Some(state_id) = get_match_final_state(dfa, words_before_cursor) {
-        let mut inputs: Vec<&str> = dfa.transitions.get(&state_id).unwrap_or(&HashMap::default()).iter().filter_map(|(input, _)| match input {
-            Input::Literal(s) => Some(s.as_str()),
-            Input::Any => None,
-        }).collect();
+        let mut inputs: Vec<String> = dfa.transitions.get(&state_id).unwrap_or(&HashMap::default()).iter().filter_map(|(input, _)| match input {
+            Input::Literal(s) => Some(vec![s.as_str().to_string()]),
+            Input::Any(AnyInput::Command(cmd)) => {
+                let output = std::process::Command::new("sh").arg("-c").arg(cmd.as_str()).output().unwrap();
+                let compls = String::from_utf8(output.stdout).unwrap();
+                let result: Vec<String> = compls.lines().map(|s| s.to_string()).collect();
+                Some(result)
+            },
+            Input::Any(AnyInput::Any) => None,
+        }).flatten().collect();
         inputs.sort_unstable();
         inputs
     }
@@ -65,8 +71,8 @@ mod tests {
         assert_eq!(get_completions(&dfa, &vec![]), vec!["add"]);
 
         let input = vec!["add"];
-        let generated: HashSet<&str> = HashSet::from_iter(get_completions(&dfa, &input));
-        let expected = HashSet::from_iter(["--boring", "--debug", "--dry-run", "--no-prehook", "--prehook", "--quiet", "--reserved-ok", "--standard-verbosity", "--verbose", "-v", "--case-ok", "--debug-http", "--no-date-trick", "--not-recursive", "--prompt-posthook", "--recursive", "--run-posthook", "--timings", "-q", "--date-trick", "--debug-verbose", "--no-posthook", "--posthook", "--prompt-prehook", "--repodir", "--run-prehook", "--umask", "-r"]);
+        let generated: HashSet<_> = HashSet::from_iter(get_completions(&dfa, &input));
+        let expected = HashSet::from_iter(["--boring", "--debug", "--dry-run", "--no-prehook", "--prehook", "--quiet", "--reserved-ok", "--standard-verbosity", "--verbose", "-v", "--case-ok", "--debug-http", "--no-date-trick", "--not-recursive", "--prompt-posthook", "--recursive", "--run-posthook", "--timings", "-q", "--date-trick", "--debug-verbose", "--no-posthook", "--posthook", "--prompt-prehook", "--repodir", "--run-prehook", "--umask", "-r"].map(|s| s.to_string()));
         assert_eq!(generated, expected);
     }
 
@@ -80,7 +86,7 @@ mod tests {
         let dfa = DFA::from_regex(&regex);
         let dfa = dfa.minimize();
         let input = vec!["--version"];
-        let generated: HashSet<&str> = HashSet::from_iter(get_completions(&dfa, &input));
+        let generated: HashSet<_> = HashSet::from_iter(get_completions(&dfa, &input));
         assert!(generated.is_empty());
     }
 
@@ -98,8 +104,8 @@ grep [<OPTION>]...;
         let dfa = DFA::from_regex(&regex);
         let dfa = dfa.minimize();
         let input = vec!["--color"];
-        let generated: HashSet<&str> = HashSet::from_iter(get_completions(&dfa, &input));
-        let expected = HashSet::from_iter(["always", "auto", "never", "--extended-regexp", "--color"]);
+        let generated: HashSet<_> = HashSet::from_iter(get_completions(&dfa, &input));
+        let expected = HashSet::from_iter(["always", "auto", "never", "--extended-regexp", "--color"].map(|s| s.to_string()));
         assert_eq!(generated, expected);
     }
 }

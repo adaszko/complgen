@@ -10,7 +10,7 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
             Some(map) => map,
             None => continue,
         };
-        let transitions: Vec<(crate::regex::Input, StateId)> = map.iter().filter(|(input, _)| !input.is_any()).map(|(input, state)| (*input, *state)).collect();
+        let transitions: Vec<(crate::regex::Input, StateId)> = map.iter().filter(|(input, _)| !input.matches_anything()).map(|(input, state)| (*input, *state)).collect();
         if transitions.is_empty() {
             continue;
         }
