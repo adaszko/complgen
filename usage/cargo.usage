@@ -93,4 +93,4 @@ cargo [<toolchain>] [<OPTIONS>] [<COMMAND>];
 
 <TESTNAME> ::= { RUSTFLAGS=-Awarnings cargo test --quiet -- --list | sed 's/^\(.*\): .*/\1/' };
 
-<FLAG> ::= { cargo -Z help | grep -o -- '-Z [a-z-]\+' | cut -d' ' -f2 }
+<FLAG> ::= { cargo -Z help | grep -o -- '-Z [a-z-]\+' | cut -d' ' -f2 };
