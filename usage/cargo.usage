@@ -5,17 +5,17 @@ cargo [<toolchain>] [<OPTIONS>] [<COMMAND>];
 <OPTIONS> ::= -V
             | --version
 	    | --list
-	    | (--explain <CODE>)
+	    | --explain <CODE>
 	    | -v
 	    | --verbose...
 	    | -q
 	    | --quiet
-	    | (--color <WHEN>)
+	    | --color <WHEN>
 	    | --frozen
 	    | --locked
 	    | --offline
-	    | (--config <KEY_VALUE>)
-	    | (-Z <FLAG>)
+	    | --config <KEY_VALUE>
+	    | -Z <FLAG>
 	    | -h
 	    | --help
 	    ;
@@ -33,7 +33,7 @@ cargo [<toolchain>] [<OPTIONS>] [<COMMAND>];
 	    | remove
 	    | run
 	    | r
-	    | ((test | t) [<TEST_OPTIONS>]... <TESTNAME>)
+	    | (test | t) [<TEST_OPTIONS>]... <TESTNAME>
 	    | bench
 	    | update
 	    | search
@@ -44,49 +44,49 @@ cargo [<toolchain>] [<OPTIONS>] [<COMMAND>];
 <TEST_OPTIONS> ::= -q
                  | --quiet
                  | --lib
-                 | (--bin [<NAME>])
+                 | --bin [<NAME>]
                  | --bins
                  | -v...
                  | --verbose...
-                 | (--example [<NAME>])
-                 | (--color <WHEN>)
+                 | --example [<NAME>]
+                 | --color <WHEN>
                  | --examples
                  | --frozen
-                 | (--test [<NAME>])
+                 | --test [<NAME>]
                  | --locked
                  | --tests
-                 | (--bench [<NAME>])
+                 | --bench [<NAME>]
                  | --offline
                  | --benches
-                 | (--config <KEY=VALUE>)
+                 | --config <KEY=VALUE>
                  | --all-targets
                  | (-Z <FLAG>)
                  | --doc
                  | --no-run
                  | --no-fail-fast
                  | -p
-                 | (--package [<SPEC>])
+                 | --package [<SPEC>]
                  | --workspace
-                 | (--exclude <SPEC>)
+                 | --exclude <SPEC>
                  | --all
                  | -j
-                 | (--jobs <N>)
+                 | --jobs <N>
                  | --keep-going
                  | -r
                  | --release
-                 | (--profile <PROFILE-NAME>)
+                 | --profile <PROFILE-NAME>
                  | -F
-                 | (--features <FEATURES>)
+                 | --features <FEATURES>
                  | --all-features
                  | --no-default-features
-                 | (--target <TRIPLE>)
-                 | (--target-dir <DIRECTORY>)
-                 | (--manifest-path <PATH>)
-                 | (--ignore-rust-version)
-                 | (--message-format <FMT>)
+                 | --target <TRIPLE>
+                 | --target-dir <DIRECTORY>
+                 | --manifest-path <PATH>
+                 | --ignore-rust-version
+                 | --message-format <FMT>
                  | --unit-graph
                  | --future-incompat-report
-                 | (--timings [<FMTS>])
+                 | --timings [<FMTS>]
                  | -h
                  | --help
                  ;
