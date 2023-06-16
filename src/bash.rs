@@ -1,6 +1,7 @@
 use std::fmt::Write;
 
 use complgen::{StateId, Result};
+use hashbrown::HashMap;
 use ustr::UstrMap;
 use crate::dfa::DFA;
 
@@ -52,9 +53,10 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
 
 
 pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
-    for (from_state_id, command) in dfa.get_command_transitions() {
-        write!(buffer, r#"_cmd_{from_state_id} () {{
-    {command}
+    let id_from_command: UstrMap<usize> = dfa.get_command_transitions().into_iter().enumerate().map(|(id, (_, cmd))| (cmd, id)).collect();
+    for (cmd, id) in &id_from_command {
+        write!(buffer, r#"_{command}_{id} () {{
+    {cmd}
 }}
 
 "#)?;
@@ -90,8 +92,16 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         fi
         return 1
     done
-
     [[ -v "transitions[$state]" ]] || return 1
+
+"#, starting_state = dfa.starting_state)?;
+
+    writeln!(buffer, r#"    declare -A commands"#)?;
+    let command_id_from_state: HashMap<StateId, usize> = dfa.get_command_transitions().into_iter().map(|(state, cmd)| (state, *id_from_command.get(&cmd).unwrap())).collect();
+    let commands_array_initializer = itertools::join(command_id_from_state.into_iter().map(|(state, id)| format!("[{state}]={id}")), " ");
+    writeln!(buffer, r#"    commands=({commands_array_initializer})"#)?;
+
+    write!(buffer, r#"
     local state_transitions_initializer=${{transitions[$state]}}
     declare -A state_transitions
     eval "state_transitions=$state_transitions_initializer"
@@ -101,15 +111,14 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         local value=${{literals[$key]}}
         inverted_literals+=([$value]=$key)
     done
-"#, starting_state = dfa.starting_state)?;
 
-    write!(buffer, r#"
     local completions=()
     for literal_id in ${{!state_transitions[@]}}; do
         completions+=(${{inverted_literals[$literal_id]}})
     done
-    if [[ $(type -t _cmd_$state) == function ]]; then
-        IFS=$'\n' read -r -d '' -a command_completions < <( _cmd_$state && printf '\0' )
+    if [[ -v "commands[$state]" ]]; then
+        local command_id=${{commands[$state]}}
+        IFS=$'\n' read -r -d '' -a command_completions < <( _{command}_${{command_id}} && printf '\0' )
         for line in ${{command_completions[@]}}; do
             completions+=($line)
         done

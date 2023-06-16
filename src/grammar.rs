@@ -141,7 +141,7 @@ fn command(input: &str) -> IResult<&str, &str> {
     let (input, _) = char('{')(input)?;
     let (input, cmd) = escaped(take_while(is_command_char), '\\', one_of("{}"))(input)?;
     let (input, _) = char('}')(input)?;
-    Ok((input, cmd))
+    Ok((input, cmd.trim()))
 }
 
 fn command_expr(input: &str) -> IResult<&str, Expr> {
