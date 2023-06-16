@@ -81,6 +81,11 @@ fn complete(args: &CompleteArgs) -> Result<()> {
 
 
 fn compile(args: &CompileArgs) -> Result<()> {
+    if args.railroad_svg.is_none() && args.dfa_dot.is_none() && args.bash_script.is_none() && args.fish_script.is_none() {
+        eprintln!("Please specify at least one of --railroad-svg, --dfa-dot, --bash-script, --fish-script options");
+        std::process::exit(1);
+    }
+
     let input = std::fs::read_to_string(&args.usage_file_path).unwrap();
     let grammar = parse(&input)?;
     let validated = grammar.validate()?;
@@ -103,19 +108,17 @@ fn compile(args: &CompileArgs) -> Result<()> {
         dfa.to_dot_file(dot_file_path)?;
     }
 
-    let mut output = String::default();
-
     if let Some(path) = &args.bash_script {
         log::debug!("Writing Bash completion script");
+        let mut output = String::default();
         bash::write_completion_script(&mut output, &validated.command, &dfa).unwrap();
         let mut bash_completion_script = std::fs::File::create(path).unwrap();
         bash_completion_script.write_all(output.as_bytes()).unwrap();
     }
 
-    output.clear();
-
     if let Some(path) = &args.fish_script {
         log::debug!("Writing Fish completion script");
+        let mut output = String::default();
         fish::write_completion_script(&mut output, &validated.command, &dfa).unwrap();
         let mut fish_completion_script = std::fs::File::create(path).unwrap();
         fish_completion_script.write_all(output.as_bytes()).unwrap();
