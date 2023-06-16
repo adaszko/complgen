@@ -5,7 +5,9 @@ use ustr::UstrMap;
 use crate::dfa::DFA;
 
 
-
+// `literals`: an associative array used for literals deduplication (interning) where:
+//      key: the literal
+//      value: literal's id
 // `transitions`: an associative array where:
 //      key: state number
 //      value: a string that is an initializer of an associative array, e.g. "( [add]=23 [obliterate]=1080 [repair]=1543 )"
@@ -15,20 +17,11 @@ use crate::dfa::DFA;
 // An entry in the `asterisk_transitions` array indicates that there's a fallback transition that
 // accepts any word
 fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
-    // Deduplicate inputs
-    let id_from_input: UstrMap<usize> = {
-        let mut id_from_input: UstrMap<usize> = Default::default();
-        let mut unallocated_input_id = 0;
-        for ustr in dfa.get_literal_inputs() {
-            id_from_input.insert(ustr, unallocated_input_id);
-            unallocated_input_id += 1;
-        }
-        id_from_input
-    };
+    let id_from_input: UstrMap<usize> = dfa.get_literal_inputs().into_iter().enumerate().map(|(id, ustr)| (ustr, id)).collect();
 
-    writeln!(buffer, r#"    declare -A symbols"#)?;
-    let symbols: String = itertools::join(id_from_input.iter().map(|(symbol, id)| format!("[{symbol}]={id}")), " ");
-    writeln!(buffer, r#"    symbols=({symbols})"#)?;
+    writeln!(buffer, r#"    declare -A literals"#)?;
+    let literals: String = itertools::join(id_from_input.iter().map(|(literal, id)| format!("[{literal}]={id}")), " ");
+    writeln!(buffer, r#"    literals=({literals})"#)?;
     writeln!(buffer, "")?;
 
     writeln!(buffer, r#"    declare -A transitions"#)?;
@@ -67,12 +60,12 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         declare -A state_transitions
         eval "state_transitions=$state_transitions_initializer"
         local word=${{COMP_WORDS[$word_index]}}
-        if [[ ! -v "symbols[$word]" ]]; then
+        if [[ ! -v "literals[$word]" ]]; then
             return 1
         fi
-        local symbol_id=${{symbols[$word]}}
-        if [[ -v "state_transitions[$symbol_id]" ]]; then
-            state=${{state_transitions[$symbol_id]}}
+        local literal_id=${{literals[$word]}}
+        if [[ -v "state_transitions[$literal_id]" ]]; then
+            state=${{state_transitions[$literal_id]}}
             word_index=$((word_index + 1))
             continue
         fi
@@ -89,15 +82,15 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     declare -A state_transitions
     eval "state_transitions=$state_transitions_initializer"
 
-    local -A inverted_symbols=()
-    for key in "${{!symbols[@]}}"; do
-        local value=${{symbols[$key]}}
-        inverted_symbols+=([$value]=$key)
+    local -A inverted_literals=()
+    for key in "${{!literals[@]}}"; do
+        local value=${{literals[$key]}}
+        inverted_literals+=([$value]=$key)
     done
 
     local completions=()
-    for symbol_id in ${{!state_transitions[@]}}; do
-        completions+=(${{inverted_symbols[$symbol_id]}})
+    for literal_id in ${{!state_transitions[@]}}; do
+        completions+=(${{inverted_literals[$literal_id]}})
     done
     completions=${{completions[@]}}
 

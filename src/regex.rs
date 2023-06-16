@@ -20,7 +20,7 @@ impl std::fmt::Display for AnyInput {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AnyInput::Any => write!(f, "*"),
-            AnyInput::Command(cmd) => write!(f, "{}", cmd),
+            AnyInput::Command(cmd) => write!(f, "{{{}}}", cmd),
         }
     }
 }
