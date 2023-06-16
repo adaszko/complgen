@@ -83,21 +83,25 @@ Use parentheses to group patterns:
 
 # Roadmap
 
- * Grammar validation:
-    * Warn about undefined variables
-    * Warn about duplicate variables
+ * MVP
 
- * `<name> ::= { shell-command... };` defines a variable that uses a shell command to generate suggested
-   completions.  The shell command should print one suggested completion per line.  The shell script is a sh
-   shell function that is going to be copied to the resulting completion script.  The shell function does not
-   take any arguments and should produce all possible completions on stdout.  The actual shell, the function
-   is run under, is responsible for filtering the results according to the shell settings.
+    * `<name> ::= { shell-command... };` defines a variable that uses a shell command to generate suggested
+    completions.  The shell command should print one suggested completion per line.  The shell script is a sh
+    shell function that is going to be copied to the resulting completion script.  The shell function does not
+    take any arguments and should produce all possible completions on stdout.  The actual shell, the function
+    is run under, is responsible for filtering the results according to the shell settings.
 
- * Show completion hints in ZSH and Fish (Bash does not support them): `--invert-match "select non-matching lines"`
+ * Post-MVP
 
- * Support copying pieces of shell scripts that can define shell functions callable from inline shell commands ({[...]}):
-    * @bash {{{ ... }}}
-    * @fish {{{ ... }}}
-    * @zsh {{{ ... }}}
+    * Grammar validation:
+        * Warn about undefined variables
+        * Warn about duplicate variables
 
- * End-to-end tests that excercise the generated completion scripts and check that they behave properly.
+    * Show completion hints in ZSH and Fish (Bash does not support them): `--invert-match "select non-matching lines"`
+
+    * Support copying pieces of shell scripts that can define shell functions callable from inline shell commands ({[...]}):
+        * @bash {{{ ... }}}
+        * @fish {{{ ... }}}
+        * @zsh {{{ ... }}}
+
+    * End-to-end tests that excercise the generated completion scripts and check that they behave properly.

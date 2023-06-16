@@ -71,7 +71,6 @@ fn complete(args: &CompleteArgs) -> Result<()> {
     let arena = Bump::new();
     let regex = AugmentedRegex::from_expr(&validated.expr, &arena);
     let dfa = DFA::from_regex(&regex);
-    let dfa = dfa.minimize();
 
     let words_before_cursor: Vec<&str> = args.args.iter().map(|s| s.as_ref()).collect();
     for completion in complete::get_completions(&dfa, &words_before_cursor) {
