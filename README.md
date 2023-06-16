@@ -1,4 +1,4 @@
-# Value Proposition
+## Value Proposition
 
 `complgen` allows you to generate completion scripts for all major shells (bash, zsh, fish) from a *single*,
 concise grammar.  It's inspired by [compleat](https://github.com/mbrubeck/compleat/) but instead of requiring
@@ -6,6 +6,10 @@ for the `compleat` executable to be available at completion time, it compiles th
 shell script that can be distributed on its own.  If you're an author of a CLI tool, you can for instance
 generate completion scripts for your command line tool on CI, and package them along with your command line
 tool.  No additional software needs to be installed in order to use those custom completions.
+
+## Demo
+
+[![asciicast](https://asciinema.org/a/rRfe9MmZpzBRQIb21LPADWb6n.svg)](https://asciinema.org/a/rRfe9MmZpzBRQIb21LPADWb6n)
 
 ## Usage
 
@@ -21,7 +25,8 @@ $$ grep --color <TAB>
 always auto never
 ```
 
-2. To generate completions on stdout by interpreting the grammar "just-in-time" (just like [compleat](https://github.com/mbrubeck/compleat/) works):
+2. To generate completions on stdout by interpreting the grammar "just-in-time" (just like
+[compleat](https://github.com/mbrubeck/compleat/) works):
 
 ```
 $ complgen complete usage/small.usage -- --color
@@ -29,6 +34,10 @@ always
 auto
 never
 ```
+
+The just-in-time mode is intended to be further integrated with shells so that it provides completions
+directly from grammars, bypassing completion scripts.  This improves readability and reduces maintenance
+effort.
 
 ## Installation
 
@@ -43,12 +52,18 @@ you (e.g. clap), `complgen` has the advantage of being just a command line tool 
 particular implementation language.  The disadvantage, of course, is that now, parsing and completions are
 maintained separately from each other risking divergence.  On balance, it is deemed still worth it.
 
-# Project Status
+## Project Status
 
- * Generates working completion scripts for `bash` and `fish`.  `zsh` can use `bash` script [via bash
-   compatibility mode](https://stackoverflow.com/a/8492043).
+ * Generates working completion scripts for `bash` and `fish`.  Bash output is the most complete one.  Zsh
+   shell can use Bash completion script via bash compatibility mode:
 
-# Syntax
+```Zsh
+% autoload bashcompinit
+% bashcompinit
+% source /path/to/your/bash_completion_file
+```
+
+## Syntax
 
 See the [subdirectory](usage/) for examples.
 
@@ -69,7 +84,7 @@ Use parentheses to group patterns:
  * `(a | b) ...` matches `a` or `b` followed by any number of additional
    `a` or `b`.
 
-# Limitations
+## Limitations
 
  * Passing option arguments using `=` is not currently supported.  E.g. `--foo=bar` doesn't work, but `--foo
    bar` does.
@@ -81,7 +96,7 @@ Use parentheses to group patterns:
  * Non-regular grammars are not supported, e.g. `find(1)`'s arguments can't be completed precisely by
    complgen.
 
-# Roadmap
+## Roadmap
 
  * Grammar validation:
     * Warn about undefined variables
