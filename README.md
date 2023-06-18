@@ -98,6 +98,8 @@ Use parentheses to group patterns:
 
 ## Roadmap
 
+ * Catch up Fish completion with Bash state
+
  * Grammar validation:
     * Warn about undefined variables
     * Warn about duplicate variables
