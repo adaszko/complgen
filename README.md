@@ -54,8 +54,8 @@ maintained separately from each other risking divergence.  On balance, it is dee
 
 ## Project Status
 
- * Generates working completion scripts for `bash` and `fish`.  Bash output is the most complete one.  Zsh
-   shell can use Bash completion script via bash compatibility mode:
+Generates working completion scripts for `bash` and `fish`.  Zsh shell can use Bash completion script via bash
+compatibility mode:
 
 ```Zsh
 % autoload bashcompinit
@@ -97,8 +97,6 @@ Use parentheses to group patterns:
    complgen.
 
 ## Roadmap
-
- * Catch up Fish completion with Bash state
 
  * Grammar validation:
     * Warn about undefined variables

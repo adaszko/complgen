@@ -1,6 +1,7 @@
 use std::fmt::Write;
 
 use complgen::{StateId, Result};
+use hashbrown::HashMap;
 use ustr::{Ustr, UstrMap};
 use crate::dfa::DFA;
 
@@ -42,6 +43,15 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
 
 
 pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
+    let id_from_command: UstrMap<usize> = dfa.get_command_transitions().into_iter().enumerate().map(|(id, (_, cmd))| (cmd, id)).collect();
+    for (cmd, id) in &id_from_command {
+        write!(buffer, r#"function _{command}_{id}
+    {cmd}
+end
+
+"#)?;
+    }
+
     write!(buffer, r#"function _{command}
     set COMP_LINE (commandline --cut-at-cursor)
     set COMP_WORDS
@@ -52,7 +62,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         set COMP_CWORD (count $COMP_WORDS)
     end
 
-"#, command = command)?;
+"#)?;
 
     write_tables(buffer, dfa)?;
 
@@ -90,20 +100,39 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     end
 
     set --query transitions[$state] || return 1
+
+"#, starting_state = dfa.starting_state + 1)?;
+
+    let command_id_from_state: HashMap<StateId, usize> = dfa.get_command_transitions().into_iter().map(|(state, cmd)| (state, *id_from_command.get(&cmd).unwrap())).collect();
+    let command_states = itertools::join(command_id_from_state.iter().map(|(state, _)| state), " ");
+    writeln!(buffer, r#"    set command_states {command_states}"#)?;
+    let command_ids = itertools::join(command_id_from_state.into_iter().map(|(_, id)| id), " ");
+    writeln!(buffer, r#"    set command_ids {command_ids}"#)?;
+
+    write!(buffer, r#"
     set --local --erase inputs
     set --local --erase tos
     eval $transitions[$state]
     for literal_id in $inputs
         printf '%s\n' $literals[$literal_id]
     end
+    if contains $state $command_states
+        set --local command_index (contains --index $state $command_states)
+        set --local function_id $command_ids[$command_index]
+        set --local function_name _{command}_$function_id
+        set --local lines (eval $function_name)
+        for line in $lines
+            printf '%s\n' $line
+        end
+    end
     return 0
-"#, starting_state = dfa.starting_state + 1)?;
+"#)?;
 
     write!(buffer, r#"
 end
 
 complete --command {command} --no-files --arguments "(_{command})"
-"#, command = command)?;
+"#)?;
 
     Ok(())
 }
