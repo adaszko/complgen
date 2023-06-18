@@ -24,8 +24,9 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
         if transitions.is_empty() {
             continue;
         }
-        let state_transitions: String = itertools::join(transitions.into_iter().map(|(input, to)| format!("set -a inputs {}; set -a tos {};", input, to+1)), " ");
-        writeln!(buffer, r#"    set transitions[{}] "{state_transitions}""#, state+1)?;
+        let state_inputs: String = itertools::join(transitions.iter().map(|(literal_id, _)| format!("{}", literal_id)), " ");
+        let state_tos: String = itertools::join(transitions.iter().map(|(_, to)| format!("{}", to)), " ");
+        writeln!(buffer, r#"    set transitions[{}] "set inputs {state_inputs}; set tos {state_tos}""#, state+1)?;
     }
 
     writeln!(buffer, "")?;
