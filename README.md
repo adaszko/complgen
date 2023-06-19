@@ -1,11 +1,11 @@
 ## Value Proposition
 
 `complgen` allows you to generate completion scripts for all major shells (bash, zsh, fish) from a *single*,
-concise grammar.  It's inspired by [compleat](https://github.com/mbrubeck/compleat/) but instead of requiring
-for the `compleat` executable to be available at completion time, it compiles the grammar down to a standalone
-shell script that can be distributed on its own.  If you're an author of a CLI tool, you can for instance
-generate completion scripts for your command line tool on CI, and package them along with your command line
-tool.  No additional software needs to be installed in order to use those custom completions.
+concise BNF-like grammar.  It's inspired by [compleat](https://github.com/mbrubeck/compleat/) but instead of
+requiring for the `compleat` executable to be available at completion time, it compiles the grammar down to a
+standalone shell script that can be distributed on its own.  If you're an author of a CLI tool, you can
+generate shell scripts for your command line tool on CI, and package them along with your command line tool.
+No additional software needs to be installed in order to use those custom completions.
 
 ## Demo
 
@@ -49,8 +49,8 @@ cargo install --git https://github.com/adaszko/complgen complgen
 
 Although various libraries exist for parsing command line arguments that can generate shell completions for
 you (e.g. clap), `complgen` has the advantage of being just a command line tool and thus not being tied to any
-particular implementation language.  The disadvantage, of course, is that now, parsing and completions are
-maintained separately from each other risking divergence.  On balance, it is deemed still worth it.
+particular implementation language.  `complgen` is also capable of completing based on external shell commands
+output, e.g. `{ cat /etc/passwd | grep -v '^#' | cut -d: -f1 }` to complete users on the system.
 
 ## Project Status
 
