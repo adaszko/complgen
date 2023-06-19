@@ -741,14 +741,12 @@ mod tests {
         let arena = Bump::new();
         let regex = AugmentedRegex::from_expr(&expr, &arena);
         let dfa = DFA::from_regex(&regex);
-        dfa.to_dot_file("pre.dot").unwrap();
         let input: Vec<&str> = input.iter().map(|s| {
             let s: &str = s;
             s
         }).collect();
         assert!(dfa.accepts(&input));
         let minimal_dfa = dfa.minimize();
-        minimal_dfa.to_dot_file("post.dot").unwrap();
         assert!(minimal_dfa.accepts(&input));
     }
 
@@ -759,14 +757,12 @@ mod tests {
         let arena = Bump::new();
         let regex = AugmentedRegex::from_expr(&expr, &arena);
         let dfa = DFA::from_regex(&regex);
-        dfa.to_dot_file("pre.dot").unwrap();
         let input: Vec<&str> = input.iter().map(|s| {
             let s: &str = s;
             s
         }).collect();
         assert!(dfa.accepts(&input));
         let minimal_dfa = dfa.minimize();
-        minimal_dfa.to_dot_file("post.dot").unwrap();
         assert!(minimal_dfa.accepts(&input));
     }
 }

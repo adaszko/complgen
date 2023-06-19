@@ -703,7 +703,7 @@ pub mod tests {
     fn parses_command() {
         const INPUT: &str = "{ rustup toolchain list | cut -d' ' -f1 }";
         let ("", e) = command_expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Command(u(" rustup toolchain list | cut -d' ' -f1 ")));
+        assert_eq!(e, Command(u("rustup toolchain list | cut -d' ' -f1")));
     }
 
     #[test]
@@ -951,7 +951,7 @@ cargo [+{ rustup toolchain list | cut -d' ' -f1 }] [<OPTIONS>] [<COMMAND>];
                 statements: vec![
                     Statement::CallVariant {
                         head: u("cargo"),
-                        expr: Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("+"))), Rc::new(Command(u(" rustup toolchain list | cut -d' ' -f1 ")))])))), Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Nonterminal(ustr("OPTIONS"))))), Rc::new(Optional(Rc::new(Nonterminal(ustr("COMMAND")))))]))])),
+                        expr: Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("+"))), Rc::new(Command(u("rustup toolchain list | cut -d' ' -f1")))])))), Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Nonterminal(ustr("OPTIONS"))))), Rc::new(Optional(Rc::new(Nonterminal(ustr("COMMAND")))))]))])),
                     },
                 ],
             }
@@ -975,7 +975,7 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
                     },
                     Statement::NonterminalDefinition {
                         symbol: u("toolchain"),
-                        expr: Rc::new(Command(u(" rustup toolchain list | cut -d' ' -f1 "))),
+                        expr: Rc::new(Command(u("rustup toolchain list | cut -d' ' -f1"))),
                     },
                 ],
             }
