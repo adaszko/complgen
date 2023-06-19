@@ -55,7 +55,7 @@ output, e.g. `{ cat /etc/passwd | grep -v '^#' | cut -d: -f1 }` to complete user
 ## Project Status
 
 Generates working completion scripts for `bash` and `fish` as well as JIT-completes although it still probably
-is a bit buggy (please report!).  Zsh shell can use Bash completion script via bash compatibility mode:
+is a bit buggy (please report!).  Zsh shell can use Bash completion script via its builtin compatibility mode:
 
 ```Zsh
 % autoload bashcompinit
