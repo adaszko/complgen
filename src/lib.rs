@@ -15,7 +15,7 @@ pub enum Error {
     #[error("One one command is allowed in completions definition")]
     VaryingCommandNames(Vec<Ustr>),
 
-    #[error("Variable definitions depend on each other cyclically")]
+    #[error("Nonterminal definitions depend on each other cyclically")]
     NonterminalDefinitionsCycle(Option<Vec<Ustr>>),
 
     #[error("UTF-8 conversion error")]

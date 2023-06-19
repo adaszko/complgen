@@ -99,8 +99,8 @@ Use parentheses to group patterns:
 ## Roadmap
 
  * Grammar validation:
-    * Warn about undefined variables
-    * Warn about duplicate variables
+    * Warn about undefined nonterminals
+    * Warn about duplicate nonterminals
 
  * Show completion hints (descriptions) in ZSH and Fish (Bash does not support them)
 

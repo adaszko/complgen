@@ -454,15 +454,15 @@ fn traverse_nonterminal_dependencies_dfs(vertex: Ustr, graph: &UstrMap<UstrSet>,
 
 // A topological order but without the initial nonterminals that don't depend on any other
 // nonterminals.
-fn get_nonterminals_resolution_order(variable_definitions: &UstrMap<Rc<Expr>>) -> Result<Vec<Ustr>> {
-    if variable_definitions.is_empty() {
+fn get_nonterminals_resolution_order(nonterminal_definitions: &UstrMap<Rc<Expr>>) -> Result<Vec<Ustr>> {
+    if nonterminal_definitions.is_empty() {
         return Ok(Vec::default());
     }
 
     let mut dependency_graph: UstrMap<UstrSet> = Default::default();
-    for (varname, expr) in variable_definitions {
+    for (varname, expr) in nonterminal_definitions {
         let mut vars = get_expression_nonterminals(Rc::clone(&expr));
-        vars.retain(|var| variable_definitions.contains_key(var));
+        vars.retain(|var| nonterminal_definitions.contains_key(var));
         dependency_graph.insert(*varname, vars);
     }
 
@@ -530,18 +530,18 @@ impl Grammar {
             }
         };
 
-        let mut variable_definitions: UstrMap<Rc<Expr>> = self.statements.iter().filter_map(|v|
+        let mut nonterminal_definitions: UstrMap<Rc<Expr>> = self.statements.iter().filter_map(|v|
             match v {
                 Statement::CallVariant { .. } => None,
                 Statement::NonterminalDefinition { symbol, expr: rhs } => Some((*symbol, Rc::clone(&rhs))),
             }
         ).collect();
 
-        for variable in get_nonterminals_resolution_order(&variable_definitions)? {
-            let e = Rc::clone(variable_definitions.get(&variable).unwrap());
-            *variable_definitions.get_mut(&variable).unwrap() = resolve_nonterminals(e, &variable_definitions);
+        for nonterminal in get_nonterminals_resolution_order(&nonterminal_definitions)? {
+            let e = Rc::clone(nonterminal_definitions.get(&nonterminal).unwrap());
+            *nonterminal_definitions.get_mut(&nonterminal).unwrap() = resolve_nonterminals(e, &nonterminal_definitions);
         }
-        let expr = resolve_nonterminals(expr, &variable_definitions);
+        let expr = resolve_nonterminals(expr, &nonterminal_definitions);
 
         let g = Validated {
             command,
@@ -585,7 +585,7 @@ pub mod tests {
         (0..inputs.len()).prop_map(move |index| Rc::new(Terminal(ustr(&inputs[index])))).boxed()
     }
 
-    fn arb_variable(nonterminals: Rc<Vec<Ustr>>) -> BoxedStrategy<Rc<Expr>> {
+    fn arb_nonterminal(nonterminals: Rc<Vec<Ustr>>) -> BoxedStrategy<Rc<Expr>> {
         (0..nonterminals.len()).prop_map(move |index| Rc::new(Nonterminal(ustr(&nonterminals[index])))).boxed()
     }
 
@@ -615,13 +615,13 @@ pub mod tests {
         if remaining_depth <= 1 {
             prop_oneof![
                 arb_literal(Rc::clone(&inputs)),
-                arb_variable(nonterminals),
+                arb_nonterminal(nonterminals),
             ].boxed()
         }
         else {
             prop_oneof![
                 arb_literal(inputs.clone()),
-                arb_variable(nonterminals.clone()),
+                arb_nonterminal(nonterminals.clone()),
                 arb_optional(inputs.clone(), nonterminals.clone(), remaining_depth, max_width),
                 arb_many1(inputs.clone(), nonterminals.clone(), remaining_depth, max_width),
                 arb_sequence(inputs.clone(), nonterminals.clone(), remaining_depth, max_width),
@@ -859,7 +859,7 @@ darcs convert ( ( --repo-name <DIRECTORY> | --repodir <DIRECTORY> ) | ( --set-sc
     }
 
     #[test]
-    fn parses_variable_definition() {
+    fn parses_nonterminal_definition() {
         const INPUT: &str = r#"
 grep [<OPTION>]... <PATTERNS> [<FILE>]...;
 <OPTION> ::= --color <WHEN>;
@@ -912,31 +912,31 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
     }
 
     #[test]
-    fn variable_resolution_order_detects_trivial_cycle() {
-        let variable_definitions = UstrMap::from_iter([
+    fn nonterminal_resolution_order_detects_trivial_cycle() {
+        let nonterminal_definitions = UstrMap::from_iter([
             (u("FOO"), Rc::new(Nonterminal(u("BAR")))),
             (u("BAR"), Rc::new(Nonterminal(u("FOO")))),
         ]);
-        assert!(matches!(get_nonterminals_resolution_order(&variable_definitions), Err(Error::NonterminalDefinitionsCycle(None))));
+        assert!(matches!(get_nonterminals_resolution_order(&nonterminal_definitions), Err(Error::NonterminalDefinitionsCycle(None))));
     }
 
     #[test]
-    fn variable_resolution_order_detects_simple_cycle() {
-        let variable_definitions = UstrMap::from_iter([
+    fn nonterminal_resolution_order_detects_simple_cycle() {
+        let nonterminal_definitions = UstrMap::from_iter([
             (u("FOO"), Rc::new(Nonterminal(u("BAR")))),
             (u("BAR"), Rc::new(Nonterminal(u("BAR")))),
         ]);
-        assert!(matches!(&get_nonterminals_resolution_order(&variable_definitions), Err(Error::NonterminalDefinitionsCycle(Some(path))) if path == &[u("BAR"), u("BAR")]));
+        assert!(matches!(&get_nonterminals_resolution_order(&nonterminal_definitions), Err(Error::NonterminalDefinitionsCycle(Some(path))) if path == &[u("BAR"), u("BAR")]));
     }
 
     #[test]
     fn computes_nonterminals_resolution_order() {
-        let variable_definitions = UstrMap::from_iter([
+        let nonterminal_definitions = UstrMap::from_iter([
             (u("WHEN"), Rc::new(Alternative(vec![Rc::new(Terminal(u("always"))), Rc::new(Terminal(u("never"))), Rc::new(Terminal(u("auto")))]))),
             (u("FOO"), Rc::new(Nonterminal(u("WHEN")))),
             (u("OPTION"), Rc::new(Sequence(vec![Rc::new(Terminal(u("--color"))), Rc::new(Nonterminal(u("FOO")))]))),
         ]);
-        assert_eq!(get_nonterminals_resolution_order(&variable_definitions).unwrap(), vec![u("FOO"), u("OPTION")]);
+        assert_eq!(get_nonterminals_resolution_order(&nonterminal_definitions).unwrap(), vec![u("FOO"), u("OPTION")]);
     }
 
     #[test]
@@ -959,7 +959,7 @@ cargo [+{ rustup toolchain list | cut -d' ' -f1 }] [<OPTIONS>] [<COMMAND>];
     }
 
     #[test]
-    fn parses_shell_command_variable_definition() {
+    fn parses_shell_command_nonterminal_definition() {
         const INPUT: &str = r#"
 cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
 <toolchain> ::= { rustup toolchain list | cut -d' ' -f1 };
