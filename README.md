@@ -55,7 +55,7 @@ maintained separately from each other risking divergence.  On balance, it is dee
 ## Project Status
 
 Generates working completion scripts for `bash` and `fish` as well as JIT-completes although it still probably
-a bit buggy (please report!).  Zsh shell can use Bash completion script via bash compatibility mode:
+is a bit buggy (please report!).  Zsh shell can use Bash completion script via bash compatibility mode:
 
 ```Zsh
 % autoload bashcompinit
