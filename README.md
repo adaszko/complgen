@@ -4,8 +4,8 @@
 concise BNF-like grammar.  It's inspired by [compleat](https://github.com/mbrubeck/compleat/) but instead of
 requiring for the `compleat` executable to be available at completion time, it compiles the grammar down to a
 standalone shell script that can be distributed on its own.  If you're an author of a CLI tool, you can
-generate shell scripts for your command line tool on CI, and package them along with your command line tool.
-No additional software needs to be installed in order to use those custom completions.
+generate shell scripts for your command line tool on CI, and package them along with the tool.  No additional
+software besides a shell needs to be installed in order to use those custom completions.
 
 ## Demo
 
