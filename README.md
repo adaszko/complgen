@@ -18,7 +18,7 @@ There are two ways to use complgen:
 1. To generate standalone completion scripts for bash and/or fish:
 
 ```
-$ compile --bash-script grep.bash usage/small.usage
+$ complgen compile --bash-script grep.bash usage/small.usage
 $ bash
 $$ source grep.bash
 $$ grep --color <TAB>
