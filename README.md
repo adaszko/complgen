@@ -69,8 +69,8 @@ See the [subdirectory](usage/) for examples.
 
 The grammar is based on [compleat](https://github.com/mbrubeck/compleat/blob/master/README.markdown#syntax)'s one.
 
-A grammar is a series of line terminated by a semicolon (;).  Each line (roughly) represents a single variant of
-invoking the command.
+A grammar is a series of lines terminated by a semicolon (;).  Each line (roughly) represents a single variant
+of invoking the completed command.
 
  * `a b` matches `a` followed by `b`.
  * `a b | c` matches either `a b` or `c`.
