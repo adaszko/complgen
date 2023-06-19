@@ -69,8 +69,8 @@ See the [subdirectory](usage/) for examples.
 
 The grammar is based on [compleat](https://github.com/mbrubeck/compleat/blob/master/README.markdown#syntax)'s one.
 
-A grammar is a series of lines terminated by a semicolon (;).  Each line (roughly) represents a single variant
-of invoking the completed command.
+A grammar is a series of lines terminated by a semicolon (`;`).  Each line (roughly) represents a single
+variant of invoking the completed command.
 
  * `a b` matches `a` followed by `b`.
  * `a b | c` matches either `a b` or `c`.
@@ -102,11 +102,12 @@ Use parentheses to group patterns:
     * Warn about undefined variables
     * Warn about duplicate variables
 
- * Show completion hints in ZSH and Fish (Bash does not support them): `--invert-match "select non-matching lines"`
+ * Show completion hints (descriptions) in ZSH and Fish (Bash does not support them)
 
- * Support copying pieces of shell scripts that can define shell functions callable from inline shell commands ({[...]}):
-    * @bash {{{ ... }}}
-    * @fish {{{ ... }}}
-    * @zsh {{{ ... }}}
+ * Support copying pieces of shell scripts that can define shell functions callable from inline shell commands
+   (`{[...]}`):
+    * `@bash {{{ ... }}}`
+    * `@fish {{{ ... }}}`
+    * `@zsh {{{ ... }}}`
 
  * End-to-end tests that excercise the generated completion scripts and check that they behave properly.
