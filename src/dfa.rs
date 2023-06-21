@@ -597,7 +597,7 @@ mod tests {
     #[test]
     fn minimal_example() {
         use ustr::ustr;
-        let expr = Terminal(ustr("foo"));
+        let expr = Terminal(ustr("foo"), None);
         let arena = Bump::new();
         let regex = AugmentedRegex::from_expr(&expr, &arena);
         let dfa = DFA::from_regex(&regex);
@@ -644,7 +644,7 @@ mod tests {
 
     #[test]
     fn accept_hangs() {
-        let expr = Sequence(vec![Rc::new(Alternative(vec![Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Alternative(vec![Rc::new(Many1(Rc::new(Optional(Rc::new(Many1(Rc::new(Sequence(vec![Rc::new(Terminal(u("foo"))), Rc::new(Terminal(u("foo")))])))))))), Rc::new(Terminal(u("bar")))])))), Rc::new(Nonterminal(u("DIRECTORY")))])), Rc::new(Many1(Rc::new(Terminal(u("--quux")))))])), Rc::new(Sequence(vec![Rc::new(Sequence(vec![Rc::new(Many1(Rc::new(Many1(Rc::new(Many1(Rc::new(Terminal(u("bar"))))))))), Rc::new(Many1(Rc::new(Sequence(vec![Rc::new(Many1(Rc::new(Many1(Rc::new(Terminal(u("--baz"))))))), Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Nonterminal(u("DIRECTORY"))), Rc::new(Nonterminal(u("PATH")))])), Rc::new(Alternative(vec![Rc::new(Terminal(u("--baz"))), Rc::new(Sequence(vec![Rc::new(Sequence(vec![Rc::new(Terminal(u("--baz"))), Rc::new(Nonterminal(u("FILE")))])), Rc::new(Sequence(vec![Rc::new(Terminal(u("foo"))), Rc::new(Nonterminal(u("FILE")))]))]))]))]))]))))])), Rc::new(Terminal(u("bar")))]))]);
+        let expr = Sequence(vec![Rc::new(Alternative(vec![Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Alternative(vec![Rc::new(Many1(Rc::new(Optional(Rc::new(Many1(Rc::new(Sequence(vec![Rc::new(Terminal(u("foo"), None)), Rc::new(Terminal(u("foo"), None))])))))))), Rc::new(Terminal(u("bar"), None))])))), Rc::new(Nonterminal(u("DIRECTORY")))])), Rc::new(Many1(Rc::new(Terminal(u("--quux"), None))))])), Rc::new(Sequence(vec![Rc::new(Sequence(vec![Rc::new(Many1(Rc::new(Many1(Rc::new(Many1(Rc::new(Terminal(u("bar"), None)))))))), Rc::new(Many1(Rc::new(Sequence(vec![Rc::new(Many1(Rc::new(Many1(Rc::new(Terminal(u("--baz"), None)))))), Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Nonterminal(u("DIRECTORY"))), Rc::new(Nonterminal(u("PATH")))])), Rc::new(Alternative(vec![Rc::new(Terminal(u("--baz"), None)), Rc::new(Sequence(vec![Rc::new(Sequence(vec![Rc::new(Terminal(u("--baz"), None)), Rc::new(Nonterminal(u("FILE")))])), Rc::new(Sequence(vec![Rc::new(Terminal(u("foo"), None)), Rc::new(Nonterminal(u("FILE")))]))]))]))]))]))))])), Rc::new(Terminal(u("bar"), None))]))]);
         let input = [
             "--quux",
             "--quux",
@@ -719,7 +719,7 @@ mod tests {
 
     #[test]
     fn minimization_fails() {
-        let (expr, input) = (Alternative(vec![Rc::new(Many1(Rc::new(Alternative(vec![Rc::new(Terminal(u("--quux"))), Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Many1(Rc::new(Many1(Rc::new(Alternative(vec![Rc::new(Terminal(u("--baz"))), Rc::new(Nonterminal(u("FILE")))])))))), Rc::new(Nonterminal(u("FILE")))])))), Rc::new(Sequence(vec![Rc::new(Nonterminal(u("FILE"))), Rc::new(Terminal(u("foo")))]))]))])))), Rc::new(Nonterminal(u("FILE")))]), [u("--quux"), u("--baz"), u("anything"), u("anything"), u("foo")]);
+        let (expr, input) = (Alternative(vec![Rc::new(Many1(Rc::new(Alternative(vec![Rc::new(Terminal(u("--quux"), None)), Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Many1(Rc::new(Many1(Rc::new(Alternative(vec![Rc::new(Terminal(u("--baz"), None)), Rc::new(Nonterminal(u("FILE")))])))))), Rc::new(Nonterminal(u("FILE")))])))), Rc::new(Sequence(vec![Rc::new(Nonterminal(u("FILE"))), Rc::new(Terminal(u("foo"), None))]))]))])))), Rc::new(Nonterminal(u("FILE")))]), [u("--quux"), u("--baz"), u("anything"), u("anything"), u("foo")]);
         dbg!(&expr);
         dbg!(&input);
         let arena = Bump::new();
@@ -752,7 +752,7 @@ mod tests {
 
     #[test]
     fn minimization_counterexample2() {
-        let (expr, input) = (Sequence(vec![Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Many1(Rc::new(Many1(Rc::new(Terminal(u("--baz"))))))), Rc::new(Nonterminal(u("FILE")))])), Rc::new(Terminal(u("--baz")))])), Rc::new(Many1(Rc::new(Alternative(vec![Rc::new(Nonterminal(u("FILE"))), Rc::new(Nonterminal(u("FILE")))]))))]), [u("anything"), u("--baz"), u("anything"), u("anything")]);
+        let (expr, input) = (Sequence(vec![Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Many1(Rc::new(Many1(Rc::new(Terminal(u("--baz"), None)))))), Rc::new(Nonterminal(u("FILE")))])), Rc::new(Terminal(u("--baz"), None))])), Rc::new(Many1(Rc::new(Alternative(vec![Rc::new(Nonterminal(u("FILE"))), Rc::new(Nonterminal(u("FILE")))]))))]), [u("anything"), u("--baz"), u("anything"), u("anything")]);
         dbg!(&expr);
         let arena = Bump::new();
         let regex = AugmentedRegex::from_expr(&expr, &arena);

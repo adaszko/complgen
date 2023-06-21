@@ -5,7 +5,7 @@ use nom::{
     bytes::complete::{is_not, tag, take_while1, escaped, take_till, take_while},
     character::{complete::{char, multispace1, one_of}, is_alphanumeric},
     multi::many0,
-    IResult, combinator::fail, error::context,
+    IResult, combinator::{fail, opt}, error::context,
 };
 
 use complgen::{Error, Result};
@@ -14,7 +14,7 @@ use ustr::{Ustr, ustr, UstrMap, UstrSet};
 // Can't use an arena here until proptest supports non-owned types: https://github.com/proptest-rs/proptest/issues/9
 #[derive(Clone, PartialEq)]
 pub enum Expr {
-    Terminal(Ustr), // e.g. an option: "--help", or a command: "build"
+    Terminal(Ustr, Option<Ustr>), // e.g. an option: "--help", or a command: "build"
     Nonterminal(Ustr), // e.g. <FILE>, <PATH>, <DIR>, etc.
     Command(Ustr), // e.g. { ls }
     Sequence(Vec<Rc<Expr>>),
@@ -26,8 +26,8 @@ pub enum Expr {
 impl std::fmt::Debug for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Terminal(arg0) => f.write_fmt(format_args!(r#"Rc::new(Terminal(ustr("{}")))"#, arg0)),
-            Self::Nonterminal(arg0) => f.write_fmt(format_args!(r#"Rc::new(Nonterminal(ustr("{}")))"#, arg0)),
+            Self::Terminal(term, descr) => f.write_fmt(format_args!(r#"Rc::new(Terminal(ustr("{term}"), {:?})))"#, descr)),
+            Self::Nonterminal(nonterm) => f.write_fmt(format_args!(r#"Rc::new(Nonterminal(ustr("{nonterm}")))"#)),
             Self::Command(arg0) => f.write_fmt(format_args!(r#"Rc::new(Command(ustr("{}")))"#, arg0)),
             Self::Sequence(arg0) => f.write_fmt(format_args!(r#"Rc::new(Sequence(vec!{:?}))"#, arg0)),
             Self::Alternative(arg0) => f.write_fmt(format_args!(r#"Rc::new(Alternative(vec!{:?}))"#, arg0)),
@@ -39,7 +39,7 @@ impl std::fmt::Debug for Expr {
 
 fn do_to_railroad_diagram(expr: Rc<Expr>) -> Box<dyn railroad::Node> {
     match expr.as_ref() {
-        Expr::Terminal(s) => Box::new(railroad::Terminal::new(s.as_str().to_string())),
+        Expr::Terminal(s, _) => Box::new(railroad::Terminal::new(s.as_str().to_string())),
         Expr::Nonterminal(s) => Box::new(railroad::NonTerminal::new(s.as_str().to_string())),
         Expr::Command(s) => Box::new(railroad::Comment::new(s.as_str().to_string())),
         Expr::Sequence(subexprs) => {
@@ -110,15 +110,30 @@ fn terminal(input: &str) -> IResult<&str, &str> {
         c.is_ascii() && (is_alphanumeric(c as u8) || c == '-' || c == '+' || c == '_')
     }
     let (input, term) = escaped(take_while1(is_terminal_char), '\\', one_of(r#"()[]<>.|;"#))(input)?;
-    if term.len() == 0 {
+    if term.is_empty() {
         return fail(input);
     }
     Ok((input, term))
 }
 
-fn terminal_expr(input: &str) -> IResult<&str, Expr> {
-    let (input, literal) = context("terminal", terminal)(input)?;
-    Ok((input, Expr::Terminal(ustr(literal))))
+fn description(input: &str) -> IResult<&str, &str> {
+    let (input, _) = char('"')(input)?;
+    let (input, descr) = escaped(take_till(|c| c == '"'), '\\', char('"'))(input)?;
+    let (input, _) = char('"')(input)?;
+    Ok((input, descr))
+}
+
+fn multiblanks1_description(input: &str) -> IResult<&str, &str> {
+    let (input, _) = multiblanks1(input)?;
+    let (input, descr) = description(input)?;
+    Ok((input, descr))
+}
+
+fn terminal_opt_description_expr(input: &str) -> IResult<&str, Expr> {
+    let (input, term) = terminal(input)?;
+    let (input, descr) = opt(multiblanks1_description)(input)?;
+    let expr = Expr::Terminal(ustr(term), descr.map(ustr));
+    Ok((input, expr))
 }
 
 fn nonterminal(input: &str) -> IResult<&str, &str> {
@@ -179,7 +194,7 @@ fn expr_no_alternative_no_sequence(input: &str) -> IResult<&str, Expr> {
         optional_expr,
         parenthesized_expr,
         command_expr,
-        terminal_expr,
+        terminal_opt_description_expr,
     ))(input)?;
 
     if let Ok((input, ())) = one_or_more_tag(input) {
@@ -314,7 +329,7 @@ pub struct Validated {
 
 fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>) -> Rc<Expr> {
     match expr.as_ref() {
-        Expr::Terminal(_) => Rc::clone(&expr),
+        Expr::Terminal(..) => Rc::clone(&expr),
         Expr::Nonterminal(name) => {
             match vars.get(&name) {
                 Some(replacement) => {
@@ -382,7 +397,7 @@ fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>) -> Rc<Expr> {
 
 fn do_get_expression_nonterminals(expr: Rc<Expr>, deps: &mut UstrSet) {
     match expr.as_ref() {
-        Expr::Terminal(_) => {},
+        Expr::Terminal(..) => {},
         Expr::Nonterminal(varname) => {
             deps.insert(*varname);
         },
@@ -582,7 +597,7 @@ pub mod tests {
     use super::*;
 
     fn arb_literal(inputs: Rc<Vec<Ustr>>) -> BoxedStrategy<Rc<Expr>> {
-        (0..inputs.len()).prop_map(move |index| Rc::new(Terminal(ustr(&inputs[index])))).boxed()
+        (0..inputs.len()).prop_map(move |index| Rc::new(Terminal(ustr(&inputs[index]), None))).boxed()
     }
 
     fn arb_nonterminal(nonterminals: Rc<Vec<Ustr>>) -> BoxedStrategy<Rc<Expr>> {
@@ -632,7 +647,7 @@ pub mod tests {
 
     pub fn do_arb_match(e: Rc<Expr>, rng: &mut TestRng, max_width: usize, output: &mut Vec<Ustr>) {
         match e.as_ref() {
-            Terminal(s) => output.push(*s),
+            Terminal(s, _) => output.push(*s),
             Nonterminal(_) => output.push(ustr("anything")),
             Command(_) => output.push(ustr("anything")),
             Sequence(v) => {
@@ -674,22 +689,22 @@ pub mod tests {
     #[test]
     fn parses_word_terminal() {
         const INPUT: &str = r#"foo"#;
-        let ("", e) = terminal_expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Terminal(u("foo")));
+        let ("", e) = terminal_opt_description_expr(INPUT).unwrap() else { panic!("parsing error"); };
+        assert_eq!(e, Terminal(u("foo"), None));
     }
 
     #[test]
     fn parses_short_option_terminal() {
         const INPUT: &str = r#"-f"#;
-        let ("", e) = terminal_expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Terminal(u("-f")));
+        let ("", e) = terminal_opt_description_expr(INPUT).unwrap() else { panic!("parsing error"); };
+        assert_eq!(e, Terminal(u("-f"), None));
     }
 
     #[test]
     fn parses_long_option_terminal() {
         const INPUT: &str = r#"--foo"#;
-        let ("", e) = terminal_expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Terminal(u("--foo")));
+        let ("", e) = terminal_opt_description_expr(INPUT).unwrap() else { panic!("parsing error"); };
+        assert_eq!(e, Terminal(u("--foo"), None));
     }
 
     #[test]
@@ -740,8 +755,8 @@ pub mod tests {
         assert_eq!(
             e,
             Alternative(vec![
-                Rc::new(Sequence(vec![Rc::new(Terminal(u("a"))), Rc::new(Terminal(u("b")))])),
-                Rc::new(Terminal(u("c")))
+                Rc::new(Sequence(vec![Rc::new(Terminal(u("a"), None)), Rc::new(Terminal(u("b"), None))])),
+                Rc::new(Terminal(u("c"), None))
             ])
         );
     }
@@ -753,8 +768,8 @@ pub mod tests {
         assert_eq!(
             e,
             Sequence(vec![
-                Rc::new(Terminal(u("a"))),
-                Rc::new(Alternative(vec![Rc::new(Terminal(u("b"))), Rc::new(Terminal(u("c")))])),
+                Rc::new(Terminal(u("a"), None)),
+                Rc::new(Alternative(vec![Rc::new(Terminal(u("b"), None)), Rc::new(Terminal(u("c"), None))])),
             ])
         );
     }
@@ -767,7 +782,7 @@ pub mod tests {
             v,
             Statement::CallVariant {
                 head: u("foo"),
-                expr: Rc::new(Terminal(u("bar")))
+                expr: Rc::new(Terminal(u("bar"), None))
             }
         );
     }
@@ -783,8 +798,8 @@ foo baz;
             g,
             Grammar {
                 statements: vec![
-                    Statement::CallVariant { head: u("foo"), expr: Rc::new(Terminal(u("bar"))) },
-                    Statement::CallVariant { head: u("foo"), expr: Rc::new(Terminal(u("baz"))) }
+                    Statement::CallVariant { head: u("foo"), expr: Rc::new(Terminal(u("bar"), None)) },
+                    Statement::CallVariant { head: u("foo"), expr: Rc::new(Terminal(u("baz"), None)) }
                 ],
             }
         );
@@ -800,15 +815,15 @@ foo baz;
             Grammar {
                 statements: vec![
                     Statement::CallVariant { head: u("darcs"), expr: Rc::new(Sequence(vec![
-                    Rc::new(Terminal(u("help"))),
+                    Rc::new(Terminal(u("help"), None)),
                     Rc::new(Sequence(vec![
                         Rc::new(Many1(Rc::new(Alternative(vec![
-                            Rc::new(Alternative(vec![Rc::new(Terminal(u("-v"))), Rc::new(Terminal(u("--verbose")))])),
-                            Rc::new(Alternative(vec![Rc::new(Terminal(u("-q"))), Rc::new(Terminal(u("--quiet")))])),
+                            Rc::new(Alternative(vec![Rc::new(Terminal(u("-v"), None)), Rc::new(Terminal(u("--verbose"), None))])),
+                            Rc::new(Alternative(vec![Rc::new(Terminal(u("-q"), None)), Rc::new(Terminal(u("--quiet"), None))])),
                         ],)),)),
                         Rc::new(Optional(Rc::new(Sequence(vec![
                             Rc::new(Nonterminal(u("DARCS_COMMAND"))),
-                            Rc::new(Optional(Rc::new(Terminal(u("DARCS_SUBCOMMAND"))))),
+                            Rc::new(Optional(Rc::new(Terminal(u("DARCS_SUBCOMMAND"), None)))),
                         ])))),
                     ])),
                 ])) },
@@ -871,8 +886,8 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
             Grammar {
                 statements: vec![
                     Statement::CallVariant { head: u("grep"), expr: Rc::new(Sequence(vec![Rc::new(Many1(Rc::new(Optional(Rc::new(Nonterminal(ustr("OPTION"))))))), Rc::new(Sequence(vec![Rc::new(Nonterminal(ustr("PATTERNS"))), Rc::new(Many1(Rc::new(Optional(Rc::new(Nonterminal(ustr("FILE")))))))]))])) },
-                    Statement::NonterminalDefinition { symbol: u("OPTION"), expr: Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color"))), Rc::new(Nonterminal(ustr("WHEN")))])) },
-                    Statement::NonterminalDefinition { symbol: u("WHEN"), expr: Rc::new(Alternative(vec![Rc::new(Terminal(ustr("always"))), Rc::new(Terminal(ustr("never"))), Rc::new(Terminal(ustr("auto")))])) },
+                    Statement::NonterminalDefinition { symbol: u("OPTION"), expr: Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color"), None)), Rc::new(Nonterminal(ustr("WHEN")))])) },
+                    Statement::NonterminalDefinition { symbol: u("WHEN"), expr: Rc::new(Alternative(vec![Rc::new(Terminal(ustr("always"), None)), Rc::new(Terminal(ustr("never"), None)), Rc::new(Terminal(ustr("auto"), None))])) },
                 ],
             }
         );
@@ -901,10 +916,10 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
             Grammar {
                 statements: vec![
                     Statement::NonterminalDefinition { symbol: u("OPTION"), expr: Rc::new(Alternative(vec![
-                        Rc::new(Terminal(u("--extended-regexp"))),
-                        Rc::new(Terminal(u("--fixed-strings"))),
-                        Rc::new(Terminal(u("--basic-regexp"))),
-                        Rc::new(Terminal(u("--perl-regexp"))),
+                        Rc::new(Terminal(u("--extended-regexp"), None)),
+                        Rc::new(Terminal(u("--fixed-strings"), None)),
+                        Rc::new(Terminal(u("--basic-regexp"), None)),
+                        Rc::new(Terminal(u("--perl-regexp"), None)),
                     ]))},
                 ],
             }
@@ -932,9 +947,9 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
     #[test]
     fn computes_nonterminals_resolution_order() {
         let nonterminal_definitions = UstrMap::from_iter([
-            (u("WHEN"), Rc::new(Alternative(vec![Rc::new(Terminal(u("always"))), Rc::new(Terminal(u("never"))), Rc::new(Terminal(u("auto")))]))),
+            (u("WHEN"), Rc::new(Alternative(vec![Rc::new(Terminal(u("always"), None)), Rc::new(Terminal(u("never"), None)), Rc::new(Terminal(u("auto"), None))]))),
             (u("FOO"), Rc::new(Nonterminal(u("WHEN")))),
-            (u("OPTION"), Rc::new(Sequence(vec![Rc::new(Terminal(u("--color"))), Rc::new(Nonterminal(u("FOO")))]))),
+            (u("OPTION"), Rc::new(Sequence(vec![Rc::new(Terminal(u("--color"), None)), Rc::new(Nonterminal(u("FOO")))]))),
         ]);
         assert_eq!(get_nonterminals_resolution_order(&nonterminal_definitions).unwrap(), vec![u("FOO"), u("OPTION")]);
     }
@@ -951,7 +966,7 @@ cargo [+{ rustup toolchain list | cut -d' ' -f1 }] [<OPTIONS>] [<COMMAND>];
                 statements: vec![
                     Statement::CallVariant {
                         head: u("cargo"),
-                        expr: Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("+"))), Rc::new(Command(u("rustup toolchain list | cut -d' ' -f1")))])))), Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Nonterminal(ustr("OPTIONS"))))), Rc::new(Optional(Rc::new(Nonterminal(ustr("COMMAND")))))]))])),
+                        expr: Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("+"), None)), Rc::new(Command(u("rustup toolchain list | cut -d' ' -f1")))])))), Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Nonterminal(ustr("OPTIONS"))))), Rc::new(Optional(Rc::new(Nonterminal(ustr("COMMAND")))))]))])),
                     },
                 ],
             }
@@ -971,7 +986,7 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
                 statements: vec![
                     Statement::CallVariant {
                         head: u("cargo"),
-                        expr: Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("+"))), Rc::new(Nonterminal(ustr("toolchain")))])))), Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Nonterminal(ustr("OPTIONS"))))), Rc::new(Optional(Rc::new(Nonterminal(ustr("COMMAND")))))]))])),
+                        expr: Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("+"), None)), Rc::new(Nonterminal(ustr("toolchain")))])))), Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Nonterminal(ustr("OPTIONS"))))), Rc::new(Optional(Rc::new(Nonterminal(ustr("COMMAND")))))]))])),
                     },
                     Statement::NonterminalDefinition {
                         symbol: u("toolchain"),
@@ -979,6 +994,34 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
                     },
                 ],
             }
+        );
+    }
+
+    #[test]
+    fn parses_descr() {
+        const INPUT: &str = r#""PATTERNS are extended regular expressions""#;
+        let ("", e) = description(INPUT).unwrap() else { panic!("parsing error"); };
+        assert_eq!(e, "PATTERNS are extended regular expressions");
+    }
+
+    #[test]
+    fn parses_term_descr() {
+        const INPUT: &str = r#"--extended-regexp "PATTERNS are extended regular expressions""#;
+        let ("", e) = terminal_opt_description_expr(INPUT).unwrap() else { panic!("parsing error"); };
+        assert_eq!(e, Expr::Terminal(ustr("--extended-regexp"), Some(ustr("PATTERNS are extended regular expressions"))));
+    }
+
+    #[test]
+    fn parses_description() {
+        const INPUT: &str = r#"
+grep --extended-regexp "PATTERNS are extended regular expressions";
+"#;
+        let g = parse(INPUT).unwrap();
+        assert_eq!(
+            g.statements,
+            vec![
+                Statement::CallVariant { head: u("grep"), expr: Rc::new(Terminal(ustr("--extended-regexp"), Some(u("PATTERNS are extended regular expressions")))) }
+            ],
         );
     }
 }
