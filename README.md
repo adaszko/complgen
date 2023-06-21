@@ -96,18 +96,3 @@ Use parentheses to group patterns:
  * Non-regular grammars are not supported, e.g. `find(1)`'s arguments can't be completed precisely by
    complgen.
 
-## Roadmap
-
- * Grammar validation:
-    * Warn about undefined nonterminals
-    * Warn about duplicate nonterminals
-
- * Show completion hints (descriptions) in ZSH and Fish (Bash does not support them)
-
- * Support copying pieces of shell scripts that can define shell functions callable from inline shell commands
-   (`{[...]}`):
-    * `@bash {{{ ... }}}`
-    * `@fish {{{ ... }}}`
-    * `@zsh {{{ ... }}}`
-
- * End-to-end tests that excercise the generated completion scripts and check that they behave properly.
