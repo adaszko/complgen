@@ -108,4 +108,22 @@ grep [<OPTION>]...;
         let expected = HashSet::from_iter(["always", "auto", "never", "--extended-regexp", "--color"].map(|s| s.to_string()));
         assert_eq!(generated, expected);
     }
+
+    #[test]
+    fn completes_after_command() {
+        const GRAMMAR: &str = r#"
+cargo [<toolchain>] (--version | --help);
+<toolchain> ::= { rustup toolchain list | cut -d' ' -f1 | sed 's/^/+/' };
+"#;
+        let g = parse(GRAMMAR).unwrap();
+        let validated = g.validate().unwrap();
+        let arena = Bump::new();
+        let regex = AugmentedRegex::from_expr(&validated.expr, &arena);
+        let dfa = DFA::from_regex(&regex);
+        let dfa = dfa.minimize();
+        let input = vec!["foo"];
+        let generated: HashSet<_> = HashSet::from_iter(get_completions(&dfa, &input));
+        let expected = HashSet::from_iter(["--version", "--help"].map(|s| s.to_string()));
+        assert_eq!(generated, expected);
+    }
 }
