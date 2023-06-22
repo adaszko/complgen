@@ -13,6 +13,7 @@ use crate::regex::AugmentedRegex;
 mod grammar;
 mod dfa;
 mod bash;
+mod zsh;
 mod fish;
 mod complete;
 mod regex;
@@ -52,6 +53,9 @@ struct CompileArgs {
     fish_script: Option<String>,
 
     #[clap(long)]
+    zsh_script: Option<String>,
+
+    #[clap(long)]
     dfa_dot: Option<String>,
 
     #[clap(long)]
@@ -81,8 +85,8 @@ fn complete(args: &CompleteArgs) -> Result<()> {
 
 
 fn compile(args: &CompileArgs) -> Result<()> {
-    if args.railroad_svg.is_none() && args.dfa_dot.is_none() && args.bash_script.is_none() && args.fish_script.is_none() {
-        eprintln!("Please specify at least one of --railroad-svg, --dfa-dot, --bash-script, --fish-script options");
+    if args.railroad_svg.is_none() && args.dfa_dot.is_none() && args.bash_script.is_none() && args.fish_script.is_none() && args.zsh_script.is_none() {
+        eprintln!("Please specify at least one of --railroad-svg, --dfa-dot, --bash-script, --fish-script, --zsh-script options");
         std::process::exit(1);
     }
 
@@ -122,6 +126,14 @@ fn compile(args: &CompileArgs) -> Result<()> {
         fish::write_completion_script(&mut output, &validated.command, &dfa).unwrap();
         let mut fish_completion_script = std::fs::File::create(path).unwrap();
         fish_completion_script.write_all(output.as_bytes()).unwrap();
+    }
+
+    if let Some(path) = &args.zsh_script {
+        log::debug!("Writing Zsh completion script");
+        let mut output = String::default();
+        zsh::write_completion_script(&mut output, &validated.command, &dfa).unwrap();
+        let mut zsh_completion_script = std::fs::File::create(path).unwrap();
+        zsh_completion_script.write_all(output.as_bytes()).unwrap();
     }
 
     Ok(())

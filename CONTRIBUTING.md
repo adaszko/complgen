@@ -24,6 +24,7 @@ The stages are as follows:
         * [ZSH – Writing own completion functions](https://askql.wordpress.com/2011/01/11/zsh-writing-own-completion/)
         * [Dynamic zsh autocomplete for custom commands](https://unix.stackexchange.com/questions/239528/dynamic-zsh-autocomplete-for-custom-commands/240192#240192)
         * [Writing zsh completion scripts](https://blog.mads-hartmann.com/2017/08/06/writing-zsh-completion-scripts.html)
+        * [Current Word Completion](https://jonathanh.co.uk/blog/current-word-completion/)
 
 `complgen` is based on [compleat](https://github.com/mbrubeck/compleat), so it may also be useful sometimes to
 reference it.
