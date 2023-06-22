@@ -76,21 +76,20 @@ end
     while test $word_index -lt $COMP_CWORD
         set --query transitions[$state] || return 1
 
-        set --local -- word $COMP_WORDS[$word_index]
-        if not contains -- $word $literals
-            return 1
-        end
-        set --local literal_id (contains --index -- $word $literals)
-
         set --local --erase inputs
         set --local --erase tos
         eval $transitions[$state]
 
-        if contains -- $literal_id $inputs
-            set --local index (contains --index -- $literal_id $inputs)
-            set state $tos[$index]
-            set word_index (math $word_index + 1)
-            continue
+        set --local -- word $COMP_WORDS[$word_index]
+
+        if contains -- $word $literals
+            set --local literal_id (contains --index -- $word $literals)
+            if contains -- $literal_id $inputs
+                set --local index (contains --index -- $literal_id $inputs)
+                set state $tos[$index]
+                set word_index (math $word_index + 1)
+                continue
+            end
         end
 
         if set --query match_anything_transitions_from[$state]
