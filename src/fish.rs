@@ -29,7 +29,8 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
             continue;
         }
         let state_inputs: String = itertools::join(transitions.iter().map(|(literal_id, _)| format!("{}", literal_id)), " ");
-        let state_tos: String = itertools::join(transitions.iter().map(|(_, to)| format!("{}", to)), " ");
+        let state_tos: String = itertools::join(transitions.iter().map(|(_, to)| format!("{}", to + 1)), " ");
+        // TODO Make two arrays out of transitions: transition_inputs and transition_tos to reduce output size
         writeln!(buffer, r#"    set transitions[{}] "set inputs {state_inputs}; set tos {state_tos}""#, state+1)?;
     }
 
