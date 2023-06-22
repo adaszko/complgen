@@ -1,4 +1,4 @@
-This document is intended to lower the bar for contributing to the `complgen`.
+This document is intended to lower the bar for contributing to `complgen`.
 
 # How it works
 
