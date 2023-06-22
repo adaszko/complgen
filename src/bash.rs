@@ -72,24 +72,28 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     local word_index=1
     while [[ $word_index -lt $COMP_CWORD ]]; do
         [[ -v "transitions[$state]" ]] || return 1
+
         local state_transitions_initializer=${{transitions[$state]}}
         declare -A state_transitions
         eval "state_transitions=$state_transitions_initializer"
+
         local word=${{COMP_WORDS[$word_index]}}
-        if [[ ! -v "literals[$word]" ]]; then
-            return 1
+
+        if [[ -v "literals[$word]" ]]; then
+            local literal_id=${{literals[$word]}}
+            if [[ -v "state_transitions[$literal_id]" ]]; then
+                state=${{state_transitions[$literal_id]}}
+                word_index=$((word_index + 1))
+                continue
+            fi
         fi
-        local literal_id=${{literals[$word]}}
-        if [[ -v "state_transitions[$literal_id]" ]]; then
-            state=${{state_transitions[$literal_id]}}
-            word_index=$((word_index + 1))
-            continue
-        fi
+
         if [[ -v "match_anything_transitions[$state]" ]]; then
             state=${{match_anything_transitions[$state]}}
             word_index=$((word_index + 1))
             continue
         fi
+
         return 1
     done
     [[ -v "transitions[$state]" ]] || return 1
