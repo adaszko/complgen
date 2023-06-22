@@ -20,10 +20,10 @@ The stages are as follows:
     * Bash: [Creating a bash completion script](https://iridakos.com/programming/2018/03/01/bash-programmable-completion-tutorial)
     * Fish: [Writing your own completions — fish-shell documentation](https://fishshell.com/docs/current/completions.html)
     * ZSH (zsh's completion system can be somewhat arcane in places):
-        * [zsh-completions/zsh-completions-howto.org at master · zsh-users/zsh-completions · GitHub](https://github.com/zsh-users/zsh-completions/blob/master/zsh-completions-howto.org)
-        * [ZSH – Writing own completion functions | Ask QL](https://askql.wordpress.com/2011/01/11/zsh-writing-own-completion/)
-        * [Dynamic zsh autocomplete for custom commands - Unix & Linux Stack Exchange](https://unix.stackexchange.com/questions/239528/dynamic-zsh-autocomplete-for-custom-commands/240192#240192)
-        * [Writing zsh completion scripts | Mads Hartmann](https://blog.mads-hartmann.com/2017/08/06/writing-zsh-completion-scripts.html)
+        * [zsh-completions/zsh-completions-howto.org](https://github.com/zsh-users/zsh-completions/blob/master/zsh-completions-howto.org)
+        * [ZSH – Writing own completion functions](https://askql.wordpress.com/2011/01/11/zsh-writing-own-completion/)
+        * [Dynamic zsh autocomplete for custom commands](https://unix.stackexchange.com/questions/239528/dynamic-zsh-autocomplete-for-custom-commands/240192#240192)
+        * [Writing zsh completion scripts](https://blog.mads-hartmann.com/2017/08/06/writing-zsh-completion-scripts.html)
 
 `complgen` is based on [compleat](https://github.com/mbrubeck/compleat), so it may also be useful sometimes to
 reference it.
