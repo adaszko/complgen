@@ -6,6 +6,9 @@ use ustr::{Ustr, UstrMap};
 use crate::dfa::DFA;
 
 
+// array indices start at 1 in fish , not 0 (!)
+
+
 fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
     let id_from_input: UstrMap<usize> = dfa.get_all_literals().into_iter().enumerate().map(|(id, ustr)| (ustr, id + 1)).collect();
     let literals: String = {
@@ -104,7 +107,7 @@ end
 "#, starting_state = dfa.starting_state + 1)?;
 
     let command_id_from_state: HashMap<StateId, usize> = dfa.get_command_transitions().into_iter().map(|(state, cmd)| (state, *id_from_command.get(&cmd).unwrap())).collect();
-    let command_states = itertools::join(command_id_from_state.iter().map(|(state, _)| state), " ");
+    let command_states = itertools::join(command_id_from_state.iter().map(|(state, _)| state + 1), " ");
     writeln!(buffer, r#"    set command_states {command_states}"#)?;
     let command_ids = itertools::join(command_id_from_state.into_iter().map(|(_, id)| id), " ");
     writeln!(buffer, r#"    set command_ids {command_ids}"#)?;
