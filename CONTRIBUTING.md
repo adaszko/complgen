@@ -100,7 +100,7 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
 <FILE> ::= { ls };
 ```
 
-it's abstract syntax tree can be visualized as a railroad diagram:
+its abstract syntax tree can be visualized as a railroad diagram:
 
 ![Railroad diagram](assets/railroad.svg)
 
