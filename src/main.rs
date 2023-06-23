@@ -5,10 +5,9 @@ use bumpalo::Bump;
 use clap::Parser;
 
 use complgen::Result;
-use grammar::ValidGrammar;
+use grammar::{ValidGrammar, Grammar};
 
 use crate::dfa::DFA;
-use crate::grammar::parse;
 use crate::regex::AugmentedRegex;
 
 mod grammar;
@@ -66,7 +65,7 @@ struct CompileArgs {
 
 fn complete(args: &CompleteArgs) -> Result<()> {
     let input = std::fs::read_to_string(&args.usage_file_path).unwrap();
-    let grammar = parse(&input)?;
+    let grammar = Grammar::parse(&input)?;
     let validated = ValidGrammar::from_grammar(grammar)?;
 
     if let Some(railroad_svg_path) = &args.railroad_svg {
@@ -92,7 +91,7 @@ fn compile(args: &CompileArgs) -> Result<()> {
     }
 
     let input = std::fs::read_to_string(&args.usage_file_path).unwrap();
-    let grammar = parse(&input)?;
+    let grammar = Grammar::parse(&input)?;
     let validated = ValidGrammar::from_grammar(grammar)?;
     let arena = Bump::new();
 

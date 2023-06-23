@@ -567,21 +567,23 @@ fn get_nonterminals_resolution_order(nonterminal_definitions: &UstrMap<Rc<Expr>>
 }
 
 
-pub fn parse(input: &str) -> Result<Grammar> {
-    let (input, statements) = match grammar(input) {
-        Ok((input, statements)) => (input, statements),
-        Err(e) => return Err(Error::ParsingError(e.to_string())),
-    };
+impl Grammar {
+    pub fn parse(input: &str) -> Result<Self> {
+        let (input, statements) = match grammar(input) {
+            Ok((input, statements)) => (input, statements),
+            Err(e) => return Err(Error::ParsingError(e.to_string())),
+        };
 
-    if !input.is_empty() {
-        return Err(Error::TrailingInput(input.to_owned()));
+        if !input.is_empty() {
+            return Err(Error::TrailingInput(input.to_owned()));
+        }
+
+        let g = Grammar {
+            statements,
+        };
+
+        Ok(g)
     }
-
-    let g = Grammar {
-        statements,
-    };
-
-    Ok(g)
 }
 
 
@@ -792,7 +794,7 @@ pub mod tests {
 foo bar;
 foo baz;
 "#;
-        let g = parse(INPUT).unwrap();
+        let g = Grammar::parse(INPUT).unwrap();
         assert_eq!(
             g,
             Grammar {
@@ -808,7 +810,7 @@ foo baz;
     fn bug1() {
         // Did not consider whitespace before ...
         const INPUT: &str = "darcs help ( ( -v | --verbose ) | ( -q | --quiet ) ) ... [<DARCS_COMMAND> [DARCS_SUBCOMMAND]]  ;";
-        let g = parse(INPUT).unwrap();
+        let g = Grammar::parse(INPUT).unwrap();
         assert_eq!(
             g,
             Grammar {
@@ -869,7 +871,7 @@ darcs check ( ( --complete | --partial ) | ( --no-test | --test ) | ( --leave-te
 darcs repair ( --repodir <DIRECTORY> | --umask <UMASK> | ( --debug | --debug-verbose | --debug-http | ( -v | --verbose ) | ( -q | --quiet ) | --standard-verbosity ) | --timings | ( --posthook <COMMAND> | --no-posthook ) | ( --prompt-posthook | --run-posthook ) | ( --prehook <COMMAND> | --no-prehook ) | ( --prompt-prehook | --run-prehook ) ) ... ;
 darcs convert ( ( --repo-name <DIRECTORY> | --repodir <DIRECTORY> ) | ( --set-scripts-executable | --dont-set-scripts-executable ) | ( --ssh-cm | --no-ssh-cm ) | ( --http-pipelining | --no-http-pipelining ) | --no-cache | ( --debug | --debug-verbose | --debug-http | ( -v | --verbose ) | ( -q | --quiet ) | --standard-verbosity ) | --timings | ( --posthook <COMMAND> | --no-posthook ) | ( --prompt-posthook | --run-posthook ) | ( --prehook <COMMAND> | --no-prehook ) | ( --prompt-prehook | --run-prehook ) ) ... <SOURCE> [<DESTINATION>];
 "#;
-        let _ = parse(INPUT).unwrap();
+        let _ = Grammar::parse(INPUT).unwrap();
     }
 
     #[test]
@@ -879,7 +881,7 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
 <OPTION> ::= --color <WHEN>;
 <WHEN> ::= always | never | auto;
 "#;
-        let g = parse(INPUT).unwrap();
+        let g = Grammar::parse(INPUT).unwrap();
         assert_eq!(
             g,
             Grammar {
@@ -909,7 +911,7 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
 # another comment
            ;
 "#;
-        let g = parse(INPUT).unwrap();
+        let g = Grammar::parse(INPUT).unwrap();
         assert_eq!(
             g,
             Grammar {
@@ -958,7 +960,7 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
         const INPUT: &str = r#"
 cargo [+{ rustup toolchain list | cut -d' ' -f1 }] [<OPTIONS>] [<COMMAND>];
 "#;
-        let g = parse(INPUT).unwrap();
+        let g = Grammar::parse(INPUT).unwrap();
         assert_eq!(
             g,
             Grammar {
@@ -978,7 +980,7 @@ cargo [+{ rustup toolchain list | cut -d' ' -f1 }] [<OPTIONS>] [<COMMAND>];
 cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
 <toolchain> ::= { rustup toolchain list | cut -d' ' -f1 };
 "#;
-        let g = parse(INPUT).unwrap();
+        let g = Grammar::parse(INPUT).unwrap();
         assert_eq!(
             g,
             Grammar {
@@ -1015,7 +1017,7 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
         const INPUT: &str = r#"
 grep --extended-regexp "PATTERNS are extended regular expressions";
 "#;
-        let g = parse(INPUT).unwrap();
+        let g = Grammar::parse(INPUT).unwrap();
         assert_eq!(
             g.statements,
             vec![
