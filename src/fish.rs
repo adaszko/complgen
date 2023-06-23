@@ -10,7 +10,7 @@ use crate::dfa::DFA;
 
 
 fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
-    let id_from_input: UstrMap<usize> = dfa.get_all_literals().into_iter().enumerate().map(|(id, ustr)| (ustr, id + 1)).collect();
+    let id_from_input: UstrMap<usize> = dfa.get_all_literals().into_iter().enumerate().map(|(id, (ustr, _))| (ustr, id + 1)).collect();
     let literals: String = {
         let mut literals: Vec<(Ustr, usize)> = id_from_input.iter().map(|(s, id)| (*s, *id)).collect();
         literals.sort_unstable_by_key(|(_, id)| *id);

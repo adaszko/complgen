@@ -24,7 +24,7 @@ use crate::dfa::DFA;
 /// accepts any word
 ///
 fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
-    let id_from_input: UstrMap<usize> = dfa.get_all_literals().into_iter().enumerate().map(|(id, ustr)| (ustr, id)).collect();
+    let id_from_input: UstrMap<usize> = dfa.get_all_literals().into_iter().enumerate().map(|(id, (ustr, _))| (ustr, id)).collect();
 
     writeln!(buffer, r#"    declare -A literals"#)?;
     let literals: String = itertools::join(id_from_input.iter().map(|(literal, id)| format!("[{literal}]={id}")), " ");
