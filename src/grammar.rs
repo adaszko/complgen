@@ -368,12 +368,20 @@ impl ValidGrammar {
             }
         };
 
-        let mut nonterminal_definitions: UstrMap<Rc<Expr>> = grammar.statements.iter().filter_map(|v|
-            match v {
-                Statement::CallVariant { .. } => None,
-                Statement::NonterminalDefinition { symbol, expr: rhs } => Some((*symbol, Rc::clone(&rhs))),
+        let mut nonterminal_definitions: UstrMap<Rc<Expr>> = {
+            let mut nonterminal_definitions: UstrMap<Rc<Expr>> = Default::default();
+            for definition in &grammar.statements {
+                let (symbol, expr) = match definition {
+                    Statement::NonterminalDefinition { symbol, expr } => (*symbol, expr),
+                    Statement::CallVariant { .. } => continue,
+                };
+                if nonterminal_definitions.contains_key(&symbol) {
+                    return Err(Error::DuplicateNonnterminalDefinition(symbol));
+                }
+                nonterminal_definitions.insert(symbol, Rc::clone(&expr));
             }
-        ).collect();
+            nonterminal_definitions
+        };
 
         for nonterminal in get_nonterminals_resolution_order(&nonterminal_definitions)? {
             let e = Rc::clone(nonterminal_definitions.get(&nonterminal).unwrap());
@@ -1024,5 +1032,16 @@ grep --extended-regexp "PATTERNS are extended regular expressions";
                 Statement::CallVariant { head: u("grep"), expr: Rc::new(Terminal(ustr("--extended-regexp"), Some(u("PATTERNS are extended regular expressions")))) }
             ],
         );
+    }
+
+    #[test]
+    fn detects_duplicated_nonterminals() {
+        const INPUT: &str = r#"
+grep [<OPTION>]... <PATTERNS> [<FILE>]...;
+<OPTION> ::= --color <WHEN>;
+<OPTION> ::= always | never | auto;
+"#;
+        let g = Grammar::parse(INPUT).unwrap();
+        assert!(matches!(ValidGrammar::from_grammar(g), Err(Error::DuplicateNonnterminalDefinition(nonterm)) if nonterm == "OPTION"));
     }
 }

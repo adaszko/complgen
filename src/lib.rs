@@ -18,6 +18,9 @@ pub enum Error {
     #[error("Nonterminal definitions depend on each other cyclically")]
     NonterminalDefinitionsCycle(Option<Vec<Ustr>>),
 
+    #[error("Duplicate nonterminal definition")]
+    DuplicateNonnterminalDefinition(Ustr),
+
     #[error("UTF-8 conversion error")]
     FromUtf8Error(#[from] FromUtf8Error),
 
