@@ -18,7 +18,7 @@ pub fn get_match_final_state(dfa: &DFA, inputs: &[&str]) -> Option<StateId> {
         }
 
         for (transition_input, to) in dfa.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
-            if let Input::Literal(s) = transition_input {
+            if let Input::Literal(s, _) = transition_input {
                 if s.as_str() == inputs[input_index] {
                     backtracking_stack.push((input_index + 1, *to));
                 }
@@ -32,7 +32,7 @@ pub fn get_match_final_state(dfa: &DFA, inputs: &[&str]) -> Option<StateId> {
 pub fn get_completions<'a, 'b>(dfa: &DFA, words_before_cursor: &'b [&'a str]) -> Vec<String> {
     if let Some(state_id) = get_match_final_state(dfa, words_before_cursor) {
         let mut inputs: Vec<String> = dfa.transitions.get(&state_id).unwrap_or(&HashMap::default()).iter().filter_map(|(input, _)| match input {
-            Input::Literal(s) => Some(vec![s.as_str().to_string()]),
+            Input::Literal(s, _) => Some(vec![s.as_str().to_string()]),
             Input::Any(AnyInput::Command(cmd)) => {
                 let output = std::process::Command::new("sh").arg("-c").arg(cmd.as_str()).output().unwrap();
                 let compls = String::from_utf8(output.stdout).unwrap();

@@ -407,9 +407,9 @@ impl DFA {
         do_minimize(self)
     }
 
-    pub fn get_all_literals(&self) -> Vec<Ustr> {
+    pub fn get_all_literals(&self) -> Vec<(Ustr, Option<Ustr>)> {
         self.input_symbols.iter().filter_map(|input| match input {
-            Input::Literal(ustr) => Some(*ustr),
+            Input::Literal(ustr, description) => Some((*ustr, *description)),
             Input::Any(_) => None,
         }).collect()
     }
@@ -421,7 +421,7 @@ impl DFA {
                 let cmd = match input {
                     Input::Any(AnyInput::Command(cmd)) => *cmd,
                     Input::Any(AnyInput::Any) => continue,
-                    Input::Literal(_) => continue,
+                    Input::Literal(..) => continue,
                 };
                 result.push((*from, cmd));
             }
@@ -435,7 +435,7 @@ impl DFA {
             None => return vec![],
         };
         let transitions: Vec<(Ustr, StateId)> = map.iter().filter_map(|(input, to)| match input {
-            Input::Literal(ustr) => Some((*ustr, *to)),
+            Input::Literal(ustr, _) => Some((*ustr, *to)),
             Input::Any(_) => None,
         }).collect();
         transitions
@@ -536,7 +536,7 @@ mod tests {
     impl Transition {
         fn new(from: StateId, input: &str, to: StateId) -> Self {
             Self {
-                from, input: Input::Literal(ustr::ustr(input)), to
+                from, input: Input::Literal(ustr::ustr(input), None), to
             }
         }
     }
@@ -560,7 +560,7 @@ mod tests {
                 }
 
                 for (transition_input, to) in self.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
-                    if let Input::Literal(s) = transition_input {
+                    if let Input::Literal(s, _) = transition_input {
                         if s.as_str() == inputs[input_index] {
                             backtracking_stack.push((input_index + 1, *to));
                         }
@@ -587,10 +587,6 @@ mod tests {
 
         pub fn has_transition(&self, from: StateId, input: Input, to: StateId) -> bool {
             *self.transitions.get(&from).unwrap().get(&input).unwrap() == to
-        }
-
-        pub fn has_literal_transition(&self, from: StateId, input: &str, to: StateId) -> bool {
-            self.has_transition(from, Input::Literal(ustr::ustr(input)), to)
         }
     }
 
@@ -699,22 +695,22 @@ mod tests {
         let dfa = {
             let starting_state = 0;
             let mut transitions: HashMap<StateId, HashMap<Input, StateId>> = Default::default();
-            transitions.entry(0).or_default().insert(Input::Literal(ustr("f")), 1);
-            transitions.entry(1).or_default().insert(Input::Literal(ustr("e")), 2);
-            transitions.entry(1).or_default().insert(Input::Literal(ustr("i")), 4);
-            transitions.entry(2).or_default().insert(Input::Literal(ustr("e")), 3);
-            transitions.entry(4).or_default().insert(Input::Literal(ustr("e")), 5);
+            transitions.entry(0).or_default().insert(Input::Literal(ustr("f"), None), 1);
+            transitions.entry(1).or_default().insert(Input::Literal(ustr("e"), None), 2);
+            transitions.entry(1).or_default().insert(Input::Literal(ustr("i"), None), 4);
+            transitions.entry(2).or_default().insert(Input::Literal(ustr("e"), None), 3);
+            transitions.entry(4).or_default().insert(Input::Literal(ustr("e"), None), 5);
             let accepting_states = RoaringBitmap::from_iter([3,5]);
-            let input_symbols = Rc::new(HashSet::from_iter([Input::Literal(ustr("f")), Input::Literal(ustr("e")), Input::Literal(ustr("i"))]));
+            let input_symbols = Rc::new(HashSet::from_iter([Input::Literal(ustr("f"), None), Input::Literal(ustr("e"), None), Input::Literal(ustr("i"), None)]));
             DFA { starting_state, transitions, accepting_states, input_symbols }
         };
         let minimized = dfa.minimize();
         assert_eq!(minimized.starting_state, 0);
         assert_eq!(minimized.accepting_states, RoaringBitmap::from_iter([3]));
-        assert!(minimized.has_literal_transition(0, "f", 1));
-        assert!(minimized.has_literal_transition(1, "e", 2));
-        assert!(minimized.has_literal_transition(1, "i", 2));
-        assert!(minimized.has_literal_transition(2, "e", 3));
+        assert!(minimized.has_transition(0, Input::Literal(ustr("f"), None), 1));
+        assert!(minimized.has_transition(1, Input::Literal(ustr("e"), None), 2));
+        assert!(minimized.has_transition(1, Input::Literal(ustr("i"), None), 2));
+        assert!(minimized.has_transition(2, Input::Literal(ustr("e"), None), 3));
     }
 
     #[test]
