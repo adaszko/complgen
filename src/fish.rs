@@ -10,13 +10,22 @@ use crate::dfa::DFA;
 
 
 fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
-    let id_from_input: UstrMap<usize> = dfa.get_all_literals().into_iter().enumerate().map(|(id, (ustr, _))| (ustr, id + 1)).collect();
+    let all_literals: Vec<(usize, (Ustr, Option<Ustr>))> = dfa.get_all_literals().into_iter().enumerate().collect();
+
+    let id_from_input: UstrMap<usize> = all_literals.iter().map(|(id, (ustr, _))| (*ustr, id + 1)).collect();
     let literals: String = {
         let mut literals: Vec<(Ustr, usize)> = id_from_input.iter().map(|(s, id)| (*s, *id)).collect();
         literals.sort_unstable_by_key(|(_, id)| *id);
         itertools::join(literals.into_iter().map(|(s, _)| s), " ")
     };
     writeln!(buffer, r#"    set --local literals {literals}"#)?;
+    writeln!(buffer, "")?;
+
+    let id_from_description: UstrMap<usize> = all_literals.iter().filter_map(|(id, (_, description))| description.map(|description| (description, id + 1))).collect();
+    for (description, id) in id_from_description {
+        let description = description.replace("\"", "\\\"");
+        writeln!(buffer, r#"    set descriptions[{id}] "{description}""#)?;
+    }
     writeln!(buffer, "")?;
 
     for state in dfa.get_all_states() {
@@ -117,7 +126,11 @@ end
     set --local --erase tos
     eval $transitions[$state]
     for literal_id in $inputs
-        printf '%s\n' $literals[$literal_id]
+        if set --query descriptions[$literal_id]
+            printf '%s\t%s\n' $literals[$literal_id] $descriptions[$literal_id]
+        else
+            printf '%s\n' $literals[$literal_id]
+        end
     end
     if contains $state $command_states
         set --local command_index (contains --index $state $command_states)

@@ -1,4 +1,4 @@
-grep [<OPTION>]... <PATTERNS> [<FILE>]...;
+mygrep [<OPTION>]... <PATTERNS> [<FILE>]...;
 
 <OPTION> ::= --extended-regexp                      "PATTERNS are extended regular expressions"
            | --fixed-strings                        "PATTERNS are strings"
@@ -45,8 +45,8 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
            | --context NUM                          "print NUM lines of output context" <NUM>
            | --group-separator                      "print SEP on line between matches with context" <SEP>
            | --no-group-separator                   "do not print separator for matches with context"
-           | --color                                "use markers to highlight the matching strings" [<WHEN>]
-           | --colour                               "WHEN is 'always', 'never', or 'auto'" [<WHEN>]
+           | --color                                "use markers to highlight the matching strings; WHEN is 'always', 'never', or 'auto'" [<WHEN>]
+           | --colour                               "use markers to highlight the matching strings; WHEN is 'always', 'never', or 'auto'" [<WHEN>]
            | --binary                               "do not strip CR characters at EOL (MSDOS/Windows)"
 	   ;
 
