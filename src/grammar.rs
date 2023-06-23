@@ -321,9 +321,72 @@ pub struct Grammar {
 
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct Validated {
+pub struct ValidGrammar {
     pub command: Ustr,
     pub expr: Rc<Expr>,
+}
+
+
+impl ValidGrammar {
+    pub fn from_grammar(grammar: Grammar) -> Result<Self> {
+        let command = {
+            let mut commands: Vec<Ustr> = grammar.statements.iter().filter_map(|v|
+                match v {
+                    Statement::CallVariant { head: lhs, .. } => Some(*lhs),
+                    Statement::NonterminalDefinition { .. } => None,
+                }
+            ).collect();
+
+            if commands.is_empty() {
+                return Err(Error::EmptyGrammar);
+            }
+
+            commands.sort_unstable();
+            commands.dedup();
+
+            if commands.len() > 1 {
+                return Err(Error::VaryingCommandNames(
+                    commands.into_iter().collect(),
+                ));
+            }
+            commands[0]
+        };
+
+        let expr = {
+            let call_variants: Vec<Rc<Expr>> = grammar.statements.iter().filter_map(|v|
+                match v {
+                    Statement::CallVariant { expr: rhs, .. } => Some(rhs.clone()),
+                    Statement::NonterminalDefinition { .. } => None,
+                }
+            ).collect();
+
+            if call_variants.len() == 1 {
+                Rc::clone(&call_variants[0])
+            }
+            else {
+                Rc::new(Expr::Alternative(call_variants))
+            }
+        };
+
+        let mut nonterminal_definitions: UstrMap<Rc<Expr>> = grammar.statements.iter().filter_map(|v|
+            match v {
+                Statement::CallVariant { .. } => None,
+                Statement::NonterminalDefinition { symbol, expr: rhs } => Some((*symbol, Rc::clone(&rhs))),
+            }
+        ).collect();
+
+        for nonterminal in get_nonterminals_resolution_order(&nonterminal_definitions)? {
+            let e = Rc::clone(nonterminal_definitions.get(&nonterminal).unwrap());
+            *nonterminal_definitions.get_mut(&nonterminal).unwrap() = resolve_nonterminals(e, &nonterminal_definitions);
+        }
+        let expr = resolve_nonterminals(expr, &nonterminal_definitions);
+
+        let g = ValidGrammar {
+            command,
+            expr,
+        };
+        Ok(g)
+    }
 }
 
 
@@ -501,70 +564,6 @@ fn get_nonterminals_resolution_order(nonterminal_definitions: &UstrMap<Rc<Expr>>
 
     log::debug!("nonterminals expansion order: {:?}", result);
     Ok(result)
-}
-
-
-impl Grammar {
-    pub fn validate(&self) -> Result<Validated> {
-        let command = {
-            let mut commands: Vec<Ustr> = self.statements.iter().filter_map(|v|
-                match v {
-                    Statement::CallVariant { head: lhs, .. } => Some(*lhs),
-                    Statement::NonterminalDefinition { .. } => None,
-                }
-            ).collect();
-
-            if commands.is_empty() {
-                return Err(Error::EmptyGrammar);
-            }
-
-            commands.sort_unstable();
-            commands.dedup();
-
-            if commands.len() > 1 {
-                return Err(Error::VaryingCommandNames(
-                    commands.into_iter().collect(),
-                ));
-            }
-            commands[0]
-        };
-
-        let expr = {
-            let call_variants: Vec<Rc<Expr>> = self.statements.iter().filter_map(|v|
-                match v {
-                    Statement::CallVariant { expr: rhs, .. } => Some(rhs.clone()),
-                    Statement::NonterminalDefinition { .. } => None,
-                }
-            ).collect();
-
-            if call_variants.len() == 1 {
-                Rc::clone(&call_variants[0])
-            }
-            else {
-                Rc::new(Expr::Alternative(call_variants))
-            }
-        };
-
-        let mut nonterminal_definitions: UstrMap<Rc<Expr>> = self.statements.iter().filter_map(|v|
-            match v {
-                Statement::CallVariant { .. } => None,
-                Statement::NonterminalDefinition { symbol, expr: rhs } => Some((*symbol, Rc::clone(&rhs))),
-            }
-        ).collect();
-
-        for nonterminal in get_nonterminals_resolution_order(&nonterminal_definitions)? {
-            let e = Rc::clone(nonterminal_definitions.get(&nonterminal).unwrap());
-            *nonterminal_definitions.get_mut(&nonterminal).unwrap() = resolve_nonterminals(e, &nonterminal_definitions);
-        }
-        let expr = resolve_nonterminals(expr, &nonterminal_definitions);
-
-        let g = Validated {
-            command,
-            expr,
-        };
-        Ok(g)
-
-    }
 }
 
 

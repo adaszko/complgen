@@ -55,7 +55,7 @@ mod tests {
     use bumpalo::Bump;
     use hashbrown::HashSet;
 
-    use crate::{grammar::parse, regex::AugmentedRegex, dfa::DFA};
+    use crate::{grammar::{parse, ValidGrammar}, regex::AugmentedRegex, dfa::DFA};
 
     use super::*;
 
@@ -63,7 +63,7 @@ mod tests {
     fn completes_darcs_add() {
         const GRAMMAR: &str = r#"darcs add ( --boring | ( --case-ok | --reserved-ok ) | ( ( -r | --recursive ) | --not-recursive ) | ( --date-trick | --no-date-trick ) | --repodir <DIRECTORY> | --dry-run | --umask <UMASK> | ( --debug | --debug-verbose | --debug-http | ( -v | --verbose ) | ( -q | --quiet ) | --standard-verbosity ) | --timings | ( --posthook <COMMAND> | --no-posthook ) | ( --prompt-posthook | --run-posthook ) | ( --prehook <COMMAND> | --no-prehook ) | ( --prompt-prehook | --run-prehook ) ) ... ( <FILE> | <DIRECTORY> )...;"#;
         let g = parse(GRAMMAR).unwrap();
-        let validated = g.validate().unwrap();
+        let validated = ValidGrammar::from_grammar(g).unwrap();
         let arena = Bump::new();
         let regex = AugmentedRegex::from_expr(&validated.expr, &arena);
         let dfa = DFA::from_regex(&regex);
@@ -80,7 +80,7 @@ mod tests {
     fn does_not_hang_on_many1_of_optional() {
         const GRAMMAR: &str = r#"grep [--help]...;"#;
         let g = parse(GRAMMAR).unwrap();
-        let validated = g.validate().unwrap();
+        let validated = ValidGrammar::from_grammar(g).unwrap();
         let arena = Bump::new();
         let regex = AugmentedRegex::from_expr(&validated.expr, &arena);
         let dfa = DFA::from_regex(&regex);
@@ -98,7 +98,7 @@ grep [<OPTION>]...;
 <WHEN> ::= always | never | auto;
 "#;
         let g = parse(GRAMMAR).unwrap();
-        let validated = g.validate().unwrap();
+        let validated = ValidGrammar::from_grammar(g).unwrap();
         let arena = Bump::new();
         let regex = AugmentedRegex::from_expr(&validated.expr, &arena);
         let dfa = DFA::from_regex(&regex);
@@ -116,7 +116,7 @@ cargo [<toolchain>] (--version | --help);
 <toolchain> ::= { rustup toolchain list | cut -d' ' -f1 | sed 's/^/+/' };
 "#;
         let g = parse(GRAMMAR).unwrap();
-        let validated = g.validate().unwrap();
+        let validated = ValidGrammar::from_grammar(g).unwrap();
         let arena = Bump::new();
         let regex = AugmentedRegex::from_expr(&validated.expr, &arena);
         let dfa = DFA::from_regex(&regex);
