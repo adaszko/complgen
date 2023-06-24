@@ -111,8 +111,6 @@ end
         return 1
     end
 
-    set --query transitions[$state] || return 1
-
 "#, starting_state = dfa.starting_state + 1)?;
 
     let command_id_from_state: HashMap<StateId, usize> = dfa.get_command_transitions().into_iter().map(|(state, cmd)| (state, *id_from_command.get(&cmd).unwrap())).collect();
@@ -122,16 +120,19 @@ end
     writeln!(buffer, r#"    set command_ids {command_ids}"#)?;
 
     write!(buffer, r#"
-    set --local --erase inputs
-    set --local --erase tos
-    eval $transitions[$state]
-    for literal_id in $inputs
-        if set --query descriptions[$literal_id]
-            printf '%s\t%s\n' $literals[$literal_id] $descriptions[$literal_id]
-        else
-            printf '%s\n' $literals[$literal_id]
+    if set --query transitions[$state]
+        set --local --erase inputs
+        set --local --erase tos
+        eval $transitions[$state]
+        for literal_id in $inputs
+            if set --query descriptions[$literal_id]
+                printf '%s\t%s\n' $literals[$literal_id] $descriptions[$literal_id]
+            else
+                printf '%s\n' $literals[$literal_id]
+            end
         end
     end
+
     if contains $state $command_states
         set --local command_index (contains --index $state $command_states)
         set --local function_id $command_ids[$command_index]

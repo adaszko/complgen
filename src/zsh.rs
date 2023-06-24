@@ -99,7 +99,6 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
         return 1
     done
-    [[ -v "transitions[$state]" ]] || return 1
 
 "#, starting_state = dfa.starting_state + 1)?;
 
@@ -109,29 +108,30 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     writeln!(buffer, r#"    commands=({commands_array_initializer})"#)?;
 
     write!(buffer, r#"
-    local state_transitions_initializer=${{transitions[$state]}}
-    declare -A state_transitions
-    eval "state_transitions=$state_transitions_initializer"
+    if [[ -v "transitions[$state]" ]]; then
+        local state_transitions_initializer=${{transitions[$state]}}
+        declare -A state_transitions
+        eval "state_transitions=$state_transitions_initializer"
 
-    declare -A inverted_literals
-    for key in ${{(k)literals}}; do
-        local value=${{literals[$key]}}
-        inverted_literals[$value]=$key
-    done
+        declare -A inverted_literals
+        for key in ${{(k)literals}}; do
+            local value=${{literals[$key]}}
+            inverted_literals[$value]=$key
+        done
 
-    local completions=()
-    for literal_id in ${{(k)state_transitions}}; do
-        completions+=(${{inverted_literals[$literal_id]}})
-    done
+        for literal_id in ${{(k)state_transitions}}; do
+            compadd ${{inverted_literals[$literal_id]}}
+        done
+    fi
+
     if [[ -v "commands[$state]" ]]; then
         local command_id=${{commands[$state]}}
         command_completions=("${{(@f)$(_{command}_${{command_id}})}}")
         for line in ${{command_completions[@]}}; do
-            completions+=($line)
+            compadd $line
         done
     fi
 
-    compadd -- ${{completions[@]}}
     return 0
 }}
 
