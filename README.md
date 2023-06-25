@@ -77,6 +77,19 @@ Use parentheses to group patterns:
  * `(a | b) ...` matches `a` or `b` followed by any number of additional
    `a` or `b`.
 
+### Descriptions (a.k.a. completion hints)
+
+If a literal is immediately followed by a quoted string, it's going to appear as a hint to the user at completion time.  E.g. the grammar:
+
+    grep --extended-regexp "PATTERNS are extended regular expressions" | --exclude  (skip files that match GLOB)
+
+results in something like this under fish shell:
+
+```
+fish> grep --ex<TAB>
+--exclude  (skip files that match GLOB)  --extended-regexp  (PATTERNS are extended regular expressions)
+```
+
 ## Limitations
 
  * Passing option arguments using `=` is not currently supported.  E.g. `--foo=bar` doesn't work, but `--foo
