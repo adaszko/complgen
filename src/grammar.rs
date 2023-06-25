@@ -376,7 +376,7 @@ impl ValidGrammar {
                     Statement::CallVariant { .. } => continue,
                 };
                 if nonterminal_definitions.contains_key(&symbol) {
-                    return Err(Error::DuplicateNonnterminalDefinition(symbol));
+                    return Err(Error::DuplicateNonterminalDefinition(symbol));
                 }
                 nonterminal_definitions.insert(symbol, Rc::clone(&expr));
             }
@@ -1042,6 +1042,6 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
 <OPTION> ::= always | never | auto;
 "#;
         let g = Grammar::parse(INPUT).unwrap();
-        assert!(matches!(ValidGrammar::from_grammar(g), Err(Error::DuplicateNonnterminalDefinition(nonterm)) if nonterm == "OPTION"));
+        assert!(matches!(ValidGrammar::from_grammar(g), Err(Error::DuplicateNonterminalDefinition(nonterm)) if nonterm == "OPTION"));
     }
 }

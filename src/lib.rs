@@ -19,7 +19,7 @@ pub enum Error {
     NonterminalDefinitionsCycle(Option<Vec<Ustr>>),
 
     #[error("Duplicate nonterminal definition")]
-    DuplicateNonnterminalDefinition(Ustr),
+    DuplicateNonterminalDefinition(Ustr),
 
     #[error("UTF-8 conversion error")]
     FromUtf8Error(#[from] FromUtf8Error),
