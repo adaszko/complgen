@@ -59,6 +59,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     let id_from_command: UstrMap<usize> = dfa.get_command_transitions().into_iter().enumerate().map(|(id, (_, cmd))| (cmd, id)).collect();
     for (cmd, id) in &id_from_command {
         write!(buffer, r#"function _{command}_{id}
+    set 1 $argv[1]
     {cmd}
 end
 
@@ -137,7 +138,7 @@ end
         set --local command_index (contains --index $state $command_states)
         set --local function_id $command_ids[$command_index]
         set --local function_name _{command}_$function_id
-        set --local lines (eval $function_name)
+        set --local lines (eval $function_name $COMP_WORDS[$COMP_CWORD])
         for line in $lines
             printf '%s\n' $line
         end

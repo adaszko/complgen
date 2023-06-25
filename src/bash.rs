@@ -125,7 +125,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
     if [[ -v "commands[$state]" ]]; then
         local command_id=${{commands[$state]}}
-        IFS=$'\n' read -r -d '' -a command_completions < <( _{command}_${{command_id}} && printf '\0' )
+        IFS=$'\n' read -r -d '' -a command_completions < <( _{command}_${{command_id}} "${{COMP_WORDS[$COMP_CWORD]}}" && printf '\0' )
         for line in ${{command_completions[@]}}; do
             completions+=($line)
         done

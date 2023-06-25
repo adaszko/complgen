@@ -126,7 +126,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
     if [[ -v "commands[$state]" ]]; then
         local command_id=${{commands[$state]}}
-        command_completions=("${{(@f)$(_{command}_${{command_id}})}}")
+        command_completions=("${{(@f)$(_{command}_${{command_id}} ${{words[$CURRENT]}})}}")
         for line in ${{command_completions[@]}}; do
             compadd $line
         done

@@ -90,6 +90,21 @@ fish> grep --ex<TAB>
 --exclude  (skip files that match GLOB)  --extended-regexp  (PATTERNS are extended regular expressions)
 ```
 
+### External commands
+
+It is possible to use entire shell commands as a source of completions:
+
+    cargo { rustup toolchain list | cut -d' ' -f1 | sed 's/^/+/' };
+
+The stdout of the pipeline above will be automatically filtered by the shell based on the prefix entered so
+far.  Sometimes however, it's more efficient to take into account the entered prefix in the shell commands
+itself.  For all three shells (bash, fish, zsh), it's available in the `$1` variable:
+
+    cargo { rustup toolchain list | cut -d' ' -f1 | grep "^$1" | sed 's/^/+/' };
+
+Note that in general, it's best to leave the filtering up to the executing shell since it may be configured to
+perform some non-standard filtering.  zsh for example is capable of expanding `/u/l/b` to `/usr/local/bin`.
+
 ## Limitations
 
  * Passing option arguments using `=` is not currently supported.  E.g. `--foo=bar` doesn't work, but `--foo
