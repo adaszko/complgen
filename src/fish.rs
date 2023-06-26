@@ -108,14 +108,7 @@ end
 
         return 1
     end
-
 "#, starting_state = dfa.starting_state + 1)?;
-
-    let command_id_from_state: HashMap<StateId, usize> = dfa.get_command_transitions().into_iter().map(|(state, cmd)| (state, *id_from_command.get(&cmd).unwrap())).collect();
-    let command_states = itertools::join(command_id_from_state.iter().map(|(state, _)| state + 1), " ");
-    writeln!(buffer, r#"    set command_states {command_states}"#)?;
-    let command_ids = itertools::join(command_id_from_state.into_iter().map(|(_, id)| id), " ");
-    writeln!(buffer, r#"    set command_ids {command_ids}"#)?;
 
     write!(buffer, r#"
     if set --query transitions[$state]
@@ -128,7 +121,15 @@ end
             end
         end
     end
+"#)?;
 
+    let command_id_from_state: HashMap<StateId, usize> = dfa.get_command_transitions().into_iter().map(|(state, cmd)| (state, *id_from_command.get(&cmd).unwrap())).collect();
+    if !command_id_from_state.is_empty() {
+        let command_states = itertools::join(command_id_from_state.iter().map(|(state, _)| state + 1), " ");
+        writeln!(buffer, r#"    set command_states {command_states}"#)?;
+        let command_ids = itertools::join(command_id_from_state.into_iter().map(|(_, id)| id), " ");
+        writeln!(buffer, r#"    set command_ids {command_ids}"#)?;
+        write!(buffer, r#"
     if contains $state $command_states
         set --local command_index (contains --index $state $command_states)
         set --local function_id $command_ids[$command_index]
@@ -139,15 +140,20 @@ end
         end
     end
 "#)?;
+    }
 
-    let file_states_array_initializer: String = itertools::join(dfa.get_file_states().into_iter().map(|state| format!("{}", state + 1)), " ");
-
-    write!(buffer, r#"
+    let file_states = dfa.get_file_states();
+    if !file_states.is_empty() {
+        let file_states_array_initializer: String = itertools::join(file_states.into_iter().map(|state| format!("{}", state + 1)), " ");
+        write!(buffer, r#"
     set files {file_states_array_initializer}
     if contains $state $files
         __fish_complete_path $COMP_WORDS[$COMP_CWORD]
     end
+"#)?;
+    }
 
+    write!(buffer, r#"
     return 0
 end
 
