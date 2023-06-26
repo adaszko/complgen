@@ -126,4 +126,21 @@ cargo [<toolchain>] (--version | --help);
         let expected = HashSet::from_iter(["--version", "--help"].map(|s| s.to_string()));
         assert_eq!(generated, expected);
     }
+
+    #[test]
+    fn completes_after_variable() {
+        const GRAMMAR: &str = r#"
+grep (--context "print NUM lines of output context" <NUM> | --version | --help)...;
+"#;
+        let g = Grammar::parse(GRAMMAR).unwrap();
+        let validated = ValidGrammar::from_grammar(g).unwrap();
+        let arena = Bump::new();
+        let regex = AugmentedRegex::from_expr(&validated.expr, &arena);
+        let dfa = DFA::from_regex(&regex);
+        let dfa = dfa.minimize();
+        let input = vec!["--context", "123"];
+        let generated: HashSet<_> = HashSet::from_iter(get_completions(&dfa, &input));
+        let expected = HashSet::from_iter(["--version", "--help", "--context"].map(|s| s.to_string()));
+        assert_eq!(generated, expected);
+    }
 }

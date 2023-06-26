@@ -25,10 +25,10 @@ mygrep [<OPTION>]... <PATTERNS> [<FILE>]...;
            | --only-matching                        "show only nonempty parts of lines that match"
            | --quiet                                "suppress all normal output"
            | --silent                               "suppress all normal output"
-           | --binary-files                         "assume that binary files are TYPE; TYPE is 'binary', 'text', or 'without-match'" <TYPE>
+           | --binary-files                         "assume that binary files are <TYPE>; <TYPE> is 'binary', 'text', or 'without-match'" <TYPE>
            | --text                                 "equivalent to --binary-files=text"
-           | --directories                          "how to handle directories;" <ACTION-DIRECTORIES>
-           | --devices                              "how to handle devices, FIFOs and sockets;" <ACTION-DEVICES>
+           | --directories                          "how to handle directories" <ACTION-DIRECTORIES>
+           | --devices                              "how to handle devices, FIFOs and sockets" <ACTION-DEVICES>
            | --recursive                            "like --directories=recurse"
            | --dereference-recursive                "likewise, but follow all symlinks"
            | --include                              "search only files that match GLOB (a file pattern)" <GLOB>
@@ -42,7 +42,7 @@ mygrep [<OPTION>]... <PATTERNS> [<FILE>]...;
            | --null                                 "print 0 byte after FILE name"
            | --before-context                       "print NUM lines of leading context" <NUM>
            | --after-context                        "print NUM lines of trailing context" <NUM>
-           | --context NUM                          "print NUM lines of output context" <NUM>
+           | --context                              "print NUM lines of output context" <NUM>
            | --group-separator                      "print SEP on line between matches with context" <SEP>
            | --no-group-separator                   "do not print separator for matches with context"
            | --color                                "use markers to highlight the matching strings; WHEN is 'always', 'never', or 'auto'" [<WHEN>]

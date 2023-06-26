@@ -83,20 +83,19 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     local state={starting_state}
     local word_index=2
     while [[ $word_index -lt $CURRENT ]]; do
-        [[ -v "transitions[$state]" ]] || return 1
+        if [[ -v "transitions[$state]" ]]; then
+            local state_transitions_initializer=${{transitions[$state]}}
+            declare -A state_transitions
+            eval "state_transitions=$state_transitions_initializer"
 
-        local state_transitions_initializer=${{transitions[$state]}}
-        declare -A state_transitions
-        eval "state_transitions=$state_transitions_initializer"
-
-        local word=${{words[$word_index]}}
-
-        if [[ -v "literals[$word]" ]]; then
-            local literal_id=${{literals[$word]}}
-            if [[ -v "state_transitions[$literal_id]" ]]; then
-                state=${{state_transitions[$literal_id]}}
-                word_index=$((word_index + 1))
-                continue
+            local word=${{words[$word_index]}}
+            if [[ -v "literals[$word]" ]]; then
+                local literal_id=${{literals[$word]}}
+                if [[ -v "state_transitions[$literal_id]" ]]; then
+                    state=${{state_transitions[$literal_id]}}
+                    word_index=$((word_index + 1))
+                    continue
+                fi
             fi
         fi
 

@@ -84,21 +84,18 @@ end
     set --local state {starting_state}
     set --local word_index 2
     while test $word_index -lt $COMP_CWORD
-        set --query transitions[$state] || return 1
+        if set --query transitions[$state]
+            eval $transitions[$state]
 
-        set --local --erase inputs
-        set --local --erase tos
-        eval $transitions[$state]
-
-        set --local -- word $COMP_WORDS[$word_index]
-
-        if contains -- $word $literals
-            set --local literal_id (contains --index -- $word $literals)
-            if contains -- $literal_id $inputs
-                set --local index (contains --index -- $literal_id $inputs)
-                set state $tos[$index]
-                set word_index (math $word_index + 1)
-                continue
+            set --local -- word $COMP_WORDS[$word_index]
+            if contains -- $word $literals
+                set --local literal_id (contains --index -- $word $literals)
+                if contains -- $literal_id $inputs
+                    set --local index (contains --index -- $literal_id $inputs)
+                    set state $tos[$index]
+                    set word_index (math $word_index + 1)
+                    continue
+                end
             end
         end
 
@@ -122,8 +119,6 @@ end
 
     write!(buffer, r#"
     if set --query transitions[$state]
-        set --local --erase inputs
-        set --local --erase tos
         eval $transitions[$state]
         for literal_id in $inputs
             if set --query descriptions[$literal_id]

@@ -46,8 +46,7 @@ impl Input {
 impl std::fmt::Display for Input {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Input::Literal(literal, None) => write!(f, r#"{literal}"#),
-            Input::Literal(literal, Some(description)) => write!(f, r#"{literal} "{description}" "#),
+            Input::Literal(literal, _) => write!(f, r#"{literal}"#),
             Input::Any(any) => write!(f, "{}", any),
         }
     }
