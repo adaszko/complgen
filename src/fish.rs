@@ -138,10 +138,17 @@ end
             printf '%s\n' $line
         end
     end
-    return 0
 "#)?;
 
+    let file_states_array_initializer: String = itertools::join(dfa.get_file_states().into_iter().map(|state| format!("{}", state + 1)), " ");
+
     write!(buffer, r#"
+    set files {file_states_array_initializer}
+    if contains $state $files
+        __fish_complete_path $COMP_WORDS[$COMP_CWORD]
+    end
+
+    return 0
 end
 
 complete --command {command} --no-files --arguments "(_{command})"

@@ -25,12 +25,12 @@ mygrep [<OPTION>]... <PATTERNS> [<FILE>]...;
            | --only-matching                        "show only nonempty parts of lines that match"
            | --quiet                                "suppress all normal output"
            | --silent                               "suppress all normal output"
-           | --binary-files                         "assume that binary files are <TYPE>; <TYPE> is 'binary', 'text', or 'without-match'" <TYPE>
+           | --binary-files                         "assume that binary files are <TYPE>" <TYPE>
            | --text                                 "equivalent to --binary-files=text"
            | --directories                          "how to handle directories" <ACTION-DIRECTORIES>
            | --devices                              "how to handle devices, FIFOs and sockets" <ACTION-DEVICES>
            | --recursive                            "like --directories=recurse"
-           | --dereference-recursive                "likewise, but follow all symlinks"
+           | --dereference-recursive                "like --directories=recurse, but follow all symlinks"
            | --include                              "search only files that match GLOB (a file pattern)" <GLOB>
            | --exclude                              "skip files that match GLOB" <GLOB>
            | --exclude-from                         "skip files that match any file pattern from FILE" <FILE>
@@ -45,8 +45,8 @@ mygrep [<OPTION>]... <PATTERNS> [<FILE>]...;
            | --context                              "print NUM lines of output context" <NUM>
            | --group-separator                      "print SEP on line between matches with context" <SEP>
            | --no-group-separator                   "do not print separator for matches with context"
-           | --color                                "use markers to highlight the matching strings; WHEN is 'always', 'never', or 'auto'" [<WHEN>]
-           | --colour                               "use markers to highlight the matching strings; WHEN is 'always', 'never', or 'auto'" [<WHEN>]
+           | --color                                "use markers to highlight the matching strings" [<WHEN>]
+           | --colour                               "use markers to highlight the matching strings" [<WHEN>]
            | --binary                               "do not strip CR characters at EOL (MSDOS/Windows)"
 	   ;
 
@@ -57,5 +57,3 @@ mygrep [<OPTION>]... <PATTERNS> [<FILE>]...;
 <TYPE> ::= binary | text | without-match;
 
 <WHEN> ::= always | never | auto;
-
-<FILE> ::= { ls };

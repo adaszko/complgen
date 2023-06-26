@@ -39,6 +39,7 @@ pub fn get_completions<'a, 'b>(dfa: &DFA, words_before_cursor: &'b [&'a str]) ->
                 let result: Vec<String> = compls.lines().map(|s| s.to_string()).collect();
                 Some(result)
             },
+            Input::Any(AnyInput::File) => None, // TODO
             Input::Any(AnyInput::Any) => None,
         }).flatten().collect();
         inputs.sort_unstable();

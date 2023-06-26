@@ -154,6 +154,15 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         done
     fi
 
+"#)?;
+
+    let file_states_array_initializer: String = itertools::join(dfa.get_file_states().into_iter().map(|state| format!("{}", state + 1)), " ");
+    write!(buffer, r#"
+    files=({file_states_array_initializer})
+    if (($files[(Ie)$state])); then
+        _path_files
+    fi
+
     return 0
 }}
 

@@ -129,8 +129,17 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             completions+=($line)
         done
     fi
-    completions=${{completions[@]}}
 
+"#)?;
+
+    let file_states_array_initializer: String = itertools::join(dfa.get_file_states().into_iter().map(|state| format!("{}", state)), " ");
+    write!(buffer, r#"
+    files=({file_states_array_initializer})
+    if [[ " ${{files[*]}} " =~ " ${{state}} " ]]; then
+        completions+=($(compgen -A file "${{COMP_WORDS[$COMP_CWORD]}}"))
+    fi
+
+    completions=${{completions[@]}}
     COMPREPLY=($(compgen -W "$completions" -- "${{COMP_WORDS[$COMP_CWORD]}}"))
     return 0
 }}

@@ -14,6 +14,7 @@ pub type Position = u32;
 pub enum AnyInput {
     Any,
     Command(Ustr),
+    File,
 }
 
 impl std::fmt::Display for AnyInput {
@@ -21,6 +22,7 @@ impl std::fmt::Display for AnyInput {
         match self {
             AnyInput::Any => write!(f, "*"),
             AnyInput::Command(cmd) => write!(f, "{{{}}}", cmd),
+            AnyInput::File => write!(f, "FILE"),
         }
     }
 }
@@ -212,9 +214,13 @@ fn do_from_expr<'a>(e: &Expr, arena: &'a Bump, symbols: &mut HashSet<Input>, inp
             symbols.insert(input);
             result
         },
-        Expr::Nonterminal(_) => {
+        Expr::Nonterminal(name) => {
             let result = AugmentedRegexNode::Nonterminal(Position::try_from(input_from_position.len()).unwrap());
-            let input = Input::Any(AnyInput::Any);
+            let input = if name.as_str() == "FILE" {
+                Input::Any(AnyInput::File)
+            } else {
+                Input::Any(AnyInput::Any)
+            };
             input_from_position.push(input.clone());
             symbols.insert(input);
             result

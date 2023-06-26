@@ -421,9 +421,25 @@ impl DFA {
                 let cmd = match input {
                     Input::Any(AnyInput::Command(cmd)) => *cmd,
                     Input::Any(AnyInput::Any) => continue,
+                    Input::Any(AnyInput::File) => continue,
                     Input::Literal(..) => continue,
                 };
                 result.push((*from, cmd));
+            }
+        }
+        result
+    }
+
+    pub fn get_file_states(&self) -> Vec<StateId> {
+        let mut result: Vec<StateId> = Default::default();
+        for (from, tos) in &self.transitions {
+            for (input, _) in tos {
+                match input {
+                    Input::Any(AnyInput::File) => result.push(*from),
+                    Input::Any(AnyInput::Command(..)) => {},
+                    Input::Any(AnyInput::Any) => {},
+                    Input::Literal(..) => {},
+                };
             }
         }
         result
