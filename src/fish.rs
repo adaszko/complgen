@@ -10,19 +10,16 @@ use crate::dfa::DFA;
 
 
 fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
-    let all_literals: Vec<(usize, (Ustr, Option<Ustr>))> = dfa.get_all_literals().into_iter().enumerate().collect();
+    let all_literals: Vec<(usize, Ustr, Option<Ustr>)> = dfa.get_all_literals().into_iter().enumerate().map(|(id, (literal, description))| (id + 1, literal, description)).collect();
 
-    let id_from_input: UstrMap<usize> = all_literals.iter().map(|(id, (ustr, _))| (*ustr, id + 1)).collect();
-    let literals: String = {
-        let mut literals: Vec<(Ustr, usize)> = id_from_input.iter().map(|(s, id)| (*s, *id)).collect();
-        literals.sort_unstable_by_key(|(_, id)| *id);
-        itertools::join(literals.into_iter().map(|(s, _)| s), " ")
-    };
+    // Beware of duplicated literals: e.g. -q and -q
+    let literal_id_from_input: UstrMap<usize> = all_literals.iter().map(|(id, literal, _)| (*literal, *id)).collect();
+    let literals: String = itertools::join(all_literals.iter().map(|(_, literal, _)| literal), " ");
     writeln!(buffer, r#"    set --local literals {literals}"#)?;
     writeln!(buffer, "")?;
 
-    let id_from_description: UstrMap<usize> = all_literals.iter().filter_map(|(id, (_, description))| description.map(|description| (description, id + 1))).collect();
-    for (description, id) in id_from_description {
+    let literal_id_from_description: UstrMap<usize> = all_literals.iter().filter_map(|(id, _, description)| description.map(|description| (description, *id))).collect();
+    for (description, id) in literal_id_from_description {
         let description = description.replace("\"", "\\\"");
         writeln!(buffer, r#"    set descriptions[{id}] "{description}""#)?;
     }
@@ -33,7 +30,7 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
         if transitions.is_empty() {
             continue;
         }
-        let transitions: Vec<(usize, StateId)> = transitions.into_iter().map(|(input, to)| (*id_from_input.get(&input).unwrap(), to)).collect();
+        let transitions: Vec<(usize, StateId)> = transitions.into_iter().map(|(input, to)| (*literal_id_from_input.get(&input).unwrap(), to)).collect();
         if transitions.is_empty() {
             continue;
         }
@@ -46,9 +43,9 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
     writeln!(buffer, "")?;
 
     let match_anything_transitions = dfa.get_match_anything_transitions();
-    let match_anything_transitions_from = itertools::join(match_anything_transitions.iter().map(|(from, _)| format!("{}", from+1)), " ");
+    let match_anything_transitions_from = itertools::join(match_anything_transitions.iter().map(|(from, _)| format!("{}", from + 1)), " ");
     writeln!(buffer, r#"    set --local match_anything_transitions_from {match_anything_transitions_from}"#)?;
-    let match_anything_transitions_to = itertools::join(match_anything_transitions.iter().map(|(_, to)| format!("{}", to+1)), " ");
+    let match_anything_transitions_to = itertools::join(match_anything_transitions.iter().map(|(_, to)| format!("{}", to + 1)), " ");
     writeln!(buffer, r#"    set --local match_anything_transitions_to {match_anything_transitions_to}"#)?;
 
     Ok(())
@@ -56,9 +53,21 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
 
 
 pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
-    let command_transitions = dfa.get_command_transitions();
+    let command_transitions: Vec<(usize, StateId, Ustr)> = dfa.get_command_transitions().into_iter().enumerate().map(|(id, (from, input))| (id + 1, from, input)).collect();
 
-    let id_from_command: UstrMap<usize> = command_transitions.iter().enumerate().map(|(id, (_, cmd))| (*cmd, id + 1)).collect();
+    // We can't identify commands by state ids because we're deduplicating them
+    let mut id_from_command: UstrMap<usize> = Default::default();
+    let mut id_from_state: HashMap<StateId, usize> = Default::default();
+    for (id, state, command) in &command_transitions {
+        if let Some(canonical_id) = id_from_command.get(command) {
+            id_from_state.insert(*state, *canonical_id);
+        }
+        else {
+            id_from_command.insert(*command, *id);
+            id_from_state.insert(*state, *id);
+        }
+    }
+
     for (cmd, id) in &id_from_command {
         write!(buffer, r#"function _{command}_{id}
     set 1 $argv[1]
@@ -130,16 +139,13 @@ end
 
 "#)?;
 
-    let command_id_from_state: HashMap<StateId, usize> = command_transitions.into_iter().map(|(state, cmd)| (state, *id_from_command.get(&cmd).unwrap())).collect();
-    if !command_id_from_state.is_empty() {
-        let mut commands: Vec<(StateId, usize)> = command_id_from_state.into_iter().collect();
-        commands.sort_unstable_by_key(|(_, index)| *index);
-        let command_states = itertools::join(commands.iter().map(|(state, _)| state + 1), " ");
-        write!(buffer, r#"    set commands {command_states}"#)?;
+    if !command_transitions.is_empty() {
+        writeln!(buffer, r#"    set command_states {}"#, itertools::join(id_from_state.iter().map(|(state, _)| state + 1), " "))?;
+        write!(buffer, r#"    set command_ids {}"#, itertools::join(id_from_state.iter().map(|(_, id)| id), " "))?;
         write!(buffer, r#"
-    if contains $state $commands
-        set --local command_index (contains --index $state $commands)
-        set --local function_id $command_ids[$command_index]
+    if contains $state $command_states
+        set --local index (contains --index $state $command_states)
+        set --local function_id $command_ids[$index]
         set --local function_name _{command}_$function_id
         set --local --erase inputs
         set --local --erase tos
