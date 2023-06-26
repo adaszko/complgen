@@ -1,95 +1,101 @@
-cargo [<toolchain>] [<OPTIONS>] [<COMMAND>];
+cargo [<toolchain>] [<OPTION>]... [<COMMAND>];
 
 <toolchain> ::= { rustup toolchain list | cut -d' ' -f1 | sed 's/^/+/' };
 
-<OPTIONS> ::= -V
-            | --version
-	    | --list
-	    | --explain <CODE>
-	    | -v
-	    | --verbose...
-	    | -q
-	    | --quiet
-	    | --color <WHEN>
-	    | --frozen
-	    | --locked
-	    | --offline
-	    | --config <KEY_VALUE>
-	    | -Z <FLAG>
-	    | -h
-	    | --help
-	    ;
+<OPTION> ::= -V
+           | --version
+           | --list
+           | --explain <CODE>
+           | -v
+           | --verbose...
+           | -q
+           | --quiet
+           | --color <WHEN>
+           | --frozen
+           | --locked
+           | --offline
+           | --config <KEY_VALUE>
+           | -Z <FLAG>
+           | -h
+           | --help
+           ;
 
-<COMMAND> ::= build
-	    | b
-	    | check
-	    | c
-	    | clean
-	    | doc
-	    | d
-	    | new
-	    | init
-	    | add
-	    | remove
-	    | run
-	    | r
-	    | (test | t) [<TEST_OPTIONS>]... <TESTNAME>
-	    | bench
-	    | update
-	    | search
-	    | publish
-	    | install
-	    | uninstall;
+<COMMAND> ::= build       "Compile the current package"
+            | b           "Compile the current package"
+            | check       "Analyze the current package and report errors, but don't build object files"
+            | c           "Analyze the current package and report errors, but don't build object files"
+            | clean       "Remove the target directory"
+            | doc         "Build this package's and its dependencies' documentation"
+            | d           "Build this package's and its dependencies' documentation"
+            | new         "Create a new cargo package"
+            | init        "Create a new cargo package in an existing directory"
+            | add         "Add dependencies to a manifest file"
+            | remove      "Remove dependencies from a manifest file"
+            | run         "Run a binary or example of the local package"
+            | r           "Run a binary or example of the local package"
+            | test        "Run the tests" [<TEST_OPTIONS>]... <TESTNAME>
+            | t           "Run the tests" [<TEST_OPTIONS>]... <TESTNAME>
+            | bench       "Run the benchmarks"
+            | update      "Update dependencies listed in Cargo.lock"
+            | search      "Search registry for crates"
+            | publish     "Package and upload this package to the registry"
+            | install     "Install a Rust binary. Default location is $HOME/.cargo/bin"
+            | uninstall   "Uninstall a Rust binary"
+            ;
 
-<TEST_OPTIONS> ::= -q
-                 | --quiet
-                 | --lib
-                 | --bin [<NAME>]
-                 | --bins
-                 | -v...
-                 | --verbose...
-                 | --example [<NAME>]
-                 | --color <WHEN>
-                 | --examples
-                 | --frozen
-                 | --test [<NAME>]
-                 | --locked
-                 | --tests
-                 | --bench [<NAME>]
-                 | --offline
-                 | --benches
-                 | --config <KEY=VALUE>
-                 | --all-targets
-                 | (-Z <FLAG>)
-                 | --doc
-                 | --no-run
-                 | --no-fail-fast
-                 | -p
-                 | --package [<SPEC>]
-                 | --workspace
-                 | --exclude <SPEC>
-                 | --all
-                 | -j
-                 | --jobs <N>
-                 | --keep-going
-                 | -r
-                 | --release
-                 | --profile <PROFILE-NAME>
-                 | -F
-                 | --features <FEATURES>
-                 | --all-features
-                 | --no-default-features
-                 | --target <TRIPLE>
-                 | --target-dir <DIRECTORY>
-                 | --manifest-path <PATH>
-                 | --ignore-rust-version
-                 | --message-format <FMT>
-                 | --unit-graph
-                 | --future-incompat-report
-                 | --timings [<FMTS>]
-                 | -h
-                 | --help
+<TEST_OPTIONS> ::= -q                        "Display one character per test instead of one line"
+                 | --quiet                   "Display one character per test instead of one line"
+                 | --lib                     "Test only this package's library unit tests"
+                 | --bin                     "Test only the specified binary" [<NAME>]
+                 | --bins                    "Test all binaries"
+                 | -v                        "Use verbose output (-vv very verbose/build.rs output)"
+                 | --verbose                 "Use verbose output (-vv very verbose/build.rs output)"
+                 | --example                 "Test only the specified example"  [<NAME>]
+                 | --color                   "Coloring: auto, always, never" <WHEN>
+                 | --examples                "Test all examples"
+                 | --test                    "Test only the specified test target" [<TESTNAME>]
+                 | --frozen                  "Require Cargo.lock and cache are up to date"
+                 | --tests                   "Test all tests"
+                 | --bench                   "Test only the specified bench target" [<NAME>]
+                 | --locked                  "Require Cargo.lock is up to date"
+                 | --benches                 "Test all benches"
+                 | --offline                 "Run without accessing the network"
+                 | --all-targets             "Test all targets"
+                 | --config                  "Override a configuration value" <KEY=VALUE>
+                 | --doc                     "Test only this library's documentation"
+                 | -Z                        "Unstable (nightly-only) flags to Cargo, see 'cargo -Z help' for details" <FLAG>
+                 | --no-run                  "Compile, but don't run tests"
+                 | --no-fail-fast            "Run all tests regardless of failure"
+                 | -p                        "Package to run tests for"
+                 | --package                 "Package to run tests for" [<SPEC>]
+                 | --workspace               "Test all packages in the workspace"
+                 | --exclude                 "Exclude packages from the test" <SPEC>
+                 | --all                     "Alias for --workspace (deprecated)"
+                 | -j                        "Number of parallel jobs, defaults to # of CPUs"
+                 | --jobs                    "Number of parallel jobs, defaults to # of CPUs" <N>
+                 | --keep-going              "Do not abort the build as soon as there is an error (unstable)"
+                 | -r                        "Build artifacts in release mode, with optimizations"
+                 | --release                 "Build artifacts in release mode, with optimizations"
+                 | --profile                 "Build artifacts with the specified profile" <PROFILE-NAME>
+                 | -F                        "Space or comma separated list of features to activate"
+                 | --features                "Space or comma separated list of features to activate" <FEATURES>
+                 | --all-features            "Activate all available features"
+                 | --no-default-features     "Do not activate the `default` feature"
+                 | --target                  "Build for the target triple" <TRIPLE>
+                 | --target-dir              "Directory for all generated artifacts" <DIRECTORY>
+                 | --manifest-path           "Path to Cargo.toml" <PATH>
+                 | --ignore-rust-version     "Ignore `rust-version` specification in packages"
+                 | --message-format          "Error format" <FMT>
+                 | --unit-graph              "Output build graph in JSON (unstable)"
+                 | --future-incompat-report  "Outputs a future incompatibility report at the end of the build"
+                 | --timings                 "Timing output formats (unstable)" [<FMTS>]
+                 | -h                        "Print help"
+                 | --help                    "Print help"
                  ;
+
+<FMTS> ::= html | json;
+
+<TRIPLE> ::= { rustc --print target-list };
 
 <TESTNAME> ::= { RUSTFLAGS=-Awarnings cargo test --quiet -- --list | sed 's/^\(.*\): .*/\1/' };
 

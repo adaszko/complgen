@@ -9,6 +9,11 @@ use crate::dfa::DFA;
 // Array indexes in ZSH start from 1 (!)
 
 
+fn escape_zsh_string(s: &str) -> String {
+    s.replace("\"", "\\\"").replace("`", "\\`")
+}
+
+
 /// `literals`: an associative array used for literals deduplication (interning) where:
 ///   * key: the literal
 ///   * value: literal's id
@@ -38,7 +43,7 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
     writeln!(buffer, r#"    declare -A descriptions"#)?;
     let id_from_description: UstrMap<usize> = all_literals.iter().filter_map(|(id, (_, description))| description.map(|description| (description, id + 1))).collect();
     for (description, id) in id_from_description {
-        let description = description.replace("\"", "\\\"");
+        let description = escape_zsh_string(&description);
         writeln!(buffer, r#"    descriptions[{id}]="{description}""#)?;
     }
     writeln!(buffer, "")?;
