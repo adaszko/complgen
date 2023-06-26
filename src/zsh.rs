@@ -2,7 +2,7 @@ use std::fmt::Write;
 
 use complgen::{StateId, Result};
 use hashbrown::HashMap;
-use ustr::UstrMap;
+use ustr::{UstrMap, Ustr};
 use crate::dfa::DFA;
 
 
@@ -27,11 +27,20 @@ use crate::dfa::DFA;
 /// accepts any word
 ///
 fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
-    let id_from_input: UstrMap<usize> = dfa.get_all_literals().into_iter().enumerate().map(|(id, (ustr, _))| (ustr, id + 1)).collect();
+    let all_literals: Vec<(usize, (Ustr, Option<Ustr>))> = dfa.get_all_literals().into_iter().enumerate().collect();
 
+    let id_from_input: UstrMap<usize> = all_literals.iter().map(|(id, (ustr, _))| (*ustr, id + 1)).collect();
     writeln!(buffer, r#"    declare -A literals"#)?;
     let literals: String = itertools::join(id_from_input.iter().map(|(literal, id)| format!("[{literal}]={id}")), " ");
     writeln!(buffer, r#"    literals=({literals})"#)?;
+    writeln!(buffer, "")?;
+
+    writeln!(buffer, r#"    declare -A descriptions"#)?;
+    let id_from_description: UstrMap<usize> = all_literals.iter().filter_map(|(id, (_, description))| description.map(|description| (description, id + 1))).collect();
+    for (description, id) in id_from_description {
+        let description = description.replace("\"", "\\\"");
+        writeln!(buffer, r#"    descriptions[{id}]="{description}""#)?;
+    }
     writeln!(buffer, "")?;
 
     writeln!(buffer, r#"    declare -A transitions"#)?;
@@ -119,16 +128,30 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             inverted_literals[$value]=$key
         done
 
+        local -a args
+        local -a descrs
         for literal_id in ${{(k)state_transitions}}; do
-            compadd ${{inverted_literals[$literal_id]}}
+            if [[ -v "descriptions[$literal_id]" ]]; then
+                args+=(${{inverted_literals[$literal_id]}})
+                descrs+=("${{inverted_literals[$literal_id]}} (${{descriptions[$literal_id]}})")
+            else
+                args+=(${{inverted_literals[$literal_id]}})
+                descrs+=(${{inverted_literals[$literal_id]}})
+            fi
         done
+        local joined=${{(j::)descrs}}
+        if [[ -z $joined ]]; then
+            compadd -a args
+        else
+            compadd -d descrs -a args
+        fi
     fi
 
     if [[ -v "commands[$state]" ]]; then
         local command_id=${{commands[$state]}}
         command_completions=("${{(@f)$(_{command}_${{command_id}} ${{words[$CURRENT]}})}}")
         for line in ${{command_completions[@]}}; do
-            compadd $line
+            compadd -- $line
         done
     fi
 
