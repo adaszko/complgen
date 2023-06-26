@@ -107,13 +107,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
         return 1
     done
-
 "#, starting_state = dfa.starting_state + 1)?;
-
-    writeln!(buffer, r#"    declare -A commands"#)?;
-    let command_id_from_state: HashMap<StateId, usize> = dfa.get_command_transitions().into_iter().map(|(state, cmd)| (state, *id_from_command.get(&cmd).unwrap())).collect();
-    let commands_array_initializer = itertools::join(command_id_from_state.into_iter().map(|(state, id)| format!("[{}]={id}", state + 1)), " ");
-    writeln!(buffer, r#"    commands=({commands_array_initializer})"#)?;
 
     write!(buffer, r#"
     if [[ -v "transitions[$state]" ]]; then
@@ -145,7 +139,14 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             compadd -d descrs -a args
         fi
     fi
+"#)?;
 
+    let command_id_from_state: HashMap<StateId, usize> = dfa.get_command_transitions().into_iter().map(|(state, cmd)| (state, *id_from_command.get(&cmd).unwrap())).collect();
+    if !command_id_from_state.is_empty() {
+    writeln!(buffer, r#"    declare -A commands"#)?;
+    let commands_array_initializer = itertools::join(command_id_from_state.into_iter().map(|(state, id)| format!("[{}]={id}", state + 1)), " ");
+    writeln!(buffer, r#"    commands=({commands_array_initializer})"#)?;
+    write!(buffer, r#"
     if [[ -v "commands[$state]" ]]; then
         local command_id=${{commands[$state]}}
         command_completions=("${{(@f)$(_{command}_${{command_id}} ${{words[$CURRENT]}})}}")
@@ -153,16 +154,21 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             compadd -- $line
         done
     fi
-
 "#)?;
+    }
 
-    let file_states_array_initializer: String = itertools::join(dfa.get_file_states().into_iter().map(|state| format!("{}", state + 1)), " ");
-    write!(buffer, r#"
+    let file_states = dfa.get_file_states();
+    if !file_states.is_empty() {
+        let file_states_array_initializer: String = itertools::join(file_states.into_iter().map(|state| format!("{}", state + 1)), " ");
+        write!(buffer, r#"
     files=({file_states_array_initializer})
     if (($files[(Ie)$state])); then
         _path_files
     fi
+"#)?;
+    }
 
+    write!(buffer, r#"
     return 0
 }}
 
