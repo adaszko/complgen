@@ -148,10 +148,10 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
     let command_id_from_state: HashMap<StateId, usize> = dfa.get_command_transitions().into_iter().map(|(state, cmd)| (state, *id_from_command.get(&cmd).unwrap())).collect();
     if !command_id_from_state.is_empty() {
-    writeln!(buffer, r#"    declare -A commands"#)?;
-    let commands_array_initializer = itertools::join(command_id_from_state.into_iter().map(|(state, id)| format!("[{}]={id}", state + 1)), " ");
-    writeln!(buffer, r#"    commands=({commands_array_initializer})"#)?;
-    write!(buffer, r#"
+        writeln!(buffer, r#"    declare -A commands"#)?;
+        let commands_array_initializer = itertools::join(command_id_from_state.into_iter().map(|(state, id)| format!("[{}]={id}", state + 1)), " ");
+        writeln!(buffer, r#"    commands=({commands_array_initializer})"#)?;
+        write!(buffer, r#"
     if [[ -v "commands[$state]" ]]; then
         local command_id=${{commands[$state]}}
         command_completions=("${{(@f)$(_{command}_${{command_id}} ${{words[$CURRENT]}})}}")

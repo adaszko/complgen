@@ -40,7 +40,7 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
         let state_inputs: String = itertools::join(transitions.iter().map(|(literal_id, _)| format!("{}", literal_id)), " ");
         let state_tos: String = itertools::join(transitions.iter().map(|(_, to)| format!("{}", to + 1)), " ");
         // TODO Make two arrays out of transitions: transition_inputs and transition_tos to reduce output size
-        writeln!(buffer, r#"    set transitions[{}] "set inputs {state_inputs}; set tos {state_tos}""#, state+1)?;
+        writeln!(buffer, r#"    set transitions[{}] "set inputs {state_inputs}; set tos {state_tos}""#, state + 1)?;
     }
 
     writeln!(buffer, "")?;
@@ -56,7 +56,9 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
 
 
 pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
-    let id_from_command: UstrMap<usize> = dfa.get_command_transitions().into_iter().enumerate().map(|(id, (_, cmd))| (cmd, id)).collect();
+    let command_transitions = dfa.get_command_transitions();
+
+    let id_from_command: UstrMap<usize> = command_transitions.iter().enumerate().map(|(id, (_, cmd))| (*cmd, id + 1)).collect();
     for (cmd, id) in &id_from_command {
         write!(buffer, r#"function _{command}_{id}
     set 1 $argv[1]
@@ -84,7 +86,9 @@ end
     set --local state {starting_state}
     set --local word_index 2
     while test $word_index -lt $COMP_CWORD
-        if set --query transitions[$state]
+        if set --query transitions[$state] && test -n $transitions[$state]
+            set --local --erase inputs
+            set --local --erase tos
             eval $transitions[$state]
 
             set --local -- word $COMP_WORDS[$word_index]
@@ -99,7 +103,7 @@ end
             end
         end
 
-        if set --query match_anything_transitions_from[$state]
+        if test -n $match_anything_transitions_from[$state]
             set --local index (contains --index -- $state $match_anything_transitions_from)
             set state $match_anything_transitions_to[$index]
             set word_index (math $word_index + 1)
@@ -111,29 +115,34 @@ end
 "#, starting_state = dfa.starting_state + 1)?;
 
     write!(buffer, r#"
-    if set --query transitions[$state]
+    if set --query transitions[$state] && test -n $transitions[$state]
+        set --local --erase inputs
+        set --local --erase tos
         eval $transitions[$state]
         for literal_id in $inputs
-            if set --query descriptions[$literal_id]
+            if test -n $descriptions[$literal_id]
                 printf '%s\t%s\n' $literals[$literal_id] $descriptions[$literal_id]
             else
                 printf '%s\n' $literals[$literal_id]
             end
         end
     end
+
 "#)?;
 
-    let command_id_from_state: HashMap<StateId, usize> = dfa.get_command_transitions().into_iter().map(|(state, cmd)| (state, *id_from_command.get(&cmd).unwrap())).collect();
+    let command_id_from_state: HashMap<StateId, usize> = command_transitions.into_iter().map(|(state, cmd)| (state, *id_from_command.get(&cmd).unwrap())).collect();
     if !command_id_from_state.is_empty() {
-        let command_states = itertools::join(command_id_from_state.iter().map(|(state, _)| state + 1), " ");
-        writeln!(buffer, r#"    set command_states {command_states}"#)?;
-        let command_ids = itertools::join(command_id_from_state.into_iter().map(|(_, id)| id), " ");
-        writeln!(buffer, r#"    set command_ids {command_ids}"#)?;
+        let mut commands: Vec<(StateId, usize)> = command_id_from_state.into_iter().collect();
+        commands.sort_unstable_by_key(|(_, index)| *index);
+        let command_states = itertools::join(commands.iter().map(|(state, _)| state + 1), " ");
+        write!(buffer, r#"    set commands {command_states}"#)?;
         write!(buffer, r#"
-    if contains $state $command_states
-        set --local command_index (contains --index $state $command_states)
+    if contains $state $commands
+        set --local command_index (contains --index $state $commands)
         set --local function_id $command_ids[$command_index]
         set --local function_name _{command}_$function_id
+        set --local --erase inputs
+        set --local --erase tos
         set --local lines (eval $function_name $COMP_WORDS[$COMP_CWORD])
         for line in $lines
             printf '%s\n' $line
