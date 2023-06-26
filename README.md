@@ -77,6 +77,21 @@ Use parentheses to group patterns:
  * `(a | b) ...` matches `a` or `b` followed by any number of additional
    `a` or `b`.
 
+### Filenames completion
+
+There's a specially treated nonterminal `<FILE>`.  If there's no overriding definition of it in the grammar,
+it's going to be completed as filenames automatically.  For instance, for the grammar:
+
+    grep <PATTERNS> [<FILE>]...;
+
+and the input:
+
+```
+$ grep foo <TAB>
+```
+
+the shell is going to suggest files and directories from the current directory.
+
 ### Descriptions (a.k.a. completion hints)
 
 If a literal is immediately followed by a quoted string, it's going to appear as a hint to the user at completion time.  E.g. the grammar:
