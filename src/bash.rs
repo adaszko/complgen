@@ -98,11 +98,6 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
 "#, starting_state = dfa.starting_state)?;
 
-    writeln!(buffer, r#"    declare -A commands"#)?;
-    let command_id_from_state: HashMap<StateId, usize> = dfa.get_command_transitions().into_iter().map(|(state, cmd)| (state, *id_from_command.get(&cmd).unwrap())).collect();
-    let commands_array_initializer = itertools::join(command_id_from_state.into_iter().map(|(state, id)| format!("[{state}]={id}")), " ");
-    writeln!(buffer, r#"    commands=({commands_array_initializer})"#)?;
-
     write!(buffer, r#"
     local completions=()
 
@@ -121,24 +116,37 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             completions+=(${{inverted_literals[$literal_id]}})
         done
     fi
-
-    if [[ -v "commands[$state]" ]]; then
-        local command_id=${{commands[$state]}}
-        IFS=$'\n' read -r -d '' -a command_completions < <( _{command}_${{command_id}} "${{COMP_WORDS[$COMP_CWORD]}}" && printf '\0' )
-        for line in ${{command_completions[@]}}; do
-            completions+=($line)
-        done
-    fi
-
 "#)?;
 
-    let file_states_array_initializer: String = itertools::join(dfa.get_file_states().into_iter().map(|state| format!("{}", state)), " ");
-    write!(buffer, r#"
+    let command_id_from_state: HashMap<StateId, usize> = dfa.get_command_transitions().into_iter().map(|(state, cmd)| (state, *id_from_command.get(&cmd).unwrap())).collect();
+    if !command_id_from_state.is_empty() {
+        writeln!(buffer, r#"    declare -A commands"#)?;
+        let commands_array_initializer = itertools::join(command_id_from_state.into_iter().map(|(state, id)| format!("[{state}]={id}")), " ");
+        writeln!(buffer, r#"    commands=({commands_array_initializer})"#)?;
+        write!(buffer, r#"
+        if [[ -v "commands[$state]" ]]; then
+            local command_id=${{commands[$state]}}
+            IFS=$'\n' read -r -d '' -a command_completions < <( _{command}_${{command_id}} "${{COMP_WORDS[$COMP_CWORD]}}" && printf '\0' )
+            for line in ${{command_completions[@]}}; do
+                completions+=($line)
+            done
+        fi
+
+"#)?;
+    }
+
+    let file_states = dfa.get_file_states();
+    if !file_states.is_empty() {
+        let file_states_array_initializer: String = itertools::join(file_states.into_iter().map(|state| format!("{}", state)), " ");
+        write!(buffer, r#"
     files=({file_states_array_initializer})
     if [[ " ${{files[*]}} " =~ " ${{state}} " ]]; then
         completions+=($(compgen -A file "${{COMP_WORDS[$COMP_CWORD]}}"))
     fi
+"#)?;
+    }
 
+    write!(buffer, r#"
     completions=${{completions[@]}}
     COMPREPLY=($(compgen -W "$completions" -- "${{COMP_WORDS[$COMP_CWORD]}}"))
     return 0
