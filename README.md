@@ -90,6 +90,8 @@ fish> grep --ex<TAB>
 --exclude  (skip files that match GLOB)  --extended-regexp  (PATTERNS are extended regular expressions)
 ```
 
+Note that `bash` does not support showing descriptions.
+
 ### External commands
 
 It is possible to use entire shell commands as a source of completions:
