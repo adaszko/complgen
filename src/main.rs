@@ -1,4 +1,3 @@
-use std::io::Write;
 use std::rc::Rc;
 
 use bumpalo::Bump;
@@ -114,26 +113,20 @@ fn compile(args: &CompileArgs) -> Result<()> {
 
     if let Some(path) = &args.bash_script {
         log::debug!("Writing Bash completion script");
-        let mut output = String::default();
-        bash::write_completion_script(&mut output, &validated.command, &dfa).unwrap();
         let mut bash_completion_script = std::fs::File::create(path).unwrap();
-        bash_completion_script.write_all(output.as_bytes()).unwrap();
+        bash::write_completion_script(&mut bash_completion_script, &validated.command, &dfa).unwrap();
     }
 
     if let Some(path) = &args.fish_script {
         log::debug!("Writing Fish completion script");
-        let mut output = String::default();
-        fish::write_completion_script(&mut output, &validated.command, &dfa).unwrap();
         let mut fish_completion_script = std::fs::File::create(path).unwrap();
-        fish_completion_script.write_all(output.as_bytes()).unwrap();
+        fish::write_completion_script(&mut fish_completion_script, &validated.command, &dfa).unwrap();
     }
 
     if let Some(path) = &args.zsh_script {
         log::debug!("Writing Zsh completion script");
-        let mut output = String::default();
-        zsh::write_completion_script(&mut output, &validated.command, &dfa).unwrap();
         let mut zsh_completion_script = std::fs::File::create(path).unwrap();
-        zsh_completion_script.write_all(output.as_bytes()).unwrap();
+        zsh::write_completion_script(&mut zsh_completion_script, &validated.command, &dfa).unwrap();
     }
 
     Ok(())

@@ -1,4 +1,4 @@
-use std::fmt::Write;
+use std::io::Write;
 
 use complgen::{StateId, Result};
 use hashbrown::HashMap;
