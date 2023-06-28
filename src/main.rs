@@ -1,4 +1,4 @@
-use std::io::BufWriter;
+use std::io::{BufWriter, Write, Read};
 use std::rc::Rc;
 
 use anyhow::Context;
@@ -84,13 +84,29 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
 }
 
 
+fn get_file_or_stdout(path: &str) -> anyhow::Result<Box<dyn Write>> {
+    let result: Box<dyn Write> = if path == "-" {
+        Box::new(std::io::stdout())
+    } else {
+        Box::new(std::fs::File::create(path).context(path.to_owned())?)
+    };
+    Ok(result)
+}
+
+
 fn compile(args: &CompileArgs) -> anyhow::Result<()> {
     if args.railroad_svg.is_none() && args.dfa_dot.is_none() && args.bash_script.is_none() && args.fish_script.is_none() && args.zsh_script.is_none() {
         eprintln!("Please specify at least one of --railroad-svg, --dfa-dot, --bash-script, --fish-script, --zsh-script options");
         std::process::exit(1);
     }
 
-    let input = std::fs::read_to_string(&args.usage_file_path).context(args.usage_file_path.to_owned())?;
+    let input: String = if args.usage_file_path == "-" {
+        let mut input: String = Default::default();
+        std::io::stdin().read_to_string(&mut input)?;
+        input
+    } else {
+        std::fs::read_to_string(&args.usage_file_path).context(args.usage_file_path.to_owned())?
+    };
     let grammar = Grammar::parse(&input)?;
     let validated = ValidGrammar::from_grammar(grammar)?;
     let arena = Bump::new();
@@ -114,21 +130,21 @@ fn compile(args: &CompileArgs) -> anyhow::Result<()> {
 
     if let Some(path) = &args.bash_script {
         log::debug!("Writing Bash completion script");
-        let script_file = std::fs::File::create(path).context(path.clone())?;
+        let script_file = get_file_or_stdout(path)?;
         let mut writer = BufWriter::new(script_file);
         bash::write_completion_script(&mut writer, &validated.command, &dfa)?;
     }
 
     if let Some(path) = &args.fish_script {
         log::debug!("Writing Fish completion script");
-        let script_file = std::fs::File::create(path).context(path.clone())?;
+        let script_file = get_file_or_stdout(path)?;
         let mut writer = BufWriter::new(script_file);
         fish::write_completion_script(&mut writer, &validated.command, &dfa)?;
     }
 
     if let Some(path) = &args.zsh_script {
         log::debug!("Writing Zsh completion script");
-        let script_file = std::fs::File::create(path).context(path.clone())?;
+        let script_file = get_file_or_stdout(path)?;
         let mut writer = BufWriter::new(script_file);
         zsh::write_completion_script(&mut writer, &validated.command, &dfa)?;
     }
