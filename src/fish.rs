@@ -52,7 +52,7 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
 }
 
 
-pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
+pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA, test_mode: bool) -> Result<()> {
     let command_transitions: Vec<(usize, StateId, Ustr)> = dfa.get_command_transitions().into_iter().enumerate().map(|(id, (from, input))| (id + 1, from, input)).collect();
 
     // We can't identify commands by state ids because we're deduplicating them
@@ -77,8 +77,19 @@ end
 "#)?;
     }
 
-    write!(buffer, r#"function _{command}
+    write!(buffer, r#"function _{command}"#)?;
+
+    if test_mode {
+        write!(buffer, r#"
+    set COMP_LINE $argv[1]
+"#)?;
+    } else {
+        write!(buffer, r#"
     set COMP_LINE (commandline --cut-at-cursor)
+"#)?;
+    }
+
+    write!(buffer, r#"
     set COMP_WORDS
     echo $COMP_LINE | read --tokenize --array COMP_WORDS
     if string match --quiet --regex '.*\s$' $COMP_LINE
