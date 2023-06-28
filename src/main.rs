@@ -1,10 +1,10 @@
 use std::io::BufWriter;
 use std::rc::Rc;
 
+use anyhow::Context;
 use bumpalo::Bump;
 use clap::Parser;
 
-use complgen::Result;
 use grammar::{ValidGrammar, Grammar};
 
 use crate::dfa::DFA;
@@ -63,8 +63,8 @@ struct CompileArgs {
 }
 
 
-fn complete(args: &CompleteArgs) -> Result<()> {
-    let input = std::fs::read_to_string(&args.usage_file_path).unwrap();
+fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
+    let input = std::fs::read_to_string(&args.usage_file_path).context(args.usage_file_path.to_owned())?;
     let grammar = Grammar::parse(&input)?;
     let validated = ValidGrammar::from_grammar(grammar)?;
 
@@ -84,19 +84,19 @@ fn complete(args: &CompleteArgs) -> Result<()> {
 }
 
 
-fn compile(args: &CompileArgs) -> Result<()> {
+fn compile(args: &CompileArgs) -> anyhow::Result<()> {
     if args.railroad_svg.is_none() && args.dfa_dot.is_none() && args.bash_script.is_none() && args.fish_script.is_none() && args.zsh_script.is_none() {
         eprintln!("Please specify at least one of --railroad-svg, --dfa-dot, --bash-script, --fish-script, --zsh-script options");
         std::process::exit(1);
     }
 
-    let input = std::fs::read_to_string(&args.usage_file_path).unwrap();
+    let input = std::fs::read_to_string(&args.usage_file_path).context(args.usage_file_path.to_owned())?;
     let grammar = Grammar::parse(&input)?;
     let validated = ValidGrammar::from_grammar(grammar)?;
     let arena = Bump::new();
 
     if let Some(railroad_svg_path) = &args.railroad_svg {
-        grammar::to_railroad_diagram_file(Rc::clone(&validated.expr), railroad_svg_path)?;
+        grammar::to_railroad_diagram_file(Rc::clone(&validated.expr), railroad_svg_path).context(railroad_svg_path.clone())?;
     }
 
     log::debug!("Grammar -> Regex");
@@ -109,26 +109,26 @@ fn compile(args: &CompileArgs) -> Result<()> {
     let dfa = dfa.minimize();
 
     if let Some(dot_file_path) = &args.dfa_dot {
-        dfa.to_dot_file(dot_file_path)?;
+        dfa.to_dot_file(dot_file_path).context(dot_file_path.clone())?;
     }
 
     if let Some(path) = &args.bash_script {
         log::debug!("Writing Bash completion script");
-        let script_file = std::fs::File::create(path)?;
+        let script_file = std::fs::File::create(path).context(path.clone())?;
         let mut writer = BufWriter::new(script_file);
         bash::write_completion_script(&mut writer, &validated.command, &dfa)?;
     }
 
     if let Some(path) = &args.fish_script {
         log::debug!("Writing Fish completion script");
-        let script_file = std::fs::File::create(path)?;
+        let script_file = std::fs::File::create(path).context(path.clone())?;
         let mut writer = BufWriter::new(script_file);
         fish::write_completion_script(&mut writer, &validated.command, &dfa)?;
     }
 
     if let Some(path) = &args.zsh_script {
         log::debug!("Writing Zsh completion script");
-        let script_file = std::fs::File::create(path)?;
+        let script_file = std::fs::File::create(path).context(path.clone())?;
         let mut writer = BufWriter::new(script_file);
         zsh::write_completion_script(&mut writer, &validated.command, &dfa)?;
     }
@@ -137,7 +137,7 @@ fn compile(args: &CompileArgs) -> Result<()> {
 }
 
 
-fn main() -> Result<()> {
+fn main() -> anyhow::Result<()> {
     env_logger::init();
     let args = Cli::parse();
     match args.mode {

@@ -338,7 +338,7 @@ impl ValidGrammar {
             ).collect();
 
             if commands.is_empty() {
-                return Err(Error::EmptyGrammar);
+                return Err(Error::MissingCallVariants);
             }
 
             commands.sort_unstable();
@@ -583,7 +583,7 @@ impl Grammar {
         };
 
         if !input.is_empty() {
-            return Err(Error::TrailingInput(input.to_owned()));
+            return Err(Error::ParsingError(input.to_owned()));
         }
 
         let g = Grammar {

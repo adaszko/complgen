@@ -8,6 +8,7 @@ description = "A programming-language-agnostic shell completions generator"
 debug = true
 
 [dependencies]
+anyhow = "1.0.71"
 bumpalo = "3.12.2"
 clap = { version = "4.2.1", features = ["derive"] }
 env_logger = "0.10.0"

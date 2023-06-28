@@ -6,11 +6,8 @@ pub enum Error {
     #[error("Parsing error: {:?}", .0)]
     ParsingError(String),
 
-    #[error("Empty grammar")]
-    EmptyGrammar,
-
-    #[error("Trailing input")]
-    TrailingInput(String),
+    #[error("Grammar needs to contain at least one call variant, e.g. grep;")]
+    MissingCallVariants,
 
     #[error("One one command is allowed in completions definition")]
     VaryingCommandNames(Vec<Ustr>),
