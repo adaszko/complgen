@@ -2,7 +2,7 @@ use std::{rc::Rc, debug_assert};
 
 use nom::{
     branch::alt,
-    bytes::complete::{is_not, tag, take_while1, escaped, take_till, take_while},
+    bytes::complete::{is_not, tag, take_while1, escaped, take_till, take_while, take_until},
     character::{complete::{char, multispace1, one_of}, is_alphanumeric},
     multi::many0,
     IResult, combinator::{fail, opt}, error::context,
@@ -148,7 +148,7 @@ fn nonterminal_expr(input: &str) -> IResult<&str, Expr> {
     Ok((input, Expr::Nonterminal(ustr(nonterm))))
 }
 
-fn command(input: &str) -> IResult<&str, &str> {
+fn single_bracket_command(input: &str) -> IResult<&str, &str> {
     fn is_command_char(c: char) -> bool {
         c != '}'
     }
@@ -157,6 +157,17 @@ fn command(input: &str) -> IResult<&str, &str> {
     let (input, cmd) = escaped(take_while(is_command_char), '\\', one_of("{}"))(input)?;
     let (input, _) = char('}')(input)?;
     Ok((input, cmd.trim()))
+}
+
+fn triple_bracket_command(input: &str) -> IResult<&str, &str> {
+    let (input, _) = tag("{{{")(input)?;
+    let (input, cmd) = take_until("}}}")(input)?;
+    let (input, _) = tag("}}}")(input)?;
+    Ok((input, cmd.trim()))
+}
+
+fn command(input: &str) -> IResult<&str, &str> {
+    alt((triple_bracket_command, single_bracket_command))(input)
 }
 
 fn command_expr(input: &str) -> IResult<&str, Expr> {
@@ -728,6 +739,13 @@ pub mod tests {
         const INPUT: &str = "{ rustup toolchain list | cut -d' ' -f1 }";
         let ("", e) = command_expr(INPUT).unwrap() else { panic!("parsing error"); };
         assert_eq!(e, Command(u("rustup toolchain list | cut -d' ' -f1")));
+    }
+
+    #[test]
+    fn parses_triple_brackets_command() {
+        const INPUT: &str = "{{{ rad patch list | awk '{print $3}' | grep . | grep -vw ID }}}";
+        let ("", e) = command_expr(INPUT).unwrap() else { panic!("parsing error"); };
+        assert_eq!(e, Command(u("rad patch list | awk '{print $3}' | grep . | grep -vw ID")));
     }
 
     #[test]
