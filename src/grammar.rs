@@ -107,7 +107,7 @@ fn multiblanks1(input: &str) -> IResult<&str, ()> {
 
 fn terminal(input: &str) -> IResult<&str, &str> {
     fn is_terminal_char(c: char) -> bool {
-        c.is_ascii() && (is_alphanumeric(c as u8) || c == '-' || c == '+' || c == '_')
+        c.is_ascii() && (is_alphanumeric(c as u8) || c == '-' || c == '+' || c == '_' || c == '.')
     }
     let (input, term) = escaped(take_while1(is_terminal_char), '\\', one_of(r#"()[]<>.|;"#))(input)?;
     if term.is_empty() {
@@ -1043,5 +1043,17 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
 "#;
         let g = Grammar::parse(INPUT).unwrap();
         assert!(matches!(ValidGrammar::from_grammar(g), Err(Error::DuplicateNonterminalDefinition(nonterm)) if nonterm == "OPTION"));
+    }
+
+    #[test]
+    fn issue_15() {
+        const INPUT: &str = r#"foo.sh [-h] ;"#;
+        let g = Grammar::parse(INPUT).unwrap();
+        assert_eq!(g.statements, vec![
+            Statement::CallVariant {
+                head: u("foo.sh"),
+                expr: Rc::new(Optional(Rc::new(Terminal(ustr("-h"), None)))),
+            },
+        ]);
     }
 }
