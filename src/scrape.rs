@@ -1,9 +1,32 @@
 use std::rc::Rc;
 
-use nom::{IResult, character::complete::{newline, char, anychar}, bytes::complete::{tag_no_case, tag, take_till, take_while1, is_not, take_while}, error::context, branch::alt};
+use nom::{IResult, character::complete::{char, anychar}, bytes::complete::{tag_no_case, tag, take_till, take_while1, is_not, take_while}, error::context, branch::alt, combinator::fail};
 use ustr::ustr;
 
 use crate::grammar::Expr;
+
+
+fn multispace0_except_newline(input: &str) -> IResult<&str, &str> {
+    let (input, spaces) = take_while(|c| c == ' ' || c == '\t')(input)?;
+    Ok((input, spaces))
+}
+
+
+fn multispace1_except_newline(input: &str) -> IResult<&str, &str> {
+    let (input, spaces) = take_while1(|c| c == ' ' || c == '\t')(input)?;
+    Ok((input, spaces))
+}
+
+fn newline_or_eof(input: &str) -> IResult<&str, &str> {
+    if let Ok((input, _)) = tag::<&str, &str, nom::error::Error<_>>("\n")(input) {
+        Ok((input, "\n"))
+    } else if input.is_empty() {
+        Ok((input, ""))
+    }
+    else {
+        fail("newline_or_eof")
+    }
+}
 
 
 fn terminal(input: &str) -> IResult<&str, &str> {
@@ -85,17 +108,6 @@ fn unary_expr(input: &str) -> IResult<&str, Expr> {
 }
 
 
-fn multispace0_except_newline(input: &str) -> IResult<&str, &str> {
-    let (input, spaces) = take_while(|c| c == ' ' || c == '\t')(input)?;
-    Ok((input, spaces))
-}
-
-fn multispace1_except_newline(input: &str) -> IResult<&str, &str> {
-    let (input, spaces) = take_while1(|c| c == ' ' || c == '\t')(input)?;
-    Ok((input, spaces))
-}
-
-
 fn sequence_expr(input: &str) -> IResult<&str, Expr> {
     fn do_sequence_expr(input: &str) -> IResult<&str, Expr> {
         let (input, _) = multispace0_except_newline(input)?;
@@ -167,7 +179,7 @@ fn short_option_long_option_description(input: &str) -> IResult<&str, (&str, &st
     let (input, long) = long_option(input)?;
     let (input, _) = multispace1_except_newline(input)?;
     let (input, description) = description(input)?;
-    let (input, _) = newline(input)?;
+    let (input, _) = newline_or_eof(input)?;
     Ok((input, (short, long, description)))
 }
 
@@ -193,7 +205,7 @@ fn short_option_long_option_argument_description_expr(input: &str) -> IResult<&s
     let (input, arg) = nonterminal(input)?;
     let (input, _) = multispace1_except_newline(input)?;
     let (input, description) = description(input)?;
-    let (input, _) = newline(input)?;
+    let (input, _) = newline_or_eof(input)?;
 
     let d = ustr(description);
     let s = Expr::Terminal(ustr(short), Some(d));
@@ -211,7 +223,7 @@ fn short_option_description_expr(input: &str) -> IResult<&str, Expr> {
     let (input, short) = short_option(input)?;
     let (input, _) = multispace1_except_newline(input)?;
     let (input, descr) = description(input)?;
-    let (input, _) = newline(input)?;
+    let (input, _) = newline_or_eof(input)?;
     Ok((input, Expr::Terminal(ustr(short), Some(ustr(descr)))))
 }
 
@@ -222,7 +234,7 @@ fn long_option_description_expr(input: &str) -> IResult<&str, Expr> {
     let (input, long) = long_option(input)?;
     let (input, _) = multispace1_except_newline(input)?;
     let (input, descr) = description(input)?;
-    let (input, _) = newline(input)?;
+    let (input, _) = newline_or_eof(input)?;
     let expr = Expr::Terminal(ustr(long), Some(ustr(descr)));
     Ok((input, expr))
 }
@@ -238,7 +250,7 @@ fn long_option_argument_description_expr(input: &str) -> IResult<&str, Expr> {
     let (input, arg) = nonterminal(input)?;
     let (input, _) = multispace1_except_newline(input)?;
     let (input, description) = description(input)?;
-    let (input, _) = newline(input)?;
+    let (input, _) = newline_or_eof(input)?;
     let expr = Expr::Sequence(vec![Rc::new(Expr::Terminal(ustr(long), Some(ustr(description)))), Rc::new(Expr::Nonterminal(ustr(arg)))]);
     Ok((input, expr))
 }
@@ -265,7 +277,7 @@ fn short_option_long_option_optional_argument_description_expr(input: &str) -> I
     let (input, opt_arg) = optional_nonterminal_expr(input)?;
     let (input, _) = multispace1_except_newline(input)?;
     let (input, description) = description(input)?;
-    let (input, _) = newline(input)?;
+    let (input, _) = newline_or_eof(input)?;
     let s = Rc::new(Expr::Terminal(ustr(short), Some(ustr(description))));
     let l = Rc::new(Expr::Terminal(ustr(long), Some(ustr(description))));
     let o = Rc::new(opt_arg);
@@ -283,7 +295,7 @@ fn long_option_optional_argument_description_expr(input: &str) -> IResult<&str, 
     let (input, opt_arg) = optional_nonterminal_expr(input)?;
     let (input, _) = multispace1_except_newline(input)?;
     let (input, description) = description(input)?;
-    let (input, _) = newline(input)?;
+    let (input, _) = newline_or_eof(input)?;
     let l = Rc::new(Expr::Terminal(ustr(long), Some(ustr(description))));
     let a = Rc::new(opt_arg);
     let expr = Expr::Sequence(vec![l, a]);
@@ -305,7 +317,7 @@ fn option_line(input: &str) -> IResult<&str, Expr> {
 
 fn fluff_line(input: &str) -> IResult<&str, ()> {
     let (input, _) = take_till(|c| c == '\n')(input)?;
-    let (input, _) = newline(input)?;
+    let (input, _) = newline_or_eof(input)?;
     Ok((input, ()))
 }
 
@@ -314,12 +326,10 @@ fn scrape(mut input: &str) -> IResult<&str, Vec<Rc<Expr>>> {
     let mut result: Vec<Rc<Expr>> = Default::default();
     while !input.is_empty() {
         if let Ok((rest, expr)) = usage_line(input) {
-            println!("usage line: {:?}", &expr);
             result.push(Rc::new(expr));
             input = rest;
         }
         else if let Ok((rest, expr)) = option_line(input) {
-            println!("expr line: {:?}", &expr);
             result.push(Rc::new(expr));
             input = rest;
         }
@@ -356,9 +366,7 @@ mod tests {
 
     #[test]
     fn parses_short_option_long_option_description() {
-        const INPUT: &str = r#"
-  -i, --ignore-case         ignore case distinctions in patterns and data
-"#;
+        const INPUT: &str = r#"-i, --ignore-case         ignore case distinctions in patterns and data"#;
         let (rest, (short_option, long_option, description)) = short_option_long_option_description(INPUT).unwrap();
         assert_eq!(rest, "");
         assert_eq!(short_option, "-i");
@@ -369,10 +377,8 @@ mod tests {
     #[test]
     fn parses_long_option_argument_description() {
         use Expr::*;
-        const INPUT: &str = r#"
-  --name <string> Name of the project
-"#;
-        let (rest, expr) = option_line(INPUT).unwrap();
+        const INPUT: &str = r#"--name <string> Name of the project"#;
+        let (rest, expr) = long_option_argument_description_expr(INPUT).unwrap();
         assert_eq!(rest, "");
         assert_eq!(expr, Sequence(vec![Rc::new(Terminal(ustr("--name"), Some(ustr("Name of the project")))), Rc::new(Nonterminal(ustr("string")))]));
     }
@@ -380,9 +386,7 @@ mod tests {
     #[test]
     fn parses_short_option_long_option_argument_description() {
         use Expr::*;
-        const INPUT: &str = r#"
- -n, --name <string> Name of the project
-"#;
+        const INPUT: &str = r#"-n, --name <string> Name of the project"#;
         let (rest, expr) = option_line(INPUT).unwrap();
         assert_eq!(rest, "");
         assert_eq!(expr, Sequence(vec![Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-n"), Some(ustr("Name of the project")))), Rc::new(Terminal(ustr("--name"), Some(ustr("Name of the project"))))])), Rc::new(Nonterminal(ustr("string")))]));
@@ -391,9 +395,7 @@ mod tests {
     #[test]
     fn parses_long_option_optional_argument_description() {
         use Expr::*;
-        const INPUT: &str = r#"
---name [<string>] Name of the project
-"#;
+        const INPUT: &str = r#"--name [<string>] Name of the project"#;
         let (rest, expr) = option_line(INPUT).unwrap();
         assert_eq!(rest, "");
         assert_eq!(expr, Sequence(vec![Rc::new(Terminal(ustr("--name"), Some(ustr("Name of the project")))), Rc::new(Optional(Rc::new(Nonterminal(ustr("string")))))]));
@@ -432,7 +434,7 @@ Pattern selection and interpretation:
 "#;
         let Ok(("", expr)) = scrape(INPUT) else { panic!("parse error") };
         assert_eq!(expr, vec![
-            Rc::new(Sequence(vec![Rc::new(Terminal(ustr("ggrep"), None)), Rc::new(Many1(Rc::new(Optional(Rc::new(Nonterminal(ustr("OPTION"))))))), Rc::new(Nonterminal(ustr("PATTERNS"))), Rc::new(Many1(Rc::new(Optional(Rc::new(Nonterminal(ustr("FILE"))))))), Rc::new(Nonterminal(ustr("S"))), Rc::new(Terminal(ustr("earch"), None)), Rc::new(Terminal(ustr("for"), None)), Rc::new(Nonterminal(ustr("PATTERNS"))), Rc::new(Terminal(ustr("in"), None)), Rc::new(Terminal(ustr("each"), None)), Rc::new(Nonterminal(ustr("FILE"))), Rc::new(Terminal(ustr("."), None)), Rc::new(Nonterminal(ustr("E"))), Rc::new(Terminal(ustr("xample"), None))])), Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-E"), Some(ustr("PATTERNS are extended regular expressions")))), Rc::new(Terminal(ustr("--extended-regexp"), Some(ustr("PATTERNS are extended regular expressions"))))])), Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-F"), Some(ustr("PATTERNS are strings")))), Rc::new(Terminal(ustr("--fixed-strings"), Some(ustr("PATTERNS are strings"))))])), Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-G"), Some(ustr("PATTERNS are basic regular expressions")))), Rc::new(Terminal(ustr("--basic-regexp"), Some(ustr("PATTERNS are basic regular expressions"))))])), Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-P"), Some(ustr("PATTERNS are Perl regular expressions")))), Rc::new(Terminal(ustr("--perl-regexp"), Some(ustr("PATTERNS are Perl regular expressions"))))])), Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-i"), Some(ustr("ignore case distinctions in patterns and data")))), Rc::new(Terminal(ustr("--ignore-case"), Some(ustr("ignore case distinctions in patterns and data"))))])), Rc::new(Terminal(ustr("--no-ignore-case"), Some(ustr("do not ignore case distinctions (default)")))), Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-w"), Some(ustr("match only whole words")))), Rc::new(Terminal(ustr("--word-regexp"), Some(ustr("match only whole words"))))])), Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-x"), Some(ustr("match only whole lines")))), Rc::new(Terminal(ustr("--line-regexp"), Some(ustr("match only whole lines"))))])), Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-z"), Some(ustr("a data line ends in 0 byte, not newline")))), Rc::new(Terminal(ustr("--null-data"), Some(ustr("a data line ends in 0 byte, not newline"))))]))
+            Rc::new(Sequence(vec![Rc::new(Terminal(ustr("ggrep"), None)), Rc::new(Many1(Rc::new(Optional(Rc::new(Nonterminal(ustr("OPTION"))))))), Rc::new(Nonterminal(ustr("PATTERNS"))), Rc::new(Many1(Rc::new(Optional(Rc::new(Nonterminal(ustr("FILE")))))))])), Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-E"), Some(ustr("are extended regular expressions")))), Rc::new(Terminal(ustr("--extended-regexp"), Some(ustr("are extended regular expressions"))))])), Rc::new(Nonterminal(ustr("PATTERNS")))])), Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-F"), Some(ustr("are strings")))), Rc::new(Terminal(ustr("--fixed-strings"), Some(ustr("are strings"))))])), Rc::new(Nonterminal(ustr("PATTERNS")))])), Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-G"), Some(ustr("are basic regular expressions")))), Rc::new(Terminal(ustr("--basic-regexp"), Some(ustr("are basic regular expressions"))))])), Rc::new(Nonterminal(ustr("PATTERNS")))])), Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-P"), Some(ustr("are Perl regular expressions")))), Rc::new(Terminal(ustr("--perl-regexp"), Some(ustr("are Perl regular expressions"))))])), Rc::new(Nonterminal(ustr("PATTERNS")))])), Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-e"), Some(ustr("use PATTERNS for matching")))), Rc::new(Terminal(ustr("--regexp"), Some(ustr("use PATTERNS for matching"))))])), Rc::new(Nonterminal(ustr("PATTERNS")))])), Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-f"), Some(ustr("take PATTERNS from FILE")))), Rc::new(Terminal(ustr("--file"), Some(ustr("take PATTERNS from FILE"))))])), Rc::new(Nonterminal(ustr("FILE")))])), Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-i"), Some(ustr("ignore case distinctions in patterns and data")))), Rc::new(Terminal(ustr("--ignore-case"), Some(ustr("ignore case distinctions in patterns and data"))))])), Rc::new(Terminal(ustr("--no-ignore-case"), Some(ustr("do not ignore case distinctions (default)")))), Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-w"), Some(ustr("match only whole words")))), Rc::new(Terminal(ustr("--word-regexp"), Some(ustr("match only whole words"))))])), Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-x"), Some(ustr("match only whole lines")))), Rc::new(Terminal(ustr("--line-regexp"), Some(ustr("match only whole lines"))))])), Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-z"), Some(ustr("a data line ends in 0 byte, not newline")))), Rc::new(Terminal(ustr("--null-data"), Some(ustr("a data line ends in 0 byte, not newline"))))]))
         ]);
     }
 }
