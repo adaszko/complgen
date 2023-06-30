@@ -26,7 +26,8 @@ pub enum Expr {
 impl std::fmt::Debug for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Terminal(term, descr) => f.write_fmt(format_args!(r#"Rc::new(Terminal(ustr("{term}"), {:?})))"#, descr)),
+            Self::Terminal(term, Some(descr)) => f.write_fmt(format_args!(r#"Rc::new(Terminal(ustr("{term}"), Some(ustr("{}"))))"#, descr)),
+            Self::Terminal(term, None) => f.write_fmt(format_args!(r#"Rc::new(Terminal(ustr("{term}"), None))"#)),
             Self::Nonterminal(nonterm) => f.write_fmt(format_args!(r#"Rc::new(Nonterminal(ustr("{nonterm}")))"#)),
             Self::Command(arg0) => f.write_fmt(format_args!(r#"Rc::new(Command(ustr("{}")))"#, arg0)),
             Self::Sequence(arg0) => f.write_fmt(format_args!(r#"Rc::new(Sequence(vec!{:?}))"#, arg0)),
@@ -144,7 +145,7 @@ fn nonterminal(input: &str) -> IResult<&str, &str> {
 }
 
 fn nonterminal_expr(input: &str) -> IResult<&str, Expr> {
-    let (input, nonterm) = context("symbol", nonterminal)(input)?;
+    let (input, nonterm) = context("nonterminal", nonterminal)(input)?;
     Ok((input, Expr::Nonterminal(ustr(nonterm))))
 }
 
@@ -193,13 +194,13 @@ fn parenthesized_expr(input: &str) -> IResult<&str, Expr> {
     Ok((input, e))
 }
 
-fn one_or_more_tag(input: &str) -> IResult<&str, ()> {
+fn many1_tag(input: &str) -> IResult<&str, ()> {
     let (input, _) = multiblanks0(input)?;
     let (input, _) = tag("...")(input)?;
     Ok((input, ()))
 }
 
-fn expr_no_alternative_no_sequence(input: &str) -> IResult<&str, Expr> {
+fn unary_expr(input: &str) -> IResult<&str, Expr> {
     let (input, e) = alt((
         nonterminal_expr,
         optional_expr,
@@ -208,7 +209,7 @@ fn expr_no_alternative_no_sequence(input: &str) -> IResult<&str, Expr> {
         terminal_opt_description_expr,
     ))(input)?;
 
-    if let Ok((input, ())) = one_or_more_tag(input) {
+    if let Ok((input, ())) = many1_tag(input) {
         return Ok((input, Expr::Many1(Rc::new(e))));
     }
 
@@ -222,7 +223,7 @@ fn sequence_expr(input: &str) -> IResult<&str, Expr> {
         Ok((input, right))
     }
 
-    let (mut input, left) = expr_no_alternative_no_sequence(input)?;
+    let (mut input, left) = unary_expr(input)?;
     let mut factors: Vec<Expr> = vec![left];
     loop {
         let Ok((pos, right)) = do_sequence_expr(input) else { break };
@@ -267,7 +268,7 @@ fn expr(input: &str) -> IResult<&str, Expr> {
 
 
 #[derive(Debug, Clone, PartialEq)]
-enum Statement {
+pub enum Statement {
     CallVariant {
         head: Ustr,
         expr: Rc<Expr>,

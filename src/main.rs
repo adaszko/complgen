@@ -19,6 +19,7 @@ mod zsh;
 mod fish;
 mod complete;
 mod regex;
+mod scrape;
 
 
 #[derive(clap::Parser)]
