@@ -38,7 +38,6 @@ def test_completes_files(complgen_binary_path: Path):
                 assert completions == ['bar', 'baz', 'foo']
 
 
-@pytest.mark.skip(reason="not implemented yet")
 def test_completes_paths(complgen_binary_path: Path):
     GRAMMAR = '''cmd <PATH> [--help];'''
     with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:

@@ -1,7 +1,7 @@
 use complgen::StateId;
 use hashbrown::HashMap;
 
-use crate::{dfa::DFA, regex::{Input, AnyInput}};
+use crate::{dfa::DFA, regex::{Input, MatchAnythingInput}};
 
 
 pub fn get_match_final_state(dfa: &DFA, inputs: &[&str]) -> Option<StateId> {
@@ -33,14 +33,13 @@ pub fn get_completions<'a, 'b>(dfa: &DFA, words_before_cursor: &'b [&'a str]) ->
     if let Some(state_id) = get_match_final_state(dfa, words_before_cursor) {
         let mut inputs: Vec<String> = dfa.transitions.get(&state_id).unwrap_or(&HashMap::default()).iter().filter_map(|(input, _)| match input {
             Input::Literal(s, _) => Some(vec![s.as_str().to_string()]),
-            Input::Any(AnyInput::Command(cmd)) => {
+            Input::Any(MatchAnythingInput::Command(cmd)) => {
                 let output = std::process::Command::new("sh").arg("-c").arg(cmd.as_str()).output().unwrap();
                 let compls = String::from_utf8(output.stdout).unwrap();
                 let result: Vec<String> = compls.lines().map(|s| s.to_string()).collect();
                 Some(result)
             },
-            Input::Any(AnyInput::File) => None, // TODO
-            Input::Any(AnyInput::Any) => None,
+            Input::Any(MatchAnythingInput::Any(..)) => None,
         }).flatten().collect();
         inputs.sort_unstable();
         inputs

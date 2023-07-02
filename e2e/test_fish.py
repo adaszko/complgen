@@ -1,9 +1,12 @@
+import os
 import sys
 import tempfile
 import subprocess
 import contextlib
 from pathlib import Path
 from typing import Generator
+
+from conftest import set_working_dir
 
 
 def fish_completions_from_stdout(stdout: str) -> list[tuple[str, str]]:
@@ -45,8 +48,8 @@ cmd <COMMAND> [--help];
 <REMOTE-SUBCOMMAND> ::= rm <name>;
 '''
 
-    with completion_script_path(complgen_binary_path, GRAMMAR) as script_path:
-        input = 'source {}; _cmd "cmd "'.format(script_path)
+    with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
+        input = 'source {}; _cmd "cmd "'.format(completions_file_path)
         assert get_sorted_completions(input) == sorted([('rm', "Remove a project"), ('remote', "Manage a project's remotes")], key=lambda pair: pair[0])
 
 
@@ -59,8 +62,8 @@ cmd [<OPTION>]...;
            ;
 '''
 
-    with completion_script_path(complgen_binary_path, GRAMMAR) as script_path:
-        input = 'source {}; _cmd "cmd "'.format(script_path)
+    with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
+        input = 'source {}; _cmd "cmd "'.format(completions_file_path)
         assert get_sorted_completions(input) == sorted([('--color', "use markers to highlight the matching strings"), ('--colour', "use markers to highlight the matching strings")], key=lambda pair: pair[0])
 
 
@@ -69,6 +72,19 @@ def test_fish_external_command_produces_description(complgen_binary_path: Path):
 cmd { echo -e "completion\tdescription" };
 '''
 
-    with completion_script_path(complgen_binary_path, GRAMMAR) as script_path:
-        input = 'source {}; _cmd "cmd "'.format(script_path)
+    with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
+        input = 'source {}; _cmd "cmd "'.format(completions_file_path)
         assert get_sorted_completions(input) == [('completion', 'description')]
+
+
+def test_completes_paths(complgen_binary_path: Path):
+    GRAMMAR = '''cmd <PATH> [--help];'''
+    with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                Path('foo').write_text('dummy')
+                Path('bar').write_text('dummy')
+                os.mkdir('baz')
+                input = 'source {}; _cmd "cmd "'.format(completions_file_path)
+                completions = get_sorted_completions(input)
+                assert completions == sorted([('bar', ''), ('baz/', ''), ('foo', '')])

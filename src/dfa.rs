@@ -7,7 +7,7 @@ use hashbrown::{HashMap, HashSet};
 use roaring::{MultiOps, RoaringBitmap};
 use ustr::{Ustr, ustr};
 
-use crate::regex::{Position, AugmentedRegex, Input, AnyInput};
+use crate::regex::{Position, AugmentedRegex, Input, MatchAnythingInput};
 use complgen::StateId;
 
 
@@ -419,9 +419,8 @@ impl DFA {
         for (from, tos) in &self.transitions {
             for (input, _) in tos {
                 let cmd = match input {
-                    Input::Any(AnyInput::Command(cmd)) => *cmd,
-                    Input::Any(AnyInput::Any) => continue,
-                    Input::Any(AnyInput::File) => continue,
+                    Input::Any(MatchAnythingInput::Command(cmd)) => *cmd,
+                    Input::Any(MatchAnythingInput::Any(..)) => continue,
                     Input::Literal(..) => continue,
                 };
                 result.push((*from, cmd));
@@ -435,9 +434,13 @@ impl DFA {
         for (from, tos) in &self.transitions {
             for (input, _) in tos {
                 match input {
-                    Input::Any(AnyInput::File) => result.push(*from),
-                    Input::Any(AnyInput::Command(..)) => {},
-                    Input::Any(AnyInput::Any) => {},
+                    Input::Any(MatchAnythingInput::Command(..)) => {},
+                    Input::Any(MatchAnythingInput::Any(name)) => {
+                        let canonicalized_name = name.as_str().to_uppercase();
+                        if canonicalized_name == "FILE" || canonicalized_name == "PATH" {
+                            result.push(*from);
+                        }
+                    },
                     Input::Literal(..) => {},
                 };
             }

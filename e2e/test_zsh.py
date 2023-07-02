@@ -1,9 +1,12 @@
+import os
 import sys
 import tempfile
 import contextlib
 import subprocess
 from pathlib import Path
 from typing import Generator
+
+from conftest import set_working_dir
 
 
 def zsh_completions_from_stdout(stdout: str) -> list[tuple[str, str]]:
@@ -83,8 +86,8 @@ cmd <COMMAND> [--help];
 <REMOTE-SUBCOMMAND> ::= rm <name>;
 '''
 
-    with completion_script_path(complgen_binary_path, GRAMMAR) as wrapper_path:
-        input = 'source {}; words=(cmd); CURRENT=2; _cmd; for i in {{1..$#wrapper_completions}}; do printf "%s\t%s\n" ${{wrapper_completions[$i]}} ${{wrapper_descriptions[$i]}}; done'.format(wrapper_path)
+    with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
+        input = 'source {}; words=(cmd); CURRENT=2; _cmd; for i in {{1..$#wrapper_completions}}; do printf "%s\t%s\n" ${{wrapper_completions[$i]}} ${{wrapper_descriptions[$i]}}; done'.format(completions_file_path)
         assert get_sorted_completions(input) == sorted([('rm', "rm (Remove a project)"), ('remote', "remote (Manage a project's remotes)")], key=lambda pair: pair[0])
 
 
@@ -97,8 +100,8 @@ mygrep [<OPTION>]...;
            ;
 '''
 
-    with completion_script_path(complgen_binary_path, GRAMMAR) as wrapper_path:
-        input = 'source {}; words=(mygrep); CURRENT=2; _mygrep; for i in {{1..$#wrapper_completions}}; do printf "%s\t%s\n" ${{wrapper_completions[$i]}} ${{wrapper_descriptions[$i]}}; done'.format(wrapper_path)
+    with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
+        input = 'source {}; words=(mygrep); CURRENT=2; _mygrep; for i in {{1..$#wrapper_completions}}; do printf "%s\t%s\n" ${{wrapper_completions[$i]}} ${{wrapper_descriptions[$i]}}; done'.format(completions_file_path)
         assert get_sorted_completions(input) == sorted([('--color', "--color (use markers to highlight the matching strings)"), ('--colour', "--colour (use markers to highlight the matching strings)")], key=lambda pair: pair[0])
 
 
@@ -106,6 +109,6 @@ def test_zsh_external_command_produces_description(complgen_binary_path: Path):
     GRAMMAR = r'''
 cmd { echo -e "completion\tdescription" };
 '''
-    with completion_script_path(complgen_binary_path, GRAMMAR) as wrapper_path:
-        input = 'source {}; words=(cmd); CURRENT=2; _cmd; for i in {{1..$#wrapper_completions}}; do printf "%s\t%s\n" ${{wrapper_completions[$i]}} ${{wrapper_descriptions[$i]}}; done'.format(wrapper_path)
+    with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
+        input = 'source {}; words=(cmd); CURRENT=2; _cmd; for i in {{1..$#wrapper_completions}}; do printf "%s\t%s\n" ${{wrapper_completions[$i]}} ${{wrapper_descriptions[$i]}}; done'.format(completions_file_path)
         assert get_sorted_completions(input) == sorted([('completion', 'description')])

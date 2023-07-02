@@ -11,18 +11,16 @@ use crate::grammar::Expr;
 pub type Position = u32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum AnyInput {
-    Any,
+pub enum MatchAnythingInput {
+    Any(Ustr),
     Command(Ustr),
-    File,
 }
 
-impl std::fmt::Display for AnyInput {
+impl std::fmt::Display for MatchAnythingInput {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AnyInput::Any => write!(f, "*"),
-            AnyInput::Command(cmd) => write!(f, "{{{}}}", cmd),
-            AnyInput::File => write!(f, "FILE"),
+            MatchAnythingInput::Any(name) => write!(f, "{name}"),
+            MatchAnythingInput::Command(cmd) => write!(f, "{{{cmd}}}"),
         }
     }
 }
@@ -31,7 +29,7 @@ impl std::fmt::Display for AnyInput {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum Input {
     Literal(Ustr, Option<Ustr>),
-    Any(AnyInput),
+    Any(MatchAnythingInput),
 }
 
 
@@ -216,18 +214,14 @@ fn do_from_expr<'a>(e: &Expr, arena: &'a Bump, symbols: &mut HashSet<Input>, inp
         },
         Expr::Nonterminal(name) => {
             let result = AugmentedRegexNode::Nonterminal(Position::try_from(input_from_position.len()).unwrap());
-            let input = if name.as_str() == "FILE" {
-                Input::Any(AnyInput::File)
-            } else {
-                Input::Any(AnyInput::Any)
-            };
+            let input = Input::Any(MatchAnythingInput::Any(*name));
             input_from_position.push(input.clone());
             symbols.insert(input);
             result
         },
         Expr::Command(code) => {
             let result = AugmentedRegexNode::Command(*code, Position::try_from(input_from_position.len()).unwrap());
-            let input = Input::Any(AnyInput::Command(*code));
+            let input = Input::Any(MatchAnythingInput::Command(*code));
             input_from_position.push(input.clone());
             symbols.insert(input);
             result
