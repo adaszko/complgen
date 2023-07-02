@@ -122,6 +122,10 @@ itself.  For all three shells (bash, fish, zsh), it's available in the `$1` vari
 Note that in general, it's best to leave the filtering up to the executing shell since it may be configured to
 perform some non-standard filtering.  zsh for example is capable of expanding `/u/l/b` to `/usr/local/bin`.
 
+To avoid cumbersome escaping, additional triple brackets syntax is also supported:
+
+    cargo {{{ rustup toolchain list | awk '{ print $1 }' | grep "^$1" | sed 's/^/+/' }}};
+
 ## Limitations
 
  * Passing option arguments using `=` is not currently supported.  E.g. `--foo=bar` doesn't work, but `--foo
