@@ -77,3 +77,12 @@ cmd <COMMAND> [--help];
     with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
         assert get_sorted_completions(completions_file_path, r'''COMP_WORDS=(cmd remote); COMP_CWORD=2; _cmd; if [[ ${#COMPREPLY[@]} -gt 0 ]]; then printf '%s\n' "${COMPREPLY[@]}"; fi''') == sorted(['--help', 'rm'])
         assert get_sorted_completions(completions_file_path, r'''COMP_WORDS=(cmd rm); COMP_CWORD=2; _cmd; if [[ ${#COMPREPLY[@]} -gt 0 ]]; then printf '%s\n' "${COMPREPLY[@]}"; fi''') == sorted([])
+
+
+def test_bash_external_command_produces_description(complgen_binary_path: Path):
+    GRAMMAR = r'''
+cmd { echo -e "completion\tdescription" };
+'''
+    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
+        input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_completions(path, input) == sorted(['completion'])

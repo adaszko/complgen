@@ -153,10 +153,21 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         write!(buffer, r#"
     if [[ -v "commands[$state]" ]]; then
         local command_id=${{commands[$state]}}
-        command_completions=("${{(@f)$(_{command}_${{command_id}} ${{words[$CURRENT]}})}}")
+        local -a args
+        local -a descrs
+        local -a command_completions=("${{(@f)$(_{command}_${{command_id}} ${{words[$CURRENT]}})}}")
         for line in ${{command_completions[@]}}; do
-            compadd -- $line
+            local a=$(echo "$line" | cut -f1)
+            args+=($a)
+            local d=$(echo "$line" | cut -f2-)
+            descrs+=($d)
         done
+        local joined=${{(j::)descrs}}
+        if [[ -z $joined ]]; then
+            compadd -a args
+        else
+            compadd -d descrs -a args
+        fi
     fi
 "#)?;
     }
