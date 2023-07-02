@@ -2,7 +2,7 @@ use std::io::Write;
 
 use complgen::{StateId, Result};
 use hashbrown::HashMap;
-use ustr::{Ustr, UstrMap};
+use ustr::{Ustr, UstrMap, ustr};
 use crate::dfa::DFA;
 
 
@@ -10,16 +10,14 @@ use crate::dfa::DFA;
 
 
 fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
-    let all_literals: Vec<(usize, Ustr, Option<Ustr>)> = dfa.get_all_literals().into_iter().enumerate().map(|(id, (literal, description))| (id + 1, literal, description)).collect();
+    let all_literals: Vec<(usize, Ustr, Ustr)> = dfa.get_all_literals().into_iter().enumerate().map(|(id, (literal, description))| (id + 1, literal, description.unwrap_or(ustr("")))).collect();
 
-    // Beware of duplicated literals: e.g. -q and -q
-    let literal_id_from_input: UstrMap<usize> = all_literals.iter().map(|(id, literal, _)| (*literal, *id)).collect();
+    let literal_id_from_input_description: HashMap<(Ustr, Ustr), usize> = all_literals.iter().map(|(id, literal, description)| ((*literal, *description), *id)).collect();
     let literals: String = itertools::join(all_literals.iter().map(|(_, literal, _)| literal), " ");
     writeln!(buffer, r#"    set --local literals {literals}"#)?;
     writeln!(buffer, "")?;
 
-    let literal_id_from_description: UstrMap<usize> = all_literals.iter().filter_map(|(id, _, description)| description.map(|description| (description, *id))).collect();
-    for (description, id) in literal_id_from_description {
+    for (id, _, description) in all_literals.iter() {
         let description = description.replace("\"", "\\\"");
         writeln!(buffer, r#"    set descriptions[{id}] "{description}""#)?;
     }
@@ -30,7 +28,7 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
         if transitions.is_empty() {
             continue;
         }
-        let transitions: Vec<(usize, StateId)> = transitions.into_iter().map(|(input, to)| (*literal_id_from_input.get(&input).unwrap(), to)).collect();
+        let transitions: Vec<(usize, StateId)> = transitions.into_iter().map(|(input, description, to)| (*literal_id_from_input_description.get(&(input, description)).unwrap(), to)).collect();
         if transitions.is_empty() {
             continue;
         }
@@ -113,11 +111,17 @@ end
 
             set --local -- word $COMP_WORDS[$word_index]
             if contains -- $word $literals
-                set --local literal_id (contains --index -- $word $literals)
-                if contains -- $literal_id $inputs
-                    set --local index (contains --index -- $literal_id $inputs)
-                    set state $tos[$index]
-                    set word_index (math $word_index + 1)
+                set --local word_matched 0
+                for literal_id in (seq 1 (count $literals))
+                    if test $literals[$literal_id] = $word
+                        set --local index (contains --index -- $literal_id $inputs)
+                        set state $tos[$index]
+                        set word_index (math $word_index + 1)
+                        set word_matched 1
+                        break
+                    end
+                end
+                if test word_matched -ne 0
                     continue
                 end
             end

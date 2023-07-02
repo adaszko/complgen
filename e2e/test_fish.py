@@ -20,7 +20,7 @@ def fish_completions_from_stdout(stdout: str) -> list[tuple[str, str]]:
     return result
 
 
-def get_fish_completions(complgen_binary_path: Path, grammar: str) -> list[tuple[str, str]]:
+def get_sorted_completions(complgen_binary_path: Path, grammar: str) -> list[tuple[str, str]]:
     with tempfile.NamedTemporaryFile() as f:
         fish_script = get_fish_completion_script(complgen_binary_path, grammar)
         f.write(fish_script)
@@ -28,6 +28,7 @@ def get_fish_completions(complgen_binary_path: Path, grammar: str) -> list[tuple
         completed_process = subprocess.run(['fish', '--private', '--no-config', '--init-command', 'function fish_prompt; end', '--command', 'source {}; _cmd "cmd "'.format(f.name)], stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
         completions = completed_process.stdout.decode()
         parsed = fish_completions_from_stdout(completions)
+        parsed.sort(key=lambda pair: pair[0])
         return parsed
 
 
@@ -42,14 +43,26 @@ cmd <COMMAND> [--help];
 <REMOTE-SUBCOMMAND> ::= rm <name>;
 '''
 
-    completions = get_fish_completions(complgen_binary_path, GRAMMAR)
-    completions.sort(key=lambda pair: pair[0])
+    completions = get_sorted_completions(complgen_binary_path, GRAMMAR)
     assert completions == sorted([('rm', "Remove a project"), ('remote', "Manage a project's remotes")], key=lambda pair: pair[0])
+
+
+def test_fish_uses_correct_description_with_duplicated_descriptions(complgen_binary_path: Path):
+    GRAMMAR = '''
+cmd [<OPTION>]...;
+
+<OPTION> ::= --color    "use markers to highlight the matching strings" [<WHEN>]
+           | --colour   "use markers to highlight the matching strings" [<WHEN>]
+           ;
+'''
+
+    completions = get_sorted_completions(complgen_binary_path, GRAMMAR)
+    assert completions == sorted([('--color', "use markers to highlight the matching strings"), ('--colour', "use markers to highlight the matching strings")], key=lambda pair: pair[0])
 
 
 def test_external_command_produces_description(complgen_binary_path: Path):
     GRAMMAR = '''
 cmd { echo -e "completion\tdescription" };
 '''
-    completions = get_fish_completions(complgen_binary_path, GRAMMAR)
+    completions = get_sorted_completions(complgen_binary_path, GRAMMAR)
     assert completions == [('completion', 'description')]

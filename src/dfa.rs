@@ -5,7 +5,7 @@ use std::{
 use hashbrown::{HashMap, HashSet};
 
 use roaring::{MultiOps, RoaringBitmap};
-use ustr::Ustr;
+use ustr::{Ustr, ustr};
 
 use crate::regex::{Position, AugmentedRegex, Input, AnyInput};
 use complgen::StateId;
@@ -409,7 +409,7 @@ impl DFA {
 
     pub fn get_all_literals(&self) -> Vec<(Ustr, Option<Ustr>)> {
         self.input_symbols.iter().filter_map(|input| match input {
-            Input::Literal(ustr, description) => Some((*ustr, *description)),
+            Input::Literal(input, description) => Some((*input, *description)),
             Input::Any(_) => None,
         }).collect()
     }
@@ -445,13 +445,13 @@ impl DFA {
         result
     }
 
-    pub fn get_literal_transitions_from(&self, from: StateId) -> Vec<(Ustr, StateId)> {
+    pub fn get_literal_transitions_from(&self, from: StateId) -> Vec<(Ustr, Ustr, StateId)> {
         let map = match self.transitions.get(&StateId::try_from(from).unwrap()) {
             Some(map) => map,
             None => return vec![],
         };
-        let transitions: Vec<(Ustr, StateId)> = map.iter().filter_map(|(input, to)| match input {
-            Input::Literal(ustr, _) => Some((*ustr, *to)),
+        let transitions: Vec<(Ustr, Ustr, StateId)> = map.iter().filter_map(|(input, to)| match input {
+            Input::Literal(input, description) => Some((*input, description.unwrap_or(ustr("")), *to)),
             Input::Any(_) => None,
         }).collect();
         transitions

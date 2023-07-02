@@ -2,7 +2,7 @@ use std::io::Write;
 
 use complgen::{StateId, Result};
 use hashbrown::HashMap;
-use ustr::UstrMap;
+use ustr::{UstrMap, Ustr, ustr};
 use crate::dfa::DFA;
 
 
@@ -24,11 +24,11 @@ use crate::dfa::DFA;
 /// accepts any word
 ///
 fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
-    let id_from_input: UstrMap<usize> = dfa.get_all_literals().into_iter().enumerate().map(|(id, (ustr, _))| (ustr, id)).collect();
+    let all_literals: Vec<(usize, Ustr, Ustr)> = dfa.get_all_literals().into_iter().enumerate().map(|(id, (literal, description))| (id, literal, description.unwrap_or(ustr("")))).collect();
 
-    writeln!(buffer, r#"    declare -A literals"#)?;
-    let literals: String = itertools::join(id_from_input.iter().map(|(literal, id)| format!("[{literal}]={id}")), " ");
-    writeln!(buffer, r#"    literals=({literals})"#)?;
+    let literal_id_from_input_description: HashMap<(Ustr, Ustr), usize> = all_literals.iter().map(|(id, input, description)| ((*input, *description), *id)).collect();
+    let literals: String = itertools::join(all_literals.iter().map(|(_, literal, _)| literal), " ");
+    writeln!(buffer, r#"    local -a literals=({literals})"#)?;
     writeln!(buffer, "")?;
 
     writeln!(buffer, r#"    declare -A transitions"#)?;
@@ -37,7 +37,7 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
         if transitions.is_empty() {
             continue;
         }
-        let transitions: Vec<(usize, StateId)> = transitions.into_iter().map(|(input, to)| (*id_from_input.get(&input).unwrap(), to)).collect();
+        let transitions: Vec<(usize, StateId)> = transitions.into_iter().map(|(input, description, to)| (*literal_id_from_input_description.get(&(input, description)).unwrap(), to)).collect();
         let state_transitions: String = itertools::join(transitions.into_iter().map(|(input, to)| format!("[{}]={}", input, to)), " ");
         writeln!(buffer, r#"    transitions[{state}]="({state_transitions})""#)?;
     }
@@ -77,13 +77,19 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             eval "state_transitions=$state_transitions_initializer"
 
             local word=${{COMP_WORDS[$word_index]}}
-            if [[ -v "literals[$word]" ]]; then
-                local literal_id=${{literals[$word]}}
-                if [[ -v "state_transitions[$literal_id]" ]]; then
-                    state=${{state_transitions[$literal_id]}}
-                    word_index=$((word_index + 1))
-                    continue
+            local word_matched=0
+            for literal_id in $(seq 1 ${{#literals[@]}}); do
+                if [[ ${{literals[$literal_id]}} = $word ]]; then
+                    if [[ -v "state_transitions[$literal_id]" ]]; then
+                        state=${{state_transitions[$literal_id]}}
+                        word_index=$((word_index + 1))
+                        word_matched=1
+                        break
+                    fi
                 fi
+            done
+            if [[ $word_matched -ne 0 ]]; then
+                continue
             fi
         fi
 
@@ -106,14 +112,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         declare -A state_transitions
         eval "state_transitions=$state_transitions_initializer"
 
-        local -A inverted_literals=()
-        for key in "${{!literals[@]}}"; do
-            local value=${{literals[$key]}}
-            inverted_literals+=([$value]=$key)
-        done
-
         for literal_id in ${{!state_transitions[@]}}; do
-            completions+=(${{inverted_literals[$literal_id]}})
+            completions+=(${{literals[$literal_id]}})
         done
     fi
 "#)?;
