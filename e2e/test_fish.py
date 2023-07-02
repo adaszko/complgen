@@ -12,8 +12,7 @@ def get_fish_completion_script(complgen_binary_path: Path, grammar: str) -> byte
 def fish_completions_from_stdout(stdout: str) -> list[tuple[str, str]]:
     result = []
     for line in stdout.splitlines():
-        fields = line.split('\t')
-        assert len(fields) in (1, 2)
+        fields = line.split('\t', maxsplit=2)
         if len(fields) == 1:
             result.append((fields[0], ''))
         else:
@@ -32,7 +31,7 @@ def get_fish_completions(complgen_binary_path: Path, grammar: str) -> list[tuple
         return parsed
 
 
-def test_uses_correct_description_with_duplicated_literals(complgen_binary_path: Path):
+def test_fish_uses_correct_description_with_duplicated_literals(complgen_binary_path: Path):
     GRAMMAR = '''
 cmd <COMMAND> [--help];
 

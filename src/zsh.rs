@@ -35,12 +35,11 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
     let all_literals: Vec<(usize, (Ustr, Option<Ustr>))> = dfa.get_all_literals().into_iter().enumerate().collect();
 
     let id_from_input: UstrMap<usize> = all_literals.iter().map(|(id, (ustr, _))| (*ustr, id + 1)).collect();
-    writeln!(buffer, r#"    declare -A literals"#)?;
     let literals: String = itertools::join(id_from_input.iter().map(|(literal, id)| format!("[{literal}]={id}")), " ");
-    writeln!(buffer, r#"    literals=({literals})"#)?;
+    writeln!(buffer, r#"    local -A literals=({literals})"#)?;
     writeln!(buffer, "")?;
 
-    writeln!(buffer, r#"    declare -A descriptions"#)?;
+    writeln!(buffer, r#"    local -A descriptions"#)?;
     let id_from_description: UstrMap<usize> = all_literals.iter().filter_map(|(id, (_, description))| description.map(|description| (description, id + 1))).collect();
     for (description, id) in id_from_description {
         let description = escape_zsh_string(&description);
@@ -48,7 +47,7 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
     }
     writeln!(buffer, "")?;
 
-    writeln!(buffer, r#"    declare -A transitions"#)?;
+    writeln!(buffer, r#"    local -A transitions"#)?;
     for state in dfa.get_all_states() {
         let transitions = dfa.get_literal_transitions_from(StateId::try_from(state).unwrap());
         if transitions.is_empty() {
@@ -61,9 +60,8 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
 
     writeln!(buffer, "")?;
 
-    writeln!(buffer, r#"    declare -A match_anything_transitions"#)?;
     let match_anything_transitions = itertools::join(dfa.get_match_anything_transitions().into_iter().map(|(from, to)| format!("[{}]={}", from+1, to+1)), " ");
-    writeln!(buffer, r#"    match_anything_transitions=({match_anything_transitions})"#)?;
+    writeln!(buffer, r#"    local -A match_anything_transitions=({match_anything_transitions})"#)?;
 
     Ok(())
 }
@@ -90,7 +88,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     while [[ $word_index -lt $CURRENT ]]; do
         if [[ -v "transitions[$state]" ]]; then
             local state_transitions_initializer=${{transitions[$state]}}
-            declare -A state_transitions
+            local -A state_transitions
             eval "state_transitions=$state_transitions_initializer"
 
             local word=${{words[$word_index]}}
@@ -117,10 +115,10 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     write!(buffer, r#"
     if [[ -v "transitions[$state]" ]]; then
         local state_transitions_initializer=${{transitions[$state]}}
-        declare -A state_transitions
+        local -A state_transitions
         eval "state_transitions=$state_transitions_initializer"
 
-        declare -A inverted_literals
+        local -A inverted_literals
         for key in ${{(k)literals}}; do
             local value=${{literals[$key]}}
             inverted_literals[$value]=$key
@@ -148,9 +146,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
     let command_id_from_state: HashMap<StateId, usize> = dfa.get_command_transitions().into_iter().map(|(state, cmd)| (state, *id_from_command.get(&cmd).unwrap())).collect();
     if !command_id_from_state.is_empty() {
-        writeln!(buffer, r#"    declare -A commands"#)?;
         let commands_array_initializer = itertools::join(command_id_from_state.into_iter().map(|(state, id)| format!("[{}]={id}", state + 1)), " ");
-        writeln!(buffer, r#"    commands=({commands_array_initializer})"#)?;
+        writeln!(buffer, r#"    local -A commands=({commands_array_initializer})"#)?;
         write!(buffer, r#"
     if [[ -v "commands[$state]" ]]; then
         local command_id=${{commands[$state]}}
