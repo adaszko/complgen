@@ -5,7 +5,7 @@ from pathlib import Path
 
 
 def get_fish_completion_script(complgen_binary_path: Path, grammar: str) -> bytes:
-    completed_process = subprocess.run([complgen_binary_path, 'compile', '--test-mode', '--fish-script', '-', '-'], input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr)
+    completed_process = subprocess.run([complgen_binary_path, 'compile', '--test-mode', '--fish-script', '-', '-'], input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
     return completed_process.stdout
 
 
@@ -26,7 +26,7 @@ def get_fish_completions(complgen_binary_path: Path, grammar: str) -> list[tuple
         fish_script = get_fish_completion_script(complgen_binary_path, grammar)
         f.write(fish_script)
         f.flush()
-        completed_process = subprocess.run(['fish', '--private', '--no-config', '--init-command', 'function fish_prompt; end', '--command', 'source {}; _cmd "cmd "'.format(f.name)], stdout=subprocess.PIPE, stderr=sys.stderr)
+        completed_process = subprocess.run(['fish', '--private', '--no-config', '--init-command', 'function fish_prompt; end', '--command', 'source {}; _cmd "cmd "'.format(f.name)], stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
         completions = completed_process.stdout.decode()
         parsed = fish_completions_from_stdout(completions)
         return parsed
@@ -36,16 +36,16 @@ def test_uses_correct_description_with_duplicated_literals(complgen_binary_path:
     GRAMMAR = '''
 cmd <COMMAND> [--help];
 
-<COMMAND> ::= foo           "Foo description" <FOO-OPTION>
-            | bar           "Bar description" [<BAR-SUBCOMMAND>]
+<COMMAND> ::= rm           "Remove a project" <RM-OPTION>
+            | remote       "Manage a project's remotes" [<REMOTE-SUBCOMMAND>]
             ;
 
-<BAR-SUBCOMMAND> ::= foo <foo-arg>;
+<REMOTE-SUBCOMMAND> ::= rm <name>;
 '''
 
     completions = get_fish_completions(complgen_binary_path, GRAMMAR)
     completions.sort(key=lambda pair: pair[0])
-    assert completions == [('foo', 'Foo description'), ('bar', "Bar description")]
+    assert completions == sorted([('rm', "Remove a project"), ('remote', "Manage a project's remotes")], key=lambda pair: pair[0])
 
 
 def test_external_command_produces_description(complgen_binary_path: Path):

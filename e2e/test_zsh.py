@@ -8,7 +8,7 @@ import pytest
 
 
 def get_completion_script(complgen_binary_path: Path, grammar: str) -> str:
-    completed_process = subprocess.run([complgen_binary_path, 'compile', '--test-mode', '--zsh-script', '-', '-'], input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr)
+    completed_process = subprocess.run([complgen_binary_path, 'compile', '--test-mode', '--zsh-script', '-', '-'], input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
     return completed_process.stdout.decode()
 
 
@@ -78,7 +78,7 @@ cmd { echo -e "completion\tdescription" };
     completion_script = get_completion_script(complgen_binary_path, GRAMMAR)
     with wrapper_script_path(completion_script) as wrapper_path:
         input = 'source {}; words=(cmd); CURRENT=2; _cmd; print -l -- $completions'.format(wrapper_path)
-        zsh_process = subprocess.run(['zsh'], input=input.encode(), stdout=subprocess.PIPE, stderr=sys.stderr)
+        zsh_process = subprocess.run(['zsh'], input=input.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
         completions = zsh_process.stdout.decode()
         parsed = zsh_completions_from_stdout(completions)
         assert parsed == [('completion', 'description')]

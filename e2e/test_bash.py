@@ -9,7 +9,7 @@ from conftest import set_working_dir
 
 
 def get_completion_script(complgen_binary_path: Path, grammar: str) -> bytes:
-    completed_process = subprocess.run([complgen_binary_path, 'compile', '--test-mode', '--bash-script', '-', '-'], input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr)
+    completed_process = subprocess.run([complgen_binary_path, 'compile', '--test-mode', '--bash-script', '-', '-'], input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
     return completed_process.stdout
 
 
@@ -28,7 +28,7 @@ def temp_completions_file(bash_script: bytes) -> Path:
 
 
 def get_completions(completions_file_path: Path, bash_input: str) -> list[str]:
-    bash_process = subprocess.run(['bash', '--noprofile', '--rcfile', completions_file_path, '-i'], input=bash_input.encode(), stdout=subprocess.PIPE, stderr=sys.stderr)
+    bash_process = subprocess.run(['bash', '--noprofile', '--rcfile', completions_file_path, '-i'], input=bash_input.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
     completions = bash_process.stdout.decode()
     parsed = bash_completions_from_stdout(completions)
     return parsed
