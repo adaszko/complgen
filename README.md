@@ -68,7 +68,7 @@ variant of invoking the completed command.
  * `a b` matches `a` followed by `b`.
  * `a b | c` matches either `a b` or `c`.
  * `[a]` matches zero or one occurrences of `a`.
- * `a ...` matches one or more occurrences of `a`.
+ * `a ...` matches one or more occurrences of `a` (WARNING: `a...` will match literal `a...` (!)).
  * `[a] ...` matches zero or more occurrences of `a`.
 
 Use parentheses to group patterns:

@@ -7,7 +7,7 @@ cargo [<toolchain>] [<OPTION>]... [<COMMAND>];
            | --list
            | --explain <CODE>
            | -v
-           | --verbose...
+           | --verbose ...
            | -q
            | --quiet
            | --color <WHEN>
