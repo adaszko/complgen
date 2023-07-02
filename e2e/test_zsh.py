@@ -21,6 +21,14 @@ def zsh_completions_from_stdout(stdout: str) -> list[tuple[str, str]]:
     return result
 
 
+def get_sorted_completions(input: str) -> list[tuple[str, str]]:
+    zsh_process = subprocess.run(['zsh'], input=input.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
+    completions = zsh_process.stdout.decode()
+    parsed = zsh_completions_from_stdout(completions)
+    parsed.sort(key=lambda pair: pair[0])
+    return parsed
+
+
 @contextlib.contextmanager
 def wrapper_script_path(completions_script: str) -> Path:
     COMPADD_INTERCEPT_WRAPPER = '''
@@ -81,11 +89,7 @@ cmd <COMMAND> [--help];
     completion_script = get_completion_script(complgen_binary_path, GRAMMAR)
     with wrapper_script_path(completion_script) as wrapper_path:
         input = 'source {}; words=(cmd); CURRENT=2; _cmd; for i in {{1..$#wrapper_completions}}; do printf "%s\t%s\n" ${{wrapper_completions[$i]}} ${{wrapper_descriptions[$i]}}; done'.format(wrapper_path)
-        zsh_process = subprocess.run(['zsh'], input=input.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
-        completions = zsh_process.stdout.decode()
-        parsed = zsh_completions_from_stdout(completions)
-        parsed.sort(key=lambda pair: pair[0])
-        assert parsed == sorted([('rm', "rm (Remove a project)"), ('remote', "remote (Manage a project's remotes)")], key=lambda pair: pair[0])
+        assert get_sorted_completions(input) == sorted([('rm', "rm (Remove a project)"), ('remote', "remote (Manage a project's remotes)")], key=lambda pair: pair[0])
 
 
 def test_external_command_produces_description(complgen_binary_path: Path):
@@ -95,18 +99,7 @@ cmd { echo -e "completion\tdescription" };
     completion_script = get_completion_script(complgen_binary_path, GRAMMAR)
     with wrapper_script_path(completion_script) as wrapper_path:
         input = 'source {}; words=(cmd); CURRENT=2; _cmd; for i in {{1..$#wrapper_completions}}; do printf "%s\t%s\n" ${{wrapper_completions[$i]}} ${{wrapper_descriptions[$i]}}; done'.format(wrapper_path)
-        zsh_process = subprocess.run(['zsh'], input=input.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
-        completions = zsh_process.stdout.decode()
-        parsed = zsh_completions_from_stdout(completions)
-        assert parsed == [('completion', 'description')]
-
-
-def get_sorted_completions(input: str) -> list[tuple[str, str]]:
-    zsh_process = subprocess.run(['zsh'], input=input.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
-    completions = zsh_process.stdout.decode()
-    parsed = zsh_completions_from_stdout(completions)
-    parsed.sort(key=lambda pair: pair[0])
-    return parsed
+        assert get_sorted_completions(input) == sorted([('completion', 'description')])
 
 
 def test_zsh_uses_correct_description_with_duplicated_descriptions(complgen_binary_path: Path):
