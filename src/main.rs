@@ -35,6 +35,7 @@ enum Mode {
 #[derive(clap::Args)]
 struct CompleteArgs {
     usage_file_path: String,
+    completed_word_index: usize,
     args: Vec<String>,
 
     #[clap(long)]
@@ -89,7 +90,7 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
     let dfa = DFA::from_regex(&regex);
 
     let words_before_cursor: Vec<&str> = args.args.iter().map(|s| s.as_ref()).collect();
-    for completion in complete::get_completions(&dfa, &words_before_cursor) {
+    for completion in complete::get_completions(&dfa, &words_before_cursor, args.completed_word_index) {
         println!("{}", completion);
     }
     Ok(())

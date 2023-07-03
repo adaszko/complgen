@@ -4,10 +4,14 @@ use hashbrown::HashMap;
 use crate::{dfa::DFA, regex::{Input, MatchAnythingInput}};
 
 
-pub fn get_match_final_state(dfa: &DFA, inputs: &[&str]) -> Option<StateId> {
+pub fn get_match_final_state(dfa: &DFA, inputs: &[&str], completed_word_index: usize) -> Option<StateId> {
     let mut backtracking_stack = Vec::from_iter([(0, dfa.starting_state)]);
     while let Some((input_index, current_state)) = backtracking_stack.pop() {
         if input_index >= inputs.len() {
+            return Some(current_state);
+        }
+
+        if input_index >= completed_word_index {
             return Some(current_state);
         }
 
@@ -29,8 +33,8 @@ pub fn get_match_final_state(dfa: &DFA, inputs: &[&str]) -> Option<StateId> {
 }
 
 
-pub fn get_completions<'a, 'b>(dfa: &DFA, words_before_cursor: &'b [&'a str]) -> Vec<String> {
-    if let Some(state_id) = get_match_final_state(dfa, words_before_cursor) {
+pub fn get_completions<'a, 'b>(dfa: &DFA, words_before_cursor: &'b [&'a str], completed_word_index: usize) -> Vec<String> {
+    if let Some(state_id) = get_match_final_state(dfa, words_before_cursor, completed_word_index) {
         let mut inputs: Vec<String> = dfa.transitions.get(&state_id).unwrap_or(&HashMap::default()).iter().filter_map(|(input, _)| match input {
             Input::Literal(s, _) => Some(vec![s.as_str().to_string()]),
             Input::Any(MatchAnythingInput::Command(cmd)) => {
@@ -41,6 +45,11 @@ pub fn get_completions<'a, 'b>(dfa: &DFA, words_before_cursor: &'b [&'a str]) ->
             },
             Input::Any(MatchAnythingInput::Any(..)) => None,
         }).flatten().collect();
+
+        if completed_word_index < words_before_cursor.len() {
+            inputs.retain(|completion| completion.starts_with(words_before_cursor[completed_word_index]));
+        }
+
         inputs.sort_unstable();
         inputs
     }
@@ -68,10 +77,10 @@ mod tests {
         let regex = AugmentedRegex::from_expr(&validated.expr, &arena);
         let dfa = DFA::from_regex(&regex);
         let dfa = dfa.minimize();
-        assert_eq!(get_completions(&dfa, &vec![]), vec!["add"]);
+        assert_eq!(get_completions(&dfa, &vec![], 0), vec!["add"]);
 
         let input = vec!["add"];
-        let generated: HashSet<_> = HashSet::from_iter(get_completions(&dfa, &input));
+        let generated: HashSet<_> = HashSet::from_iter(get_completions(&dfa, &input, 1));
         let expected = HashSet::from_iter(["--boring", "--debug", "--dry-run", "--no-prehook", "--prehook", "--quiet", "--reserved-ok", "--standard-verbosity", "--verbose", "-v", "--case-ok", "--debug-http", "--no-date-trick", "--not-recursive", "--prompt-posthook", "--recursive", "--run-posthook", "--timings", "-q", "--date-trick", "--debug-verbose", "--no-posthook", "--posthook", "--prompt-prehook", "--repodir", "--run-prehook", "--umask", "-r"].map(|s| s.to_string()));
         assert_eq!(generated, expected);
     }
@@ -86,7 +95,7 @@ mod tests {
         let dfa = DFA::from_regex(&regex);
         let dfa = dfa.minimize();
         let input = vec!["--version"];
-        let generated: HashSet<_> = HashSet::from_iter(get_completions(&dfa, &input));
+        let generated: HashSet<_> = HashSet::from_iter(get_completions(&dfa, &input, 1));
         assert!(generated.is_empty());
     }
 
@@ -104,7 +113,7 @@ grep [<OPTION>]...;
         let dfa = DFA::from_regex(&regex);
         let dfa = dfa.minimize();
         let input = vec!["--color"];
-        let generated: HashSet<_> = HashSet::from_iter(get_completions(&dfa, &input));
+        let generated: HashSet<_> = HashSet::from_iter(get_completions(&dfa, &input, 1));
         let expected = HashSet::from_iter(["always", "auto", "never", "--extended-regexp", "--color"].map(|s| s.to_string()));
         assert_eq!(generated, expected);
     }
@@ -122,7 +131,7 @@ cargo [<toolchain>] (--version | --help);
         let dfa = DFA::from_regex(&regex);
         let dfa = dfa.minimize();
         let input = vec!["foo"];
-        let generated: HashSet<_> = HashSet::from_iter(get_completions(&dfa, &input));
+        let generated: HashSet<_> = HashSet::from_iter(get_completions(&dfa, &input, 1));
         let expected = HashSet::from_iter(["--version", "--help"].map(|s| s.to_string()));
         assert_eq!(generated, expected);
     }
@@ -139,8 +148,25 @@ grep (--context "print NUM lines of output context" <NUM> | --version | --help).
         let dfa = DFA::from_regex(&regex);
         let dfa = dfa.minimize();
         let input = vec!["--context", "123"];
-        let generated: HashSet<_> = HashSet::from_iter(get_completions(&dfa, &input));
+        let generated: HashSet<_> = HashSet::from_iter(get_completions(&dfa, &input, 2));
         let expected = HashSet::from_iter(["--version", "--help", "--context"].map(|s| s.to_string()));
+        assert_eq!(generated, expected);
+    }
+
+    #[test]
+    fn completes_word_prefix() {
+        const GRAMMAR: &str = r#"
+grep (--help | --version);
+"#;
+        let g = Grammar::parse(GRAMMAR).unwrap();
+        let validated = ValidGrammar::from_grammar(g).unwrap();
+        let arena = Bump::new();
+        let regex = AugmentedRegex::from_expr(&validated.expr, &arena);
+        let dfa = DFA::from_regex(&regex);
+        let dfa = dfa.minimize();
+        let input = vec!["--h"];
+        let generated: HashSet<_> = HashSet::from_iter(get_completions(&dfa, &input, 0));
+        let expected = HashSet::from_iter(["--help"].map(|s| s.to_string()));
         assert_eq!(generated, expected);
     }
 }
