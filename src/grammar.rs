@@ -335,6 +335,7 @@ pub struct Grammar {
 pub struct ValidGrammar {
     pub command: Ustr,
     pub expr: Rc<Expr>,
+    pub undefined_nonterminals: UstrSet,
 }
 
 
@@ -400,9 +401,12 @@ impl ValidGrammar {
         }
         let expr = resolve_nonterminals(expr, &nonterminal_definitions);
 
+        let undefined_nonterminals = get_expression_nonterminals(Rc::clone(&expr));
+
         let g = ValidGrammar {
             command,
             expr,
+            undefined_nonterminals,
         };
         Ok(g)
     }
@@ -558,9 +562,9 @@ fn get_nonterminals_resolution_order(nonterminal_definitions: &UstrMap<Rc<Expr>>
 
     let mut dependency_graph: UstrMap<UstrSet> = Default::default();
     for (varname, expr) in nonterminal_definitions {
-        let mut vars = get_expression_nonterminals(Rc::clone(&expr));
-        vars.retain(|var| nonterminal_definitions.contains_key(var));
-        dependency_graph.insert(*varname, vars);
+        let mut referenced_nonterminals = get_expression_nonterminals(Rc::clone(&expr));
+        referenced_nonterminals.retain(|var| nonterminal_definitions.contains_key(var));
+        dependency_graph.insert(*varname, referenced_nonterminals);
     }
 
     let not_depended_on_vars = get_not_depended_on_nonterminals(&dependency_graph);

@@ -112,6 +112,12 @@ fn compile(args: &CompileArgs) -> anyhow::Result<()> {
     };
     let grammar = Grammar::parse(&input)?;
     let validated = ValidGrammar::from_grammar(grammar)?;
+
+    if !validated.undefined_nonterminals.is_empty() {
+        let joined = itertools::join(validated.undefined_nonterminals, " ");
+        eprintln!("Warning: Undefined nonterminal(s): {}", joined);
+    }
+
     let arena = Bump::new();
 
     if let Some(railroad_svg_path) = &args.railroad_svg {
