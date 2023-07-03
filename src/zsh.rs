@@ -69,7 +69,7 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
 }
 
 
-pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA, test_mode: bool) -> Result<()> {
+pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
     let id_from_command: UstrMap<usize> = dfa.get_command_transitions().into_iter().enumerate().map(|(id, (_, cmd))| (cmd, id)).collect();
     for (cmd, id) in &id_from_command {
         write!(buffer, r#"_{command}_{id} () {{
@@ -200,11 +200,9 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 "#)?;
 
 
-    if !test_mode {
-        write!(buffer, r#"
+    write!(buffer, r#"
 compdef _{command} {command}
 "#)?;
-    }
 
     Ok(())
 }

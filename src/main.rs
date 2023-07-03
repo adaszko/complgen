@@ -60,9 +60,6 @@ struct CompileArgs {
 
     #[clap(long)]
     railroad_svg: Option<String>,
-
-    #[clap(long)]
-    test_mode: bool,
 }
 
 
@@ -156,7 +153,7 @@ fn compile(args: &CompileArgs) -> anyhow::Result<()> {
         log::debug!("Writing Zsh completion script");
         let script_file = get_file_or_stdout(path)?;
         let mut writer = BufWriter::new(script_file);
-        zsh::write_completion_script(&mut writer, &validated.command, &dfa, args.test_mode)?;
+        zsh::write_completion_script(&mut writer, &validated.command, &dfa)?;
     }
 
     Ok(())

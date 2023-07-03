@@ -13,7 +13,7 @@ from conftest import set_working_dir
 
 @contextlib.contextmanager
 def completion_script_path(complgen_binary_path: Path, grammar: str) -> Generator[Path, None, None]:
-    bash_script = subprocess.run([complgen_binary_path, 'compile', '--test-mode', '--bash-script', '-', '-'], input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True).stdout
+    bash_script = subprocess.run([complgen_binary_path, 'compile', '--bash-script', '-', '-'], input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True).stdout
     with tempfile.NamedTemporaryFile() as f:
         f.write(bash_script)
         f.flush()

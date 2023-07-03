@@ -22,7 +22,7 @@ def fish_completions_from_stdout(stdout: str) -> list[tuple[str, str]]:
 
 @contextlib.contextmanager
 def completion_script_path(complgen_binary_path: Path, grammar: str) -> Generator[Path, None, None]:
-    fish_script = subprocess.run([complgen_binary_path, 'compile', '--test-mode', '--fish-script', '-', '-'], input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True).stdout
+    fish_script = subprocess.run([complgen_binary_path, 'compile', '--fish-script', '-', '-'], input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True).stdout
     with tempfile.NamedTemporaryFile() as f:
         f.write(fish_script)
         f.flush()
