@@ -128,7 +128,8 @@ fn compile(args: &CompileArgs) -> anyhow::Result<()> {
     let dfa = dfa.minimize();
 
     if let Some(dot_file_path) = &args.dfa_dot {
-        dfa.to_dot_file(dot_file_path).context(dot_file_path.clone())?;
+        let mut dot_file = get_file_or_stdout(&dot_file_path)?;
+        dfa.to_dot(&mut dot_file).context(dot_file_path.clone())?;
     }
 
     if let Some(path) = &args.bash_script {

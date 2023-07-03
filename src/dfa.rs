@@ -545,6 +545,7 @@ impl DFA {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn to_dot_file<P: AsRef<std::path::Path>>(
         &self,
         path: P,
