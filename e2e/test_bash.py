@@ -27,8 +27,16 @@ def get_sorted_completions(completions_file_path: Path, input: str) -> list[str]
 
 
 def test_completes_files(complgen_binary_path: Path):
-    GRAMMAR = '''cmd <FILE> [--help];'''
-    with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
+    with completion_script_path(complgen_binary_path, '''cmd <FILE> [--help];''') as completions_file_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                Path('foo').write_text('dummy')
+                Path('bar').write_text('dummy')
+                os.mkdir('baz')
+                completions = get_sorted_completions(completions_file_path, '''COMP_WORDS=(cmd); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"''')
+                assert completions == ['bar', 'baz', 'foo']
+
+    with completion_script_path(complgen_binary_path, '''cmd <PATH> [--help];''') as completions_file_path:
         with tempfile.TemporaryDirectory() as dir:
             with set_working_dir(Path(dir)):
                 Path('foo').write_text('dummy')
@@ -38,22 +46,16 @@ def test_completes_files(complgen_binary_path: Path):
                 assert completions == ['bar', 'baz', 'foo']
 
 
-def test_completes_paths(complgen_binary_path: Path):
-    GRAMMAR = '''cmd <PATH> [--help];'''
-    with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        with tempfile.TemporaryDirectory() as dir:
-            with set_working_dir(Path(dir)):
-                Path('foo').write_text('dummy')
-                Path('bar').write_text('dummy')
-                os.mkdir('baz')
-                completions = get_sorted_completions(completions_file_path, '''COMP_WORDS=(cmd); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"''')
-                assert completions == ['bar', 'baz', 'foo']
-
-
-@pytest.mark.skip(reason="not implemented yet")
 def test_completes_directories(complgen_binary_path: Path):
-    GRAMMAR = '''cmd <DIRECTORY> [--help];'''
-    with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
+    with completion_script_path(complgen_binary_path, '''cmd <DIR> [--help];''') as completions_file_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                os.mkdir('foo')
+                os.mkdir('bar')
+                completions = get_sorted_completions(completions_file_path, '''COMP_WORDS=(cmd); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"''')
+                assert completions == ['bar', 'foo']
+
+    with completion_script_path(complgen_binary_path, '''cmd <DIRECTORY> [--help];''') as completions_file_path:
         with tempfile.TemporaryDirectory() as dir:
             with set_working_dir(Path(dir)):
                 os.mkdir('foo')

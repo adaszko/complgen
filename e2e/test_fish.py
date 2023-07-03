@@ -77,9 +77,18 @@ cmd { echo -e "completion\tdescription" };
         assert get_sorted_completions(input) == [('completion', 'description')]
 
 
-def test_completes_paths(complgen_binary_path: Path):
-    GRAMMAR = '''cmd <PATH> [--help];'''
-    with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
+def test_completes_files(complgen_binary_path: Path):
+    with completion_script_path(complgen_binary_path, '''cmd <FILE> [--help];''') as completions_file_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                Path('foo').write_text('dummy')
+                Path('bar').write_text('dummy')
+                os.mkdir('baz')
+                input = 'source {}; _cmd "cmd "'.format(completions_file_path)
+                completions = get_sorted_completions(input)
+                assert completions == sorted([('bar', ''), ('baz/', ''), ('foo', '')])
+
+    with completion_script_path(complgen_binary_path, '''cmd <PATH> [--help];''') as completions_file_path:
         with tempfile.TemporaryDirectory() as dir:
             with set_working_dir(Path(dir)):
                 Path('foo').write_text('dummy')

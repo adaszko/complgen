@@ -448,6 +448,25 @@ impl DFA {
         result
     }
 
+    pub fn get_directory_states(&self) -> Vec<StateId> {
+        let mut result: Vec<StateId> = Default::default();
+        for (from, tos) in &self.transitions {
+            for (input, _) in tos {
+                match input {
+                    Input::Any(MatchAnythingInput::Command(..)) => {},
+                    Input::Any(MatchAnythingInput::Any(name)) => {
+                        let canonicalized_name = name.as_str().to_uppercase();
+                        if canonicalized_name == "DIR" || canonicalized_name == "DIRECTORY" {
+                            result.push(*from);
+                        }
+                    },
+                    Input::Literal(..) => {},
+                };
+            }
+        }
+        result
+    }
+
     pub fn get_literal_transitions_from(&self, from: StateId) -> Vec<(Ustr, Ustr, StateId)> {
         let map = match self.transitions.get(&StateId::try_from(from).unwrap()) {
             Some(map) => map,
