@@ -49,7 +49,7 @@ cmd <COMMAND> [--help];
 '''
 
     with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        input = 'source {}; _cmd "cmd "'.format(completions_file_path)
+        input = 'source {}; complete --command cmd --do-complete "cmd "'.format(completions_file_path)
         assert get_sorted_completions(input) == sorted([('rm', "Remove a project"), ('remote', "Manage a project's remotes")], key=lambda pair: pair[0])
 
 
@@ -63,7 +63,7 @@ cmd [<OPTION>]...;
 '''
 
     with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        input = 'source {}; _cmd "cmd "'.format(completions_file_path)
+        input = 'source {}; complete --command cmd --do-complete "cmd "'.format(completions_file_path)
         assert get_sorted_completions(input) == sorted([('--color', "use markers to highlight the matching strings"), ('--colour', "use markers to highlight the matching strings")], key=lambda pair: pair[0])
 
 
@@ -73,7 +73,7 @@ cmd { echo -e "completion\tdescription" };
 '''
 
     with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        input = 'source {}; _cmd "cmd "'.format(completions_file_path)
+        input = 'source {}; complete --command cmd --do-complete "cmd "'.format(completions_file_path)
         assert get_sorted_completions(input) == [('completion', 'description')]
 
 
@@ -84,7 +84,7 @@ def test_completes_files(complgen_binary_path: Path):
                 Path('foo').write_text('dummy')
                 Path('bar').write_text('dummy')
                 os.mkdir('baz')
-                input = 'source {}; _cmd "cmd "'.format(completions_file_path)
+                input = 'source {}; complete --command cmd --do-complete "cmd "'.format(completions_file_path)
                 completions = get_sorted_completions(input)
                 assert completions == sorted([('bar', ''), ('baz/', ''), ('foo', '')])
 
@@ -94,6 +94,6 @@ def test_completes_files(complgen_binary_path: Path):
                 Path('foo').write_text('dummy')
                 Path('bar').write_text('dummy')
                 os.mkdir('baz')
-                input = 'source {}; _cmd "cmd "'.format(completions_file_path)
+                input = 'source {}; complete --command cmd --do-complete "cmd "'.format(completions_file_path)
                 completions = get_sorted_completions(input)
                 assert completions == sorted([('bar', ''), ('baz/', ''), ('foo', '')])
