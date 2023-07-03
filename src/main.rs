@@ -63,8 +63,20 @@ struct CompileArgs {
 }
 
 
+fn get_file_or_stdin(path: &str) -> anyhow::Result<Box<dyn Read>> {
+    let result: Box<dyn Read> = if path == "-" {
+        Box::new(std::io::stdin())
+    } else {
+        Box::new(std::fs::File::open(path).context(path.to_owned())?)
+    };
+    Ok(result)
+}
+
+
 fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
-    let input = std::fs::read_to_string(&args.usage_file_path).context(args.usage_file_path.to_owned())?;
+    let mut input_file = get_file_or_stdin(&args.usage_file_path).context(args.usage_file_path.to_owned())?;
+    let mut input: String = Default::default();
+    input_file.read_to_string(&mut input)?;
     let grammar = Grammar::parse(&input)?;
     let validated = ValidGrammar::from_grammar(grammar)?;
 
