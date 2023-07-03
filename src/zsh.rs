@@ -189,7 +189,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         write!(buffer, r#"
     local -a directories=({array_initializer})
     if (($directories[(Ie)$state])); then
-        _files -/
+        _path_files -/
     fi
 "#)?;
     }

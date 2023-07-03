@@ -52,6 +52,7 @@ def test_completes_directories(complgen_binary_path: Path):
             with set_working_dir(Path(dir)):
                 os.mkdir('foo')
                 os.mkdir('bar')
+                Path('baz').write_text('dummy')
                 completions = get_sorted_completions(completions_file_path, '''COMP_WORDS=(cmd); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"''')
                 assert completions == ['bar', 'foo']
 
@@ -60,6 +61,7 @@ def test_completes_directories(complgen_binary_path: Path):
             with set_working_dir(Path(dir)):
                 os.mkdir('foo')
                 os.mkdir('bar')
+                Path('baz').write_text('dummy')
                 completions = get_sorted_completions(completions_file_path, '''COMP_WORDS=(cmd); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"''')
                 assert completions == ['bar', 'foo']
 
