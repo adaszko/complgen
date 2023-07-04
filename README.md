@@ -13,7 +13,7 @@ stdout, which is meant to be used in interactive shells (see below).
 
 There are two ways to use complgen:
 
-### 1. To generate standalone completion scripts for bash and/or fish:
+### 1. To generate standalone completion scripts for bash/fish/zsh:
 
 ```
 $ complgen compile --bash-script grep.bash usage/small.usage
@@ -23,7 +23,7 @@ $$ grep --color <TAB>
 always auto never
 ```
 
-### 2. To generate completions on stdout by interpreting the grammar "just-in-time":
+### 2. To generate completions on stdout by compiling the grammar "just-in-time":
 
 ```
 $ complgen complete usage/small.usage -- --color
@@ -54,7 +54,7 @@ _complgen_jit_$stem () {
 done
 ```
 
-### Fish Integrations
+### Fish Integration
 
 Assumming your `.usage` files are stored in the `~/.config/complgen` directory, add this to your `~/.config/fish/config.fish`:
 
@@ -79,15 +79,15 @@ end
 ```
 
 
-### Zsh Integrations
+### Zsh Integration
 
 Assumming your `.usage` files are stored in the `~/.config/complgen` directory, add this to your `~/.zshrc`:
 
 ```zsh
 _complgen_jit () {
-    local command=$1
+    local stem=$1
     local -a w=("${(@)words[2,$#words]}")
-    local -a completions=($(complgen complete ~/.config/complgen/${command}.usage $((CURRENT - 2)) -- "${w[@]}"))
+    local -a completions=($(complgen complete ~/.config/complgen/${stem}.usage $((CURRENT - 2)) -- "${w[@]}"))
     compadd -a completions
     return 0
 }
