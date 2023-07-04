@@ -1,11 +1,9 @@
 ## Value Proposition
 
 `complgen` allows you to generate completion scripts for all major shells (bash, zsh, fish) from a *single*,
-concise EBNF-like grammar.  It's inspired by [compleat](https://github.com/mbrubeck/compleat/) but instead of
-requiring for the `compleat` executable to be available at completion time, it compiles the grammar down to a
-standalone shell script that can be distributed on its own.  If you're an author of a CLI tool, you can
-generate shell scripts for your command line tool on CI, and package them along with the tool.  No additional
-software besides a shell needs to be installed in order to use those custom completions.
+concise EBNF-like grammar.  It compiles the grammar down to a standalone bash/fish/zsh shell script that can
+be distributed on its own.  As a separate use case, it can also produce completions from a grammar directly on
+stdout, which is meant to be used in interactive shells (see below).
 
 ## Demo
 
@@ -15,7 +13,7 @@ software besides a shell needs to be installed in order to use those custom comp
 
 There are two ways to use complgen:
 
-1. To generate standalone completion scripts for bash and/or fish:
+### 1. To generate standalone completion scripts for bash and/or fish:
 
 ```
 $ complgen compile --bash-script grep.bash usage/small.usage
@@ -25,8 +23,7 @@ $$ grep --color <TAB>
 always auto never
 ```
 
-2. To generate completions on stdout by interpreting the grammar "just-in-time" (just like
-[compleat](https://github.com/mbrubeck/compleat/) works):
+### 2. To generate completions on stdout by interpreting the grammar "just-in-time":
 
 ```
 $ complgen complete usage/small.usage -- --color
@@ -36,12 +33,74 @@ never
 ```
 
 The just-in-time mode is intended to be further integrated with shells so that it provides completions
-directly from grammars, bypassing completion scripts.  This improves readability and reduces maintenance
-effort.
+directly from grammars, bypassing writing completion script files.
+
+### Bash Integration
+
+Assumming your `.usage` files are stored in the `~/.config/complgen` directory, add this to your `~/.bashrc`:
+
+```bash
+for path in ~/.config/complgen/*.usage; do
+    local stem=$(basename "$path" .usage)
+    eval "
+_complgen_jit_$stem () {
+    local -a completions=(\$(complgen complete \"$HOME/.config/complgen/${stem}.usage\" \$((COMP_CWORD - 1)) -- \${COMP_WORDS[@]:1}))
+    completions=\${completions[@]}
+    COMPREPLY=(\$(compgen -W \"\$completions\" -- "\${COMP_WORDS[\$COMP_CWORD]}"))
+    return 0
+}
+"
+    complete -F _complgen_jit_$stem "$stem"
+done
+```
+
+### Fish Integrations
+
+Assumming your `.usage` files are stored in the `~/.config/complgen` directory, add this to your `~/.config/fish/config.fish`:
+
+```fish
+function _complgen_jit
+    set --local COMP_LINE (commandline --cut-at-cursor)
+    set --local COMP_WORDS
+    echo $COMP_LINE | read --tokenize --array COMP_WORDS
+    if string match --quiet --regex '.*\s$' $COMP_LINE
+        set COMP_CWORD (math (count $COMP_WORDS) + 1)
+    else
+        set COMP_CWORD (count $COMP_WORDS)
+    end
+    set --local usage_file_path $argv[1]
+    complgen complete $usage_file_path -- (math $COMP_CWORD - 2) $COMP_WORDS[2..-1]
+end
+
+for path in ~/.config/complgen/*.usage
+    set --local stem (basename $path .usage)
+    complete --command $stem --no-files --arguments "(_complgen_jit ~/.config/complgen/$basename.usage)"
+end
+```
+
+
+### Zsh Integrations
+
+Assumming your `.usage` files are stored in the `~/.config/complgen` directory, add this to your `~/.zshrc`:
+
+```zsh
+_complgen_jit () {
+    local command=$1
+    local -a w=("${(@)words[2,$#words]}")
+    local -a completions=($(complgen complete ~/.config/complgen/${command}.usage $((CURRENT - 2)) -- "${w[@]}"))
+    compadd -a completions
+    return 0
+}
+
+for f in $HOME/.config/complgen/*.usage; do
+    local stem=$f:t:r
+    compdef "_complgen_jit $stem" $stem
+done
+```
 
 ## Installation
 
-```
+```sh
 cargo install --git https://github.com/adaszko/complgen complgen
 ```
 
@@ -88,11 +147,13 @@ their predefined meaning.
 If a literal is immediately followed with a quoted string, it's going to appear as a hint to the user at
 completion time.  E.g. the grammar:
 
-    grep --extended-regexp "PATTERNS are extended regular expressions" | --exclude  (skip files that match GLOB)
+```sh
+grep --extended-regexp "PATTERNS are extended regular expressions" | --exclude  (skip files that match GLOB)
+```
 
 results in something like this under fish (and zsh):
 
-```
+```fish
 fish> grep --ex<TAB>
 --exclude  (skip files that match GLOB)  --extended-regexp  (PATTERNS are extended regular expressions)
 ```
@@ -103,7 +164,9 @@ Note that `bash` does not support showing descriptions.
 
 It is possible to use entire shell commands as a source of completions:
 
-    cargo { rustup toolchain list | cut -d' ' -f1 | sed 's/^/+/' };
+```
+cargo { rustup toolchain list | cut -d' ' -f1 | sed 's/^/+/' };
+```
 
 The stdout of the pipeline above will be automatically filtered by the shell based on the prefix entered so
 far.
@@ -113,7 +176,9 @@ far.
 Sometimes, it's more efficient to take into account the entered prefix in the shell commands itself.  For all
 three shells (bash, fish, zsh), it's available in the `$1` variable:
 
-    cargo { rustup toolchain list | cut -d' ' -f1 | grep "^$1" | sed 's/^/+/' };
+```
+cargo { rustup toolchain list | cut -d' ' -f1 | grep "^$1" | sed 's/^/+/' };
+```
 
 Note that in general, it's best to leave the filtering up to the executing shell since it may be configured to
 perform some non-standard filtering.  zsh for example is capable of expanding `/u/l/b` to `/usr/local/bin`.
@@ -122,7 +187,9 @@ perform some non-standard filtering.  zsh for example is capable of expanding `/
 
 To avoid cumbersome escaping, additional triple brackets syntax is also supported:
 
-    cargo {{{ rustup toolchain list | awk '{ print $1 }' | grep "^$1" | sed 's/^/+/' }}};
+```
+cargo {{{ rustup toolchain list | awk '{ print $1 }' | grep "^$1" | sed 's/^/+/' }}};
+```
 
 Its semantics are exactly like the ones of single brackets.
 
