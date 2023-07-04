@@ -68,19 +68,23 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn completes_darcs_add() {
-        const GRAMMAR: &str = r#"darcs add ( --boring | ( --case-ok | --reserved-ok ) | ( ( -r | --recursive ) | --not-recursive ) | ( --date-trick | --no-date-trick ) | --repodir <DIRECTORY> | --dry-run | --umask <UMASK> | ( --debug | --debug-verbose | --debug-http | ( -v | --verbose ) | ( -q | --quiet ) | --standard-verbosity ) | --timings | ( --posthook <COMMAND> | --no-posthook ) | ( --prompt-posthook | --run-posthook ) | ( --prehook <COMMAND> | --no-prehook ) | ( --prompt-prehook | --run-prehook ) ) ... ( <FILE> | <DIRECTORY> )...;"#;
-        let g = Grammar::parse(GRAMMAR).unwrap();
+    fn get_grammar_completions<'a, 'b>(grammar: &str, words_before_cursor: &'b [&'a str], completed_word_index: usize) -> Vec<String> {
+        let g = Grammar::parse(grammar).unwrap();
         let validated = ValidGrammar::from_grammar(g).unwrap();
         let arena = Bump::new();
         let regex = AugmentedRegex::from_expr(&validated.expr, &arena);
         let dfa = DFA::from_regex(&regex);
         let dfa = dfa.minimize();
-        assert_eq!(get_completions(&dfa, &vec![], 0), vec!["add"]);
+        get_completions(&dfa, words_before_cursor, completed_word_index)
+    }
+
+    #[test]
+    fn completes_darcs_add() {
+        const GRAMMAR: &str = r#"darcs add ( --boring | ( --case-ok | --reserved-ok ) | ( ( -r | --recursive ) | --not-recursive ) | ( --date-trick | --no-date-trick ) | --repodir <DIRECTORY> | --dry-run | --umask <UMASK> | ( --debug | --debug-verbose | --debug-http | ( -v | --verbose ) | ( -q | --quiet ) | --standard-verbosity ) | --timings | ( --posthook <COMMAND> | --no-posthook ) | ( --prompt-posthook | --run-posthook ) | ( --prehook <COMMAND> | --no-prehook ) | ( --prompt-prehook | --run-prehook ) ) ... ( <FILE> | <DIRECTORY> )...;"#;
+        assert_eq!(get_grammar_completions(GRAMMAR, &[], 0), vec!["add"]);
 
         let input = vec!["add"];
-        let generated: HashSet<_> = HashSet::from_iter(get_completions(&dfa, &input, 1));
+        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 1));
         let expected = HashSet::from_iter(["--boring", "--debug", "--dry-run", "--no-prehook", "--prehook", "--quiet", "--reserved-ok", "--standard-verbosity", "--verbose", "-v", "--case-ok", "--debug-http", "--no-date-trick", "--not-recursive", "--prompt-posthook", "--recursive", "--run-posthook", "--timings", "-q", "--date-trick", "--debug-verbose", "--no-posthook", "--posthook", "--prompt-prehook", "--repodir", "--run-prehook", "--umask", "-r"].map(|s| s.to_string()));
         assert_eq!(generated, expected);
     }
@@ -88,14 +92,8 @@ mod tests {
     #[test]
     fn does_not_hang_on_many1_of_optional() {
         const GRAMMAR: &str = r#"grep [--help]...;"#;
-        let g = Grammar::parse(GRAMMAR).unwrap();
-        let validated = ValidGrammar::from_grammar(g).unwrap();
-        let arena = Bump::new();
-        let regex = AugmentedRegex::from_expr(&validated.expr, &arena);
-        let dfa = DFA::from_regex(&regex);
-        let dfa = dfa.minimize();
         let input = vec!["--version"];
-        let generated: HashSet<_> = HashSet::from_iter(get_completions(&dfa, &input, 1));
+        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 1));
         assert!(generated.is_empty());
     }
 
@@ -106,14 +104,8 @@ grep [<OPTION>]...;
 <OPTION> ::= (--color [<WHEN>]) | --extended-regexp;
 <WHEN> ::= always | never | auto;
 "#;
-        let g = Grammar::parse(GRAMMAR).unwrap();
-        let validated = ValidGrammar::from_grammar(g).unwrap();
-        let arena = Bump::new();
-        let regex = AugmentedRegex::from_expr(&validated.expr, &arena);
-        let dfa = DFA::from_regex(&regex);
-        let dfa = dfa.minimize();
         let input = vec!["--color"];
-        let generated: HashSet<_> = HashSet::from_iter(get_completions(&dfa, &input, 1));
+        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 1));
         let expected = HashSet::from_iter(["always", "auto", "never", "--extended-regexp", "--color"].map(|s| s.to_string()));
         assert_eq!(generated, expected);
     }
@@ -124,14 +116,8 @@ grep [<OPTION>]...;
 cargo [<toolchain>] (--version | --help);
 <toolchain> ::= { rustup toolchain list | cut -d' ' -f1 | sed 's/^/+/' };
 "#;
-        let g = Grammar::parse(GRAMMAR).unwrap();
-        let validated = ValidGrammar::from_grammar(g).unwrap();
-        let arena = Bump::new();
-        let regex = AugmentedRegex::from_expr(&validated.expr, &arena);
-        let dfa = DFA::from_regex(&regex);
-        let dfa = dfa.minimize();
         let input = vec!["foo"];
-        let generated: HashSet<_> = HashSet::from_iter(get_completions(&dfa, &input, 1));
+        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 1));
         let expected = HashSet::from_iter(["--version", "--help"].map(|s| s.to_string()));
         assert_eq!(generated, expected);
     }
@@ -141,14 +127,8 @@ cargo [<toolchain>] (--version | --help);
         const GRAMMAR: &str = r#"
 grep (--context "print NUM lines of output context" <NUM> | --version | --help)...;
 "#;
-        let g = Grammar::parse(GRAMMAR).unwrap();
-        let validated = ValidGrammar::from_grammar(g).unwrap();
-        let arena = Bump::new();
-        let regex = AugmentedRegex::from_expr(&validated.expr, &arena);
-        let dfa = DFA::from_regex(&regex);
-        let dfa = dfa.minimize();
         let input = vec!["--context", "123"];
-        let generated: HashSet<_> = HashSet::from_iter(get_completions(&dfa, &input, 2));
+        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 2));
         let expected = HashSet::from_iter(["--version", "--help", "--context"].map(|s| s.to_string()));
         assert_eq!(generated, expected);
     }
@@ -158,14 +138,8 @@ grep (--context "print NUM lines of output context" <NUM> | --version | --help).
         const GRAMMAR: &str = r#"
 grep (--help | --version);
 "#;
-        let g = Grammar::parse(GRAMMAR).unwrap();
-        let validated = ValidGrammar::from_grammar(g).unwrap();
-        let arena = Bump::new();
-        let regex = AugmentedRegex::from_expr(&validated.expr, &arena);
-        let dfa = DFA::from_regex(&regex);
-        let dfa = dfa.minimize();
         let input = vec!["--h"];
-        let generated: HashSet<_> = HashSet::from_iter(get_completions(&dfa, &input, 0));
+        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 0));
         let expected = HashSet::from_iter(["--help"].map(|s| s.to_string()));
         assert_eq!(generated, expected);
     }
