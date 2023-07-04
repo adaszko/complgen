@@ -42,13 +42,30 @@ pub fn get_completions<'a, 'b>(dfa: &DFA, words_before_cursor: &'b [&'a str], co
             Input::Any(MatchAnythingInput::Command(cmd)) => {
                 let output = std::process::Command::new("sh").arg("-c").arg(cmd.as_str()).output().unwrap();
                 let compls = String::from_utf8(output.stdout).unwrap();
-                let result: Vec<(String, String)> = compls.lines().map(|line| match line.split_once("\t") {
+                let mut result: Vec<(String, String)> = compls.lines().map(|line| match line.split_once("\t") {
                     Some((completion, description)) => (completion.to_owned(), description.to_owned()),
                     None => (line.to_string(), "".to_string()),
                 }).collect();
+
+                if completed_word_index < words_before_cursor.len() {
+                    result.retain(|(completion, _)| completion.starts_with(words_before_cursor[completed_word_index]));
+                }
+
                 Some(result)
             },
-            Input::Any(MatchAnythingInput::Any(..)) => None,
+            Input::Any(MatchAnythingInput::Any(nonterm)) if nonterm.as_str() == "FILE" || nonterm.as_str() == "PATH" => {
+                let prefix = if completed_word_index < words_before_cursor.len() {
+                    words_before_cursor[completed_word_index]
+                }
+                else {
+                    ""
+                };
+                let cmd = format!(r#"printf "%s\n" {}*"#, prefix);
+                let output = std::process::Command::new("sh").arg("-c").arg(&cmd).output().unwrap();
+                let result: Vec<(String, String)> = String::from_utf8(output.stdout).unwrap().lines().filter(|line| !line.is_empty()).map(|line| (line.to_string(), "".to_string())).collect();
+                Some(result)
+            },
+            Input::Any(MatchAnythingInput::Any(_)) => None,
         }).flatten().collect();
 
         if completed_word_index < words_before_cursor.len() {
