@@ -1,9 +1,9 @@
 ## Value Proposition
 
-`complgen` allows you to generate completion scripts for all major shells (bash, zsh, fish) from a *single*,
-concise EBNF-like grammar.  It compiles the grammar down to a standalone bash/fish/zsh shell script that can
-be distributed on its own.  As a separate use case, it can also produce completions from a grammar directly on
-stdout, which is meant to be used in interactive shells (see below).
+`complgen` allows you to generate completion scripts for all major shells from a *single*, concise EBNF-like
+grammar.  It compiles the grammar down to a standalone bash/fish/zsh shell script that can be distributed on
+its own.  As a separate use case, it can also produce completions from a grammar directly on stdout, which is
+meant to be used in interactive shells (see below).
 
 ## Demo
 
@@ -33,7 +33,10 @@ never
 ```
 
 The just-in-time mode is intended to be further integrated with shells so that it provides completions
-directly from grammars, bypassing writing completion script files.
+directly from grammars, bypassing compilation and `source`ing completion shell script files.
+
+Note that it is assummed the `.usage` file stem is the same as the completed command name, so to complete
+`grep` command, its grammar needs to land in `grep.usage` file.
 
 ### Bash Integration
 
