@@ -1,7 +1,7 @@
 ## Value Proposition
 
 `complgen` allows you to generate completion scripts for all major shells (bash, zsh, fish) from a *single*,
-concise BNF-like grammar.  It's inspired by [compleat](https://github.com/mbrubeck/compleat/) but instead of
+concise EBNF-like grammar.  It's inspired by [compleat](https://github.com/mbrubeck/compleat/) but instead of
 requiring for the `compleat` executable to be available at completion time, it compiles the grammar down to a
 standalone shell script that can be distributed on its own.  If you're an author of a CLI tool, you can
 generate shell scripts for your command line tool on CI, and package them along with the tool.  No additional
@@ -52,23 +52,19 @@ you (e.g. clap), `complgen` has the advantage of being just a command line tool 
 particular implementation language.  `complgen` is also capable of completing based on external shell commands
 output, e.g. `{ cat /etc/passwd | grep -v '^#' | cut -d: -f1 }` to complete users on the system.
 
-## Project Status
-
-Generates working completion scripts for `bash`, `fish`, `zsh` as well as JIT-completes.
-
 ## Syntax
 
 See the [subdirectory](usage/) for examples.
 
 The grammar is based on [compleat](https://github.com/mbrubeck/compleat/blob/master/README.markdown#syntax)'s one.
 
-A grammar is a series of lines terminated by a semicolon (`;`).  Each line (roughly) represents a single
-variant of invoking the completed command.
+A grammar is a series of lines terminated by a semicolon (`;`).  Each line either represents a single variant
+of invoking the completed command or is a nonterminal definition.
 
  * `a b` matches `a` followed by `b`.
  * `a b | c` matches either `a b` or `c`.
  * `[a]` matches zero or one occurrences of `a`.
- * `a ...` matches one or more occurrences of `a` (WARNING: `a...` will match literal `a...` (!)).
+ * `a ...` matches one or more occurrences of `a` (**WARNING**: `a...` will match the literal `a...`, not one or more `a`!).
  * `[a] ...` matches zero or more occurrences of `a`.
 
 Use parentheses to group patterns:
@@ -79,26 +75,22 @@ Use parentheses to group patterns:
 
 ### Filenames completion
 
-There's a specially treated nonterminal `<FILE>`.  If there's no overriding definition of it in the grammar,
-it's going to be completed as filenames automatically.  For instance, for the grammar:
+There's a couple of predefined nonterminals that are handled specially by `complgen`:
 
-    grep <PATTERNS> [<FILE>]...;
+ * `<FILE>` or `<PATH>` is completed as a file name
+ * `<DIR>` or `<DIRECTORY>` is completed as a directory name
 
-and the input:
-
-```
-$ grep foo <TAB>
-```
-
-the shell is going to suggest files and directories from the current directory.
+These nonterminals can be defined in the grammar in the usual way (`<FILE> ::= ...`) in which case they lose
+their predefined meaning.
 
 ### Descriptions (a.k.a. completion hints)
 
-If a literal is immediately followed by a quoted string, it's going to appear as a hint to the user at completion time.  E.g. the grammar:
+If a literal is immediately followed with a quoted string, it's going to appear as a hint to the user at
+completion time.  E.g. the grammar:
 
     grep --extended-regexp "PATTERNS are extended regular expressions" | --exclude  (skip files that match GLOB)
 
-results in something like this under fish shell:
+results in something like this under fish (and zsh):
 
 ```
 fish> grep --ex<TAB>
@@ -114,17 +106,38 @@ It is possible to use entire shell commands as a source of completions:
     cargo { rustup toolchain list | cut -d' ' -f1 | sed 's/^/+/' };
 
 The stdout of the pipeline above will be automatically filtered by the shell based on the prefix entered so
-far.  Sometimes however, it's more efficient to take into account the entered prefix in the shell commands
-itself.  For all three shells (bash, fish, zsh), it's available in the `$1` variable:
+far.
+
+##### The `$1` parameter
+
+Sometimes, it's more efficient to take into account the entered prefix in the shell commands itself.  For all
+three shells (bash, fish, zsh), it's available in the `$1` variable:
 
     cargo { rustup toolchain list | cut -d' ' -f1 | grep "^$1" | sed 's/^/+/' };
 
 Note that in general, it's best to leave the filtering up to the executing shell since it may be configured to
 perform some non-standard filtering.  zsh for example is capable of expanding `/u/l/b` to `/usr/local/bin`.
 
+##### Triple brackets
+
 To avoid cumbersome escaping, additional triple brackets syntax is also supported:
 
     cargo {{{ rustup toolchain list | awk '{ print $1 }' | grep "^$1" | sed 's/^/+/' }}};
+
+Its semantics are exactly like the ones of single brackets.
+
+##### Descriptions
+
+Externals commands are also assumed to produce descriptions similar to those described in the [section
+above](#descriptions-aka-completion-hints).  Their expected stdout format is a sequence of lines of the form
+
+```
+COMPLETION\tDESCRIPTION
+```
+
+For fish and zsh, the `DESCRIPTION` part will be presented to the user.  Under bash, only the `COMPLETION`
+part will be visible.  All external commands nonetheless need to take care as to *not* produce superfluous
+`\t` characters that may confuse the resulting shell scripts.
 
 ## Limitations
 
@@ -135,6 +148,6 @@ To avoid cumbersome escaping, additional triple brackets syntax is also supporte
    you manually enumerate all the combinations in the grammar which isn't very practical).  You need to pass
    each option in a separate shell argument instead: `tar -x -v -f`
 
- * Non-regular grammars are not supported, e.g. `find(1)`'s arguments can't be completed precisely by
-   complgen.
-
+ * Non-regular grammars are not supported, e.g. `find(1)`'s arguments can't be completed 100% *precisely* by
+   complgen—`complgen` won't accurately suggest a matching `\)` for example.  That doesn't mean it isn't
+   useful though.  It's still perfectly capable of suggesting every argument `find(1)` accepts.
