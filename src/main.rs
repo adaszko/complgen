@@ -82,7 +82,8 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
     let validated = ValidGrammar::from_grammar(grammar)?;
 
     if let Some(railroad_svg_path) = &args.railroad_svg {
-        grammar::to_railroad_diagram_file(Rc::clone(&validated.expr), railroad_svg_path)?;
+        let mut railroad_svg = get_file_or_stdout(&railroad_svg_path)?;
+        grammar::to_railroad_diagram(Rc::clone(&validated.expr), &mut railroad_svg)?;
     }
 
     let arena = Bump::new();
@@ -108,18 +109,21 @@ fn get_file_or_stdout(path: &str) -> anyhow::Result<Box<dyn Write>> {
 
 
 fn compile(args: &CompileArgs) -> anyhow::Result<()> {
-    if args.railroad_svg.is_none() && args.dfa_dot.is_none() && args.bash_script.is_none() && args.fish_script.is_none() && args.zsh_script.is_none() {
-        eprintln!("Please specify at least one of --railroad-svg, --dfa-dot, --bash-script, --fish-script, --zsh-script options");
-        std::process::exit(1);
+    match (&args.railroad_svg, &args.dfa_dot, &args.bash_script, &args.fish_script, &args.zsh_script) {
+        (None, None, None, None, None) => {
+            eprintln!("Please specify at least one of --railroad-svg, --dfa-dot, --bash-script, --fish-script, --zsh-script options");
+            std::process::exit(1);
+        },
+        _ => {},
     }
 
-    let input: String = if args.usage_file_path == "-" {
-        let mut input: String = Default::default();
-        std::io::stdin().read_to_string(&mut input)?;
+    let input = {
+        let mut usage_file = get_file_or_stdin(&args.usage_file_path)?;
+        let mut input = String::default();
+        usage_file.read_to_string(&mut input).context(args.usage_file_path.to_owned())?;
         input
-    } else {
-        std::fs::read_to_string(&args.usage_file_path).context(args.usage_file_path.to_owned())?
     };
+
     let grammar = Grammar::parse(&input)?;
     let validated = ValidGrammar::from_grammar(grammar)?;
 
