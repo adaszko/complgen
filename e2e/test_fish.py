@@ -78,16 +78,6 @@ cmd { echo -e "completion\tdescription" };
 
 
 def test_completes_files(complgen_binary_path: Path):
-    with completion_script_path(complgen_binary_path, '''cmd <FILE> [--help];''') as completions_file_path:
-        with tempfile.TemporaryDirectory() as dir:
-            with set_working_dir(Path(dir)):
-                Path('foo').write_text('dummy')
-                Path('bar').write_text('dummy')
-                os.mkdir('baz')
-                input = 'source {}; complete --command cmd --do-complete "cmd "'.format(completions_file_path)
-                completions = get_sorted_completions(input)
-                assert completions == sorted([('bar', ''), ('baz/', ''), ('foo', '')])
-
     with completion_script_path(complgen_binary_path, '''cmd <PATH> [--help];''') as completions_file_path:
         with tempfile.TemporaryDirectory() as dir:
             with set_working_dir(Path(dir)):
@@ -100,16 +90,6 @@ def test_completes_files(complgen_binary_path: Path):
 
 
 def test_completes_directories(complgen_binary_path: Path):
-    with completion_script_path(complgen_binary_path, '''cmd <DIR> [--help];''') as completions_file_path:
-        with tempfile.TemporaryDirectory() as dir:
-            with set_working_dir(Path(dir)):
-                os.mkdir('foo')
-                os.mkdir('bar')
-                Path('baz').write_text('dummy')
-                input = 'source {}; complete --command cmd --do-complete "cmd "'.format(completions_file_path)
-                completions = get_sorted_completions(input)
-                assert completions == [('bar/', 'Directory'), ('foo/', 'Directory')]
-
     with completion_script_path(complgen_binary_path, '''cmd <DIRECTORY> [--help];''') as completions_file_path:
         with tempfile.TemporaryDirectory() as dir:
             with set_working_dir(Path(dir)):
@@ -118,4 +98,4 @@ def test_completes_directories(complgen_binary_path: Path):
                 Path('baz').write_text('dummy')
                 input = 'source {}; complete --command cmd --do-complete "cmd "'.format(completions_file_path)
                 completions = get_sorted_completions(input)
-                assert completions == [('bar/', 'Directory'), ('foo/', 'Directory')]
+                assert completions == sorted([('bar/', 'Directory'), ('foo/', 'Directory')])

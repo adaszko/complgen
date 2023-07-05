@@ -139,10 +139,10 @@ Use parentheses to group patterns:
 
 There's a couple of predefined nonterminals that are handled specially by `complgen`:
 
- * `<FILE>` or `<PATH>` is completed as a file name
- * `<DIR>` or `<DIRECTORY>` is completed as a directory name
+ * `<PATH>` is completed as a file or directory path
+ * `<DIRECTORY>` is completed as a directory path
 
-These nonterminals can be defined in the grammar in the usual way (`<FILE> ::= ...`) in which case they lose
+These nonterminals can be defined in the grammar in the usual way (`<PATH> ::= ...`) in which case they lose
 their predefined meaning.
 
 ### Descriptions (a.k.a. completion hints)

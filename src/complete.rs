@@ -94,7 +94,7 @@ fn get_completions_for_input<'a, 'b>(input: &Input, words_before_cursor: &'b [&'
             result
         },
 
-        Input::Any(MatchAnythingInput::Nonterminal(nonterm)) if nonterm.as_str() == "FILE" || nonterm.as_str() == "PATH" => {
+        Input::Any(MatchAnythingInput::Nonterminal(nonterm)) if nonterm.as_str() == "PATH" => {
             let prefix = if completed_word_index < words_before_cursor.len() {
                 words_before_cursor[completed_word_index]
             }

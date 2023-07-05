@@ -78,14 +78,6 @@ cmd { echo -e "completion\tdescription" };
 
 
 def test_completes_files(complgen_binary_path: Path):
-    with custom_capture_zsh(complgen_binary_path, '''cmd <FILE> [--help];''') as capture_zsh_path:
-        with tempfile.TemporaryDirectory() as dir:
-            with set_working_dir(Path(dir)):
-                Path('foo').write_text('dummy')
-                Path('bar').write_text('dummy')
-                os.mkdir('baz')
-                assert get_sorted_completions(capture_zsh_path, 'cmd ') == sorted([('bar', ''), ('foo', ''), ('baz/', '')])
-
     with custom_capture_zsh(complgen_binary_path, '''cmd <PATH> [--help];''') as capture_zsh_path:
         with tempfile.TemporaryDirectory() as dir:
             with set_working_dir(Path(dir)):
@@ -96,14 +88,6 @@ def test_completes_files(complgen_binary_path: Path):
 
 
 def test_completes_directories(complgen_binary_path: Path):
-    with custom_capture_zsh(complgen_binary_path, '''cmd <DIR> [--help];''') as capture_zsh_path:
-        with tempfile.TemporaryDirectory() as dir:
-            with set_working_dir(Path(dir)):
-                os.mkdir('foo')
-                os.mkdir('bar')
-                Path('baz').write_text('dummy')
-                assert get_sorted_completions(capture_zsh_path, 'cmd ') == sorted([('bar/', ''), ('foo/', '')])
-
     with custom_capture_zsh(complgen_binary_path, '''cmd <DIRECTORY> [--help];''') as capture_zsh_path:
         with tempfile.TemporaryDirectory() as dir:
             with set_working_dir(Path(dir)):

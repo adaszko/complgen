@@ -172,12 +172,12 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 "#)?;
     }
 
-    let file_states = dfa.get_file_states();
-    if !file_states.is_empty() {
-        let array_initializer: String = itertools::join(file_states.into_iter().map(|state| format!("{}", state + 1)), " ");
+    let path_states = dfa.get_file_states();
+    if !path_states.is_empty() {
+        let array_initializer: String = itertools::join(path_states.into_iter().map(|state| format!("{}", state + 1)), " ");
         write!(buffer, r#"
-    local -a files=({array_initializer})
-    if (($files[(Ie)$state])); then
+    local -a path_states=({array_initializer})
+    if (($path_states[(Ie)$state])); then
         _path_files
     fi
 "#)?;
@@ -187,8 +187,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     if !directory_states.is_empty() {
         let array_initializer: String = itertools::join(directory_states.into_iter().map(|state| format!("{}", state + 1)), " ");
         write!(buffer, r#"
-    local -a directories=({array_initializer})
-    if (($directories[(Ie)$state])); then
+    local -a directory_states=({array_initializer})
+    if (($directory_states[(Ie)$state])); then
         _path_files -/
     fi
 "#)?;

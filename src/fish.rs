@@ -170,12 +170,12 @@ end
 "#)?;
     }
 
-    let file_states = dfa.get_file_states();
-    if !file_states.is_empty() {
-        let array_initializer: String = itertools::join(file_states.into_iter().map(|state| format!("{}", state + 1)), " ");
+    let path_states = dfa.get_file_states();
+    if !path_states.is_empty() {
+        let array_initializer: String = itertools::join(path_states.into_iter().map(|state| format!("{}", state + 1)), " ");
         write!(buffer, r#"
-    set --local files {array_initializer}
-    if contains $state $files
+    set --local path_states {array_initializer}
+    if contains $state $path_states
         __fish_complete_path $COMP_WORDS[$COMP_CWORD]
     end
 "#)?;
@@ -185,8 +185,8 @@ end
     if !directory_states.is_empty() {
         let array_initializer: String = itertools::join(directory_states.into_iter().map(|state| format!("{}", state + 1)), " ");
         write!(buffer, r#"
-    set --local directories {array_initializer}
-    if contains $state $directories
+    set --local directory_states {array_initializer}
+    if contains $state $directory_states
         __fish_complete_directories $COMP_WORDS[$COMP_CWORD]
     end
 "#)?;
