@@ -9,8 +9,8 @@ use crate::dfa::DFA;
 // Array indexes in ZSH start from 1 (!)
 
 
-fn escape_zsh_string(s: &str) -> String {
-    s.replace("\"", "\\\"").replace("`", "\\`")
+pub fn escape_zsh_string(s: &str) -> String {
+    s.replace("\"", "\\\"").replace("`", "\\`").replace("$", "\\$")
 }
 
 

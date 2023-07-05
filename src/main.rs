@@ -5,10 +5,12 @@ use anyhow::Context;
 use bumpalo::Bump;
 use clap::Parser;
 
+use complete::get_completions;
 use grammar::{ValidGrammar, Grammar};
 
 use crate::dfa::DFA;
 use crate::regex::AugmentedRegex;
+use crate::zsh::escape_zsh_string;
 
 mod grammar;
 mod dfa;
@@ -112,9 +114,37 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
 
     let words_before_cursor: Vec<&str> = words.iter().map(|s| s.as_ref()).collect();
 
-    for (completion, _) in complete::get_completions(&dfa, &words_before_cursor, completed_word_index, shell) {
-        println!("{}", completion);
+    let completions = get_completions(&dfa, &words_before_cursor, completed_word_index, shell);
+
+    match args.shell {
+        Shell::Bash(_) => {
+            for (completion, _) in completions {
+                println!("{}", completion);
+            }
+        },
+        Shell::Fish(_) => {
+            for (completion, description) in completions {
+                println!("{}\t{}", completion, description);
+            }
+        },
+        Shell::Zsh(_) => {
+            let completions_array_initializer = itertools::join(completions.iter().map(|(completion, _)| format!(r#""{}""#, escape_zsh_string(completion))), " ");
+            println!(r#"local -a completions=({completions_array_initializer})"#);
+
+            let descriptions_array_initializer = itertools::join(completions.iter().map(|(completion, description)| {
+                if !description.is_empty() {
+                    format!(r#""{} ({})""#, escape_zsh_string(completion), escape_zsh_string(description))
+                }
+                else {
+                    format!(r#""{}""#, escape_zsh_string(completion))
+                }
+            }), " ");
+            println!(r#"local -a descriptions=({descriptions_array_initializer})"#);
+
+            println!(r#"compadd -d descriptions -a completions"#);
+        },
     }
+
     Ok(())
 }
 

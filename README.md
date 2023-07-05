@@ -90,8 +90,8 @@ Assumming your `.usage` files are stored in the `~/.config/complgen` directory, 
 _complgen_jit () {
     local stem=$1
     local -a w=("${(@)words[2,$#words]}")
-    local -a completions=($(complgen complete ~/.config/complgen/${stem}.usage zsh $((CURRENT - 2)) -- "${w[@]}"))
-    compadd -a completions
+    local zsh_code=$(complgen complete ~/.config/complgen/${stem}.usage zsh $((CURRENT - 2)) -- "${w[@]}")
+    eval $zsh_code
     return 0
 }
 
