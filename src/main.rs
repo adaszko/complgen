@@ -237,8 +237,8 @@ fn scrape() -> anyhow::Result<()> {
         input
     };
 
-    let expr = scrape::scrape(&input)?;
-    println!("{:?}", expr);
+    let exprs = scrape::scrape(&input)?;
+    scrape::pretty_print(&exprs);
     Ok(())
 }
 

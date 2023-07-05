@@ -358,6 +358,32 @@ pub fn scrape(input: &str) -> complgen::Result<Vec<Rc<Expr>>> {
 }
 
 
+fn escape_description(s: &str) -> String {
+    s.replace("\"", "\\\"")
+}
+
+
+fn do_pretty_print(e: &Expr) -> String {
+    match e {
+        Expr::Terminal(term, None) => format!(r#"{term}"#),
+        Expr::Terminal(term, Some(descr)) => format!(r#"{term} "{}""#, escape_description(descr)),
+        Expr::Nonterminal(nonterm) => format!(r#"<{nonterm}>"#),
+        Expr::Command(cmd) => format!(r#"{{{{{{ {cmd} }}}}}}"#),
+        Expr::Sequence(subexprs) => itertools::join(subexprs.iter().map(|e| do_pretty_print(e)), " "),
+        Expr::Alternative(subexprs) => itertools::join(subexprs.iter().map(|e| do_pretty_print(e)), " | "),
+        Expr::Optional(subexpr) => format!(r#"[{}]"#, do_pretty_print(subexpr)),
+        Expr::Many1(subexpr) => format!(r#"{} ..."#, do_pretty_print(subexpr)),
+    }
+}
+
+
+pub fn pretty_print(exprs: &[Rc<Expr>]) {
+    for e in exprs {
+        println!("{}", do_pretty_print(e));
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
