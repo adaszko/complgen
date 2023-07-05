@@ -12,14 +12,14 @@ pub type Position = u32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum MatchAnythingInput {
-    Any(Ustr),
+    Nonterminal(Ustr),
     Command(Ustr),
 }
 
 impl std::fmt::Display for MatchAnythingInput {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            MatchAnythingInput::Any(name) => write!(f, "{name}"),
+            MatchAnythingInput::Nonterminal(name) => write!(f, "{name}"),
             MatchAnythingInput::Command(cmd) => write!(f, "{{{cmd}}}"),
         }
     }
@@ -214,7 +214,7 @@ fn do_from_expr<'a>(e: &Expr, arena: &'a Bump, symbols: &mut HashSet<Input>, inp
         },
         Expr::Nonterminal(name) => {
             let result = AugmentedRegexNode::Nonterminal(Position::try_from(input_from_position.len()).unwrap());
-            let input = Input::Any(MatchAnythingInput::Any(*name));
+            let input = Input::Any(MatchAnythingInput::Nonterminal(*name));
             input_from_position.push(input.clone());
             symbols.insert(input);
             result

@@ -47,7 +47,7 @@ for path in ~/.config/complgen/*.usage; do
     local stem=$(basename "$path" .usage)
     eval "
 _complgen_jit_$stem () {
-    local -a completions=(\$(complgen complete \"$HOME/.config/complgen/${stem}.usage\" \$((COMP_CWORD - 1)) -- \${COMP_WORDS[@]:1}))
+    local -a completions=(\$(complgen complete \"$HOME/.config/complgen/${stem}.usage\" bash \$((COMP_CWORD - 1)) -- \${COMP_WORDS[@]:1}))
     completions=\${completions[@]}
     COMPREPLY=(\$(compgen -W \"\$completions\" -- "\${COMP_WORDS[\$COMP_CWORD]}"))
     return 0
@@ -72,7 +72,7 @@ function _complgen_jit
         set COMP_CWORD (count $COMP_WORDS)
     end
     set --local usage_file_path $argv[1]
-    complgen complete $usage_file_path -- (math $COMP_CWORD - 2) $COMP_WORDS[2..-1]
+    complgen complete $usage_file_path fish -- (math $COMP_CWORD - 2) $COMP_WORDS[2..-1]
 end
 
 for path in ~/.config/complgen/*.usage
@@ -90,7 +90,7 @@ Assumming your `.usage` files are stored in the `~/.config/complgen` directory, 
 _complgen_jit () {
     local stem=$1
     local -a w=("${(@)words[2,$#words]}")
-    local -a completions=($(complgen complete ~/.config/complgen/${stem}.usage $((CURRENT - 2)) -- "${w[@]}"))
+    local -a completions=($(complgen complete ~/.config/complgen/${stem}.usage zsh $((CURRENT - 2)) -- "${w[@]}"))
     compadd -a completions
     return 0
 }

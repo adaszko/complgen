@@ -33,13 +33,27 @@ enum Mode {
 }
 
 #[derive(clap::Args)]
-struct CompleteArgs {
-    usage_file_path: String,
+struct CompleteShellArgs {
     completed_word_index: usize,
-    args: Vec<String>,
+    words: Vec<String>,
+}
 
+#[derive(clap::Subcommand)]
+enum Shell {
+    Bash(CompleteShellArgs),
+    Fish(CompleteShellArgs),
+    Zsh(CompleteShellArgs),
+}
+
+#[derive(clap::Args)]
+struct CompleteArgs {
     #[clap(long)]
     railroad_svg: Option<String>,
+
+    usage_file_path: String,
+
+    #[clap(subcommand)]
+    shell: Shell,
 }
 
 
@@ -90,8 +104,15 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
     let regex = AugmentedRegex::from_expr(&validated.expr, &arena);
     let dfa = DFA::from_regex(&regex);
 
-    let words_before_cursor: Vec<&str> = args.args.iter().map(|s| s.as_ref()).collect();
-    for (completion, _) in complete::get_completions(&dfa, &words_before_cursor, args.completed_word_index) {
+    let (shell, completed_word_index, words) = match &args.shell {
+        Shell::Bash(a) => (complete::Shell::Bash, a.completed_word_index, &a.words),
+        Shell::Fish(a) => (complete::Shell::Fish, a.completed_word_index, &a.words),
+        Shell::Zsh(a) => (complete::Shell::Zsh, a.completed_word_index, &a.words),
+    };
+
+    let words_before_cursor: Vec<&str> = words.iter().map(|s| s.as_ref()).collect();
+
+    for (completion, _) in complete::get_completions(&dfa, &words_before_cursor, completed_word_index, shell) {
         println!("{}", completion);
     }
     Ok(())

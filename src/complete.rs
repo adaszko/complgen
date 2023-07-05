@@ -1,9 +1,31 @@
+use std::process::{Command, Output};
+
 use complgen::StateId;
 use hashbrown::HashMap;
 
 use ustr::ustr;
 
 use crate::{dfa::DFA, regex::{Input, MatchAnythingInput}};
+
+
+
+#[derive(Debug, Clone, Copy)]
+pub enum Shell {
+    Bash,
+    Fish,
+    Zsh,
+}
+
+
+impl Shell {
+    fn shell_out(&self, command: &str) -> std::io::Result<Output> {
+        match self {
+            Shell::Bash => Command::new("bash").arg("-c").arg(command).output(),
+            Shell::Fish => Command::new("fish").arg("-c").arg(command).output(),
+            Shell::Zsh => Command::new("zsh").arg("-c").arg(command).output(),
+        }
+    }
+}
 
 
 pub fn get_match_final_state(dfa: &DFA, inputs: &[&str], completed_word_index: usize) -> Option<StateId> {
@@ -35,49 +57,73 @@ pub fn get_match_final_state(dfa: &DFA, inputs: &[&str], completed_word_index: u
 }
 
 
-pub fn get_completions<'a, 'b>(dfa: &DFA, words_before_cursor: &'b [&'a str], completed_word_index: usize) -> Vec<(String, String)> {
-    if let Some(state_id) = get_match_final_state(dfa, words_before_cursor, completed_word_index) {
-        let mut inputs: Vec<(String, String)> = dfa.transitions.get(&state_id).unwrap_or(&HashMap::default()).iter().filter_map(|(input, _)| match input {
-            Input::Literal(literal, description) => Some(vec![(literal.as_str().to_string(), description.unwrap_or(ustr("")).as_str().to_string())]),
-            Input::Any(MatchAnythingInput::Command(cmd)) => {
-                let output = std::process::Command::new("sh").arg("-c").arg(cmd.as_str()).output().unwrap();
-                let compls = String::from_utf8(output.stdout).unwrap();
-                let mut result: Vec<(String, String)> = compls.lines().map(|line| match line.split_once("\t") {
-                    Some((completion, description)) => (completion.to_owned(), description.to_owned()),
-                    None => (line.to_string(), "".to_string()),
-                }).collect();
+fn get_completions_for_input<'a, 'b>(input: &Input, words_before_cursor: &'b [&'a str], completed_word_index: usize, shell: Shell) -> Vec<(String, String)> {
+    match input {
+        Input::Literal(literal, description) => vec![(literal.as_str().to_string(), description.unwrap_or(ustr("")).as_str().to_string())],
 
-                if completed_word_index < words_before_cursor.len() {
-                    result.retain(|(completion, _)| completion.starts_with(words_before_cursor[completed_word_index]));
-                }
+        Input::Any(MatchAnythingInput::Command(command)) => {
+            let output = match shell.shell_out(command.as_str()) {
+                Ok(output) => output,
+                Err(e) => {
+                    eprintln!("{:?}", e);
+                    return vec![];
+                },
+            };
+            if !output.status.success() {
+                eprint!("{}", String::from_utf8_lossy(&output.stdout));
+                eprint!("{}", String::from_utf8_lossy(&output.stderr));
+                return vec![];
+            }
 
-                Some(result)
-            },
-            Input::Any(MatchAnythingInput::Any(nonterm)) if nonterm.as_str() == "FILE" || nonterm.as_str() == "PATH" => {
-                let prefix = if completed_word_index < words_before_cursor.len() {
-                    words_before_cursor[completed_word_index]
-                }
-                else {
-                    ""
-                };
-                let cmd = format!(r#"printf "%s\n" {}*"#, prefix);
-                let output = std::process::Command::new("sh").arg("-c").arg(&cmd).output().unwrap();
-                let result: Vec<(String, String)> = String::from_utf8(output.stdout).unwrap().lines().filter(|line| !line.is_empty()).map(|line| (line.to_string(), "".to_string())).collect();
-                Some(result)
-            },
-            Input::Any(MatchAnythingInput::Any(_)) => None,
-        }).flatten().collect();
+            let stdout = match String::from_utf8(output.stdout) {
+                Ok(stdout) => stdout,
+                Err(e) => {
+                    eprintln!("{:?}", e);
+                    return vec![];
+                },
+            };
+            let mut result: Vec<(String, String)> = stdout.lines().map(|line| match line.split_once("\t") {
+                Some((completion, description)) => (completion.to_owned(), description.to_owned()),
+                None => (line.to_string(), "".to_string()),
+            }).collect();
 
-        if completed_word_index < words_before_cursor.len() {
-            inputs.retain(|(completion, _)| completion.starts_with(words_before_cursor[completed_word_index]));
-        }
+            if completed_word_index < words_before_cursor.len() {
+                result.retain(|(completion, _)| completion.starts_with(words_before_cursor[completed_word_index]));
+            }
 
-        inputs.sort_unstable();
-        inputs
+            result
+        },
+
+        Input::Any(MatchAnythingInput::Nonterminal(nonterm)) if nonterm.as_str() == "FILE" || nonterm.as_str() == "PATH" => {
+            let prefix = if completed_word_index < words_before_cursor.len() {
+                words_before_cursor[completed_word_index]
+            }
+            else {
+                ""
+            };
+            let cmd = format!(r#"printf "%s\n" {}*"#, prefix);
+            let output = std::process::Command::new("sh").arg("-c").arg(&cmd).output().unwrap();
+            let result: Vec<(String, String)> = String::from_utf8(output.stdout).unwrap().lines().filter(|line| !line.is_empty()).map(|line| (line.to_string(), "".to_string())).collect();
+            result
+        },
+
+        Input::Any(MatchAnythingInput::Nonterminal(_)) => vec![],
     }
-    else {
-        vec![]
+}
+
+
+pub fn get_completions<'a, 'b>(dfa: &DFA, words_before_cursor: &'b [&'a str], completed_word_index: usize, shell: Shell) -> Vec<(String, String)> {
+    let state_id = match get_match_final_state(dfa, words_before_cursor, completed_word_index) {
+        Some(state_id) => state_id,
+        None => return vec![],
+    };
+
+    let mut completions: Vec<(String, String)> = dfa.transitions.get(&state_id).unwrap_or(&HashMap::default()).iter().map(|(input, _)| get_completions_for_input(input, words_before_cursor, completed_word_index, shell)).flatten().collect();
+    if completed_word_index < words_before_cursor.len() {
+        completions.retain(|(completion, _)| completion.starts_with(words_before_cursor[completed_word_index]));
     }
+    completions.sort_unstable();
+    completions
 }
 
 
@@ -97,7 +143,7 @@ mod tests {
         let regex = AugmentedRegex::from_expr(&validated.expr, &arena);
         let dfa = DFA::from_regex(&regex);
         let dfa = dfa.minimize();
-        get_completions(&dfa, words_before_cursor, completed_word_index)
+        get_completions(&dfa, words_before_cursor, completed_word_index, Shell::Bash)
     }
 
     #[test]

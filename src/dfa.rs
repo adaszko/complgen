@@ -420,7 +420,7 @@ impl DFA {
             for (input, _) in tos {
                 let cmd = match input {
                     Input::Any(MatchAnythingInput::Command(cmd)) => *cmd,
-                    Input::Any(MatchAnythingInput::Any(..)) => continue,
+                    Input::Any(MatchAnythingInput::Nonterminal(..)) => continue,
                     Input::Literal(..) => continue,
                 };
                 result.push((*from, cmd));
@@ -435,7 +435,7 @@ impl DFA {
             for (input, _) in tos {
                 match input {
                     Input::Any(MatchAnythingInput::Command(..)) => {},
-                    Input::Any(MatchAnythingInput::Any(name)) => {
+                    Input::Any(MatchAnythingInput::Nonterminal(name)) => {
                         let canonicalized_name = name.as_str().to_uppercase();
                         if canonicalized_name == "FILE" || canonicalized_name == "PATH" {
                             result.push(*from);
@@ -454,7 +454,7 @@ impl DFA {
             for (input, _) in tos {
                 match input {
                     Input::Any(MatchAnythingInput::Command(..)) => {},
-                    Input::Any(MatchAnythingInput::Any(name)) => {
+                    Input::Any(MatchAnythingInput::Nonterminal(name)) => {
                         let canonicalized_name = name.as_str().to_uppercase();
                         if canonicalized_name == "DIR" || canonicalized_name == "DIRECTORY" {
                             result.push(*from);
