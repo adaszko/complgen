@@ -33,6 +33,7 @@ struct Cli {
 enum Mode {
     Complete(CompleteArgs),
     Compile(CompileArgs),
+    Scrape,
 }
 
 #[derive(clap::Args)]
@@ -229,12 +230,26 @@ fn compile(args: &CompileArgs) -> anyhow::Result<()> {
 }
 
 
+fn scrape() -> anyhow::Result<()> {
+    let input: String = {
+        let mut input = String::default();
+        std::io::stdin().read_to_string(&mut input)?;
+        input
+    };
+
+    let expr = scrape::scrape(&input)?;
+    println!("{:?}", expr);
+    Ok(())
+}
+
+
 fn main() -> anyhow::Result<()> {
     env_logger::init();
     let args = Cli::parse();
     match args.mode {
         Mode::Complete(args) => complete(&args)?,
         Mode::Compile(args) => compile(&args)?,
+        Mode::Scrape => scrape()?,
     };
     Ok(())
 }

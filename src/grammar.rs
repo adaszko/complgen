@@ -15,7 +15,7 @@ use ustr::{Ustr, ustr, UstrMap, UstrSet};
 #[derive(Clone, PartialEq)]
 pub enum Expr {
     Terminal(Ustr, Option<Ustr>), // e.g. an option: "--help", or a command: "build"
-    Nonterminal(Ustr), // e.g. <FILE>, <PATH>, <DIR>, etc.
+    Nonterminal(Ustr), // e.g. <PATH>, <DIRECTORY>, etc.
     Command(Ustr), // e.g. { ls }
     Sequence(Vec<Rc<Expr>>),
     Alternative(Vec<Rc<Expr>>),
