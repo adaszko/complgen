@@ -9,6 +9,11 @@ use crate::dfa::DFA;
 // array indices start at 1 in fish , not 0 (!)
 
 
+pub fn escape_fish_string(s: &str) -> String {
+    s.replace("\"", "\\\"").replace("$", "\\$")
+}
+
+
 fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
     let all_literals: Vec<(usize, Ustr, Ustr)> = dfa.get_all_literals().into_iter().enumerate().map(|(id, (literal, description))| (id + 1, literal, description.unwrap_or(ustr("")))).collect();
 
@@ -18,8 +23,7 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
     writeln!(buffer, "")?;
 
     for (id, _, description) in all_literals.iter() {
-        let description = description.replace("\"", "\\\"");
-        writeln!(buffer, r#"    set descriptions[{id}] "{description}""#)?;
+        writeln!(buffer, r#"    set descriptions[{id}] "{}""#, escape_fish_string(description))?;
     }
     writeln!(buffer, "")?;
 
