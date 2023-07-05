@@ -107,16 +107,22 @@ done
 cargo install --git https://github.com/adaszko/complgen complgen
 ```
 
-## Rationale
-
-Although various libraries exist for parsing command line arguments that can generate shell completions for
-you (e.g. clap), `complgen` has the advantage of being just a command line tool and thus not being tied to any
-particular implementation language.  `complgen` is also capable of completing based on external shell commands
-output, e.g. `{ cat /etc/passwd | grep -v '^#' | cut -d: -f1 }` to complete users on the system.
-
 ## Syntax
 
 See the [subdirectory](usage/) for examples.
+
+Try piping through the `scrape` subcommand to quickly generate grammar scaffolding that can be tweaked
+further, e.g.:
+
+```
+$ grep --help | complgen scrape
+[...]
+ggrep [<OPTION>] ... <PATTERNS> [<FILE>] ...
+-E "are extended regular expressions" | --extended-regexp "are extended regular expressions" <PATTERNS>
+-F "are strings" | --fixed-strings "are strings" <PATTERNS>
+-G "are basic regular expressions" | --basic-regexp "are basic regular expressions" <PATTERNS>
+[...]
+```
 
 The grammar is based on [compleat](https://github.com/mbrubeck/compleat/blob/master/README.markdown#syntax)'s one.
 
