@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use nom::{IResult, character::complete::{char, anychar}, bytes::complete::{tag_no_case, tag, take_till, take_while1, is_not, take_while}, error::context, branch::alt, combinator::fail};
+use nom::{IResult, character::complete::{char, anychar, multispace1}, bytes::complete::{tag_no_case, tag, take_till, take_while1, is_not, take_while}, error::context, branch::alt, combinator::fail, multi::many1};
 use ustr::ustr;
 
 use crate::grammar::Expr;
@@ -10,6 +10,7 @@ use crate::grammar::Expr;
 pub enum Statement {
     UsageLine(Rc<Expr>),
     OptionLine(Rc<Expr>),
+    OptionList(Vec<Rc<Expr>>),
 }
 
 
@@ -283,6 +284,7 @@ fn long_option_argument_description_expr(input: &str) -> IResult<&str, Expr> {
 fn optional_nonterminal_expr(input: &str) -> IResult<&str, Expr> {
     let (input, _) = char('[')(input)?;
     let (input, _) = multispace0_except_newline(input)?;
+    let (input, _) = tag("=")(input)?;
     let (input, nonterm) = nonterminal_expr(input)?;
     let (input, _) = multispace0_except_newline(input)?;
     let (input, _) = char(']')(input)?;
@@ -310,13 +312,26 @@ fn short_option_long_option_optional_argument_description_expr(input: &str) -> I
     Ok((input, expr))
 }
 
+
+fn short_option_long_option_many1_description_expr(input: &str) -> IResult<&str, Expr> {
+    let (input, _) = multispace0_except_newline(input)?;
+    let (input, short) = short_option(input)?;
+    let (input, _) = char(',')(input)?;
+    let (input, _) = multispace0_except_newline(input)?;
+    let (input, long) = long_option(input)?;
+    let (input, _) = many1_tag(input)?;
+    let (input, _) = multispace1_except_newline(input)?;
+    let (input, description) = description(input)?;
+    let (input, _) = newline_or_eof(input)?;
+    let s = Rc::new(Expr::Terminal(ustr(short), Some(ustr(description))));
+    let l = Rc::new(Expr::Many1(Rc::new(Expr::Terminal(ustr(long), Some(ustr(description))))));
+    let expr = Expr::Alternative(vec![s, l]);
+    Ok((input, expr))
+}
+
 fn long_option_optional_argument_description_expr(input: &str) -> IResult<&str, Expr> {
     let (input, _) = multispace0_except_newline(input)?;
     let (input, long) = long_option(input)?;
-    let (input, _) = alt((
-        tag("="),
-        multispace1_except_newline,
-    ))(input)?;
     let (input, opt_arg) = optional_nonterminal_expr(input)?;
     let (input, _) = multispace1_except_newline(input)?;
     let (input, description) = description(input)?;
@@ -330,6 +345,7 @@ fn long_option_optional_argument_description_expr(input: &str) -> IResult<&str, 
 fn option_line(input: &str) -> IResult<&str, Expr> {
     alt((
         short_option_long_option_optional_argument_description_expr,
+        short_option_long_option_many1_description_expr,
         short_option_long_option_argument_description_expr,
         short_option_long_option_description_expr,
         long_option_optional_argument_description_expr,
@@ -338,6 +354,16 @@ fn option_line(input: &str) -> IResult<&str, Expr> {
         short_option_argument_description_expr,
         short_option_description_expr,
     ))(input)
+}
+
+
+fn options_list(input: &str) -> IResult<&str, Statement> {
+    let (input, _) = multispace0_except_newline(input)?;
+    let (input, _) = tag_no_case("options:")(input)?;
+    let (input, _) = multispace1(input)?;
+    let (input, options) = many1(option_line)(input)?;
+    let refcounted_options = options.into_iter().map(|e| Rc::new(e)).collect();
+    Ok((input, Statement::OptionList(refcounted_options)))
 }
 
 
@@ -357,6 +383,10 @@ pub fn usage(mut input: &str) -> IResult<&str, Vec<Statement>> {
         }
         else if let Ok((rest, expr)) = option_line(input) {
             result.push(Statement::OptionLine(Rc::new(expr)));
+            input = rest;
+        }
+        else if let Ok((rest, stmt)) = options_list(input) {
+            result.push(stmt);
             input = rest;
         }
         else if let Ok((rest, ())) = fluff_line(input) {
@@ -419,6 +449,13 @@ pub fn pretty_print(exprs: &[Statement]) {
         match e {
             Statement::UsageLine(e) => println!("{};", do_pretty_print(e)),
             Statement::OptionLine(e) => pp_option_line(e),
+            Statement::OptionList(opts) => {
+                println!("<OPTION> ::= ");
+                for e in opts {
+                    pp_option_line(e);
+                }
+                println!(" ;");
+            },
         }
     }
 }
@@ -479,6 +516,15 @@ mod tests {
         let (rest, expr) = option_line(INPUT).unwrap();
         assert_eq!(rest, "");
         assert_eq!(expr, Sequence(vec![Rc::new(Terminal(ustr("--name"), Some(ustr("Name of the project")))), Rc::new(Optional(Rc::new(Nonterminal(ustr("string")))))]));
+    }
+
+    #[test]
+    fn parses_long_option_optional_equals_argument_description() {
+        use Expr::*;
+        const INPUT: &str = r#"      --timings[=<FMTS>]        Timing output formats (unstable) (comma separated): html, json"#;
+        let (rest, expr) = option_line(INPUT).unwrap();
+        assert_eq!(rest, "");
+        assert_eq!(expr, Sequence(vec![Rc::new(Terminal(ustr("--timings"), Some(ustr("Timing output formats (unstable) (comma separated): html, json")))), Rc::new(Optional(Rc::new(Nonterminal(ustr("FMTS")))))]));
     }
 
     #[test]
