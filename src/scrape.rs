@@ -404,10 +404,21 @@ fn do_pretty_print(e: &Expr) -> String {
 
 
 pub fn pretty_print(exprs: &[Statement]) {
+    fn pp_option_line(e: &Expr) {
+        match e {
+            Expr::Alternative(subexprs) => {
+                for subexpr in subexprs {
+                    println!(" | {}", do_pretty_print(subexpr));
+                }
+            },
+            _ => println!(" | {}", do_pretty_print(e)),
+        }
+    }
+
     for e in exprs {
         match e {
             Statement::UsageLine(e) => println!("{};", do_pretty_print(e)),
-            Statement::OptionLine(e) => println!("{}", do_pretty_print(e)),
+            Statement::OptionLine(e) => pp_option_line(e),
         }
     }
 }
