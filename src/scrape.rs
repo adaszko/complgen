@@ -6,6 +6,13 @@ use ustr::ustr;
 use crate::grammar::Expr;
 
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum Statement {
+    UsageLine(Rc<Expr>),
+    OptionLine(Rc<Expr>),
+}
+
+
 fn multispace0_except_newline(input: &str) -> IResult<&str, &str> {
     let (input, spaces) = take_while(|c| c == ' ' || c == '\t')(input)?;
     Ok((input, spaces))
@@ -341,15 +348,15 @@ fn fluff_line(input: &str) -> IResult<&str, ()> {
 }
 
 
-pub fn usage(mut input: &str) -> IResult<&str, Vec<Rc<Expr>>> {
-    let mut result: Vec<Rc<Expr>> = Default::default();
+pub fn usage(mut input: &str) -> IResult<&str, Vec<Statement>> {
+    let mut result: Vec<Statement> = Default::default();
     while !input.is_empty() {
         if let Ok((rest, expr)) = usage_line(input) {
-            result.push(Rc::new(expr));
+            result.push(Statement::UsageLine(Rc::new(expr)));
             input = rest;
         }
         else if let Ok((rest, expr)) = option_line(input) {
-            result.push(Rc::new(expr));
+            result.push(Statement::OptionLine(Rc::new(expr)));
             input = rest;
         }
         else if let Ok((rest, ())) = fluff_line(input) {
@@ -363,7 +370,7 @@ pub fn usage(mut input: &str) -> IResult<&str, Vec<Rc<Expr>>> {
 }
 
 
-pub fn scrape(input: &str) -> complgen::Result<Vec<Rc<Expr>>> {
+pub fn scrape(input: &str) -> complgen::Result<Vec<Statement>> {
     let (input, expr) = match usage(input) {
         Ok((input, expr)) => (input, expr),
         Err(e) => return Err(complgen::Error::ParsingError(e.to_string())),
@@ -396,9 +403,12 @@ fn do_pretty_print(e: &Expr) -> String {
 }
 
 
-pub fn pretty_print(exprs: &[Rc<Expr>]) {
+pub fn pretty_print(exprs: &[Statement]) {
     for e in exprs {
-        println!("{}", do_pretty_print(e));
+        match e {
+            Statement::UsageLine(e) => println!("{};", do_pretty_print(e)),
+            Statement::OptionLine(e) => println!("{}", do_pretty_print(e)),
+        }
     }
 }
 
@@ -472,6 +482,7 @@ mod tests {
     #[test]
     fn parses_grep_help() {
         use Expr::*;
+        use Statement::*;
         const INPUT: &str = r#"
 Usage: ggrep [OPTION]... PATTERNS [FILE]...
 Search for PATTERNS in each FILE.
@@ -492,8 +503,43 @@ Pattern selection and interpretation:
   -z, --null-data           a data line ends in 0 byte, not newline
 "#;
         let Ok(("", expr)) = usage(INPUT) else { panic!("parse error") };
-        assert_eq!(expr, vec![
-            Rc::new(Sequence(vec![Rc::new(Terminal(ustr("ggrep"), None)), Rc::new(Many1(Rc::new(Optional(Rc::new(Nonterminal(ustr("OPTION"))))))), Rc::new(Nonterminal(ustr("PATTERNS"))), Rc::new(Many1(Rc::new(Optional(Rc::new(Nonterminal(ustr("FILE")))))))])), Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-E"), Some(ustr("are extended regular expressions")))), Rc::new(Terminal(ustr("--extended-regexp"), Some(ustr("are extended regular expressions"))))])), Rc::new(Nonterminal(ustr("PATTERNS")))])), Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-F"), Some(ustr("are strings")))), Rc::new(Terminal(ustr("--fixed-strings"), Some(ustr("are strings"))))])), Rc::new(Nonterminal(ustr("PATTERNS")))])), Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-G"), Some(ustr("are basic regular expressions")))), Rc::new(Terminal(ustr("--basic-regexp"), Some(ustr("are basic regular expressions"))))])), Rc::new(Nonterminal(ustr("PATTERNS")))])), Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-P"), Some(ustr("are Perl regular expressions")))), Rc::new(Terminal(ustr("--perl-regexp"), Some(ustr("are Perl regular expressions"))))])), Rc::new(Nonterminal(ustr("PATTERNS")))])), Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-e"), Some(ustr("use PATTERNS for matching")))), Rc::new(Terminal(ustr("--regexp"), Some(ustr("use PATTERNS for matching"))))])), Rc::new(Nonterminal(ustr("PATTERNS")))])), Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-f"), Some(ustr("take PATTERNS from FILE")))), Rc::new(Terminal(ustr("--file"), Some(ustr("take PATTERNS from FILE"))))])), Rc::new(Nonterminal(ustr("FILE")))])), Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-i"), Some(ustr("ignore case distinctions in patterns and data")))), Rc::new(Terminal(ustr("--ignore-case"), Some(ustr("ignore case distinctions in patterns and data"))))])), Rc::new(Terminal(ustr("--no-ignore-case"), Some(ustr("do not ignore case distinctions (default)")))), Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-w"), Some(ustr("match only whole words")))), Rc::new(Terminal(ustr("--word-regexp"), Some(ustr("match only whole words"))))])), Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-x"), Some(ustr("match only whole lines")))), Rc::new(Terminal(ustr("--line-regexp"), Some(ustr("match only whole lines"))))])), Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-z"), Some(ustr("a data line ends in 0 byte, not newline")))), Rc::new(Terminal(ustr("--null-data"), Some(ustr("a data line ends in 0 byte, not newline"))))]))
+        assert_eq!(expr, [
+            UsageLine(
+                Rc::new(Sequence(vec![Rc::new(Terminal(ustr("ggrep"), None)), Rc::new(Many1(Rc::new(Optional(Rc::new(Nonterminal(ustr("OPTION"))))))), Rc::new(Nonterminal(ustr("PATTERNS"))), Rc::new(Many1(Rc::new(Optional(Rc::new(Nonterminal(ustr("FILE")))))))])),
+            ),
+            OptionLine(
+                Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-E"), Some(ustr("are extended regular expressions")))), Rc::new(Terminal(ustr("--extended-regexp"), Some(ustr("are extended regular expressions"))))])), Rc::new(Nonterminal(ustr("PATTERNS")))])),
+            ),
+            OptionLine(
+                Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-F"), Some(ustr("are strings")))), Rc::new(Terminal(ustr("--fixed-strings"), Some(ustr("are strings"))))])), Rc::new(Nonterminal(ustr("PATTERNS")))])),
+            ),
+            OptionLine(
+                Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-G"), Some(ustr("are basic regular expressions")))), Rc::new(Terminal(ustr("--basic-regexp"), Some(ustr("are basic regular expressions"))))])), Rc::new(Nonterminal(ustr("PATTERNS")))])),
+            ),
+            OptionLine(
+                Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-P"), Some(ustr("are Perl regular expressions")))), Rc::new(Terminal(ustr("--perl-regexp"), Some(ustr("are Perl regular expressions"))))])), Rc::new(Nonterminal(ustr("PATTERNS")))])),
+            ),
+            OptionLine(
+                Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-e"), Some(ustr("use PATTERNS for matching")))), Rc::new(Terminal(ustr("--regexp"), Some(ustr("use PATTERNS for matching"))))])), Rc::new(Nonterminal(ustr("PATTERNS")))])),
+            ),
+            OptionLine(
+                Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-f"), Some(ustr("take PATTERNS from FILE")))), Rc::new(Terminal(ustr("--file"), Some(ustr("take PATTERNS from FILE"))))])), Rc::new(Nonterminal(ustr("FILE")))])),
+            ),
+            OptionLine(
+                Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-i"), Some(ustr("ignore case distinctions in patterns and data")))), Rc::new(Terminal(ustr("--ignore-case"), Some(ustr("ignore case distinctions in patterns and data"))))])),
+            ),
+            OptionLine(
+                Rc::new(Terminal(ustr("--no-ignore-case"), Some(ustr("do not ignore case distinctions (default)")))),
+            ),
+            OptionLine(
+                Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-w"), Some(ustr("match only whole words")))), Rc::new(Terminal(ustr("--word-regexp"), Some(ustr("match only whole words"))))])),
+            ),
+            OptionLine(
+                Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-x"), Some(ustr("match only whole lines")))), Rc::new(Terminal(ustr("--line-regexp"), Some(ustr("match only whole lines"))))])),
+            ),
+            OptionLine(
+                Rc::new(Alternative(vec![Rc::new(Terminal(ustr("-z"), Some(ustr("a data line ends in 0 byte, not newline")))), Rc::new(Terminal(ustr("--null-data"), Some(ustr("a data line ends in 0 byte, not newline"))))])),
+            ),
         ]);
     }
 }
