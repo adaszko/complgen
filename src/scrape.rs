@@ -228,6 +228,24 @@ fn short_option_description_expr(input: &str) -> IResult<&str, Expr> {
 }
 
 
+//   -Z <FLAG>                 Unstable (nightly-only) flags to Cargo, see 'cargo -Z help' for details
+fn short_option_argument_description_expr(input: &str) -> IResult<&str, Expr> {
+    let (input, _) = multispace0_except_newline(input)?;
+    let (input, short) = short_option(input)?;
+    let (input, _) = multispace1_except_newline(input)?;
+    let (input, arg) = nonterminal(input)?;
+    let (input, _) = multispace1_except_newline(input)?;
+    let (input, descr) = description(input)?;
+    let (input, _) = newline_or_eof(input)?;
+
+    let t = Expr::Terminal(ustr(short), Some(ustr(descr)));
+    let a = Expr::Nonterminal(ustr(arg));
+    let s = Expr::Sequence(vec![Rc::new(t), Rc::new(a)]);
+
+    Ok((input, s))
+}
+
+
 // e.g. "--no-ignore-case      do not ignore case distinctions (default)"
 fn long_option_description_expr(input: &str) -> IResult<&str, Expr> {
     let (input, _) = multispace0_except_newline(input)?;
@@ -310,6 +328,7 @@ fn option_line(input: &str) -> IResult<&str, Expr> {
         long_option_optional_argument_description_expr,
         long_option_argument_description_expr,
         long_option_description_expr,
+        short_option_argument_description_expr,
         short_option_description_expr,
     ))(input)
 }

@@ -111,7 +111,7 @@ cargo install --git https://github.com/adaszko/complgen complgen
 
 See the [subdirectory](usage/) for examples.
 
-Try piping through the `scrape` subcommand to quickly generate grammar scaffolding that can be tweaked
+Try piping through the `scrape` subcommand to quickly generate grammar skeleton that can be tweaked
 further, e.g.:
 
 ```
