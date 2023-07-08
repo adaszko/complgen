@@ -281,7 +281,17 @@ fn long_option_argument_description_expr(input: &str) -> IResult<&str, Expr> {
     Ok((input, expr))
 }
 
+
 fn optional_nonterminal_expr(input: &str) -> IResult<&str, Expr> {
+    let (input, _) = char('[')(input)?;
+    let (input, _) = multispace0_except_newline(input)?;
+    let (input, nonterm) = nonterminal_expr(input)?;
+    let (input, _) = multispace0_except_newline(input)?;
+    let (input, _) = char(']')(input)?;
+    Ok((input, Expr::Optional(Rc::new(nonterm))))
+}
+
+fn optional_equals_nonterminal_expr(input: &str) -> IResult<&str, Expr> {
     let (input, _) = char('[')(input)?;
     let (input, _) = multispace0_except_newline(input)?;
     let (input, _) = tag("=")(input)?;
@@ -290,6 +300,7 @@ fn optional_nonterminal_expr(input: &str) -> IResult<&str, Expr> {
     let (input, _) = char(']')(input)?;
     Ok((input, Expr::Optional(Rc::new(nonterm))))
 }
+
 
 fn short_option_long_option_optional_argument_description_expr(input: &str) -> IResult<&str, Expr> {
     let (input, _) = multispace0_except_newline(input)?;
@@ -332,7 +343,11 @@ fn short_option_long_option_many1_description_expr(input: &str) -> IResult<&str,
 fn long_option_optional_argument_description_expr(input: &str) -> IResult<&str, Expr> {
     let (input, _) = multispace0_except_newline(input)?;
     let (input, long) = long_option(input)?;
-    let (input, opt_arg) = optional_nonterminal_expr(input)?;
+    let (input, _) = multispace0_except_newline(input)?;
+    let (input, opt_arg) = alt((
+        optional_equals_nonterminal_expr,
+        optional_nonterminal_expr,
+    ))(input)?;
     let (input, _) = multispace1_except_newline(input)?;
     let (input, description) = description(input)?;
     let (input, _) = newline_or_eof(input)?;
