@@ -16,7 +16,13 @@ pub enum Error {
     NonterminalDefinitionsCycle(Option<Vec<Ustr>>),
 
     #[error("Duplicate nonterminal definition")]
-    DuplicateNonterminalDefinition(Ustr),
+    DuplicateNonterminalDefinition(Ustr, Option<Ustr>),
+
+    #[error("Unknown shell: {}", .0)]
+    UnknownShell(Ustr),
+
+    #[error("Can only specialize external commands: {}@{:?}", .0, .1)]
+    NonCommandSpecialization(Ustr, Option<Ustr>),
 
     #[error("UTF-8 conversion error")]
     FromUtf8Error(#[from] FromUtf8Error),

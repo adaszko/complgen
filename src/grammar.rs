@@ -1,4 +1,4 @@
-use std::{rc::Rc, debug_assert};
+use std::{rc::Rc, debug_assert, borrow::Borrow};
 
 use nom::{
     branch::alt,
@@ -14,7 +14,7 @@ use ustr::{Ustr, ustr, UstrMap, UstrSet};
 // Can't use an arena here until proptest supports non-owned types: https://github.com/proptest-rs/proptest/issues/9
 #[derive(Clone, PartialEq)]
 pub enum Expr {
-    Terminal(Ustr, Option<Ustr>), // e.g. an option: "--help", or a command: "build"
+    Terminal(Ustr, Option<Ustr>),
     Nonterminal(Ustr), // e.g. <PATH>, <DIRECTORY>, etc.
     Command(Ustr), // e.g. { ls }
     Sequence(Vec<Rc<Expr>>),
@@ -22,6 +22,14 @@ pub enum Expr {
     Optional(Rc<Expr>),
     Many1(Rc<Expr>),
 }
+
+#[derive(Default)]
+pub struct Specialization {
+    bash: Option<Ustr>,
+    fish: Option<Ustr>,
+    zsh: Option<Ustr>,
+}
+
 
 impl std::fmt::Debug for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -275,6 +283,7 @@ pub enum Statement {
     },
     NonterminalDefinition {
         symbol: Ustr,
+        shell: Option<Ustr>,
         expr: Rc<Expr>,
     },
 }
@@ -295,8 +304,29 @@ fn call_variant(input: &str) -> IResult<&str, Statement> {
     Ok((input, production))
 }
 
+
+fn specialized_nonterminal(input: &str) -> IResult<&str, (&str, &str)> {
+    let (input, _) = char('<')(input)?;
+    let (input, name) = is_not(">@")(input)?;
+    let (input, _) = char('@')(input)?;
+    let (input, shell) = is_not(">")(input)?;
+    let (input, _) = char('>')(input)?;
+    Ok((input, (name, shell)))
+}
+
+
+fn optionally_specialized_nonterminal(input: &str) -> IResult<&str, (&str, Option<&str>)> {
+    if let Ok((input, (name, shell))) = specialized_nonterminal(input) {
+        return Ok((input, (name, Some(shell))));
+    }
+    if let Ok((input, name)) = nonterminal(input) {
+        return Ok((input, (name, None)));
+    }
+    fail(input)
+}
+
 fn nonterminal_definition(input: &str) -> IResult<&str, Statement> {
-    let (input, symbol) = nonterminal(input)?;
+    let (input, (name, shell)) = optionally_specialized_nonterminal(input)?;
     let (input, _) = multiblanks0(input)?;
     let (input, _) = tag("::=")(input)?;
     let (input, _) = multiblanks0(input)?;
@@ -305,7 +335,8 @@ fn nonterminal_definition(input: &str) -> IResult<&str, Statement> {
     let (input, _) = char(';')(input)?;
 
     let stmt = Statement::NonterminalDefinition {
-        symbol: ustr(symbol),
+        symbol: ustr(name),
+        shell: shell.map(|s| ustr(s)),
         expr: Rc::new(e),
     };
 
@@ -332,11 +363,69 @@ pub struct Grammar {
 }
 
 
-#[derive(Debug, PartialEq, Clone)]
 pub struct ValidGrammar {
     pub command: Ustr,
     pub expr: Rc<Expr>,
     pub undefined_nonterminals: UstrSet,
+    pub specializations: UstrMap<Specialization>,
+}
+
+
+fn make_specializations_map(statements: &[Statement]) -> Result<UstrMap<Specialization>> {
+    let mut specialization: UstrMap<Specialization> = Default::default();
+    for definition in statements {
+        let (name, shell, expr) = match definition {
+            Statement::NonterminalDefinition { symbol, shell: Some(shell), expr } => (*symbol, shell, expr),
+            Statement::NonterminalDefinition { shell: None, .. } => continue,
+            Statement::CallVariant { .. } => continue,
+        };
+        let command = match expr.borrow() {
+            Expr::Command(cmd) => cmd,
+            _ => return Err(Error::NonCommandSpecialization(name, Some(*shell))),
+        };
+        let known_shell = match shell.as_str() {
+            "bash" | "fish" | "zsh" => true,
+            _ => false,
+        };
+        if !known_shell {
+            return Err(Error::UnknownShell(*shell));
+        }
+        let spec = specialization.entry(name).or_default();
+        match shell.as_str() {
+            "bash" => {
+                if let Some(_) = spec.bash {
+                    return Err(Error::DuplicateNonterminalDefinition(name, Some(*shell)));
+                }
+                spec.bash = Some(*command);
+            },
+            "fish" => {
+                if let Some(_) = spec.fish {
+                    return Err(Error::DuplicateNonterminalDefinition(name, Some(*shell)));
+                }
+                spec.fish = Some(*command);
+            },
+            "zsh" => {
+                if let Some(_) = spec.zsh {
+                    return Err(Error::DuplicateNonterminalDefinition(name, Some(*shell)));
+                }
+                spec.zsh = Some(*command);
+            },
+            _ => unreachable!(),
+        }
+    }
+
+    for definition in statements {
+        let (name, expr) = match definition {
+            Statement::NonterminalDefinition { symbol, shell: None, expr } => (symbol, expr),
+            _ => continue,
+        };
+        let Some(_) = specialization.get(name) else { continue };
+        let Expr::Command(..) = expr.borrow() else {
+            return Err(Error::NonCommandSpecialization(*name, None));
+        };
+    }
+
+    Ok(specialization)
 }
 
 
@@ -381,15 +470,17 @@ impl ValidGrammar {
             }
         };
 
+        let specializations = make_specializations_map(&grammar.statements)?;
+
         let mut nonterminal_definitions: UstrMap<Rc<Expr>> = {
             let mut nonterminal_definitions: UstrMap<Rc<Expr>> = Default::default();
             for definition in &grammar.statements {
                 let (symbol, expr) = match definition {
-                    Statement::NonterminalDefinition { symbol, expr } => (*symbol, expr),
-                    Statement::CallVariant { .. } => continue,
+                    Statement::NonterminalDefinition { symbol, expr, shell: None, } => (*symbol, expr),
+                    _ => continue,
                 };
                 if nonterminal_definitions.contains_key(&symbol) {
-                    return Err(Error::DuplicateNonterminalDefinition(symbol));
+                    return Err(Error::DuplicateNonterminalDefinition(symbol, None));
                 }
                 nonterminal_definitions.insert(symbol, Rc::clone(&expr));
             }
@@ -398,9 +489,9 @@ impl ValidGrammar {
 
         for nonterminal in get_nonterminals_resolution_order(&nonterminal_definitions)? {
             let e = Rc::clone(nonterminal_definitions.get(&nonterminal).unwrap());
-            *nonterminal_definitions.get_mut(&nonterminal).unwrap() = resolve_nonterminals(e, &nonterminal_definitions);
+            *nonterminal_definitions.get_mut(&nonterminal).unwrap() = resolve_nonterminals(e, &nonterminal_definitions, &specializations);
         }
-        let expr = resolve_nonterminals(expr, &nonterminal_definitions);
+        let expr = resolve_nonterminals(expr, &nonterminal_definitions, &specializations);
 
         let undefined_nonterminals = get_expression_nonterminals(Rc::clone(&expr));
 
@@ -408,16 +499,20 @@ impl ValidGrammar {
             command,
             expr,
             undefined_nonterminals,
+            specializations,
         };
         Ok(g)
     }
 }
 
 
-fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>) -> Rc<Expr> {
+fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>, specializations: &UstrMap<Specialization>) -> Rc<Expr> {
     match expr.as_ref() {
         Expr::Terminal(..) => Rc::clone(&expr),
         Expr::Nonterminal(name) => {
+            if specializations.contains_key(name) {
+                return Rc::clone(&expr);
+            }
             match vars.get(&name) {
                 Some(replacement) => {
                     Rc::clone(&replacement)
@@ -432,7 +527,7 @@ fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>) -> Rc<Expr> {
             let mut new_children: Vec<Rc<Expr>> = Default::default();
             let mut any_child_replaced = false;
             for child in children {
-                let new_child = resolve_nonterminals(Rc::clone(child), vars);
+                let new_child = resolve_nonterminals(Rc::clone(child), vars, specializations);
                 if !Rc::ptr_eq(&child, &new_child) {
                     any_child_replaced = true;
                 }
@@ -448,7 +543,7 @@ fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>) -> Rc<Expr> {
             let mut new_children: Vec<Rc<Expr>> = Default::default();
             let mut any_child_replaced = false;
             for child in children {
-                let new_child = resolve_nonterminals(Rc::clone(child), vars);
+                let new_child = resolve_nonterminals(Rc::clone(child), vars, specializations);
                 if !Rc::ptr_eq(&child, &new_child) {
                     any_child_replaced = true;
                 }
@@ -461,7 +556,7 @@ fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>) -> Rc<Expr> {
             }
         },
         Expr::Optional(child) => {
-            let new_child = resolve_nonterminals(Rc::clone(child), vars);
+            let new_child = resolve_nonterminals(Rc::clone(child), vars, specializations);
             if Rc::ptr_eq(&child, &new_child) {
                 Rc::clone(&expr)
             }
@@ -470,7 +565,7 @@ fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>) -> Rc<Expr> {
             }
         },
         Expr::Many1(child) => {
-            let new_child = resolve_nonterminals(Rc::clone(child), vars);
+            let new_child = resolve_nonterminals(Rc::clone(child), vars, specializations);
             if Rc::ptr_eq(&child, &new_child) {
                 Rc::clone(&expr)
             }
@@ -918,8 +1013,8 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
             Grammar {
                 statements: vec![
                     Statement::CallVariant { head: u("grep"), expr: Rc::new(Sequence(vec![Rc::new(Many1(Rc::new(Optional(Rc::new(Nonterminal(ustr("OPTION"))))))), Rc::new(Sequence(vec![Rc::new(Nonterminal(ustr("PATTERNS"))), Rc::new(Many1(Rc::new(Optional(Rc::new(Nonterminal(ustr("FILE")))))))]))])) },
-                    Statement::NonterminalDefinition { symbol: u("OPTION"), expr: Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color"), None)), Rc::new(Nonterminal(ustr("WHEN")))])) },
-                    Statement::NonterminalDefinition { symbol: u("WHEN"), expr: Rc::new(Alternative(vec![Rc::new(Terminal(ustr("always"), None)), Rc::new(Terminal(ustr("never"), None)), Rc::new(Terminal(ustr("auto"), None))])) },
+                    Statement::NonterminalDefinition { symbol: u("OPTION"), shell: None, expr: Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color"), None)), Rc::new(Nonterminal(ustr("WHEN")))])) },
+                    Statement::NonterminalDefinition { symbol: u("WHEN"), shell: None, expr: Rc::new(Alternative(vec![Rc::new(Terminal(ustr("always"), None)), Rc::new(Terminal(ustr("never"), None)), Rc::new(Terminal(ustr("auto"), None))])) },
                 ],
             }
         );
@@ -947,7 +1042,7 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
             g,
             Grammar {
                 statements: vec![
-                    Statement::NonterminalDefinition { symbol: u("OPTION"), expr: Rc::new(Alternative(vec![
+                    Statement::NonterminalDefinition { symbol: u("OPTION"), shell: None, expr: Rc::new(Alternative(vec![
                         Rc::new(Terminal(u("--extended-regexp"), None)),
                         Rc::new(Terminal(u("--fixed-strings"), None)),
                         Rc::new(Terminal(u("--basic-regexp"), None)),
@@ -1022,6 +1117,7 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
                     },
                     Statement::NonterminalDefinition {
                         symbol: u("toolchain"),
+                        shell: None,
                         expr: Rc::new(Command(u("rustup toolchain list | cut -d' ' -f1"))),
                     },
                 ],
@@ -1065,7 +1161,7 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
 <OPTION> ::= always | never | auto;
 "#;
         let g = Grammar::parse(INPUT).unwrap();
-        assert!(matches!(ValidGrammar::from_grammar(g), Err(Error::DuplicateNonterminalDefinition(nonterm)) if nonterm == "OPTION"));
+        assert!(matches!(ValidGrammar::from_grammar(g), Err(Error::DuplicateNonterminalDefinition(nonterm, None)) if nonterm == "OPTION"));
     }
 
     #[test]
@@ -1078,5 +1174,40 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
                 expr: Rc::new(Optional(Rc::new(Terminal(ustr("-h"), None)))),
             },
         ]);
+    }
+
+    #[test]
+    fn parses_nonterminal_shell_specific() {
+        const INPUT: &str = r#"<FILE@bash>"#;
+        let ("", (nonterm, shell)) = specialized_nonterminal(INPUT).unwrap() else { panic!("parsing error"); };
+        assert_eq!(nonterm, "FILE");
+        assert_eq!(shell, "bash");
+    }
+
+    #[test]
+    fn parses_specialized_nonterminals() {
+        use Statement::*;
+        const INPUT: &str = r#"
+ls <FILE>;
+<FILE@bash> ::= { compgen -A file "$1" };
+<FILE@fish> ::= { __fish_complete_path "$1" };
+"#;
+        let g = Grammar::parse(INPUT).unwrap();
+        assert_eq!(
+            g.statements,
+            vec![
+                Statement::CallVariant {
+                    head: u("ls"),
+                    expr: Rc::new(Nonterminal(ustr("FILE"))), // should not get expanded because it's specialized
+                },
+                NonterminalDefinition { symbol: ustr("FILE"), shell: Some(ustr("bash")), expr: Rc::new(Command(ustr(r#"compgen -A file "$1""#))) },
+                NonterminalDefinition { symbol: ustr("FILE"), shell: Some(ustr("fish")), expr: Rc::new(Command(ustr(r#"__fish_complete_path "$1""#))) },
+            ],
+        );
+        let v = ValidGrammar::from_grammar(g).unwrap();
+        let spec = v.specializations.get(&ustr("FILE")).unwrap();
+        assert_eq!(spec.bash, Some(ustr(r#"compgen -A file "$1""#)));
+        assert_eq!(spec.fish, Some(ustr(r#"__fish_complete_path "$1""#)));
+        assert_eq!(spec.zsh, None);
     }
 }
