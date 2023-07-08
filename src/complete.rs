@@ -34,8 +34,8 @@ impl Shell {
     fn complete_directories(&self, prefix: &str) -> std::io::Result<Output> {
         match self {
             Shell::Bash => self.shell_out(&format!("compgen -A directory {prefix}")),
-            Shell::Fish => self.shell_out(&format!("__fish_complete_directory {prefix}")),
-            Shell::Zsh => self.shell_out(&format!(r#"printf "%s\n" {}*(/)"#, prefix)),
+            Shell::Fish => self.shell_out(&format!("__fish_complete_directories {prefix}")),
+            Shell::Zsh => self.shell_out(&format!(r#"printf "%s\n" {prefix}*(/)"#)),
         }
     }
 }

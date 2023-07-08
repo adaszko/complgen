@@ -77,7 +77,7 @@ cmd { echo -e "completion\tdescription" };
         assert get_sorted_completions(input) == [('completion', 'description')]
 
 
-def test_completes_files(complgen_binary_path: Path):
+def test_completes_paths(complgen_binary_path: Path):
     with completion_script_path(complgen_binary_path, '''cmd <PATH> [--help];''') as completions_file_path:
         with tempfile.TemporaryDirectory() as dir:
             with set_working_dir(Path(dir)):
@@ -99,3 +99,28 @@ def test_completes_directories(complgen_binary_path: Path):
                 input = 'source {}; complete --command cmd --do-complete "cmd "'.format(completions_file_path)
                 completions = get_sorted_completions(input)
                 assert completions == sorted([('bar/', 'Directory'), ('foo/', 'Directory')])
+
+
+
+def get_sorted_jit_fish_completions(complgen_binary_path: Path, grammar: str, completed_word_index: int, words_before_cursor: list[str]) -> list[tuple[str, str]]:
+    process = subprocess.run([complgen_binary_path, 'complete', '-', 'fish', '--', str(completed_word_index)] + words_before_cursor, input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
+    parsed = fish_completions_from_stdout(process.stdout.decode())
+    return sorted(parsed, key=lambda pair: pair[0])
+
+
+def test_jit_completes_paths_fish(complgen_binary_path: Path):
+    with tempfile.TemporaryDirectory() as dir:
+        with set_working_dir(Path(dir)):
+            Path('foo').write_text('dummy')
+            Path('bar').write_text('dummy')
+            os.mkdir('baz')
+            assert get_sorted_jit_fish_completions(complgen_binary_path, '''cmd <PATH> [--help];''', 0, []) == sorted([('bar', ''), ('foo', ''), ('baz', '')])
+
+
+def test_jit_completes_directories_fish(complgen_binary_path: Path):
+    with tempfile.TemporaryDirectory() as dir:
+        with set_working_dir(Path(dir)):
+            os.mkdir('foo')
+            os.mkdir('bar')
+            Path('baz').write_text('dummy')
+            assert get_sorted_jit_fish_completions(complgen_binary_path, '''cmd <DIRECTORY> [--help];''', 0, []) == sorted([('bar/', 'Directory'), ('foo/', 'Directory')])
