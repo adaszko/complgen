@@ -124,3 +124,15 @@ def test_jit_completes_directories_fish(complgen_binary_path: Path):
             os.mkdir('bar')
             Path('baz').write_text('dummy')
             assert get_sorted_jit_fish_completions(complgen_binary_path, '''cmd <DIRECTORY> [--help];''', 0, []) == sorted([('bar/', 'Directory'), ('foo/', 'Directory')])
+
+
+def test_specializes_for_fish(complgen_binary_path: Path):
+    GRAMMAR = '''cmd <FOO>; <FOO> ::= { echo foo }; <FOO@fish> ::= { echo fish };'''
+    with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
+        input = 'source {}; complete --command cmd --do-complete "cmd "'.format(completions_file_path)
+        assert get_sorted_completions(input) == [('fish', '')]
+
+
+def test_jit_specializes_for_fish(complgen_binary_path: Path):
+    GRAMMAR = '''cmd <FOO>; <FOO> ::= { echo foo }; <FOO@fish> ::= { echo fish };'''
+    assert get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR, 0, []) == sorted([('fish', '')])
