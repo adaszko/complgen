@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Generator
 
 from conftest import set_working_dir
+from common import LSOF_FILTER_GRAMMAR, STRACE_EXPR_GRAMMAR
 
 
 def fish_completions_from_stdout(stdout: str) -> list[tuple[str, str]]:
@@ -138,3 +139,64 @@ def test_specializes_for_fish(complgen_binary_path: Path):
 def test_jit_specializes_for_fish(complgen_binary_path: Path):
     GRAMMAR = '''cmd <FOO>; <FOO> ::= { echo foo }; <FOO@fish> ::= { echo fish };'''
     assert get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR, 0, []) == sorted([('fish', '')])
+
+
+def test_matches_prefix(complgen_binary_path: Path):
+    GRAMMAR = '''
+cargo +<toolchain> foo;
+cargo test --test testname;
+<toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
+'''
+    with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
+        input = 'source {}; complete --command cargo --do-complete "cargo +stable-aarch64-apple-darwin"'.format(completions_file_path)
+        completions = get_sorted_completions(input)
+        assert completions == sorted([('foo', '')])
+
+
+def test_jit_matches_prefix(complgen_binary_path: Path):
+    GRAMMAR = '''
+cargo +<toolchain> foo;
+<toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
+'''
+    assert get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR, 1, ['+stable-aarch64-apple-darwin']) == sorted([('foo', '')])
+
+
+def test_completes_prefix(complgen_binary_path: Path):
+    GRAMMAR = '''
+cargo +<toolchain>;
+<toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
+'''
+    with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
+        input = 'source {}; complete --command cargo --do-complete "cargo +"'.format(completions_file_path)
+        completions = get_sorted_completions(input)
+        assert completions == sorted([('stable-aarch64-apple-darwin', ''), ('stable-x86_64-apple-darwin', '')])
+
+
+def test_jit_completes_prefix(complgen_binary_path: Path):
+    GRAMMAR = '''
+cargo +<toolchain>;
+<toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
+'''
+    assert get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR, 0, ['+']) == sorted([('stable-aarch64-apple-darwin', ''), ('stable-x86_64-apple-darwin', '')])
+
+
+def test_completes_strace_expr(complgen_binary_path: Path):
+    with completion_script_path(complgen_binary_path, STRACE_EXPR_GRAMMAR) as completions_file_path:
+        input = 'source {}; complete --command cargo --do-complete "strace -e trace="'.format(completions_file_path)
+        completions = get_sorted_completions(input)
+        assert completions == sorted([('%file', ''), ('file', ''), ('all', '')])
+
+
+def test_jit_completes_strace_expr(complgen_binary_path: Path):
+    assert get_sorted_jit_fish_completions(complgen_binary_path, STRACE_EXPR_GRAMMAR, 1, ['strace', '-e', 'trace=']) == sorted([('%file', ''), ('file', ''), ('all', '')])
+
+
+def test_completes_lsof_filter(complgen_binary_path: Path):
+    with completion_script_path(complgen_binary_path, LSOF_FILTER_GRAMMAR) as completions_file_path:
+        input = 'source {}; complete --command cargo --do-complete "lsof -sTCP:"'.format(completions_file_path)
+        completions = get_sorted_completions(input)
+        assert completions == sorted([('LISTEN', ''), ('CLOSED', '')])
+
+
+def test_jit_completes_lsof_filter(complgen_binary_path: Path):
+    assert get_sorted_jit_fish_completions(complgen_binary_path, LSOF_FILTER_GRAMMAR, 1, ['lsof', '-sTCP:']) == sorted([('LISTEN', ''), ('CLOSED', '')])

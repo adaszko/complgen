@@ -6,31 +6,18 @@ use bumpalo::Bump;
 use ustr::{Ustr, UstrMap};
 use roaring::RoaringBitmap;
 
-use crate::grammar::{Expr, Specialization};
+use crate::dfa::DFA;
+use crate::grammar::{Expr, Specialization, Subword};
 
 pub type Position = u32;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub enum MatchAnythingInput {
-    Nonterminal(Ustr, Option<Specialization>),
-    Command(Ustr),
-}
 
-impl std::fmt::Display for MatchAnythingInput {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            MatchAnythingInput::Nonterminal(name, None) => write!(f, "{name}"),
-            MatchAnythingInput::Nonterminal(name, Some(_)) => write!(f, "{name}@shell"),
-            MatchAnythingInput::Command(cmd) => write!(f, "{{{cmd}}}"),
-        }
-    }
-}
-
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Input {
     Literal(Ustr, Option<Ustr>),
-    Any(MatchAnythingInput),
+    Prefix(Ustr, Rc<DFA>, Option<Ustr>),
+    Nonterminal(Ustr, Option<Specialization>),
+    Command(Ustr),
 }
 
 
@@ -38,7 +25,9 @@ impl Input {
     pub fn matches_anything(&self) -> bool {
         match self {
             Self::Literal(..) => false,
-            Self::Any(_) => true,
+            Self::Prefix(..) => false,
+            Self::Nonterminal(..) => true,
+            Self::Command(..) => true,
         }
     }
 }
@@ -47,8 +36,10 @@ impl Input {
 impl std::fmt::Display for Input {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Prefix(prefix, _, _) => write!(f, r#"{prefix}"#),
             Self::Literal(literal, _) => write!(f, r#"{literal}"#),
-            Self::Any(any) => write!(f, "{}", any),
+            Self::Nonterminal(nonterminal, _) => write!(f, r#"{nonterminal}"#),
+            Self::Command(command) => write!(f, r#"{command}"#),
         }
     }
 }
@@ -57,6 +48,7 @@ impl std::fmt::Display for Input {
 #[derive(Clone, PartialEq)]
 pub enum AugmentedRegexNode<'a> {
     Epsilon,
+    Prefix(Ustr, Position),
     Terminal(Ustr, Position),
     Nonterminal(Position),
     Command(Ustr, Position),
@@ -70,6 +62,7 @@ pub enum AugmentedRegexNode<'a> {
 impl<'a> std::fmt::Debug for AugmentedRegexNode<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::Prefix(prefix, position) => f.write_fmt(format_args!(r#"Prefix({:?}.to_string(), {position})"#, prefix)),
             Self::Terminal(term, position) => f.write_fmt(format_args!(r#"Terminal({:?}.to_string(), {position})"#, term)),
             Self::Nonterminal(position) => f.write_fmt(format_args!(r#"Nonterminal({})"#, position)),
             Self::Command(code, position) => f.write_fmt(format_args!(r#"Command({:?}.to_string(), {})"#, code, position)),
@@ -86,6 +79,7 @@ impl<'a> std::fmt::Debug for AugmentedRegexNode<'a> {
 fn do_firstpos(re: &AugmentedRegexNode, result: &mut BTreeSet<Position>) {
     match re {
         AugmentedRegexNode::Epsilon => {},
+        AugmentedRegexNode::Prefix(_, position) => { result.insert(*position); },
         AugmentedRegexNode::Terminal(_, position) => { result.insert(*position); },
         AugmentedRegexNode::Nonterminal(position) => { result.insert(*position); },
         AugmentedRegexNode::Command(_, position) => { result.insert(*position); },
@@ -112,6 +106,7 @@ fn do_firstpos(re: &AugmentedRegexNode, result: &mut BTreeSet<Position>) {
 fn do_lastpos(re: &AugmentedRegexNode, result: &mut HashSet<Position>) {
     match re {
         AugmentedRegexNode::Epsilon => {},
+        AugmentedRegexNode::Prefix(_, position) => { result.insert(*position); },
         AugmentedRegexNode::Terminal(_, position) => { result.insert(*position); },
         AugmentedRegexNode::Nonterminal(position) => { result.insert(*position); },
         AugmentedRegexNode::Command(_, position) => { result.insert(*position); },
@@ -138,6 +133,7 @@ fn do_lastpos(re: &AugmentedRegexNode, result: &mut HashSet<Position>) {
 fn do_followpos(re: &AugmentedRegexNode, result: &mut BTreeMap<Position, RoaringBitmap>) {
     match re {
         AugmentedRegexNode::Epsilon => {},
+        AugmentedRegexNode::Prefix(..) => {},
         AugmentedRegexNode::Terminal(..) => {},
         AugmentedRegexNode::Nonterminal(..) => {},
         AugmentedRegexNode::Command(..) => {},
@@ -174,6 +170,7 @@ impl<'a> AugmentedRegexNode<'a> {
     fn nullable(&self) -> bool {
         match self {
             AugmentedRegexNode::Epsilon => true,
+            AugmentedRegexNode::Prefix(..) => false,
             AugmentedRegexNode::Terminal(..) => false,
             AugmentedRegexNode::Nonterminal(..) => false,
             AugmentedRegexNode::Command(..) => false,
@@ -213,17 +210,28 @@ fn do_from_expr<'a>(e: &Expr, specs: &UstrMap<Specialization>, arena: &'a Bump, 
             symbols.insert(input);
             result
         },
+        Expr::Prefix(prefix, subword, description) => {
+            let result = AugmentedRegexNode::Prefix(*prefix, Position::try_from(input_from_position.len()).unwrap());
+            let dfa = match subword {
+                Subword::DFA(dfa) => dfa,
+                Subword::Expr(_) => unreachable!(),
+            };
+            let input = Input::Prefix(*prefix, Rc::clone(&dfa), *description);
+            input_from_position.push(input.clone());
+            symbols.insert(input);
+            result
+        },
         Expr::Nonterminal(name) => {
             let result = AugmentedRegexNode::Nonterminal(Position::try_from(input_from_position.len()).unwrap());
             let specialization = specs.get(name);
-            let input = Input::Any(MatchAnythingInput::Nonterminal(*name, specialization.copied()));
+            let input = Input::Nonterminal(*name, specialization.copied());
             input_from_position.push(input.clone());
             symbols.insert(input);
             result
         },
         Expr::Command(code) => {
             let result = AugmentedRegexNode::Command(*code, Position::try_from(input_from_position.len()).unwrap());
-            let input = Input::Any(MatchAnythingInput::Command(*code));
+            let input = Input::Command(*code);
             input_from_position.push(input.clone());
             symbols.insert(input);
             result

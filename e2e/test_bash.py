@@ -9,6 +9,7 @@ from typing import Generator
 import pytest
 
 from conftest import set_working_dir
+from common import LSOF_FILTER_GRAMMAR, STRACE_EXPR_GRAMMAR
 
 
 @contextlib.contextmanager
@@ -84,7 +85,7 @@ def test_jit_completes(complgen_binary_path: Path):
     assert sorted(process.stdout.decode().splitlines()) == sorted(['--help', '--version'])
 
 
-def test_jit_completes_prefix(complgen_binary_path: Path):
+def test_jit_completes_literal_prefix(complgen_binary_path: Path):
     GRAMMAR = '''cmd (--help | --version); '''
     process = subprocess.run([complgen_binary_path, 'complete', '-', 'bash', '--', '0', '--h'], input=GRAMMAR.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
     assert sorted(process.stdout.decode().splitlines()) == sorted(['--help'])
@@ -133,3 +134,61 @@ mycargo test <TESTNAME>;
 '''
     with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
         assert get_sorted_completions(completions_file_path, r'''COMP_WORDS=(mycargo test); COMP_CWORD=2; _mycargo; if [[ ${#COMPREPLY[@]} -gt 0 ]]; then printf '%s\n' "${COMPREPLY[@]}"; fi''') == sorted(['foo', 'bar'])
+
+
+def test_matches_prefix(complgen_binary_path: Path):
+    GRAMMAR = '''
+cargo +<toolchain> foo;
+cargo test --test testname;
+<toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
+'''
+    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
+        input = r'''COMP_WORDS=(cargo +stable-aarch64-apple-darwin); COMP_CWORD=3; _cargo; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_completions(path, input) == sorted(['foo'])
+
+
+def test_jit_matches_prefix(complgen_binary_path: Path):
+    GRAMMAR = '''
+cargo +<toolchain> foo;
+cargo test --test testname;
+<toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
+'''
+    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, 1, ['+stable-aarch64-apple-darwin']) == sorted(['foo'])
+
+
+def test_completes_prefix(complgen_binary_path: Path):
+    GRAMMAR = '''
+cargo +<toolchain>;
+<toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
+'''
+    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
+        input = r'''COMP_WORDS=(cargo +); COMP_CWORD=2; _cargo; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_completions(path, input) == sorted(['stable-aarch64-apple-darwin', 'stable-x86_64-apple-darwin'])
+
+
+def test_jit_completes_prefix(complgen_binary_path: Path):
+    GRAMMAR = '''
+cargo +<toolchain>;
+<toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
+'''
+    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, 0, ['+']) == sorted(['stable-aarch64-apple-darwin', 'stable-x86_64-apple-darwin'])
+
+
+def test_completes_strace_expr(complgen_binary_path: Path):
+    with completion_script_path(complgen_binary_path, STRACE_EXPR_GRAMMAR) as path:
+        input = r'''COMP_WORDS=(strace -e trace=); COMP_CWORD=2; _strace; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_completions(path, input) == sorted(['%file', 'file', 'all'])
+
+
+def test_jit_completes_strace_expr(complgen_binary_path: Path):
+    assert get_sorted_jit_bash_completions(complgen_binary_path, STRACE_EXPR_GRAMMAR, 1, ['-e', 'trace=']) == sorted(['%file', 'file', 'all'])
+
+
+def test_completes_lsof_filter(complgen_binary_path: Path):
+    with completion_script_path(complgen_binary_path, LSOF_FILTER_GRAMMAR) as path:
+        input = r'''COMP_WORDS=(lsof -sTCP:); COMP_CWORD=2; _lsof; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_completions(path, input) == sorted(['LISTEN', 'CLOSED'])
+
+
+def test_jit_completes_lsof_filter(complgen_binary_path: Path):
+    assert get_sorted_jit_bash_completions(complgen_binary_path, LSOF_FILTER_GRAMMAR, 1, ['lsof', '-sTCP:']) == sorted(['LISTEN', 'CLOSED'])

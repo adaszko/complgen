@@ -9,7 +9,7 @@ use ustr::ustr;
 use anyhow::{anyhow, Context, bail};
 
 use crate::grammar::Specialization;
-use crate::{dfa::DFA, regex::{Input, MatchAnythingInput}};
+use crate::{dfa::DFA, regex::Input};
 
 
 
@@ -127,8 +127,16 @@ pub fn get_match_final_state(dfa: &DFA, inputs: &[&str], completed_word_index: u
         }
 
         for (transition_input, to) in dfa.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
+            if let Input::Prefix(s, _, _) = transition_input {
+                if inputs[input_index].starts_with(s.as_str()) {
+                    backtracking_stack.push((input_index + 1, *to));
+                }
+            }
+        }
+
+        for (transition_input, to) in dfa.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
             if let Input::Literal(s, _) = transition_input {
-                if s.as_str() == inputs[input_index] {
+                if inputs[input_index] == s.as_str() {
                     backtracking_stack.push((input_index + 1, *to));
                 }
             }
@@ -176,10 +184,58 @@ fn capture_specialized_completions(shell: Shell, specialization: &Specialization
 }
 
 
-fn do_get_completions_for_input(input: &Input, prefix: &str, shell: Shell) -> anyhow::Result<Vec<(String, String)>> {
+pub fn get_subword_match_final_state(dfa: &DFA, user_input: &str) -> Option<StateId> {
+    let mut backtracking_stack = Vec::from_iter([(user_input, dfa.starting_state)]);
+    while let Some((remaining_input, current_state)) = backtracking_stack.pop() {
+        if remaining_input.is_empty() {
+            return Some(current_state);
+        }
+
+        for (transition_input, to) in dfa.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
+            if transition_input.matches_anything() {
+                backtracking_stack.push(("", *to));
+            }
+        }
+
+        for (transition_input, to) in dfa.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
+            if let Input::Literal(s, _) = transition_input {
+                if remaining_input.starts_with(s.as_str()) {
+                    let rest = &remaining_input[s.len()..];
+                    backtracking_stack.push((rest, *to));
+                }
+            }
+        }
+    }
+    None
+}
+
+
+
+fn get_subword_completions(dfa: &DFA, entered_prefix: &str, shell: Shell) -> anyhow::Result<Vec<(String, String)>> {
+    let state_id = match get_subword_match_final_state(dfa, entered_prefix) {
+        Some(state_id) => state_id,
+        None => return Ok(vec![]),
+    };
+    let mut completions: Vec<(String, String)> = dfa.transitions.get(&state_id).unwrap_or(&HashMap::default()).iter().map(|(input, _)| get_completions_for_input(input, "", shell)).flatten().collect();
+    completions.sort_unstable();
+    Ok(completions)
+}
+
+
+fn do_get_completions_for_input(input: &Input, entered_prefix: &str, shell: Shell) -> anyhow::Result<Vec<(String, String)>> {
     let completions = match input {
+        Input::Prefix(expected_prefix, subword_dfa, _) => {
+            if expected_prefix.starts_with(entered_prefix) {
+                let suffix = &entered_prefix[expected_prefix.len()..];
+                get_subword_completions(&subword_dfa, suffix, shell)?
+            }
+            else {
+                vec![]
+            }
+        },
+
         Input::Literal(literal, description) => {
-            if literal.starts_with(prefix) {
+            if literal.starts_with(entered_prefix) {
                 vec![(literal.as_str().to_string(), description.unwrap_or(ustr("")).as_str().to_string())]
             }
             else {
@@ -187,10 +243,10 @@ fn do_get_completions_for_input(input: &Input, prefix: &str, shell: Shell) -> an
             }
         },
 
-        Input::Any(MatchAnythingInput::Command(command)) => {
+        Input::Command(command) => {
             let stdout = shell.shell_out(command.as_str())?;
 
-            let result: Vec<(String, String)> = stdout.lines().filter(|line| line.starts_with(prefix)).map(|line| match line.split_once("\t") {
+            let result: Vec<(String, String)> = stdout.lines().filter(|line| line.starts_with(entered_prefix)).map(|line| match line.split_once("\t") {
                 Some((completion, description)) => (completion.to_owned(), description.to_owned()),
                 None => (line.to_string(), "".to_string()),
             }).collect();
@@ -198,9 +254,9 @@ fn do_get_completions_for_input(input: &Input, prefix: &str, shell: Shell) -> an
             result
         },
 
-        Input::Any(MatchAnythingInput::Nonterminal(_, None)) => vec![],
+        Input::Nonterminal(_, None) => vec![],
 
-        Input::Any(MatchAnythingInput::Nonterminal(_, Some(specialization))) => capture_specialized_completions(shell, specialization, prefix)?
+        Input::Nonterminal(_, Some(specialization)) => capture_specialized_completions(shell, specialization, entered_prefix)?
     };
     Ok(completions)
 }
@@ -320,6 +376,32 @@ grep (--help | --version);
         let input = vec!["--h"];
         let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 0).into_iter().map(|(completion, _)| completion));
         let expected = HashSet::from_iter(["--help"].map(|s| s.to_string()));
+        assert_eq!(generated, expected);
+    }
+
+    #[test]
+    fn completes_nested_prefix() {
+        const GRAMMAR: &str = r#"
+dummy --prefix=<SUFFIX>;
+<SUFFIX> ::= another-prefix=<ANOTHER-SUFFIX>;
+<ANOTHER-SUFFIX> ::= foo | bar;
+"#;
+        let input = vec!["--prefix="];
+        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 0).into_iter().map(|(completion, _)| completion));
+        let expected = HashSet::from_iter(["another-prefix="].map(|s| s.to_string()));
+        assert_eq!(generated, expected);
+    }
+
+    #[test]
+    fn matches_prefix() {
+        const GRAMMAR: &str = r#"
+    cargo +<toolchain> foo;
+    cargo test --test testname;
+    <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
+"#;
+        let input = vec!["+stable-aarch64-apple-darwin"];
+        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 1).into_iter().map(|(completion, _)| completion));
+        let expected = HashSet::from_iter(["foo"].map(|s| s.to_string()));
         assert_eq!(generated, expected);
     }
 }
