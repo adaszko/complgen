@@ -114,7 +114,7 @@ def test_jit_completes_paths_fish(complgen_binary_path: Path):
             Path('foo').write_text('dummy')
             Path('bar').write_text('dummy')
             os.mkdir('baz')
-            assert get_sorted_jit_fish_completions(complgen_binary_path, '''cmd <PATH> [--help];''', 0, []) == sorted([('bar', ''), ('foo', ''), ('baz', '')])
+            assert get_sorted_jit_fish_completions(complgen_binary_path, '''cmd <PATH> [--help];''', 0, []) == sorted([('bar', ''), ('foo', ''), ('baz/', '')])
 
 
 def test_jit_completes_directories_fish(complgen_binary_path: Path):

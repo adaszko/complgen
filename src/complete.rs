@@ -27,8 +27,11 @@ impl Shell {
     }
 
     fn complete_paths(&self, prefix: &str) -> std::io::Result<Output> {
-        let command = format!(r#"printf "%s\n" {}*"#, prefix);
-        self.shell_out(&command)
+        match self {
+            Shell::Bash => self.shell_out(&format!("compgen -A file {prefix}")),
+            Shell::Fish => self.shell_out(&format!("__fish_complete_path {prefix}")),
+            Shell::Zsh => self.shell_out(&format!(r#"printf "%s\n" {prefix}*"#)),
+        }
     }
 
     fn complete_directories(&self, prefix: &str) -> std::io::Result<Output> {
