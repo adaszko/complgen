@@ -34,8 +34,8 @@ def get_sorted_completions(generated_script_path: Path, input: str) -> list[tupl
 @contextlib.contextmanager
 def capture_script_path(completion_script: str) -> Generator[Path, None, None]:
     this_file = Path(__file__)
-    capture_preamble_path = this_file.parent / 'capture_preamble.zsh'
-    capture_postamble_path = this_file.parent / 'capture_postamble.zsh'
+    capture_preamble_path = this_file.parent.parent / 'capture_preamble.zsh'
+    capture_postamble_path = this_file.parent.parent / 'capture_postamble.zsh'
     with tempfile.NamedTemporaryFile(mode='w') as f:
         f.write(capture_preamble_path.read_text())
         f.write("\n")
@@ -123,7 +123,7 @@ def test_jit_completes_paths_zsh(complgen_binary_path: Path):
             Path('bar').write_text('dummy')
             os.mkdir('baz')
             expr = get_jit_zsh_completions_expr(complgen_binary_path, '''cmd <PATH> [--help];''', 0, [])
-            assert expr == 'local -a completions=("bar" "baz" "foo")\nlocal -a descriptions=("bar" "baz" "foo")\ncompadd -d descriptions -a completions\n'
+            assert expr == 'local -a completions=("bar" "baz/" "foo")\nlocal -a descriptions=("bar" "baz/" "foo")\ncompadd -d descriptions -a completions\n'
 
 
 def test_jit_completes_directories_zsh(complgen_binary_path: Path):

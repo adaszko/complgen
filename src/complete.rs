@@ -1,9 +1,11 @@
-use std::process::{Command, Output};
+use std::io::Write;
+use std::process::Command;
 
 use complgen::StateId;
 use hashbrown::HashMap;
 
 use ustr::ustr;
+use anyhow::{anyhow, Context};
 
 use crate::{dfa::DFA, regex::{Input, MatchAnythingInput}};
 
@@ -17,24 +19,73 @@ pub enum Shell {
 }
 
 
+fn capture_zsh_completions(completion_code: &str, user_input: &str) -> anyhow::Result<String> {
+    let preamble = include_str!("../capture_preamble.zsh");
+    let postamble = include_str!("../capture_postamble.zsh");
+
+    let mut capture_script = tempfile::NamedTempFile::new()?;
+    write!(capture_script, "{}", preamble)?;
+
+    writeln!(capture_script, r#"_dummy () {{"#)?;
+    writeln!(capture_script, "{}", completion_code.replace("'", "''"))?;
+    writeln!(capture_script, r#"}}"#)?;
+    writeln!(capture_script, r#""#)?;
+    writeln!(capture_script, "compdef _dummy dummy")?;
+
+    write!(capture_script, "{}", postamble)?;
+
+    capture_script.as_file().flush()?;
+
+    let output = Command::new("zsh").arg(capture_script.path()).arg(user_input).output()?;
+
+    if !output.status.success() {
+        let stdout: String = String::from_utf8_lossy(&output.stdout).to_string();
+        let stderr: String = String::from_utf8_lossy(&output.stderr).to_string();
+        let result = anyhow::Result::Err(anyhow!("Capturing ZSH completions failed"))
+            .context(completion_code.to_owned())
+            .context(user_input.to_owned())
+            .context(stdout)
+            .context(stderr);
+        return result;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    Ok(stdout)
+}
+
+
 impl Shell {
-    fn shell_out(&self, command: &str) -> std::io::Result<Output> {
-        match self {
-            Shell::Bash => Command::new("bash").arg("-c").arg(command).output(),
-            Shell::Fish => Command::new("fish").arg("-c").arg(command).output(),
-            Shell::Zsh => Command::new("zsh").arg("-c").arg(command).output(),
+    fn shell_out(&self, command: &str) -> anyhow::Result<String> {
+        let output = match self {
+            Shell::Bash => Command::new("bash").arg("-c").arg(command).output()?,
+            Shell::Fish => Command::new("fish").arg("-c").arg(command).output()?,
+            Shell::Zsh => Command::new("zsh").arg("-c").arg(command).output()?,
+        };
+
+        if !output.status.success() {
+            let stdout: String = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr: String = String::from_utf8_lossy(&output.stderr).to_string();
+            let result = anyhow::Result::Err(anyhow!("Command invocation failed"))
+                .context(command.to_owned())
+                .context(stdout)
+                .context(stderr);
+            return result;
         }
+
+        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+        Ok(stdout)
     }
 
-    fn complete_paths(&self, prefix: &str) -> std::io::Result<Output> {
-        match self {
-            Shell::Bash => self.shell_out(&format!("compgen -A file {prefix}")),
-            Shell::Fish => self.shell_out(&format!("__fish_complete_path {prefix}")),
-            Shell::Zsh => self.shell_out(&format!(r#"printf "%s\n" {prefix}*"#)),
-        }
+    fn complete_paths(&self, prefix: &str) -> anyhow::Result<String> {
+        let result = match self {
+            Shell::Bash => self.shell_out(&format!("compgen -A file {prefix}"))?,
+            Shell::Fish => self.shell_out(&format!("__fish_complete_path {prefix}"))?,
+            Shell::Zsh => capture_zsh_completions("_path_files", &format!("dummy {prefix}"))?,
+        };
+        Ok(result)
     }
 
-    fn complete_directories(&self, prefix: &str) -> std::io::Result<Output> {
+    fn complete_directories(&self, prefix: &str) -> anyhow::Result<String> {
         match self {
             Shell::Bash => self.shell_out(&format!("compgen -A directory {prefix}")),
             Shell::Fish => self.shell_out(&format!("__fish_complete_directories {prefix}")),
@@ -85,26 +136,14 @@ fn get_completions_for_input<'a, 'b>(input: &Input, prefix: &str, shell: Shell) 
         },
 
         Input::Any(MatchAnythingInput::Command(command)) => {
-            let output = match shell.shell_out(command.as_str()) {
-                Ok(output) => output,
-                Err(e) => {
-                    eprintln!("{:?}", e);
-                    return vec![];
-                },
-            };
-            if !output.status.success() {
-                eprint!("{}", String::from_utf8_lossy(&output.stdout));
-                eprint!("{}", String::from_utf8_lossy(&output.stderr));
-                return vec![];
-            }
-
-            let stdout = match String::from_utf8(output.stdout) {
+            let stdout = match shell.shell_out(command.as_str()) {
                 Ok(stdout) => stdout,
                 Err(e) => {
                     eprintln!("{:?}", e);
                     return vec![];
                 },
             };
+
             let mut result: Vec<(String, String)> = stdout.lines().map(|line| match line.split_once("\t") {
                 Some((completion, description)) => (completion.to_owned(), description.to_owned()),
                 None => (line.to_string(), "".to_string()),
@@ -118,20 +157,7 @@ fn get_completions_for_input<'a, 'b>(input: &Input, prefix: &str, shell: Shell) 
         },
 
         Input::Any(MatchAnythingInput::Nonterminal(nonterm)) if nonterm.as_str() == "PATH" => {
-            let output = match shell.complete_paths(prefix) {
-                Ok(output) => output,
-                Err(e) => {
-                    eprintln!("{:?}", e);
-                    return vec![];
-                },
-            };
-            if !output.status.success() {
-                eprint!("{}", String::from_utf8_lossy(&output.stdout));
-                eprint!("{}", String::from_utf8_lossy(&output.stderr));
-                return vec![];
-            }
-
-            let stdout = match String::from_utf8(output.stdout) {
+            let stdout = match shell.complete_paths(prefix) {
                 Ok(stdout) => stdout,
                 Err(e) => {
                     eprintln!("{:?}", e);
@@ -143,20 +169,7 @@ fn get_completions_for_input<'a, 'b>(input: &Input, prefix: &str, shell: Shell) 
         },
 
         Input::Any(MatchAnythingInput::Nonterminal(nonterm)) if nonterm.as_str() == "DIRECTORY" => {
-            let output = match shell.complete_directories(prefix) {
-                Ok(output) => output,
-                Err(e) => {
-                    eprintln!("{:?}", e);
-                    return vec![];
-                },
-            };
-            if !output.status.success() {
-                eprint!("{}", String::from_utf8_lossy(&output.stdout));
-                eprint!("{}", String::from_utf8_lossy(&output.stderr));
-                return vec![];
-            }
-
-            let stdout = match String::from_utf8(output.stdout) {
+            let stdout = match shell.complete_directories(prefix) {
                 Ok(stdout) => stdout,
                 Err(e) => {
                     eprintln!("{:?}", e);
