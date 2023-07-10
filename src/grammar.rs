@@ -498,7 +498,11 @@ impl ValidGrammar {
         }
         let expr = resolve_nonterminals(expr, &nonterminal_definitions, &specializations);
 
-        let undefined_nonterminals = get_expression_nonterminals(Rc::clone(&expr));
+        let undefined_nonterminals = {
+            let mut nonterms = get_expression_nonterminals(Rc::clone(&expr));
+            nonterms.retain(|n| !specializations.contains_key(n));
+            nonterms
+        };
 
         let g = ValidGrammar {
             command,
