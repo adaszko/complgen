@@ -446,6 +446,23 @@ impl DFA {
         result
     }
 
+    pub fn get_fish_command_transitions(&self) -> Vec<(StateId, Ustr)> {
+        let mut result: Vec<(StateId, Ustr)> = Default::default();
+        for (from, tos) in &self.transitions {
+            for (input, _) in tos {
+                let cmd = match input {
+                    Input::Any(MatchAnythingInput::Nonterminal(_, Some(Specialization { fish: Some(cmd), .. }))) => *cmd,
+                    Input::Any(MatchAnythingInput::Nonterminal(_, Some(Specialization { .. }))) => continue,
+                    Input::Any(MatchAnythingInput::Nonterminal(_, None)) => continue,
+                    Input::Any(MatchAnythingInput::Command(_)) => continue,
+                    Input::Literal(..) => continue,
+                };
+                result.push((*from, cmd));
+            }
+        }
+        result
+    }
+
     pub fn get_file_states(&self) -> Vec<StateId> {
         let mut result: Vec<StateId> = Default::default();
         for (from, tos) in &self.transitions {
