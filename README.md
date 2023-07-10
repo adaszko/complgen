@@ -216,6 +216,20 @@ For fish and zsh, the `DESCRIPTION` part will be presented to the user.  Under b
 part will be visible.  All external commands nonetheless need to take care as to *not* produce superfluous
 `\t` characters that may confuse the resulting shell scripts.
 
+##### Specialization
+
+In order to make use of shell-specific completion functions, `complgen` supports a mechanism that allows for
+picking a specific nonterminal expansion based on the target shell.  To use an example, all shells are able to
+complete a user on the system, although each has a different function for it.  We unify their interface under
+the nonterminal `<USER>` using few `nonterminal@shell` definitions:
+
+```
+cmd <USER>;
+<USER@bash> ::= { compgen -A user "$1" | sort | uniq }; # bash produces duplicates for some reason
+<USER@fish> ::= { __fish_complete_users "$1" };
+<USER@zsh> ::= { _users };
+```
+
 ## Limitations
 
  * Passing option arguments using `=` is not currently supported.  E.g. `--foo=bar` doesn't work, but `--foo
