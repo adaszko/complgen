@@ -7,7 +7,7 @@ use hashbrown::{HashMap, HashSet};
 use roaring::{MultiOps, RoaringBitmap};
 use ustr::{Ustr, ustr};
 
-use crate::regex::{Position, AugmentedRegex, Input, MatchAnythingInput};
+use crate::{regex::{Position, AugmentedRegex, Input, MatchAnythingInput}, grammar::Specialization};
 use complgen::StateId;
 
 
@@ -421,6 +421,23 @@ impl DFA {
                 let cmd = match input {
                     Input::Any(MatchAnythingInput::Command(cmd)) => *cmd,
                     Input::Any(MatchAnythingInput::Nonterminal(..)) => continue,
+                    Input::Literal(..) => continue,
+                };
+                result.push((*from, cmd));
+            }
+        }
+        result
+    }
+
+    pub fn get_bash_command_transitions(&self) -> Vec<(StateId, Ustr)> {
+        let mut result: Vec<(StateId, Ustr)> = Default::default();
+        for (from, tos) in &self.transitions {
+            for (input, _) in tos {
+                let cmd = match input {
+                    Input::Any(MatchAnythingInput::Nonterminal(_, Some(Specialization { bash: Some(cmd), .. }))) => *cmd,
+                    Input::Any(MatchAnythingInput::Nonterminal(_, Some(Specialization { .. }))) => continue,
+                    Input::Any(MatchAnythingInput::Nonterminal(_, None)) => continue,
+                    Input::Any(MatchAnythingInput::Command(_)) => continue,
                     Input::Literal(..) => continue,
                 };
                 result.push((*from, cmd));
