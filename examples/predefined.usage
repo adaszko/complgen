@@ -4,6 +4,6 @@ cmd <PATH>;
 
 # cmd <DIRECTORY>;
 
-# Note that its possible to override the predefined meaning of those variables with your own:
+# Note that it's perfectly fine to override the predefined meaning of those variables with your own:
 
 <DIRECTORY> ::= foo | bar;
