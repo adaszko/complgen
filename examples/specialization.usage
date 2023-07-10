@@ -1,0 +1,6 @@
+cmd <NONTERM>;
+
+<NONTERM> ::= { echo default };
+<NONTERM@bash> ::= { echo bash };
+<NONTERM@fish> ::= { echo fish };
+<NONTERM@zsh> ::= { echo zsh };
