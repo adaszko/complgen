@@ -133,7 +133,7 @@ def test_jit_completes_directories_zsh(complgen_binary_path: Path):
             os.mkdir('bar')
             Path('baz').write_text('dummy')
             expr = get_jit_zsh_completions_expr(complgen_binary_path, '''cmd <DIRECTORY> [--help];''', 0, [])
-            assert expr == 'local -a completions=("bar" "foo")\nlocal -a descriptions=("bar" "foo")\ncompadd -d descriptions -a completions\n'
+            assert expr == 'local -a completions=("bar/" "foo/")\nlocal -a descriptions=("bar/" "foo/")\ncompadd -d descriptions -a completions\n'
 
 
 def test_specializes_for_zsh(complgen_binary_path: Path):

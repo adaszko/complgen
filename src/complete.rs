@@ -104,35 +104,7 @@ impl Shell {
             Shell::Zsh => shell_out_zsh(command)?,
         };
 
-        if !output.status.success() {
-            let stdout: String = String::from_utf8_lossy(&output.stdout).to_string();
-            let stderr: String = String::from_utf8_lossy(&output.stderr).to_string();
-            let result = anyhow::Result::Err(anyhow!("Command invocation failed"))
-                .context(command.to_owned())
-                .context(stdout)
-                .context(stderr);
-            return result;
-        }
-
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        Ok(stdout)
-    }
-
-    fn complete_paths(&self, prefix: &str) -> anyhow::Result<String> {
-        let result = match self {
-            Shell::Bash => self.shell_out(&format!("compgen -A file {prefix}"))?,
-            Shell::Fish => self.shell_out(&format!("__fish_complete_path {prefix}"))?,
-            Shell::Zsh => capture_zsh_completions("_path_files", "dummy", &format!("dummy {prefix}"))?,
-        };
-        Ok(result)
-    }
-
-    fn complete_directories(&self, prefix: &str) -> anyhow::Result<String> {
-        match self {
-            Shell::Bash => self.shell_out(&format!("compgen -A directory {prefix}")),
-            Shell::Fish => self.shell_out(&format!("__fish_complete_directories {prefix}")),
-            Shell::Zsh => self.shell_out(&format!(r#"printf "%s\n" {prefix}*(/)"#)),
-        }
+        stdout_from_output(output)
     }
 }
 
@@ -227,14 +199,23 @@ fn do_get_completions_for_input(input: &Input, prefix: &str, shell: Shell) -> an
         },
 
         Input::Any(MatchAnythingInput::Nonterminal(nonterm, None)) if nonterm.as_str() == "PATH" => {
-            let stdout = shell.complete_paths(prefix)?;
-            let completions = stdout.lines().into_iter().map(|line| (line.to_owned(), "".to_owned())).collect();
-            completions
+            let specialization = &Specialization {
+                bash: Some(ustr(&format!("compgen -A file {prefix}"))),
+                fish: Some(ustr(&format!("__fish_complete_path {prefix}"))),
+                zsh: Some(ustr("_path_files")),
+                generic: None,
+            };
+            capture_specialized_completions(shell, specialization, prefix)?
         },
 
         Input::Any(MatchAnythingInput::Nonterminal(nonterm, None)) if nonterm.as_str() == "DIRECTORY" => {
-            let stdout = shell.complete_directories(prefix)?;
-            stdout.lines().into_iter().map(|line| (line.to_owned(), "".to_owned())).collect()
+            let specialization = &Specialization {
+                bash: Some(ustr(&format!("compgen -A directory {prefix}"))),
+                fish: Some(ustr(&format!("__fish_complete_directories {prefix}"))),
+                zsh: Some(ustr("_path_files -/")),
+                generic: None,
+            };
+            capture_specialized_completions(shell, specialization, prefix)?
         },
 
         Input::Any(MatchAnythingInput::Nonterminal(_, None)) => vec![],
