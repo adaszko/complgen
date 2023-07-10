@@ -1,0 +1,7 @@
+hello [--version | --help] <USER>;
+
+<USER> ::= { cat /etc/passwd | grep -v '^#' | cut -d: -f1 };
+
+# Externals commands can also use an alternate, equivalent syntax that reduces the need for escaping:
+
+# <USER> ::= {{{ cat /etc/passwd | grep -v '^#' | cut -d: -f1 }}}

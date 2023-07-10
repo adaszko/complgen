@@ -1,3 +1,0 @@
-grep [<OPTION>]... <PATTERNS> [<FILE>]...;
-<OPTION> ::= --color <WHEN>;
-<WHEN> ::= always | never | auto;

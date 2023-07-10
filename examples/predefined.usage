@@ -1,0 +1,9 @@
+# This file illustrates the use of predefined nonterminals.
+
+cmd <PATH>;
+
+# cmd <DIRECTORY>;
+
+# Note that its possible to override the predefined meaning of those variables with your own:
+
+<DIRECTORY> ::= foo | bar;

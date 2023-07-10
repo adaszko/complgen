@@ -1,2 +1,0 @@
-bug [<toolchain>] (--version | --help);
-<toolchain> ::= { rustup toolchain list | cut -d' ' -f1 | sed 's/^/+/' };
