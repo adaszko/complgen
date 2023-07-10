@@ -1,12 +1,14 @@
-use std::io::Write;
+use std::ffi::OsStr;
+use std::{io::Write, process::Output};
 use std::process::Command;
 
 use complgen::StateId;
 use hashbrown::HashMap;
 
-use ustr::{ustr, Ustr};
+use ustr::ustr;
 use anyhow::{anyhow, Context};
 
+use crate::grammar::Specialization;
 use crate::{dfa::DFA, regex::{Input, MatchAnythingInput}};
 
 
@@ -19,31 +21,26 @@ pub enum Shell {
 }
 
 
-fn capture_zsh_completions(completion_code: &str, user_input: &str) -> anyhow::Result<String> {
-    let preamble = include_str!("../capture_preamble.zsh");
-    let postamble = include_str!("../capture_postamble.zsh");
+fn shell_out_bash(command: &str) -> anyhow::Result<Output> {
+    Command::new("bash").arg("-c").arg(command).output().map_err(Into::into)
+}
 
-    let mut capture_script = tempfile::NamedTempFile::new()?;
-    write!(capture_script, "{}", preamble)?;
 
-    writeln!(capture_script, r#"_dummy () {{"#)?;
-    writeln!(capture_script, "{}", completion_code.replace("'", "''"))?;
-    writeln!(capture_script, r#"}}"#)?;
-    writeln!(capture_script, r#""#)?;
-    writeln!(capture_script, "compdef _dummy dummy")?;
+fn shell_out_fish(command: &str) -> anyhow::Result<Output> {
+    Command::new("fish").arg("-c").arg(command).output().map_err(Into::into)
+}
 
-    write!(capture_script, "{}", postamble)?;
 
-    capture_script.as_file().flush()?;
+fn shell_out_zsh(command: &str) -> anyhow::Result<Output> {
+    Command::new("zsh").arg("-c").arg(command).output().map_err(Into::into)
+}
 
-    let output = Command::new("zsh").arg(capture_script.path()).arg(user_input).output()?;
 
+fn stdout_from_output(output: Output) -> anyhow::Result<String> {
     if !output.status.success() {
         let stdout: String = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr: String = String::from_utf8_lossy(&output.stderr).to_string();
-        let result = anyhow::Result::Err(anyhow!("Capturing ZSH completions failed"))
-            .context(completion_code.to_owned())
-            .context(user_input.to_owned())
+        let result = anyhow::Result::Err(anyhow!("Command invokation failed"))
             .context(stdout)
             .context(stderr);
         return result;
@@ -54,12 +51,57 @@ fn capture_zsh_completions(completion_code: &str, user_input: &str) -> anyhow::R
 }
 
 
+fn get_bash_command_stdout(command: &str) -> anyhow::Result<String> {
+    let output = shell_out_bash(command).with_context(|| command.to_string())?;
+    stdout_from_output(output)
+}
+
+fn get_fish_command_stdout(command: &str) -> anyhow::Result<String> {
+    let output = shell_out_fish(command).with_context(|| command.to_string())?;
+    stdout_from_output(output)
+}
+
+fn get_zsh_command_stdout(command: &str) -> anyhow::Result<String> {
+    let output = shell_out_zsh(command).with_context(|| command.to_string())?;
+    stdout_from_output(output)
+}
+
+fn get_zsh_script_stdout<P: AsRef<OsStr>>(script_path: P, arg: &str) -> anyhow::Result<String> {
+    let output = Command::new("zsh").arg(script_path).arg(arg).output()?;
+    stdout_from_output(output)
+}
+
+
+fn capture_zsh_completions(completion_code: &str, command: &str, user_input: &str) -> anyhow::Result<String> {
+    let preamble = include_str!("../capture_preamble.zsh");
+    let postamble = include_str!("../capture_postamble.zsh");
+
+    let mut capture_script = tempfile::NamedTempFile::new()?;
+    write!(capture_script, "{}", preamble)?;
+
+    writeln!(capture_script, r#"_{command} () {{"#)?;
+    writeln!(capture_script, "{}", completion_code.replace("'", "''"))?;
+    writeln!(capture_script, r#"}}"#)?;
+    writeln!(capture_script, r#""#)?;
+    writeln!(capture_script, "compdef _{command} {command}")?;
+
+    write!(capture_script, "{}", postamble)?;
+
+    capture_script.as_file().flush()?;
+
+    get_zsh_script_stdout(capture_script.path(), user_input)
+        .with_context(|| completion_code.to_string())
+        .with_context(|| command.to_string())
+        .with_context(|| user_input.to_string())
+}
+
+
 impl Shell {
     fn shell_out(&self, command: &str) -> anyhow::Result<String> {
         let output = match self {
-            Shell::Bash => Command::new("bash").arg("-c").arg(command).output()?,
-            Shell::Fish => Command::new("fish").arg("-c").arg(command).output()?,
-            Shell::Zsh => Command::new("zsh").arg("-c").arg(command).output()?,
+            Shell::Bash => shell_out_bash(command)?,
+            Shell::Fish => shell_out_fish(command)?,
+            Shell::Zsh => shell_out_zsh(command)?,
         };
 
         if !output.status.success() {
@@ -80,7 +122,7 @@ impl Shell {
         let result = match self {
             Shell::Bash => self.shell_out(&format!("compgen -A file {prefix}"))?,
             Shell::Fish => self.shell_out(&format!("__fish_complete_path {prefix}"))?,
-            Shell::Zsh => capture_zsh_completions("_path_files", &format!("dummy {prefix}"))?,
+            Shell::Zsh => capture_zsh_completions("_path_files", "dummy", &format!("dummy {prefix}"))?,
         };
         Ok(result)
     }
@@ -121,6 +163,42 @@ pub fn get_match_final_state(dfa: &DFA, inputs: &[&str], completed_word_index: u
         }
     }
     None
+}
+
+
+fn capture_specialized_completions(shell: Shell, specialization: &Specialization) -> anyhow::Result<Vec<(String, String)>> {
+    let stdout = match shell {
+        Shell::Bash => {
+            let Some(command) = specialization.bash.or(specialization.generic) else {
+                return Ok(vec![]);
+            };
+            get_bash_command_stdout(&command)?
+        },
+        Shell::Fish => {
+            let Some(command) = specialization.fish.or(specialization.generic) else {
+                return Ok(vec![]);
+            };
+            get_fish_command_stdout(&command)?
+        },
+        Shell::Zsh => {
+            if let Some(command) = specialization.zsh {
+                capture_zsh_completions(&command, "dummy", &format!("dummy "))?
+            }
+            else if let Some(command) = specialization.generic {
+                get_zsh_command_stdout(&command)?
+            }
+            else {
+                return Ok(vec![]);
+            }
+        },
+    };
+
+    let result: Vec<(String, String)> = stdout.lines().map(|line| match line.split_once("\t") {
+        Some((completion, description)) => (completion.to_owned(), description.to_owned()),
+        None => (line.to_string(), "".to_string()),
+    }).collect();
+
+    Ok(result)
 }
 
 
@@ -183,34 +261,19 @@ fn get_completions_for_input(input: &Input, prefix: &str, shell: Shell) -> Vec<(
         Input::Any(MatchAnythingInput::Nonterminal(_, None)) => vec![],
 
         Input::Any(MatchAnythingInput::Nonterminal(_, Some(specialization))) => {
-            let command: Option<Ustr> = match shell {
-                Shell::Bash => specialization.bash.or(specialization.generic),
-                Shell::Fish => specialization.fish.or(specialization.generic),
-                Shell::Zsh => specialization.zsh.or(specialization.generic),
-            };
-
-            let Some(command) = command else {
-                return vec![];
-            };
-
-            let stdout = match shell.shell_out(command.as_str()) {
-                Ok(stdout) => stdout,
+            let mut completions = match capture_specialized_completions(shell, specialization) {
+                Ok(completions) => completions,
                 Err(e) => {
                     eprintln!("{:?}", e);
                     return vec![];
                 },
             };
 
-            let mut result: Vec<(String, String)> = stdout.lines().map(|line| match line.split_once("\t") {
-                Some((completion, description)) => (completion.to_owned(), description.to_owned()),
-                None => (line.to_string(), "".to_string()),
-            }).collect();
-
             if !prefix.is_empty() {
-                result.retain(|(completion, _)| completion.starts_with(prefix));
+                completions.retain(|(completion, _)| completion.starts_with(prefix));
             }
 
-            result
+            completions
         },
     }
 }
