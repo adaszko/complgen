@@ -23,6 +23,7 @@ def completion_script_path(complgen_binary_path: Path, grammar: str) -> Generato
 def get_sorted_completions(completions_file_path: Path, input: str) -> list[str]:
     bash_process = subprocess.run(['bash', '--noprofile', '--rcfile', completions_file_path, '-i'], input=input.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
     lines = bash_process.stdout.decode().splitlines()
+    lines.sort()
     return lines
 
 

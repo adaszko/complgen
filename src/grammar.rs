@@ -25,9 +25,10 @@ pub enum Expr {
 
 #[derive(Default)]
 pub struct Specialization {
-    bash: Option<Ustr>,
-    fish: Option<Ustr>,
-    zsh: Option<Ustr>,
+    pub bash: Option<Ustr>,
+    pub fish: Option<Ustr>,
+    pub zsh: Option<Ustr>,
+    pub generic: Option<Ustr>,
 }
 
 
@@ -419,10 +420,14 @@ fn make_specializations_map(statements: &[Statement]) -> Result<UstrMap<Speciali
             Statement::NonterminalDefinition { symbol, shell: None, expr } => (symbol, expr),
             _ => continue,
         };
-        let Some(_) = specialization.get(name) else { continue };
-        let Expr::Command(..) = expr.borrow() else {
+        let Some(spec) = specialization.get_mut(name) else { continue };
+        let Expr::Command(command) = expr.borrow() else {
             return Err(Error::NonCommandSpecialization(*name, None));
         };
+        if let Some(_) = spec.generic {
+            return Err(Error::DuplicateNonterminalDefinition(*name, None));
+        }
+        spec.generic = Some(*command);
     }
 
     Ok(specialization)

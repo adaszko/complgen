@@ -4,7 +4,7 @@ use std::process::Command;
 use complgen::StateId;
 use hashbrown::HashMap;
 
-use ustr::ustr;
+use ustr::{ustr, Ustr};
 use anyhow::{anyhow, Context};
 
 use crate::{dfa::DFA, regex::{Input, MatchAnythingInput}};
@@ -124,7 +124,7 @@ pub fn get_match_final_state(dfa: &DFA, inputs: &[&str], completed_word_index: u
 }
 
 
-fn get_completions_for_input<'a, 'b>(input: &Input, prefix: &str, shell: Shell) -> Vec<(String, String)> {
+fn get_completions_for_input(input: &Input, prefix: &str, shell: Shell) -> Vec<(String, String)> {
     match input {
         Input::Literal(literal, description) => {
             if literal.starts_with(prefix) {
@@ -156,7 +156,7 @@ fn get_completions_for_input<'a, 'b>(input: &Input, prefix: &str, shell: Shell) 
             result
         },
 
-        Input::Any(MatchAnythingInput::Nonterminal(nonterm)) if nonterm.as_str() == "PATH" => {
+        Input::Any(MatchAnythingInput::Nonterminal(nonterm, None)) if nonterm.as_str() == "PATH" => {
             let stdout = match shell.complete_paths(prefix) {
                 Ok(stdout) => stdout,
                 Err(e) => {
@@ -168,7 +168,7 @@ fn get_completions_for_input<'a, 'b>(input: &Input, prefix: &str, shell: Shell) 
             stdout.lines().into_iter().map(|line| (line.to_owned(), "".to_owned())).collect()
         },
 
-        Input::Any(MatchAnythingInput::Nonterminal(nonterm)) if nonterm.as_str() == "DIRECTORY" => {
+        Input::Any(MatchAnythingInput::Nonterminal(nonterm, None)) if nonterm.as_str() == "DIRECTORY" => {
             let stdout = match shell.complete_directories(prefix) {
                 Ok(stdout) => stdout,
                 Err(e) => {
@@ -180,7 +180,38 @@ fn get_completions_for_input<'a, 'b>(input: &Input, prefix: &str, shell: Shell) 
             stdout.lines().into_iter().map(|line| (line.to_owned(), "".to_owned())).collect()
         },
 
-        Input::Any(MatchAnythingInput::Nonterminal(_)) => vec![],
+        Input::Any(MatchAnythingInput::Nonterminal(_, None)) => vec![],
+
+        Input::Any(MatchAnythingInput::Nonterminal(_, Some(specialization))) => {
+            let command: Option<Ustr> = match shell {
+                Shell::Bash => specialization.bash.or(specialization.generic),
+                Shell::Fish => specialization.fish.or(specialization.generic),
+                Shell::Zsh => specialization.zsh.or(specialization.generic),
+            };
+
+            let Some(command) = command else {
+                return vec![];
+            };
+
+            let stdout = match shell.shell_out(command.as_str()) {
+                Ok(stdout) => stdout,
+                Err(e) => {
+                    eprintln!("{:?}", e);
+                    return vec![];
+                },
+            };
+
+            let mut result: Vec<(String, String)> = stdout.lines().map(|line| match line.split_once("\t") {
+                Some((completion, description)) => (completion.to_owned(), description.to_owned()),
+                None => (line.to_string(), "".to_string()),
+            }).collect();
+
+            if !prefix.is_empty() {
+                result.retain(|(completion, _)| completion.starts_with(prefix));
+            }
+
+            result
+        },
     }
 }
 
@@ -217,7 +248,7 @@ mod tests {
         let g = Grammar::parse(grammar).unwrap();
         let validated = ValidGrammar::from_grammar(g).unwrap();
         let arena = Bump::new();
-        let regex = AugmentedRegex::from_expr(&validated.expr, &arena);
+        let regex = AugmentedRegex::from_expr(&validated.expr, &validated.specializations, &arena);
         let dfa = DFA::from_regex(&regex);
         let dfa = dfa.minimize();
         get_completions(&dfa, words_before_cursor, completed_word_index, Shell::Bash)
