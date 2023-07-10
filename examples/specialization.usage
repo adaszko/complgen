@@ -1,6 +1,7 @@
-cmd <NONTERM>;
+# Here's how we can use specialization to leverage each shell's builtin capability to complete users on the system:
 
-<NONTERM> ::= { echo default };
-<NONTERM@bash> ::= { echo bash };
-<NONTERM@fish> ::= { echo fish };
-<NONTERM@zsh> ::= { echo zsh };
+cmd <USER>;
+
+<USER@bash> ::= { compgen -A user "$1" | sort | uniq }; # bash produces duplicates for some reason
+<USER@fish> ::= { __fish_complete_users "$1" };
+<USER@zsh> ::= { _users };
