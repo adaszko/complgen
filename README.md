@@ -183,7 +183,7 @@ far.
 
 ##### The `$1` parameter
 
-Sometimes, it's more efficient to take into account the entered prefix in the shell commands itself.  For all
+Sometimes, it's more efficient to take into account the entered prefix in the shell command itself.  For all
 three shells (bash, fish, zsh), it's available in the `$1` variable:
 
 ```
