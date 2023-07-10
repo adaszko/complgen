@@ -105,7 +105,7 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
     }
 
     let arena = Bump::new();
-    let regex = AugmentedRegex::from_expr(&validated.expr, &arena);
+    let regex = AugmentedRegex::from_expr(&validated.expr, &validated.specializations, &arena);
     let dfa = DFA::from_regex(&regex);
 
     let (shell, completed_word_index, words) = match &args.shell {
@@ -192,7 +192,7 @@ fn compile(args: &CompileArgs) -> anyhow::Result<()> {
     }
 
     log::debug!("Grammar -> Regex");
-    let regex = AugmentedRegex::from_expr(&validated.expr, &arena);
+    let regex = AugmentedRegex::from_expr(&validated.expr, &validated.specializations, &arena);
 
     log::debug!("Regex -> DFA");
     let dfa = DFA::from_regex(&regex);

@@ -7,7 +7,7 @@ use hashbrown::{HashMap, HashSet};
 use roaring::{MultiOps, RoaringBitmap};
 use ustr::{Ustr, ustr};
 
-use crate::regex::{Position, AugmentedRegex, Input, MatchAnythingInput};
+use crate::{regex::{Position, AugmentedRegex, Input, MatchAnythingInput}, grammar::Specialization};
 use complgen::StateId;
 
 
@@ -429,18 +429,70 @@ impl DFA {
         result
     }
 
+    pub fn get_bash_command_transitions(&self) -> Vec<(StateId, Ustr)> {
+        let mut result: Vec<(StateId, Ustr)> = Default::default();
+        for (from, tos) in &self.transitions {
+            for (input, _) in tos {
+                let cmd = match input {
+                    Input::Any(MatchAnythingInput::Nonterminal(_, Some(Specialization { bash: Some(cmd), .. }))) => *cmd,
+                    Input::Any(MatchAnythingInput::Nonterminal(_, Some(Specialization { .. }))) => continue,
+                    Input::Any(MatchAnythingInput::Nonterminal(_, None)) => continue,
+                    Input::Any(MatchAnythingInput::Command(_)) => continue,
+                    Input::Literal(..) => continue,
+                };
+                result.push((*from, cmd));
+            }
+        }
+        result
+    }
+
+    pub fn get_fish_command_transitions(&self) -> Vec<(StateId, Ustr)> {
+        let mut result: Vec<(StateId, Ustr)> = Default::default();
+        for (from, tos) in &self.transitions {
+            for (input, _) in tos {
+                let cmd = match input {
+                    Input::Any(MatchAnythingInput::Nonterminal(_, Some(Specialization { fish: Some(cmd), .. }))) => *cmd,
+                    Input::Any(MatchAnythingInput::Nonterminal(_, Some(Specialization { .. }))) => continue,
+                    Input::Any(MatchAnythingInput::Nonterminal(_, None)) => continue,
+                    Input::Any(MatchAnythingInput::Command(_)) => continue,
+                    Input::Literal(..) => continue,
+                };
+                result.push((*from, cmd));
+            }
+        }
+        result
+    }
+
+    pub fn get_zsh_command_transitions(&self) -> Vec<(StateId, Ustr)> {
+        let mut result: Vec<(StateId, Ustr)> = Default::default();
+        for (from, tos) in &self.transitions {
+            for (input, _) in tos {
+                let cmd = match input {
+                    Input::Any(MatchAnythingInput::Nonterminal(_, Some(Specialization { zsh: Some(cmd), .. }))) => *cmd,
+                    Input::Any(MatchAnythingInput::Nonterminal(_, Some(Specialization { .. }))) => continue,
+                    Input::Any(MatchAnythingInput::Nonterminal(_, None)) => continue,
+                    Input::Any(MatchAnythingInput::Command(_)) => continue,
+                    Input::Literal(..) => continue,
+                };
+                result.push((*from, cmd));
+            }
+        }
+        result
+    }
+
     pub fn get_file_states(&self) -> Vec<StateId> {
         let mut result: Vec<StateId> = Default::default();
         for (from, tos) in &self.transitions {
             for (input, _) in tos {
                 match input {
                     Input::Any(MatchAnythingInput::Command(..)) => {},
-                    Input::Any(MatchAnythingInput::Nonterminal(name)) => {
+                    Input::Any(MatchAnythingInput::Nonterminal(name, None)) => {
                         let canonicalized_name = name.as_str().to_uppercase();
                         if canonicalized_name == "PATH" {
                             result.push(*from);
                         }
                     },
+                    Input::Any(MatchAnythingInput::Nonterminal(_, Some(_))) => {},
                     Input::Literal(..) => {},
                 };
             }
@@ -454,12 +506,13 @@ impl DFA {
             for (input, _) in tos {
                 match input {
                     Input::Any(MatchAnythingInput::Command(..)) => {},
-                    Input::Any(MatchAnythingInput::Nonterminal(name)) => {
+                    Input::Any(MatchAnythingInput::Nonterminal(name, None)) => {
                         let canonicalized_name = name.as_str().to_uppercase();
                         if canonicalized_name == "DIRECTORY" {
                             result.push(*from);
                         }
                     },
+                    Input::Any(MatchAnythingInput::Nonterminal(_, Some(_))) => {},
                     Input::Literal(..) => {},
                 };
             }
@@ -569,7 +622,7 @@ mod tests {
     use super::*;
 
     use bumpalo::Bump;
-    use ustr::ustr as u;
+    use ustr::{ustr as u, UstrMap};
     use proptest::prelude::*;
 
     impl Transition {
@@ -634,7 +687,8 @@ mod tests {
         use ustr::ustr;
         let expr = Terminal(ustr("foo"), None);
         let arena = Bump::new();
-        let regex = AugmentedRegex::from_expr(&expr, &arena);
+        let specs = UstrMap::default();
+        let regex = AugmentedRegex::from_expr(&expr, &specs, &arena);
         let dfa = DFA::from_regex(&regex);
         let transitions = dfa.get_transitions();
         assert_eq!(transitions, vec![Transition::new(1, "foo", 2)]);
@@ -651,7 +705,8 @@ mod tests {
             // println!("{:?}", expr);
             // println!("{:?}", input);
             let arena = Bump::new();
-            let regex = AugmentedRegex::from_expr(&expr, &arena);
+            let specs = UstrMap::default();
+            let regex = AugmentedRegex::from_expr(&expr, &specs, &arena);
             let dfa = DFA::from_regex(&regex);
             let input: Vec<&str> = input.iter().map(|s| {
                 let s: &str = s;
@@ -665,7 +720,8 @@ mod tests {
             println!("{:?}", expr);
             println!("{:?}", input);
             let arena = Bump::new();
-            let regex = AugmentedRegex::from_expr(&expr, &arena);
+            let specs = UstrMap::default();
+            let regex = AugmentedRegex::from_expr(&expr, &specs, &arena);
             let dfa = DFA::from_regex(&regex);
             let input: Vec<&str> = input.iter().map(|s| {
                 let s: &str = s;
@@ -719,7 +775,8 @@ mod tests {
             "bar",
         ];
         let arena = Bump::new();
-        let regex = AugmentedRegex::from_expr(&expr, &arena);
+        let specs = UstrMap::default();
+        let regex = AugmentedRegex::from_expr(&expr, &specs, &arena);
         let dfa = DFA::from_regex(&regex);
         let input: Vec<&str> = input.iter().map(|s| {
             let s: &str = s;
@@ -758,7 +815,8 @@ mod tests {
         dbg!(&expr);
         dbg!(&input);
         let arena = Bump::new();
-        let regex = AugmentedRegex::from_expr(&expr, &arena);
+        let specs = UstrMap::default();
+        let regex = AugmentedRegex::from_expr(&expr, &specs, &arena);
         let dfa = DFA::from_regex(&regex);
         let input: Vec<&str> = input.iter().map(|s| {
             let s: &str = s;
@@ -774,7 +832,8 @@ mod tests {
         let (expr, input) = (Alternative(vec![Rc::new(Many1(Rc::new(Sequence(vec![Rc::new(Nonterminal(u("FILE"))), Rc::new(Nonterminal(u("FILE")))])))), Rc::new(Nonterminal(u("FILE")))]), [u("anything"), u("anything"), u("anything"), u("anything"), u("anything"), u("anything")]);
         dbg!(&expr);
         let arena = Bump::new();
-        let regex = AugmentedRegex::from_expr(&expr, &arena);
+        let specs = UstrMap::default();
+        let regex = AugmentedRegex::from_expr(&expr, &specs, &arena);
         let dfa = DFA::from_regex(&regex);
         let input: Vec<&str> = input.iter().map(|s| {
             let s: &str = s;
@@ -790,7 +849,8 @@ mod tests {
         let (expr, input) = (Sequence(vec![Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Many1(Rc::new(Many1(Rc::new(Terminal(u("--baz"), None)))))), Rc::new(Nonterminal(u("FILE")))])), Rc::new(Terminal(u("--baz"), None))])), Rc::new(Many1(Rc::new(Alternative(vec![Rc::new(Nonterminal(u("FILE"))), Rc::new(Nonterminal(u("FILE")))]))))]), [u("anything"), u("--baz"), u("anything"), u("anything")]);
         dbg!(&expr);
         let arena = Bump::new();
-        let regex = AugmentedRegex::from_expr(&expr, &arena);
+        let specs = UstrMap::default();
+        let regex = AugmentedRegex::from_expr(&expr, &specs, &arena);
         let dfa = DFA::from_regex(&regex);
         let input: Vec<&str> = input.iter().map(|s| {
             let s: &str = s;

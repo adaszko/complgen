@@ -62,6 +62,15 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 "#)?;
     }
 
+    let id_from_specialized_command: UstrMap<usize> = dfa.get_bash_command_transitions().into_iter().enumerate().map(|(id, (_, cmd))| (cmd, id)).collect();
+    for (cmd, id) in &id_from_specialized_command {
+        write!(buffer, r#"_{command}_spec_{id} () {{
+    {cmd}
+}}
+
+"#)?;
+    }
+
     write!(buffer, r#"_{command} () {{
 "#)?;
 
@@ -121,17 +130,36 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     let command_id_from_state: HashMap<StateId, usize> = dfa.get_command_transitions().into_iter().map(|(state, cmd)| (state, *id_from_command.get(&cmd).unwrap())).collect();
     if !command_id_from_state.is_empty() {
         writeln!(buffer, r#"    declare -A commands"#)?;
-        let commands_array_initializer = itertools::join(command_id_from_state.into_iter().map(|(state, id)| format!("[{state}]={id}")), " ");
-        writeln!(buffer, r#"    commands=({commands_array_initializer})"#)?;
+        let array_initializer = itertools::join(command_id_from_state.into_iter().map(|(state, id)| format!("[{state}]={id}")), " ");
+        write!(buffer, r#"    commands=({array_initializer})"#)?;
         write!(buffer, r#"
-        if [[ -v "commands[$state]" ]]; then
-            local command_id=${{commands[$state]}}
-            IFS=$'\n' read -r -d '' -a command_completions < <( _{command}_${{command_id}} "${{COMP_WORDS[$COMP_CWORD]}}" && printf '\0' )
-            for line in "${{command_completions[@]}}"; do
-                local elem=$(echo "$line" | cut -f1)
-                completions+=($elem)
-            done
-        fi
+    if [[ -v "commands[$state]" ]]; then
+        local command_id=${{commands[$state]}}
+        IFS=$'\n' read -r -d '' -a command_completions < <( _{command}_${{command_id}} "${{COMP_WORDS[$COMP_CWORD]}}" && printf '\0' )
+        for line in "${{command_completions[@]}}"; do
+            local elem=$(echo "$line" | cut -f1)
+            completions+=($elem)
+        done
+    fi
+
+"#)?;
+    }
+
+    let specialized_command_id_from_state: HashMap<StateId, usize> = dfa.get_bash_command_transitions().into_iter().map(|(state, cmd)| (state, *id_from_specialized_command.get(&cmd).unwrap())).collect();
+    if !specialized_command_id_from_state.is_empty() {
+        writeln!(buffer, "")?;
+        writeln!(buffer, r#"    declare -A specialized_commands"#)?;
+        let array_initializer = itertools::join(specialized_command_id_from_state.into_iter().map(|(state, id)| format!("[{state}]={id}")), " ");
+        write!(buffer, r#"    specialized_commands=({array_initializer})"#)?;
+        write!(buffer, r#"
+    if [[ -v "specialized_commands[$state]" ]]; then
+        local command_id=${{specialized_commands[$state]}}
+        IFS=$'\n' read -r -d '' -a command_completions < <( _{command}_spec_${{command_id}} "${{COMP_WORDS[$COMP_CWORD]}}" && printf '\0' )
+        for line in "${{command_completions[@]}}"; do
+            local elem=$(echo "$line" | cut -f1)
+            completions+=($elem)
+        done
+    fi
 
 "#)?;
     }

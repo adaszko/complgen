@@ -134,3 +134,13 @@ def test_jit_completes_directories_zsh(complgen_binary_path: Path):
             Path('baz').write_text('dummy')
             expr = get_jit_zsh_completions_expr(complgen_binary_path, '''cmd <DIRECTORY> [--help];''', 0, [])
             assert expr == 'local -a completions=("bar" "foo")\nlocal -a descriptions=("bar" "foo")\ncompadd -d descriptions -a completions\n'
+
+
+def test_specializes_for_zsh(complgen_binary_path: Path):
+    with capture_grammar_completions(complgen_binary_path, '''cmd <FOO>; <FOO> ::= { echo foo }; <FOO@zsh> ::= { compadd zsh };''') as capture_zsh_path:
+        assert get_sorted_completions(capture_zsh_path, 'cmd ') == sorted([('zsh', '')])
+
+
+def test_jit_specializes_for_zsh(complgen_binary_path: Path):
+    expr = get_jit_zsh_completions_expr(complgen_binary_path, '''cmd <FOO>; <FOO> ::= { echo foo }; <FOO@zsh> ::= { compadd zsh };''', 0, [])
+    assert expr == 'local -a completions=("zsh")\nlocal -a descriptions=("zsh")\ncompadd -d descriptions -a completions\n'

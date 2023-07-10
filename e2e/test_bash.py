@@ -23,6 +23,7 @@ def completion_script_path(complgen_binary_path: Path, grammar: str) -> Generato
 def get_sorted_completions(completions_file_path: Path, input: str) -> list[str]:
     bash_process = subprocess.run(['bash', '--noprofile', '--rcfile', completions_file_path, '-i'], input=input.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
     lines = bash_process.stdout.decode().splitlines()
+    lines.sort()
     return lines
 
 
@@ -107,3 +108,15 @@ def test_jit_completes_directories_bash(complgen_binary_path: Path):
             os.mkdir('bar')
             Path('baz').write_text('dummy')
             assert get_sorted_jit_bash_completions(complgen_binary_path, '''cmd <DIRECTORY> [--help];''', 0, []) == sorted(['bar', 'foo'])
+
+
+def test_specializes_for_bash(complgen_binary_path: Path):
+    GRAMMAR = '''cmd <FOO>; <FOO> ::= { echo foo }; <FOO@bash> ::= { echo bash };'''
+    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
+        input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_completions(path, input) == sorted(['bash'])
+
+
+def test_jit_specializes_for_bash(complgen_binary_path: Path):
+    GRAMMAR = '''cmd <FOO>; <FOO> ::= { echo foo }; <FOO@bash> ::= { echo bash };'''
+    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, 0, []) == sorted(['bash'])
