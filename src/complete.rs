@@ -166,7 +166,7 @@ pub fn get_match_final_state(dfa: &DFA, inputs: &[&str], completed_word_index: u
 }
 
 
-fn capture_specialized_completions(shell: Shell, specialization: &Specialization) -> anyhow::Result<Vec<(String, String)>> {
+fn capture_specialized_completions(shell: Shell, specialization: &Specialization, prefix: &str) -> anyhow::Result<Vec<(String, String)>> {
     let stdout = match shell {
         Shell::Bash => {
             let Some(command) = specialization.bash.or(specialization.generic) else {
@@ -193,17 +193,19 @@ fn capture_specialized_completions(shell: Shell, specialization: &Specialization
         },
     };
 
-    let result: Vec<(String, String)> = stdout.lines().map(|line| match line.split_once("\t") {
-        Some((completion, description)) => (completion.to_owned(), description.to_owned()),
-        None => (line.to_string(), "".to_string()),
-    }).collect();
+    let result: Vec<(String, String)> = stdout
+        .lines()
+        .filter(|line| line.starts_with(prefix)).map(|line| match line.split_once("\t") {
+            Some((completion, description)) => (completion.to_owned(), description.to_owned()),
+            None => (line.to_string(), "".to_string()),
+        }).collect();
 
     Ok(result)
 }
 
 
-fn get_completions_for_input(input: &Input, prefix: &str, shell: Shell) -> Vec<(String, String)> {
-    match input {
+fn do_get_completions_for_input(input: &Input, prefix: &str, shell: Shell) -> anyhow::Result<Vec<(String, String)>> {
+    let completions = match input {
         Input::Literal(literal, description) => {
             if literal.starts_with(prefix) {
                 vec![(literal.as_str().to_string(), description.unwrap_or(ustr("")).as_str().to_string())]
@@ -214,66 +216,41 @@ fn get_completions_for_input(input: &Input, prefix: &str, shell: Shell) -> Vec<(
         },
 
         Input::Any(MatchAnythingInput::Command(command)) => {
-            let stdout = match shell.shell_out(command.as_str()) {
-                Ok(stdout) => stdout,
-                Err(e) => {
-                    eprintln!("{:?}", e);
-                    return vec![];
-                },
-            };
+            let stdout = shell.shell_out(command.as_str())?;
 
-            let mut result: Vec<(String, String)> = stdout.lines().map(|line| match line.split_once("\t") {
+            let result: Vec<(String, String)> = stdout.lines().filter(|line| line.starts_with(prefix)).map(|line| match line.split_once("\t") {
                 Some((completion, description)) => (completion.to_owned(), description.to_owned()),
                 None => (line.to_string(), "".to_string()),
             }).collect();
-
-            if !prefix.is_empty() {
-                result.retain(|(completion, _)| completion.starts_with(prefix));
-            }
 
             result
         },
 
         Input::Any(MatchAnythingInput::Nonterminal(nonterm, None)) if nonterm.as_str() == "PATH" => {
-            let stdout = match shell.complete_paths(prefix) {
-                Ok(stdout) => stdout,
-                Err(e) => {
-                    eprintln!("{:?}", e);
-                    return vec![];
-                },
-            };
-
-            stdout.lines().into_iter().map(|line| (line.to_owned(), "".to_owned())).collect()
+            let stdout = shell.complete_paths(prefix)?;
+            let completions = stdout.lines().into_iter().map(|line| (line.to_owned(), "".to_owned())).collect();
+            completions
         },
 
         Input::Any(MatchAnythingInput::Nonterminal(nonterm, None)) if nonterm.as_str() == "DIRECTORY" => {
-            let stdout = match shell.complete_directories(prefix) {
-                Ok(stdout) => stdout,
-                Err(e) => {
-                    eprintln!("{:?}", e);
-                    return vec![];
-                },
-            };
-
+            let stdout = shell.complete_directories(prefix)?;
             stdout.lines().into_iter().map(|line| (line.to_owned(), "".to_owned())).collect()
         },
 
         Input::Any(MatchAnythingInput::Nonterminal(_, None)) => vec![],
 
-        Input::Any(MatchAnythingInput::Nonterminal(_, Some(specialization))) => {
-            let mut completions = match capture_specialized_completions(shell, specialization) {
-                Ok(completions) => completions,
-                Err(e) => {
-                    eprintln!("{:?}", e);
-                    return vec![];
-                },
-            };
+        Input::Any(MatchAnythingInput::Nonterminal(_, Some(specialization))) => capture_specialized_completions(shell, specialization, prefix)?
+    };
+    Ok(completions)
+}
 
-            if !prefix.is_empty() {
-                completions.retain(|(completion, _)| completion.starts_with(prefix));
-            }
 
-            completions
+fn get_completions_for_input(input: &Input, prefix: &str, shell: Shell) -> Vec<(String, String)> {
+    match do_get_completions_for_input(input, prefix, shell) {
+        Ok(completions) => completions,
+        Err(e) => {
+            eprintln!("{:?}", e);
+            return vec![];
         },
     }
 }
