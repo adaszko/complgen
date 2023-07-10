@@ -86,7 +86,7 @@ fn write_specialized_commands<W: Write>(buffer: &mut W, command: &str, dfa: &DFA
 fn write_specialized_commands_completion_code<W: Write>(buffer: &mut W, command: &str, dfa: &DFA, id_from_specialized_command: &UstrMap<usize>) -> Result<()> {
     let specialized_command_id_from_state: HashMap<StateId, usize> = dfa.get_zsh_command_transitions().into_iter().map(|(state, cmd)| (state, *id_from_specialized_command.get(&cmd).unwrap())).collect();
     if !specialized_command_id_from_state.is_empty() {
-        write!(buffer, "")?;
+        writeln!(buffer, "")?;
         let array_initializer = itertools::join(specialized_command_id_from_state.into_iter().map(|(state, id)| format!("[{}]={id}", state + 1)), " ");
         write!(buffer, r#"    local -A specialized_commands=({array_initializer})"#)?;
         write!(buffer, r#"
@@ -207,28 +207,6 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     }
 
     write_specialized_commands_completion_code(buffer, command, dfa, &id_from_specialized_command)?;
-
-    let path_states = dfa.get_file_states();
-    if !path_states.is_empty() {
-        let array_initializer: String = itertools::join(path_states.into_iter().map(|state| format!("{}", state + 1)), " ");
-        write!(buffer, r#"
-    local -a path_states=({array_initializer})
-    if (($path_states[(Ie)$state])); then
-        _path_files
-    fi
-"#)?;
-    }
-
-    let directory_states = dfa.get_directory_states();
-    if !directory_states.is_empty() {
-        let array_initializer: String = itertools::join(directory_states.into_iter().map(|state| format!("{}", state + 1)), " ");
-        write!(buffer, r#"
-    local -a directory_states=({array_initializer})
-    if (($directory_states[(Ie)$state])); then
-        _path_files -/
-    fi
-"#)?;
-    }
 
     write!(buffer, r#"
     return 0

@@ -373,7 +373,7 @@ pub struct ValidGrammar {
 
 
 fn make_specializations_map(statements: &[Statement]) -> Result<UstrMap<Specialization>> {
-    let mut specialization: UstrMap<Specialization> = Default::default();
+    let mut specializations: UstrMap<Specialization> = Default::default();
     for definition in statements {
         let (name, shell, expr) = match definition {
             Statement::NonterminalDefinition { symbol, shell: Some(shell), expr } => (*symbol, shell, expr),
@@ -391,7 +391,7 @@ fn make_specializations_map(statements: &[Statement]) -> Result<UstrMap<Speciali
         if !known_shell {
             return Err(Error::UnknownShell(*shell));
         }
-        let spec = specialization.entry(name).or_default();
+        let spec = specializations.entry(name).or_default();
         match shell.as_str() {
             "bash" => {
                 if let Some(_) = spec.bash {
@@ -420,7 +420,7 @@ fn make_specializations_map(statements: &[Statement]) -> Result<UstrMap<Speciali
             Statement::NonterminalDefinition { symbol, shell: None, expr } => (symbol, expr),
             _ => continue,
         };
-        let Some(spec) = specialization.get_mut(name) else { continue };
+        let Some(spec) = specializations.get_mut(name) else { continue };
         let Expr::Command(command) = expr.borrow() else {
             return Err(Error::NonCommandSpecialization(*name, None));
         };
@@ -430,7 +430,25 @@ fn make_specializations_map(statements: &[Statement]) -> Result<UstrMap<Speciali
         spec.generic = Some(*command);
     }
 
-    Ok(specialization)
+    specializations.entry(ustr("PATH")).or_insert_with(||
+        Specialization {
+            bash: Some(ustr(&format!(r#"compgen -A file "$1""#))),
+            fish: Some(ustr(&format!(r#"__fish_complete_path "$1""#))),
+            zsh: Some(ustr("_path_files")),
+            generic: None,
+        }
+    );
+
+    specializations.entry(ustr("DIRECTORY")).or_insert_with(||
+        Specialization {
+            bash: Some(ustr(&format!(r#"compgen -A directory "$1""#))),
+            fish: Some(ustr(&format!(r#"__fish_complete_directories "$1""#))),
+            zsh: Some(ustr("_path_files -/")),
+            generic: None,
+        }
+    );
+
+    Ok(specializations)
 }
 
 

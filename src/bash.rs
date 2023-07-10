@@ -164,28 +164,6 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 "#)?;
     }
 
-    let path_states = dfa.get_file_states();
-    if !path_states.is_empty() {
-        let array_initializer: String = itertools::join(path_states.into_iter().map(|state| format!("{}", state)), " ");
-        write!(buffer, r#"
-    local -a path_states=({array_initializer})
-    if [[ " ${{path_states[*]}} " =~ " ${{state}} " ]]; then
-        completions+=($(compgen -A file "${{COMP_WORDS[$COMP_CWORD]}}"))
-    fi
-"#)?;
-    }
-
-    let directory_states = dfa.get_directory_states();
-    if !directory_states.is_empty() {
-        let array_initializer: String = itertools::join(directory_states.into_iter().map(|state| format!("{}", state)), " ");
-        write!(buffer, r#"
-    local -a directory_states=({array_initializer})
-    if [[ " ${{directory_states[*]}} " =~ " ${{state}} " ]]; then
-        completions+=($(compgen -A directory "${{COMP_WORDS[$COMP_CWORD]}}"))
-    fi
-"#)?;
-    }
-
     write!(buffer, r#"
     completions=${{completions[@]}}
     COMPREPLY=($(compgen -W "$completions" -- "${{COMP_WORDS[$COMP_CWORD]}}"))

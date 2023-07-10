@@ -225,28 +225,6 @@ end
 
     write_specialized_commands_completion_code(buffer, command, &specialized_command_transitions, &specialized_id_from_state)?;
 
-    let path_states = dfa.get_file_states();
-    if !path_states.is_empty() {
-        let array_initializer: String = itertools::join(path_states.into_iter().map(|state| format!("{}", state + 1)), " ");
-        write!(buffer, r#"
-    set --local path_states {array_initializer}
-    if contains $state $path_states
-        __fish_complete_path $COMP_WORDS[$COMP_CWORD]
-    end
-"#)?;
-    }
-
-    let directory_states = dfa.get_directory_states();
-    if !directory_states.is_empty() {
-        let array_initializer: String = itertools::join(directory_states.into_iter().map(|state| format!("{}", state + 1)), " ");
-        write!(buffer, r#"
-    set --local directory_states {array_initializer}
-    if contains $state $directory_states
-        __fish_complete_directories $COMP_WORDS[$COMP_CWORD]
-    end
-"#)?;
-    }
-
     write!(buffer, r#"
     return 0
 end

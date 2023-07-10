@@ -198,26 +198,6 @@ fn do_get_completions_for_input(input: &Input, prefix: &str, shell: Shell) -> an
             result
         },
 
-        Input::Any(MatchAnythingInput::Nonterminal(nonterm, None)) if nonterm.as_str() == "PATH" => {
-            let specialization = &Specialization {
-                bash: Some(ustr(&format!("compgen -A file {prefix}"))),
-                fish: Some(ustr(&format!("__fish_complete_path {prefix}"))),
-                zsh: Some(ustr("_path_files")),
-                generic: None,
-            };
-            capture_specialized_completions(shell, specialization, prefix)?
-        },
-
-        Input::Any(MatchAnythingInput::Nonterminal(nonterm, None)) if nonterm.as_str() == "DIRECTORY" => {
-            let specialization = &Specialization {
-                bash: Some(ustr(&format!("compgen -A directory {prefix}"))),
-                fish: Some(ustr(&format!("__fish_complete_directories {prefix}"))),
-                zsh: Some(ustr("_path_files -/")),
-                generic: None,
-            };
-            capture_specialized_completions(shell, specialization, prefix)?
-        },
-
         Input::Any(MatchAnythingInput::Nonterminal(_, None)) => vec![],
 
         Input::Any(MatchAnythingInput::Nonterminal(_, Some(specialization))) => capture_specialized_completions(shell, specialization, prefix)?
