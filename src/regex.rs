@@ -1,4 +1,5 @@
 use hashbrown::HashSet;
+use std::cmp::Ordering;
 use std::rc::Rc;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -10,7 +11,7 @@ use crate::grammar::{Expr, Specialization};
 
 pub type Position = u32;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy)]
 pub enum MatchAnythingInput {
     Nonterminal(Ustr, Option<Specialization>),
     Command(Ustr),
@@ -27,10 +28,57 @@ impl std::fmt::Display for MatchAnythingInput {
 }
 
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy)]
 pub enum Input {
     Literal(Ustr, Option<Ustr>),
     Any(MatchAnythingInput),
+}
+
+
+impl PartialEq for Input {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Literal(left_name, left_description), Self::Literal(right_name, right_description)) => left_name == right_name && left_description == right_description,
+            (Self::Any(..), Self::Any(..)) => true,
+            (Self::Literal(..), Self::Any(..)) => false,
+            (Self::Any(..), Self::Literal(..)) => false,
+        }
+    }
+}
+
+
+impl Eq for Input {}
+
+
+impl std::hash::Hash for Input {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            Input::Literal(name, description) => {
+                name.hash(state);
+                description.hash(state);
+            },
+            Input::Any(_) => {},
+        }
+    }
+}
+
+
+impl Ord for Input {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            (Input::Literal(left_name, left_description), Input::Literal(right_name, right_description)) => (left_name, left_description).cmp(&(right_name, right_description)),
+            (Input::Literal(_, _), Input::Any(_)) => Ordering::Less,
+            (Input::Any(_), Input::Literal(_, _)) => Ordering::Greater,
+            (Input::Any(_), Input::Any(_)) => Ordering::Equal,
+        }
+    }
+}
+
+
+impl PartialOrd for Input {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 
