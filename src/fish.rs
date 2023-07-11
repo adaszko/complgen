@@ -172,7 +172,7 @@ end
                         break
                     end
                 end
-                if test word_matched -ne 0
+                if test $word_matched -ne 0
                     continue
                 end
             end
