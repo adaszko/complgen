@@ -111,6 +111,14 @@ def test_completes_directories(complgen_binary_path: Path):
                 assert get_sorted_completions(capture_zsh_path, 'cmd ') == sorted([('bar/', ''), ('foo/', '')])
 
 
+def test_completes_file_with_spaces(complgen_binary_path: Path):
+    with capture_grammar_completions(complgen_binary_path, '''cmd <PATH>;''') as capture_zsh_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                Path('file with spaces').write_text('dummy')
+                assert get_sorted_completions(capture_zsh_path, 'cmd ') == sorted([('file\\ with\\ spaces', '')])
+
+
 def get_jit_zsh_completions_expr(complgen_binary_path: Path, grammar: str, completed_word_index: int, words_before_cursor: list[str]) -> str:
     process = subprocess.run([complgen_binary_path, 'complete', '-', 'zsh', '--', str(completed_word_index)] + words_before_cursor, input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
     return process.stdout.decode()

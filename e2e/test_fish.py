@@ -101,6 +101,15 @@ def test_completes_directories(complgen_binary_path: Path):
                 assert completions == sorted([('bar/', 'Directory'), ('foo/', 'Directory')])
 
 
+def test_completes_dir_with_spaces(complgen_binary_path: Path):
+    with completion_script_path(complgen_binary_path, '''cmd <PATH>;''') as completions_file_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                os.mkdir('dir with spaces')
+                input = 'source {}; complete --command cmd --do-complete "cmd "'.format(completions_file_path)
+                completions = get_sorted_completions(input)
+                assert completions == sorted([('dir with spaces/', '')])
+
 
 def get_sorted_jit_fish_completions(complgen_binary_path: Path, grammar: str, completed_word_index: int, words_before_cursor: list[str]) -> list[tuple[str, str]]:
     process = subprocess.run([complgen_binary_path, 'complete', '-', 'fish', '--', str(completed_word_index)] + words_before_cursor, input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)

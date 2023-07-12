@@ -49,6 +49,15 @@ def test_completes_directories(complgen_binary_path: Path):
                 assert completions == sorted(['foo', 'bar'])
 
 
+def test_completes_dir_with_spaces(complgen_binary_path: Path):
+    with completion_script_path(complgen_binary_path, '''cmd <PATH>;''') as completions_file_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                os.mkdir('dir with spaces')
+                completions = get_sorted_completions(completions_file_path, '''COMP_WORDS=(cmd); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"''')
+                assert completions == sorted(['dir with spaces'])
+
+
 def test_bash_uses_correct_transition_with_duplicated_literals(complgen_binary_path: Path):
     GRAMMAR = '''
 cmd <COMMAND> [--help];
