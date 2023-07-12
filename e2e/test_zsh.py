@@ -1,6 +1,5 @@
 import os
 import sys
-import stat
 import tempfile
 import contextlib
 import subprocess
@@ -24,7 +23,7 @@ def zsh_completions_from_stdout(stdout: str) -> list[tuple[str, str]]:
 
 
 def get_sorted_completions(generated_script_path: Path, input: str) -> list[tuple[str, str]]:
-    zsh_process = subprocess.run([generated_script_path, input], stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
+    zsh_process = subprocess.run(['zsh', generated_script_path, input], stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
     stdout = zsh_process.stdout.decode()
     completions = zsh_completions_from_stdout(stdout)
     completions.sort(key=lambda pair: pair[0])
@@ -43,8 +42,6 @@ def capture_script_path(completion_script: str) -> Generator[Path, None, None]:
         f.write("\n")
         f.write(capture_postamble_path.read_text())
         f.flush()
-        st = os.stat(f.name)
-        os.chmod(f.name, st.st_mode | stat.S_IEXEC)
         yield Path(f.name)
 
 
