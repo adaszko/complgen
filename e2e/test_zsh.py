@@ -92,20 +92,20 @@ def test_completes_paths(complgen_binary_path: Path):
     with capture_grammar_completions(complgen_binary_path, '''cmd <PATH> [--help];''') as capture_zsh_path:
         with tempfile.TemporaryDirectory() as dir:
             with set_working_dir(Path(dir)):
-                Path('foo').write_text('dummy')
-                Path('bar').write_text('dummy')
-                os.mkdir('baz')
-                assert get_sorted_completions(capture_zsh_path, 'cmd ') == sorted([('bar', ''), ('foo', ''), ('baz/', '')])
+                Path('filename with spaces').write_text('dummy')
+                Path('?[^a]*{foo,*bar}').write_text('dummy')
+                os.mkdir('dir with spaces')
+                assert get_sorted_completions(capture_zsh_path, 'cmd ') == sorted([(r'\?\[\^a\]\*\{foo,\*bar\}', ''), (r'filename\ with\ spaces', ''), (r'dir\ with\ spaces', '')])
 
 
 def test_completes_directories(complgen_binary_path: Path):
     with capture_grammar_completions(complgen_binary_path, '''cmd <DIRECTORY> [--help];''') as capture_zsh_path:
         with tempfile.TemporaryDirectory() as dir:
             with set_working_dir(Path(dir)):
-                os.mkdir('foo')
-                os.mkdir('bar')
-                Path('baz').write_text('dummy')
-                assert get_sorted_completions(capture_zsh_path, 'cmd ') == sorted([('bar/', ''), ('foo/', '')])
+                os.mkdir('dir with spaces')
+                os.mkdir('?[^a]*{foo,*bar}')
+                Path('filename with spaces').write_text('dummy')
+                assert get_sorted_completions(capture_zsh_path, 'cmd ') == sorted([(r'\?\[\^a\]\*\{foo,\*bar\}', ''), (r'dir\ with\ spaces', '')])
 
 
 def test_completes_file_with_spaces(complgen_binary_path: Path):
@@ -124,21 +124,29 @@ def get_jit_zsh_completions_expr(complgen_binary_path: Path, grammar: str, compl
 def test_jit_completes_paths_zsh(complgen_binary_path: Path):
     with tempfile.TemporaryDirectory() as dir:
         with set_working_dir(Path(dir)):
-            Path('foo').write_text('dummy')
-            Path('bar').write_text('dummy')
-            os.mkdir('baz')
+            Path('filename with spaces').write_text('dummy')
+            Path('?[^a]*{foo,*bar}').write_text('dummy')
+            os.mkdir('dir with spaces')
             expr = get_jit_zsh_completions_expr(complgen_binary_path, '''cmd <PATH> [--help];''', 0, [])
-            assert expr == 'local -a completions=("bar" "baz/" "foo")\nlocal -a descriptions=("bar" "baz/" "foo")\ncompadd -d descriptions -a completions\n'
+            assert expr.splitlines() == [
+                r'local -a completions=("\?\[\^a\]\*\{foo,\*bar\}" "dir\ with\ spaces" "filename\ with\ spaces")',
+                r'local -a descriptions=("\?\[\^a\]\*\{foo,\*bar\}" "dir\ with\ spaces" "filename\ with\ spaces")',
+                'compadd -d descriptions -a completions'
+            ]
 
 
 def test_jit_completes_directories_zsh(complgen_binary_path: Path):
     with tempfile.TemporaryDirectory() as dir:
         with set_working_dir(Path(dir)):
-            os.mkdir('foo')
-            os.mkdir('bar')
-            Path('baz').write_text('dummy')
+            os.mkdir('dir with spaces')
+            os.mkdir('?[^a]*{foo,*bar}')
+            Path('filename with spaces').write_text('dummy')
             expr = get_jit_zsh_completions_expr(complgen_binary_path, '''cmd <DIRECTORY> [--help];''', 0, [])
-            assert expr == 'local -a completions=("bar/" "foo/")\nlocal -a descriptions=("bar/" "foo/")\ncompadd -d descriptions -a completions\n'
+            assert expr.splitlines() == [
+                r'local -a completions=("\?\[\^a\]\*\{foo,\*bar\}" "dir\ with\ spaces")',
+                r'local -a descriptions=("\?\[\^a\]\*\{foo,\*bar\}" "dir\ with\ spaces")',
+                'compadd -d descriptions -a completions'
+            ]
 
 
 def test_specializes_for_zsh(complgen_binary_path: Path):

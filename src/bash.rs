@@ -150,15 +150,19 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         write!(buffer, r#"
     if [[ -v "specialized_commands[$state]" ]]; then
         local command_id=${{specialized_commands[$state]}}
-        mapfile -t completions -O "${{#completions[@]}}" < <(_{command}_spec_${{command_id}} "${{COMP_WORDS[$COMP_CWORD]}}" | cut -f1)
+        mapfile -t completions -O "${{#completions[@]}}" < <(_{command}_spec_"${{command_id}}" "${{COMP_WORDS[$COMP_CWORD]}}" | cut -f1)
     fi
 
 "#)?;
     }
 
     write!(buffer, r#"
-    wordlist=$(printf '%s\n' "${{completions[@]}}")
-    mapfile -t COMPREPLY < <(IFS=$'\n' compgen -W "$wordlist" -- "${{COMP_WORDS[$COMP_CWORD]}}")
+    local prefix="${{COMP_WORDS[$COMP_CWORD]}}"
+    for item in "${{completions[@]}}"; do
+        if [[ $item = "${{prefix}}"* ]]; then
+            COMPREPLY+=("$item")
+        fi
+    done
     return 0
 }}
 
