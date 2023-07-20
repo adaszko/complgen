@@ -185,6 +185,11 @@ fn compile(args: &CompileArgs) -> anyhow::Result<()> {
         eprintln!("Warning: Undefined nonterminal(s): {}", joined);
     }
 
+    if !validated.unused_nonterminals.is_empty() {
+        let joined = itertools::join(validated.unused_nonterminals, " ");
+        eprintln!("Warning: Unused nonterminal(s): {}", joined);
+    }
+
     let arena = Bump::new();
 
     if let Some(railroad_svg_path) = &args.railroad_svg {

@@ -367,8 +367,9 @@ pub struct Grammar {
 pub struct ValidGrammar {
     pub command: Ustr,
     pub expr: Rc<Expr>,
-    pub undefined_nonterminals: UstrSet,
     pub specializations: UstrMap<Specialization>,
+    pub undefined_nonterminals: UstrSet,
+    pub unused_nonterminals: UstrSet,
 }
 
 
@@ -510,11 +511,13 @@ impl ValidGrammar {
             nonterminal_definitions
         };
 
+        let mut unused_nonterminals: UstrSet = nonterminal_definitions.keys().copied().collect();
+
         for nonterminal in get_nonterminals_resolution_order(&nonterminal_definitions)? {
             let e = Rc::clone(nonterminal_definitions.get(&nonterminal).unwrap());
-            *nonterminal_definitions.get_mut(&nonterminal).unwrap() = resolve_nonterminals(e, &nonterminal_definitions, &specializations);
+            *nonterminal_definitions.get_mut(&nonterminal).unwrap() = resolve_nonterminals(e, &nonterminal_definitions, &specializations, &mut unused_nonterminals);
         }
-        let expr = resolve_nonterminals(expr, &nonterminal_definitions, &specializations);
+        let expr = resolve_nonterminals(expr, &nonterminal_definitions, &specializations, &mut unused_nonterminals);
 
         let undefined_nonterminals = {
             let mut nonterms = get_expression_nonterminals(Rc::clone(&expr));
@@ -527,21 +530,25 @@ impl ValidGrammar {
             expr,
             undefined_nonterminals,
             specializations,
+            unused_nonterminals,
         };
         Ok(g)
     }
 }
 
 
-fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>, specializations: &UstrMap<Specialization>) -> Rc<Expr> {
+fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>, specializations: &UstrMap<Specialization>, unused_nonterminals: &mut UstrSet) -> Rc<Expr> {
     match expr.as_ref() {
         Expr::Terminal(..) => Rc::clone(&expr),
         Expr::Nonterminal(name) => {
             if specializations.contains_key(name) {
+                // Specialized nonterminals are resolved when the target shell is know, not
+                // earlier.
                 return Rc::clone(&expr);
             }
             match vars.get(&name) {
                 Some(replacement) => {
+                    unused_nonterminals.remove(name);
                     Rc::clone(&replacement)
                 },
                 None => {
@@ -554,7 +561,7 @@ fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>, specialization
             let mut new_children: Vec<Rc<Expr>> = Default::default();
             let mut any_child_replaced = false;
             for child in children {
-                let new_child = resolve_nonterminals(Rc::clone(child), vars, specializations);
+                let new_child = resolve_nonterminals(Rc::clone(child), vars, specializations, unused_nonterminals);
                 if !Rc::ptr_eq(&child, &new_child) {
                     any_child_replaced = true;
                 }
@@ -570,7 +577,7 @@ fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>, specialization
             let mut new_children: Vec<Rc<Expr>> = Default::default();
             let mut any_child_replaced = false;
             for child in children {
-                let new_child = resolve_nonterminals(Rc::clone(child), vars, specializations);
+                let new_child = resolve_nonterminals(Rc::clone(child), vars, specializations, unused_nonterminals);
                 if !Rc::ptr_eq(&child, &new_child) {
                     any_child_replaced = true;
                 }
@@ -583,7 +590,7 @@ fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>, specialization
             }
         },
         Expr::Optional(child) => {
-            let new_child = resolve_nonterminals(Rc::clone(child), vars, specializations);
+            let new_child = resolve_nonterminals(Rc::clone(child), vars, specializations, unused_nonterminals);
             if Rc::ptr_eq(&child, &new_child) {
                 Rc::clone(&expr)
             }
@@ -592,7 +599,7 @@ fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>, specialization
             }
         },
         Expr::Many1(child) => {
-            let new_child = resolve_nonterminals(Rc::clone(child), vars, specializations);
+            let new_child = resolve_nonterminals(Rc::clone(child), vars, specializations, unused_nonterminals);
             if Rc::ptr_eq(&child, &new_child) {
                 Rc::clone(&expr)
             }
