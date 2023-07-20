@@ -21,7 +21,8 @@ def completion_script_path(complgen_binary_path: Path, grammar: str) -> Generato
 
 
 def get_sorted_completions(completions_file_path: Path, input: str) -> list[str]:
-    bash_process = subprocess.run(['bash', '--noprofile', '--rcfile', completions_file_path, '-i'], input=input.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
+    input = f'source {completions_file_path}\n' + input
+    bash_process = subprocess.run(['bash', '--noprofile', '--norc', '-i'], input=input.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
     lines = bash_process.stdout.decode().splitlines()
     lines.sort()
     return lines
@@ -47,6 +48,15 @@ def test_completes_directories(complgen_binary_path: Path):
                 Path('baz').write_text('dummy')
                 completions = get_sorted_completions(completions_file_path, '''COMP_WORDS=(cmd); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"''')
                 assert completions == sorted(['foo', 'bar'])
+
+
+def test_completes_dir_with_spaces(complgen_binary_path: Path):
+    with completion_script_path(complgen_binary_path, '''cmd <PATH>;''') as completions_file_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                os.mkdir('dir with spaces')
+                completions = get_sorted_completions(completions_file_path, '''COMP_WORDS=(cmd); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"''')
+                assert completions == sorted(['dir with spaces'])
 
 
 def test_bash_uses_correct_transition_with_duplicated_literals(complgen_binary_path: Path):

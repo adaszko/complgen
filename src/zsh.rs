@@ -130,7 +130,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             local word=${{words[$word_index]}}
             local word_matched=0
             for literal_id in {{1..$#literals}}; do
-                if [[ ${{literals[$literal_id]}} = $word ]]; then
+                if [[ ${{literals[$literal_id]}} = "$word" ]]; then
                     if [[ -v "state_transitions[$literal_id]" ]]; then
                         state=${{state_transitions[$literal_id]}}
                         word_index=$((word_index + 1))
@@ -164,11 +164,11 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         local -a descrs
         for literal_id in ${{(k)state_transitions}}; do
             if [[ -v "descriptions[$literal_id]" ]]; then
-                args+=(${{literals[$literal_id]}})
+                args+=("${{literals[$literal_id]}}")
                 descrs+=("${{literals[$literal_id]}} (${{descriptions[$literal_id]}})")
             else
-                args+=(${{literals[$literal_id]}})
-                descrs+=(${{literals[$literal_id]}})
+                args+=("${{literals[$literal_id]}}")
+                descrs+=("${{literals[$literal_id]}}")
             fi
         done
         local joined=${{(j::)descrs}}

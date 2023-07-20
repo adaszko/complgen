@@ -1,6 +1,5 @@
 import os
 import sys
-import stat
 import tempfile
 import contextlib
 import subprocess
@@ -24,7 +23,7 @@ def zsh_completions_from_stdout(stdout: str) -> list[tuple[str, str]]:
 
 
 def get_sorted_completions(generated_script_path: Path, input: str) -> list[tuple[str, str]]:
-    zsh_process = subprocess.run([generated_script_path, input], stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
+    zsh_process = subprocess.run(['zsh', generated_script_path, input], stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
     stdout = zsh_process.stdout.decode()
     completions = zsh_completions_from_stdout(stdout)
     completions.sort(key=lambda pair: pair[0])
@@ -43,8 +42,6 @@ def capture_script_path(completion_script: str) -> Generator[Path, None, None]:
         f.write("\n")
         f.write(capture_postamble_path.read_text())
         f.flush()
-        st = os.stat(f.name)
-        os.chmod(f.name, st.st_mode | stat.S_IEXEC)
         yield Path(f.name)
 
 
@@ -109,6 +106,14 @@ def test_completes_directories(complgen_binary_path: Path):
                 os.mkdir('bar')
                 Path('baz').write_text('dummy')
                 assert get_sorted_completions(capture_zsh_path, 'cmd ') == sorted([('bar/', ''), ('foo/', '')])
+
+
+def test_completes_file_with_spaces(complgen_binary_path: Path):
+    with capture_grammar_completions(complgen_binary_path, '''cmd <PATH>;''') as capture_zsh_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                Path('file with spaces').write_text('dummy')
+                assert get_sorted_completions(capture_zsh_path, 'cmd ') == sorted([('file\\ with\\ spaces', '')])
 
 
 def get_jit_zsh_completions_expr(complgen_binary_path: Path, grammar: str, completed_word_index: int, words_before_cursor: list[str]) -> str:

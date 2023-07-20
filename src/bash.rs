@@ -88,7 +88,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             local word=${{COMP_WORDS[$word_index]}}
             local word_matched=0
             for literal_id in $(seq 1 ${{#literals[@]}}); do
-                if [[ ${{literals[$literal_id]}} = $word ]]; then
+                if [[ ${{literals[$literal_id]}} = "$word" ]]; then
                     if [[ -v "state_transitions[$literal_id]" ]]; then
                         state=${{state_transitions[$literal_id]}}
                         word_index=$((word_index + 1))
@@ -121,8 +121,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         declare -A state_transitions
         eval "state_transitions=$state_transitions_initializer"
 
-        for literal_id in ${{!state_transitions[@]}}; do
-            completions+=(${{literals[$literal_id]}})
+        for literal_id in "${{!state_transitions[@]}}"; do
+            completions+=("${{literals[$literal_id]}}")
         done
     fi
 "#)?;
@@ -135,11 +135,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         write!(buffer, r#"
     if [[ -v "commands[$state]" ]]; then
         local command_id=${{commands[$state]}}
-        IFS=$'\n' read -r -d '' -a command_completions < <( _{command}_${{command_id}} "${{COMP_WORDS[$COMP_CWORD]}}" && printf '\0' )
-        for line in "${{command_completions[@]}}"; do
-            local elem=$(echo "$line" | cut -f1)
-            completions+=($elem)
-        done
+        mapfile -t completions -O "${{#completions[@]}}" < <(_{command}_${{command_id}} "${{COMP_WORDS[$COMP_CWORD]}}" | cut -f1)
     fi
 
 "#)?;
@@ -154,19 +150,15 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         write!(buffer, r#"
     if [[ -v "specialized_commands[$state]" ]]; then
         local command_id=${{specialized_commands[$state]}}
-        IFS=$'\n' read -r -d '' -a command_completions < <( _{command}_spec_${{command_id}} "${{COMP_WORDS[$COMP_CWORD]}}" && printf '\0' )
-        for line in "${{command_completions[@]}}"; do
-            local elem=$(echo "$line" | cut -f1)
-            completions+=($elem)
-        done
+        mapfile -t completions -O "${{#completions[@]}}" < <(_{command}_spec_${{command_id}} "${{COMP_WORDS[$COMP_CWORD]}}" | cut -f1)
     fi
 
 "#)?;
     }
 
     write!(buffer, r#"
-    completions=${{completions[@]}}
-    COMPREPLY=($(compgen -W "$completions" -- "${{COMP_WORDS[$COMP_CWORD]}}"))
+    wordlist=$(printf '%s\n' "${{completions[@]}}")
+    mapfile -t COMPREPLY < <(IFS=$'\n' compgen -W "$wordlist" -- "${{COMP_WORDS[$COMP_CWORD]}}")
     return 0
 }}
 
