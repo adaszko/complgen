@@ -87,7 +87,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
             local word=${{COMP_WORDS[$word_index]}}
             local word_matched=0
-            for literal_id in $(seq 1 ${{#literals[@]}}); do
+            for literal_id in $(seq 0 ${{#literals[@]}}); do
                 if [[ ${{literals[$literal_id]}} = "$word" ]]; then
                     if [[ -v "state_transitions[$literal_id]" ]]; then
                         state=${{state_transitions[$literal_id]}}

@@ -124,3 +124,12 @@ def test_specializes_for_bash(complgen_binary_path: Path):
 def test_jit_specializes_for_bash(complgen_binary_path: Path):
     GRAMMAR = '''cmd <FOO>; <FOO> ::= { echo foo }; <FOO@bash> ::= { echo bash };'''
     assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, 0, []) == sorted(['bash'])
+
+
+def test_mycargo(complgen_binary_path: Path):
+    GRAMMAR = r'''
+mycargo test <TESTNAME>;
+<TESTNAME> ::= { echo foo; echo bar };
+'''
+    with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
+        assert get_sorted_completions(completions_file_path, r'''COMP_WORDS=(mycargo test); COMP_CWORD=2; _mycargo; if [[ ${#COMPREPLY[@]} -gt 0 ]]; then printf '%s\n' "${COMPREPLY[@]}"; fi''') == sorted(['foo', 'bar'])
