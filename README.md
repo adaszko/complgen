@@ -44,7 +44,7 @@ Assumming your `.usage` files are stored in the `~/.config/complgen` directory, 
 
 ```bash
 for path in ~/.config/complgen/*.usage; do
-    local stem=$(basename "$path" .usage)
+    stem=$(basename "$path" .usage)
     eval "
 _complgen_jit_$stem () {
     local -a completions=(\$(complgen complete \"$HOME/.config/complgen/${stem}.usage\" bash \$((COMP_CWORD - 1)) -- \${COMP_WORDS[@]:1}))
@@ -54,6 +54,7 @@ _complgen_jit_$stem () {
 }
 "
     complete -F _complgen_jit_$stem "$stem"
+    unset stem
 done
 ```
 
