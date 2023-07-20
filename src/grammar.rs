@@ -23,7 +23,7 @@ pub enum Expr {
     Many1(Rc<Expr>),
 }
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Specialization {
     pub bash: Option<Ustr>,
     pub fish: Option<Ustr>,

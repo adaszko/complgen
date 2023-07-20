@@ -157,3 +157,15 @@ def test_specializes_for_zsh(complgen_binary_path: Path):
 def test_jit_specializes_for_zsh(complgen_binary_path: Path):
     expr = get_jit_zsh_completions_expr(complgen_binary_path, '''cmd <FOO>; <FOO> ::= { echo foo }; <FOO@zsh> ::= { compadd zsh };''', 0, [])
     assert expr == 'local -a completions=("zsh")\nlocal -a descriptions=("zsh")\ncompadd -d descriptions -a completions\n'
+
+
+def test_mycargo(complgen_binary_path: Path):
+    GRAMMAR = r'''
+cargo [<toolchain>] [<COMMAND>];
+<toolchain> ::= { echo toolchain };
+<COMMAND> ::= t "Run the tests" <TESTNAME>;
+<TESTNAME> ::= { echo testname };
+'''
+
+    with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
+        assert get_sorted_completions(capture_zsh_path, 'cargo t ') == sorted([('testname', '')])
