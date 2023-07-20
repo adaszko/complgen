@@ -6,7 +6,7 @@ use complgen::StateId;
 use hashbrown::HashMap;
 
 use ustr::ustr;
-use anyhow::{anyhow, Context};
+use anyhow::{anyhow, Context, bail};
 
 use crate::grammar::Specialization;
 use crate::{dfa::DFA, regex::{Input, MatchAnythingInput}};
@@ -217,22 +217,24 @@ fn get_completions_for_input(input: &Input, prefix: &str, shell: Shell) -> Vec<(
 }
 
 
-pub fn get_completions<'a, 'b>(dfa: &DFA, words_before_cursor: &'b [&'a str], completed_word_index: usize, shell: Shell) -> Vec<(String, String)> {
+pub fn get_completions<'a, 'b>(dfa: &DFA, words_before_cursor: &'b [&'a str], completed_word_index: usize, shell: Shell) -> anyhow::Result<Vec<(String, String)>> {
     let prefix = if completed_word_index < words_before_cursor.len() {
         words_before_cursor[completed_word_index]
     }
-    else {
+    else if completed_word_index == words_before_cursor.len() {
         ""
+    } else {
+        bail!("Trying to complete a word too far beyond the last one");
     };
 
     let state_id = match get_match_final_state(dfa, words_before_cursor, completed_word_index) {
         Some(state_id) => state_id,
-        None => return vec![],
+        None => return Ok(vec![]),
     };
 
     let mut completions: Vec<(String, String)> = dfa.transitions.get(&state_id).unwrap_or(&HashMap::default()).iter().map(|(input, _)| get_completions_for_input(input, prefix, shell)).flatten().collect();
     completions.sort_unstable();
-    completions
+    Ok(completions)
 }
 
 
@@ -252,7 +254,7 @@ mod tests {
         let regex = AugmentedRegex::from_expr(&validated.expr, &validated.specializations, &arena);
         let dfa = DFA::from_regex(&regex);
         let dfa = dfa.minimize();
-        get_completions(&dfa, words_before_cursor, completed_word_index, Shell::Bash)
+        get_completions(&dfa, words_before_cursor, completed_word_index, Shell::Bash).unwrap()
     }
 
     #[test]

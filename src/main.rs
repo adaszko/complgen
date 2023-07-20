@@ -116,7 +116,7 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
 
     let words_before_cursor: Vec<&str> = words.iter().map(|s| s.as_ref()).collect();
 
-    let completions = get_completions(&dfa, &words_before_cursor, completed_word_index, shell);
+    let completions = get_completions(&dfa, &words_before_cursor, completed_word_index, shell)?;
 
     match args.shell {
         Shell::Bash(_) => {
