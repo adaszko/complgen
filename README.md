@@ -62,6 +62,11 @@ _complgen_jit_$stem () {
 done
 ```
 
+Note that because Bash breaks command line arguments into words based on characters in
+[`COMP_WORDBREAKS`](https://www.gnu.org/software/bash/manual/html_node/Bash-Variables.html#index-COMP_005fWORDBREAKS),
+completion of prefixes containing one of those characters does not behave 100% correctly.  For instance, with
+the default value of `COMP_WORDBREAKS`, completing `foo::bar` will work only up to the first `:`.
+
 ### Fish Integration
 
 Assumming your `.usage` files are stored in the `~/.config/complgen` directory, add this to your `~/.config/fish/config.fish`:
