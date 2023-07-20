@@ -48,8 +48,12 @@ for path in ~/.config/complgen/*.usage; do
     eval "
 _complgen_jit_$stem () {
     local -a completions=(\$(complgen complete \"$HOME/.config/complgen/${stem}.usage\" bash \$((COMP_CWORD - 1)) -- \${COMP_WORDS[@]:1}))
-    completions=\${completions[@]}
-    COMPREPLY=(\$(compgen -W \"\$completions\" -- "\${COMP_WORDS[\$COMP_CWORD]}"))
+    local prefix="\${COMP_WORDS[\$COMP_CWORD]}"
+    for item in "\${completions[@]}"; do
+        if [[ \$item = "\${prefix}"* ]]; then
+            COMPREPLY+=("\$item")
+        fi
+    done
     return 0
 }
 "
