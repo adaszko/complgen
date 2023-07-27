@@ -1,3 +1,4 @@
+use std::debug_assert;
 use std::ffi::OsStr;
 use std::{io::Write, process::Output};
 use std::process::Command;
@@ -110,39 +111,47 @@ impl Shell {
 
 
 pub fn get_match_final_state(dfa: &DFA, inputs: &[&str], completed_word_index: usize) -> Option<StateId> {
-    let mut backtracking_stack = Vec::from_iter([(0, dfa.starting_state)]);
-    while let Some((input_index, current_state)) = backtracking_stack.pop() {
-        if input_index >= inputs.len() {
-            return Some(current_state);
-        }
+    debug_assert!(completed_word_index <= inputs.len());
 
-        if input_index >= completed_word_index {
+    let mut input_index = 0;
+    let mut current_state = dfa.starting_state;
+
+    'outer: while input_index < inputs.len() {
+        if input_index == completed_word_index {
             return Some(current_state);
         }
 
         for (transition_input, to) in dfa.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
-            if transition_input.matches_anything() {
-                backtracking_stack.push((input_index + 1, *to));
+            if let Input::Literal(s, _) = transition_input {
+                if inputs[input_index] == s.as_str() {
+                    input_index += 1;
+                    current_state = *to;
+                    continue 'outer;
+                }
             }
         }
 
         for (transition_input, to) in dfa.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
             if let Input::Subword(dfa, _) = transition_input {
                 if dfa.accepts_str(inputs[input_index]) {
-                    backtracking_stack.push((input_index + 1, *to));
+                    input_index += 1;
+                    current_state = *to;
+                    continue 'outer;
                 }
             }
         }
 
         for (transition_input, to) in dfa.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
-            if let Input::Literal(s, _) = transition_input {
-                if inputs[input_index] == s.as_str() {
-                    backtracking_stack.push((input_index + 1, *to));
-                }
+            if transition_input.matches_anything() {
+                input_index += 1;
+                current_state = *to;
+                continue 'outer;
             }
         }
+
+        return None;
     }
-    None
+    Some(current_state)
 }
 
 
@@ -184,29 +193,28 @@ fn capture_specialized_completions(shell: Shell, specialization: &Specialization
 }
 
 
-pub fn get_subword_match_final_state(dfa: &DFA, user_input: &str) -> Option<StateId> {
-    let mut backtracking_stack = Vec::from_iter([(user_input, dfa.starting_state)]);
-    while let Some((remaining_input, current_state)) = backtracking_stack.pop() {
-        if remaining_input.is_empty() {
-            return Some(current_state);
+pub fn get_subword_match_final_state(dfa: &DFA, mut user_input: &str) -> Option<StateId> {
+    let mut current_state = dfa.starting_state;
+    'outer: while !user_input.is_empty() {
+        for (transition_input, to) in dfa.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
+            if let Input::Literal(s, _) = transition_input {
+                if user_input.starts_with(s.as_str()) {
+                    user_input = &user_input[s.len()..];
+                    current_state = *to;
+                    continue 'outer;
+                }
+            }
         }
 
         for (transition_input, to) in dfa.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
             if transition_input.matches_anything() {
-                backtracking_stack.push(("", *to));
+                return Some(*to);
             }
         }
 
-        for (transition_input, to) in dfa.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
-            if let Input::Literal(s, _) = transition_input {
-                if remaining_input.starts_with(s.as_str()) {
-                    let rest = &remaining_input[s.len()..];
-                    backtracking_stack.push((rest, *to));
-                }
-            }
-        }
+        return None;
     }
-    None
+    Some(current_state)
 }
 
 

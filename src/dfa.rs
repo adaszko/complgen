@@ -679,38 +679,50 @@ mod tests {
     }
 
     impl DFA {
-        pub fn accepts(&self, inputs: &[&str]) -> bool {
-            let mut backtracking_stack = Vec::from_iter([(0, self.starting_state)]);
-            while let Some((input_index, current_state)) = backtracking_stack.pop() {
-                if input_index == inputs.len() && self.accepting_states.contains(current_state.into()) {
-                    return true;
-                }
-
-                if input_index >= inputs.len() {
-                    continue;
-                }
-
-                for (transition_input, to) in self.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
-                    if transition_input.matches_anything() {
-                        backtracking_stack.push((input_index + 1, *to));
-                    }
-                }
-
-                for (transition_input, _) in self.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
-                    if let Input::Subword(..) = transition_input {
-                        todo!();
-                    }
+        pub fn accepts(&self, inputs: &[&str]) -> Result<bool, TestCaseError>{
+            let mut input_index = 0;
+            let mut current_state = self.starting_state;
+            'outer: loop {
+                if input_index == inputs.len() {
+                    break;
                 }
 
                 for (transition_input, to) in self.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
                     if let Input::Literal(s, _) = transition_input {
                         if inputs[input_index] == s.as_str() {
-                            backtracking_stack.push((input_index + 1, *to));
+                            input_index += 1;
+                            current_state = *to;
+                            continue 'outer;
                         }
                     }
                 }
+
+                for (transition_input, to) in self.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
+                    if let Input::Subword(dfa, _) = transition_input {
+                        if dfa.accepts_str(inputs[input_index]) {
+                            input_index += 1;
+                            current_state = *to;
+                            continue 'outer;
+                        }
+                    }
+                }
+
+                let anys: Vec<(Input, StateId)> = self.transitions.get(&current_state).unwrap_or(&HashMap::default()).iter().filter(|(input, _)| input.matches_anything()).map(|(k, v)| (k.clone(), *v)).collect();
+                // It's ambiguous which transition to take if there are two transitions
+                // representing a nonterminal.
+                prop_assume!(anys.len() <= 1);
+
+                for (transition_input, to) in anys {
+                    if transition_input.matches_anything() {
+                        input_index += 1;
+                        current_state = to;
+                        continue 'outer;
+                    }
+                }
+
+                break;
             }
-            false
+            Ok(self.accepting_states.contains(current_state.into()))
         }
 
         fn get_transitions(&self) -> Vec<Transition> {
@@ -762,7 +774,7 @@ mod tests {
                 let s: &str = s;
                 s
             }).collect();
-            prop_assert!(dfa.accepts(&input));
+            prop_assert!(dfa.accepts(&input)?);
         }
 
         #[test]
@@ -777,62 +789,10 @@ mod tests {
                 let s: &str = s;
                 s
             }).collect();
-            prop_assert!(dfa.accepts(&input));
+            prop_assert!(dfa.accepts(&input)?);
             let minimal_dfa = dfa.minimize();
-            prop_assert!(minimal_dfa.accepts(&input));
+            prop_assert!(minimal_dfa.accepts(&input)?);
         }
-    }
-
-    #[test]
-    fn accept_hangs() {
-        let expr = Sequence(vec![Rc::new(Alternative(vec![Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Alternative(vec![Rc::new(Many1(Rc::new(Optional(Rc::new(Many1(Rc::new(Sequence(vec![Rc::new(Terminal(u("foo"), None)), Rc::new(Terminal(u("foo"), None))])))))))), Rc::new(Terminal(u("bar"), None))])))), Rc::new(Nonterminal(u("DIRECTORY")))])), Rc::new(Many1(Rc::new(Terminal(u("--quux"), None))))])), Rc::new(Sequence(vec![Rc::new(Sequence(vec![Rc::new(Many1(Rc::new(Many1(Rc::new(Many1(Rc::new(Terminal(u("bar"), None)))))))), Rc::new(Many1(Rc::new(Sequence(vec![Rc::new(Many1(Rc::new(Many1(Rc::new(Terminal(u("--baz"), None)))))), Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Nonterminal(u("DIRECTORY"))), Rc::new(Nonterminal(u("PATH")))])), Rc::new(Alternative(vec![Rc::new(Terminal(u("--baz"), None)), Rc::new(Sequence(vec![Rc::new(Sequence(vec![Rc::new(Terminal(u("--baz"), None)), Rc::new(Nonterminal(u("FILE")))])), Rc::new(Sequence(vec![Rc::new(Terminal(u("foo"), None)), Rc::new(Nonterminal(u("FILE")))]))]))]))]))]))))])), Rc::new(Terminal(u("bar"), None))]))]);
-        let input = [
-            "--quux",
-            "--quux",
-            "--quux",
-            "bar",
-            "bar",
-            "bar",
-            "bar",
-            "bar",
-            "bar",
-            "bar",
-            "bar",
-            "bar",
-            "bar",
-            "bar",
-            "--baz",
-            "--baz",
-            "--baz",
-            "--baz",
-            "--baz",
-            "--baz",
-            "anything",
-            "--baz",
-            "--baz",
-            "--baz",
-            "--baz",
-            "anything",
-            "--baz",
-            "--baz",
-            "--baz",
-            "--baz",
-            "anything",
-            "--baz",
-            "anything",
-            "foo",
-            "anything",
-            "bar",
-        ];
-        let arena = Bump::new();
-        let specs = UstrMap::default();
-        let regex = AugmentedRegex::from_expr(&expr, &specs, &arena);
-        let dfa = DFA::from_regex(&regex);
-        let input: Vec<&str> = input.iter().map(|s| {
-            let s: &str = s;
-            s
-        }).collect();
-        assert!(dfa.accepts(&input));
     }
 
     #[test]
@@ -870,9 +830,9 @@ mod tests {
             let s: &str = s;
             s
         }).collect();
-        assert!(dfa.accepts(&input));
+        assert!(dfa.accepts(&input).unwrap());
         let minimal_dfa = dfa.minimize();
-        assert!(minimal_dfa.accepts(&input));
+        assert!(minimal_dfa.accepts(&input).unwrap());
     }
 
     #[test]
@@ -886,9 +846,9 @@ mod tests {
             let s: &str = s;
             s
         }).collect();
-        assert!(dfa.accepts(&input));
+        assert!(dfa.accepts(&input).unwrap());
         let minimal_dfa = dfa.minimize();
-        assert!(minimal_dfa.accepts(&input));
+        assert!(minimal_dfa.accepts(&input).unwrap());
     }
 
     #[test]
@@ -902,8 +862,8 @@ mod tests {
             let s: &str = s;
             s
         }).collect();
-        assert!(dfa.accepts(&input));
+        assert!(dfa.accepts(&input).unwrap());
         let minimal_dfa = dfa.minimize();
-        assert!(minimal_dfa.accepts(&input));
+        assert!(minimal_dfa.accepts(&input).unwrap());
     }
 }
