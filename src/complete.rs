@@ -41,7 +41,7 @@ fn stdout_from_output(output: Output) -> anyhow::Result<String> {
     if !output.status.success() {
         let stdout: String = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr: String = String::from_utf8_lossy(&output.stderr).to_string();
-        let result = anyhow::Result::Err(anyhow!("Command invokation failed"))
+        let result = anyhow::Result::Err(anyhow!("Command invocation failed"))
             .context(stdout)
             .context(stderr);
         return result;
