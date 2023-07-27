@@ -184,11 +184,11 @@ def test_completes_strace_expr(complgen_binary_path: Path):
     with completion_script_path(complgen_binary_path, STRACE_EXPR_GRAMMAR) as completions_file_path:
         input = 'source {}; complete --command cargo --do-complete "strace -e trace="'.format(completions_file_path)
         completions = get_sorted_completions(input)
-        assert completions == sorted([('%file', ''), ('file', ''), ('all', '')])
+        assert completions == sorted([('!', ''), ('%file', ''), ('file', ''), ('all', '')])
 
 
 def test_jit_completes_strace_expr(complgen_binary_path: Path):
-    assert get_sorted_jit_fish_completions(complgen_binary_path, STRACE_EXPR_GRAMMAR, 1, ['strace', '-e', 'trace=']) == sorted([('%file', ''), ('file', ''), ('all', '')])
+    assert get_sorted_jit_fish_completions(complgen_binary_path, STRACE_EXPR_GRAMMAR, 1, ['-e', 'trace=']) == sorted([('!', ''), ('%file', ''), ('file', ''), ('all', '')])
 
 
 def test_completes_lsof_filter(complgen_binary_path: Path):
@@ -199,4 +199,4 @@ def test_completes_lsof_filter(complgen_binary_path: Path):
 
 
 def test_jit_completes_lsof_filter(complgen_binary_path: Path):
-    assert get_sorted_jit_fish_completions(complgen_binary_path, LSOF_FILTER_GRAMMAR, 1, ['lsof', '-sTCP:']) == sorted([('LISTEN', ''), ('CLOSED', '')])
+    assert get_sorted_jit_fish_completions(complgen_binary_path, LSOF_FILTER_GRAMMAR, 0, ['-sTCP:']) == sorted([('^', ''), ('LISTEN', ''), ('CLOSED', '')])

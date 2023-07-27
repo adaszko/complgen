@@ -215,8 +215,8 @@ def test_completes_strace_expr(complgen_binary_path: Path):
 
 
 def test_jit_completes_strace_expr(complgen_binary_path: Path):
-    expr = get_jit_zsh_completions_expr(complgen_binary_path, STRACE_EXPR_GRAMMAR, 1, ['strace', '-e', 'trace='])
-    assert expr == 'local -a completions=("%file" "file" "all")\nlocal -a descriptions=("%file" "file" "all")\ncompadd -d descriptions -a completions\n'
+    expr = get_jit_zsh_completions_expr(complgen_binary_path, STRACE_EXPR_GRAMMAR, 1, ['-e', 'trace='])
+    assert expr == 'local -a completions=("!" "%file" "all" "file")\nlocal -a descriptions=("!" "%file" "all" "file")\ncompadd -d descriptions -a completions\n'
 
 
 def test_completes_lsof_filter(complgen_binary_path: Path):
@@ -225,5 +225,5 @@ def test_completes_lsof_filter(complgen_binary_path: Path):
 
 
 def test_jit_completes_lsof_filter(complgen_binary_path: Path):
-    expr = get_jit_zsh_completions_expr(complgen_binary_path, LSOF_FILTER_GRAMMAR, 1, ['lsof', '-sTCP:'])
-    assert expr == 'local -a completions=("LISTEN" "CLOSED")\nlocal -a descriptions=("LISTEN" "CLOSED")\ncompadd -d descriptions -a completions\n'
+    expr = get_jit_zsh_completions_expr(complgen_binary_path, LSOF_FILTER_GRAMMAR, 0, ['-sTCP:'])
+    assert expr == 'local -a completions=("CLOSED" "LISTEN" "^")\nlocal -a descriptions=("CLOSED" "LISTEN" "^")\ncompadd -d descriptions -a completions\n'

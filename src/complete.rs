@@ -127,8 +127,8 @@ pub fn get_match_final_state(dfa: &DFA, inputs: &[&str], completed_word_index: u
         }
 
         for (transition_input, to) in dfa.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
-            if let Input::Prefix(s, _, _) = transition_input {
-                if inputs[input_index].starts_with(s.as_str()) {
+            if let Input::Subword(dfa, _) = transition_input {
+                if dfa.accepts_str(inputs[input_index]) {
                     backtracking_stack.push((input_index + 1, *to));
                 }
             }
@@ -224,14 +224,8 @@ fn get_subword_completions(dfa: &DFA, entered_prefix: &str, shell: Shell) -> any
 
 fn do_get_completions_for_input(input: &Input, entered_prefix: &str, shell: Shell) -> anyhow::Result<Vec<(String, String)>> {
     let completions = match input {
-        Input::Prefix(expected_prefix, subword_dfa, _) => {
-            if expected_prefix.starts_with(entered_prefix) {
-                let suffix = &entered_prefix[expected_prefix.len()..];
-                get_subword_completions(&subword_dfa, suffix, shell)?
-            }
-            else {
-                vec![]
-            }
+        Input::Subword(subword_dfa, _) => {
+            get_subword_completions(&subword_dfa, entered_prefix, shell)?
         },
 
         Input::Literal(literal, description) => {

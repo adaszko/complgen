@@ -457,10 +457,36 @@ impl DFA {
         do_minimize(self)
     }
 
+    pub fn accepts_str(&self, mut input: &str) -> bool {
+        let mut current_state = self.starting_state;
+        'outer: while !input.is_empty() {
+            for (transition_input, to) in self.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
+                if let Input::Literal(ustr, _) = transition_input {
+                    let s = ustr.as_str();
+                    if input.starts_with(s) {
+                        input = &input[s.len()..];
+                        current_state = *to;
+                        continue 'outer;
+                    }
+                }
+            }
+
+            for (transition_input, to) in self.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
+                if transition_input.matches_anything() {
+                    current_state = *to;
+                    break 'outer;
+                }
+            }
+
+            break;
+        }
+        self.accepting_states.contains(current_state.into())
+    }
+
     pub fn get_all_literals(&self) -> Vec<(Ustr, Option<Ustr>)> {
         self.input_symbols.iter().filter_map(|input| match input {
             Input::Literal(input, description) => Some((*input, *description)),
-            Input::Prefix(..) => None,
+            Input::Subword(..) => None,
             Input::Nonterminal(..) => None,
             Input::Command(..) => None,
         }).collect()
@@ -473,7 +499,7 @@ impl DFA {
                 let cmd = match input {
                     Input::Command(cmd) => *cmd,
                     Input::Nonterminal(..) => continue,
-                    Input::Prefix(..) => continue,
+                    Input::Subword(..) => continue,
                     Input::Literal(..) => continue,
                 };
                 result.push((*from, cmd));
@@ -491,7 +517,7 @@ impl DFA {
                     Input::Nonterminal(_, Some(Specialization { .. })) => continue,
                     Input::Nonterminal(_, None) => continue,
                     Input::Command(_) => continue,
-                    Input::Prefix(..) => continue,
+                    Input::Subword(..) => continue,
                     Input::Literal(..) => continue,
                 };
                 result.push((*from, cmd));
@@ -509,7 +535,7 @@ impl DFA {
                     Input::Nonterminal(_, Some(Specialization { .. })) => continue,
                     Input::Nonterminal(_, None) => continue,
                     Input::Command(_) => continue,
-                    Input::Prefix(..) => continue,
+                    Input::Subword(..) => continue,
                     Input::Literal(..) => continue,
                 };
                 result.push((*from, cmd));
@@ -527,7 +553,7 @@ impl DFA {
                     Input::Nonterminal(_, Some(Specialization { .. })) => continue,
                     Input::Nonterminal(_, None) => continue,
                     Input::Command(_) => continue,
-                    Input::Prefix(..) => continue,
+                    Input::Subword(..) => continue,
                     Input::Literal(..) => continue,
                 };
                 result.push((*from, cmd));
@@ -543,7 +569,7 @@ impl DFA {
         };
         let transitions: Vec<(Ustr, Ustr, StateId)> = map.iter().filter_map(|(input, to)| match input {
             Input::Literal(input, description) => Some((*input, description.unwrap_or(ustr("")), *to)),
-            Input::Prefix(..) => None,
+            Input::Subword(..) => None,
             Input::Nonterminal(..) => None,
             Input::Command(..) => None,
         }).collect();
@@ -670,11 +696,9 @@ mod tests {
                     }
                 }
 
-                for (transition_input, to) in self.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
-                    if let Input::Prefix(s, _, _) = transition_input {
-                        if inputs[input_index].starts_with(s.as_str()) {
-                            backtracking_stack.push((input_index + 1, *to));
-                        }
+                for (transition_input, _) in self.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
+                    if let Input::Subword(..) = transition_input {
+                        todo!();
                     }
                 }
 

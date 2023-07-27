@@ -181,7 +181,7 @@ def test_completes_strace_expr(complgen_binary_path: Path):
 
 
 def test_jit_completes_strace_expr(complgen_binary_path: Path):
-    assert get_sorted_jit_bash_completions(complgen_binary_path, STRACE_EXPR_GRAMMAR, 1, ['-e', 'trace=']) == sorted(['%file', 'file', 'all'])
+    assert get_sorted_jit_bash_completions(complgen_binary_path, STRACE_EXPR_GRAMMAR, 1, ['-e', 'trace=']) == sorted(['!', '%file', 'file', 'all'])
 
 
 def test_completes_lsof_filter(complgen_binary_path: Path):
@@ -191,4 +191,4 @@ def test_completes_lsof_filter(complgen_binary_path: Path):
 
 
 def test_jit_completes_lsof_filter(complgen_binary_path: Path):
-    assert get_sorted_jit_bash_completions(complgen_binary_path, LSOF_FILTER_GRAMMAR, 1, ['lsof', '-sTCP:']) == sorted(['LISTEN', 'CLOSED'])
+    assert get_sorted_jit_bash_completions(complgen_binary_path, LSOF_FILTER_GRAMMAR, 0, ['-sTCP:']) == sorted(['^', 'LISTEN', 'CLOSED'])

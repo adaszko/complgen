@@ -7,7 +7,7 @@ use ustr::{Ustr, UstrMap};
 use roaring::RoaringBitmap;
 
 use crate::dfa::DFA;
-use crate::grammar::{Expr, Specialization, Subword};
+use crate::grammar::{Expr, Specialization, SubwordCompilationPhase};
 
 pub type Position = u32;
 
@@ -15,7 +15,7 @@ pub type Position = u32;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Input {
     Literal(Ustr, Option<Ustr>),
-    Prefix(Ustr, Rc<DFA>, Option<Ustr>),
+    Subword(Rc<DFA>, Option<Ustr>),
     Nonterminal(Ustr, Option<Specialization>),
     Command(Ustr),
 }
@@ -25,7 +25,7 @@ impl Input {
     pub fn matches_anything(&self) -> bool {
         match self {
             Self::Literal(..) => false,
-            Self::Prefix(..) => false,
+            Self::Subword(..) => false,
             Self::Nonterminal(..) => true,
             Self::Command(..) => true,
         }
@@ -36,7 +36,7 @@ impl Input {
 impl std::fmt::Display for Input {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Prefix(prefix, _, _) => write!(f, r#"{prefix}"#),
+            Self::Subword(subword, _) => write!(f, r#"{subword:?}"#),
             Self::Literal(literal, _) => write!(f, r#"{literal}"#),
             Self::Nonterminal(nonterminal, _) => write!(f, r#"{nonterminal}"#),
             Self::Command(command) => write!(f, r#"{command}"#),
@@ -48,7 +48,7 @@ impl std::fmt::Display for Input {
 #[derive(Clone, PartialEq)]
 pub enum AugmentedRegexNode<'a> {
     Epsilon,
-    Prefix(Ustr, Position),
+    Subword(Position),
     Terminal(Ustr, Position),
     Nonterminal(Position),
     Command(Ustr, Position),
@@ -62,7 +62,7 @@ pub enum AugmentedRegexNode<'a> {
 impl<'a> std::fmt::Debug for AugmentedRegexNode<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Prefix(prefix, position) => f.write_fmt(format_args!(r#"Prefix({:?}.to_string(), {position})"#, prefix)),
+            Self::Subword(position) => f.write_fmt(format_args!(r#"Subword({position})"#)),
             Self::Terminal(term, position) => f.write_fmt(format_args!(r#"Terminal({:?}.to_string(), {position})"#, term)),
             Self::Nonterminal(position) => f.write_fmt(format_args!(r#"Nonterminal({})"#, position)),
             Self::Command(code, position) => f.write_fmt(format_args!(r#"Command({:?}.to_string(), {})"#, code, position)),
@@ -79,7 +79,7 @@ impl<'a> std::fmt::Debug for AugmentedRegexNode<'a> {
 fn do_firstpos(re: &AugmentedRegexNode, result: &mut BTreeSet<Position>) {
     match re {
         AugmentedRegexNode::Epsilon => {},
-        AugmentedRegexNode::Prefix(_, position) => { result.insert(*position); },
+        AugmentedRegexNode::Subword(position) => { result.insert(*position); },
         AugmentedRegexNode::Terminal(_, position) => { result.insert(*position); },
         AugmentedRegexNode::Nonterminal(position) => { result.insert(*position); },
         AugmentedRegexNode::Command(_, position) => { result.insert(*position); },
@@ -106,7 +106,7 @@ fn do_firstpos(re: &AugmentedRegexNode, result: &mut BTreeSet<Position>) {
 fn do_lastpos(re: &AugmentedRegexNode, result: &mut HashSet<Position>) {
     match re {
         AugmentedRegexNode::Epsilon => {},
-        AugmentedRegexNode::Prefix(_, position) => { result.insert(*position); },
+        AugmentedRegexNode::Subword(position) => { result.insert(*position); },
         AugmentedRegexNode::Terminal(_, position) => { result.insert(*position); },
         AugmentedRegexNode::Nonterminal(position) => { result.insert(*position); },
         AugmentedRegexNode::Command(_, position) => { result.insert(*position); },
@@ -133,7 +133,7 @@ fn do_lastpos(re: &AugmentedRegexNode, result: &mut HashSet<Position>) {
 fn do_followpos(re: &AugmentedRegexNode, result: &mut BTreeMap<Position, RoaringBitmap>) {
     match re {
         AugmentedRegexNode::Epsilon => {},
-        AugmentedRegexNode::Prefix(..) => {},
+        AugmentedRegexNode::Subword(..) => {},
         AugmentedRegexNode::Terminal(..) => {},
         AugmentedRegexNode::Nonterminal(..) => {},
         AugmentedRegexNode::Command(..) => {},
@@ -170,7 +170,7 @@ impl<'a> AugmentedRegexNode<'a> {
     fn nullable(&self) -> bool {
         match self {
             AugmentedRegexNode::Epsilon => true,
-            AugmentedRegexNode::Prefix(..) => false,
+            AugmentedRegexNode::Subword(..) => false,
             AugmentedRegexNode::Terminal(..) => false,
             AugmentedRegexNode::Nonterminal(..) => false,
             AugmentedRegexNode::Command(..) => false,
@@ -210,13 +210,13 @@ fn do_from_expr<'a>(e: &Expr, specs: &UstrMap<Specialization>, arena: &'a Bump, 
             symbols.insert(input);
             result
         },
-        Expr::Prefix(prefix, subword, description) => {
-            let result = AugmentedRegexNode::Prefix(*prefix, Position::try_from(input_from_position.len()).unwrap());
+        Expr::Subword(subword, descr) => {
+            let result = AugmentedRegexNode::Subword(Position::try_from(input_from_position.len()).unwrap());
             let dfa = match subword {
-                Subword::DFA(dfa) => dfa,
-                Subword::Expr(_) => unreachable!(),
+                SubwordCompilationPhase::DFA(dfa) => dfa,
+                SubwordCompilationPhase::Expr(_) => unreachable!(),
             };
-            let input = Input::Prefix(*prefix, Rc::clone(&dfa), *description);
+            let input = Input::Subword(Rc::clone(&dfa), *descr);
             input_from_position.push(input.clone());
             symbols.insert(input);
             result
