@@ -6,23 +6,6 @@ use ustr::{UstrMap, Ustr, ustr};
 use crate::dfa::DFA;
 
 
-/// `literals`: an associative array used for literals deduplication (interning) where:
-///   * key: the literal
-///   * value: literal's id
-///
-/// `transitions`: an associative array where:
-///   * key: source state number
-///   * value: a string that is an initializer of an associative array, e.g. "( [add]=23 [obliterate]=1080 [repair]=1543 )"
-///
-/// The initializer value above indicates there are 3 transitions from the state of id `key`.
-/// First of which is a transition on word `add`, to the state 23.
-///
-/// `match_anything_transitions`: an associative array where:
-///  * key: state number
-///  * value: state number
-/// An entry in the `match_anything_transitions` array indicates that there's a fallback transition that
-/// accepts any word
-///
 fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
     let all_literals: Vec<(usize, Ustr, Ustr)> = dfa.get_all_literals().into_iter().enumerate().map(|(id, (literal, description))| (id, literal, description.unwrap_or(ustr("")))).collect();
 
@@ -31,15 +14,15 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
     writeln!(buffer, r#"    local -a literals=({literals})"#)?;
     writeln!(buffer, "")?;
 
-    writeln!(buffer, r#"    declare -A transitions"#)?;
+    writeln!(buffer, r#"    declare -A literal_transitions"#)?;
     for state in dfa.get_all_states() {
-        let transitions = dfa.get_literal_transitions_from(StateId::try_from(state).unwrap());
-        if transitions.is_empty() {
+        let literal_transitions = dfa.get_literal_transitions_from(StateId::try_from(state).unwrap());
+        if literal_transitions.is_empty() {
             continue;
         }
-        let transitions: Vec<(usize, StateId)> = transitions.into_iter().map(|(input, description, to)| (*literal_id_from_input_description.get(&(input, description)).unwrap(), to)).collect();
-        let state_transitions: String = itertools::join(transitions.into_iter().map(|(input, to)| format!("[{}]={}", input, to)), " ");
-        writeln!(buffer, r#"    transitions[{state}]="({state_transitions})""#)?;
+        let literal_transitions: Vec<(usize, StateId)> = literal_transitions.into_iter().map(|(input, description, to)| (*literal_id_from_input_description.get(&(input, description)).unwrap(), to)).collect();
+        let state_transitions: String = itertools::join(literal_transitions.into_iter().map(|(input, to)| format!("[{}]={}", input, to)), " ");
+        writeln!(buffer, r#"    literal_transitions[{state}]="({state_transitions})""#)?;
     }
 
     writeln!(buffer, "")?;
@@ -80,8 +63,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     local state={starting_state}
     local word_index=1
     while [[ $word_index -lt $COMP_CWORD ]]; do
-        if [[ -v "transitions[$state]" ]]; then
-            local state_transitions_initializer=${{transitions[$state]}}
+        if [[ -v "literal_transitions[$state]" ]]; then
+            local state_transitions_initializer=${{literal_transitions[$state]}}
             declare -A state_transitions
             eval "state_transitions=$state_transitions_initializer"
 
@@ -116,8 +99,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     write!(buffer, r#"
     local completions=()
 
-    if [[ -v "transitions[$state]" ]]; then
-        local state_transitions_initializer=${{transitions[$state]}}
+    if [[ -v "literal_transitions[$state]" ]]; then
+        local state_transitions_initializer=${{literal_transitions[$state]}}
         declare -A state_transitions
         eval "state_transitions=$state_transitions_initializer"
 
