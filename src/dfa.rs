@@ -576,6 +576,21 @@ impl DFA {
         transitions
     }
 
+    pub fn get_subword_transitions_from(&self, from: StateId) -> Vec<(Rc<DFA>, StateId)> {
+        let map = match self.transitions.get(&StateId::try_from(from).unwrap()) {
+            Some(map) => map,
+            None => return vec![],
+        };
+        let transitions: Vec<(Rc<DFA>, StateId)> = map.iter().filter_map(|(input, to)| match input {
+            Input::Subword(dfa, _) => Some((Rc::clone(&dfa), *to)),
+            Input::Literal(..) => None,
+            Input::Nonterminal(..) => None,
+            Input::Command(..) => None,
+        }).collect();
+        transitions
+    }
+
+
     pub fn get_all_states(&self) -> RoaringBitmap {
         let mut states: RoaringBitmap = Default::default();
         for (from, to) in &self.transitions {
@@ -595,6 +610,27 @@ impl DFA {
                 if input.matches_anything() {
                     result.push((*from, *to));
                 }
+            }
+        }
+        result
+    }
+
+    pub fn get_subwords(&self) -> HashMap<Rc<DFA>, usize> {
+        let mut unallocated_id = 0;
+        let mut result: HashMap<Rc<DFA>, usize> = Default::default();
+        for (_, tos) in &self.transitions {
+            for (input, _) in tos {
+                let dfa = match input {
+                    Input::Subword(dfa, _) => dfa,
+                    Input::Nonterminal(..) => continue,
+                    Input::Command(..) => continue,
+                    Input::Literal(..) => continue,
+                };
+                result.entry(Rc::clone(&dfa)).or_insert_with(|| {
+                    let save = unallocated_id;
+                    unallocated_id += 1;
+                    save
+                });
             }
         }
         result

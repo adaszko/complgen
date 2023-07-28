@@ -143,7 +143,7 @@ cargo test --test testname;
 <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 '''
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
-        input = r'''COMP_WORDS=(cargo +stable-aarch64-apple-darwin); COMP_CWORD=3; _cargo; printf '%s\n' "${COMPREPLY[@]}"'''
+        input = r'''COMP_WORDS=(cargo +stable-aarch64-apple-darwin); COMP_CWORD=2; _cargo; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_completions(path, input) == sorted(['foo'])
 
 
@@ -162,8 +162,8 @@ cargo +<toolchain>;
 <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 '''
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
-        input = r'''COMP_WORDS=(cargo +); COMP_CWORD=2; _cargo; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_completions(path, input) == sorted(['stable-aarch64-apple-darwin', 'stable-x86_64-apple-darwin'])
+        input = r'''COMP_WORDS=(cargo +); COMP_CWORD=1; _cargo; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_completions(path, input) == sorted(['+stable-aarch64-apple-darwin', '+stable-x86_64-apple-darwin'])
 
 
 def test_jit_completes_prefix(complgen_binary_path: Path):
@@ -177,7 +177,7 @@ cargo +<toolchain>;
 def test_completes_strace_expr(complgen_binary_path: Path):
     with completion_script_path(complgen_binary_path, STRACE_EXPR_GRAMMAR) as path:
         input = r'''COMP_WORDS=(strace -e trace=); COMP_CWORD=2; _strace; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_completions(path, input) == sorted(['%file', 'file', 'all'])
+        assert get_sorted_completions(path, input) == sorted(['trace=!', 'trace=%file', 'trace=file', 'trace=all'])
 
 
 def test_jit_completes_strace_expr(complgen_binary_path: Path):
@@ -186,8 +186,8 @@ def test_jit_completes_strace_expr(complgen_binary_path: Path):
 
 def test_completes_lsof_filter(complgen_binary_path: Path):
     with completion_script_path(complgen_binary_path, LSOF_FILTER_GRAMMAR) as path:
-        input = r'''COMP_WORDS=(lsof -sTCP:); COMP_CWORD=2; _lsof; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_completions(path, input) == sorted(['LISTEN', 'CLOSED'])
+        input = r'''COMP_WORDS=(lsof -sTCP:); COMP_CWORD=1; _lsof; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_completions(path, input) == sorted(['-sTCP:LISTEN', '-sTCP:CLOSED', '-sTCP:^'])
 
 
 def test_jit_completes_lsof_filter(complgen_binary_path: Path):
