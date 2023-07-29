@@ -144,7 +144,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     }
 
 
-    let id_from_dfa = dfa.get_subwords();
+    let id_from_dfa = dfa.get_subwords(0);
     for (dfa, id) in &id_from_dfa {
         let name = format!("_{command}_subword_{id}");
         write_subword_fn(buffer, &name, dfa)?;

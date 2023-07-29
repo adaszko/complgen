@@ -615,8 +615,8 @@ impl DFA {
         result
     }
 
-    pub fn get_subwords(&self) -> HashMap<Rc<DFA>, usize> {
-        let mut unallocated_id = 0;
+    pub fn get_subwords(&self, first_id: usize) -> HashMap<Rc<DFA>, usize> {
+        let mut unallocated_id = first_id;
         let mut result: HashMap<Rc<DFA>, usize> = Default::default();
         for (_, tos) in &self.transitions {
             for (input, _) in tos {

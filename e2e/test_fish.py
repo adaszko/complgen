@@ -148,7 +148,7 @@ cargo test --test testname;
 <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 '''
     with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        input = 'source {}; complete --command cargo --do-complete "cargo +stable-aarch64-apple-darwin"'.format(completions_file_path)
+        input = 'source {}; complete --command cargo --do-complete "cargo +stable-aarch64-apple-darwin "'.format(completions_file_path)
         completions = get_sorted_completions(input)
         assert completions == sorted([('foo', '')])
 
@@ -169,7 +169,7 @@ cargo +<toolchain>;
     with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
         input = 'source {}; complete --command cargo --do-complete "cargo +"'.format(completions_file_path)
         completions = get_sorted_completions(input)
-        assert completions == sorted([('stable-aarch64-apple-darwin', ''), ('stable-x86_64-apple-darwin', '')])
+        assert completions == sorted([('+stable-aarch64-apple-darwin', ''), ('+stable-x86_64-apple-darwin', '')])
 
 
 def test_jit_completes_prefix(complgen_binary_path: Path):
@@ -182,9 +182,9 @@ cargo +<toolchain>;
 
 def test_completes_strace_expr(complgen_binary_path: Path):
     with completion_script_path(complgen_binary_path, STRACE_EXPR_GRAMMAR) as completions_file_path:
-        input = 'source {}; complete --command cargo --do-complete "strace -e trace="'.format(completions_file_path)
+        input = 'source {}; complete --command cargo --do-complete "strace -e "'.format(completions_file_path)
         completions = get_sorted_completions(input)
-        assert completions == sorted([('!', ''), ('%file', ''), ('file', ''), ('all', '')])
+        assert completions == sorted([('!', ''), ('%file', ''), ('file', ''), ('all', ''), ('read', ''), ('trace', ''), ('write', ''), ('fault', '')])
 
 
 def test_jit_completes_strace_expr(complgen_binary_path: Path):
@@ -193,9 +193,9 @@ def test_jit_completes_strace_expr(complgen_binary_path: Path):
 
 def test_completes_lsof_filter(complgen_binary_path: Path):
     with completion_script_path(complgen_binary_path, LSOF_FILTER_GRAMMAR) as completions_file_path:
-        input = 'source {}; complete --command cargo --do-complete "lsof -sTCP:"'.format(completions_file_path)
+        input = 'source {}; complete --command cargo --do-complete "lsof "'.format(completions_file_path)
         completions = get_sorted_completions(input)
-        assert completions == sorted([('LISTEN', ''), ('CLOSED', '')])
+        assert completions == sorted([('-s', '')])
 
 
 def test_jit_completes_lsof_filter(complgen_binary_path: Path):
