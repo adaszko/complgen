@@ -197,7 +197,7 @@ cargo +<toolchain>;
 <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 '''
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
-        assert get_sorted_completions(capture_zsh_path, 'cargo +') == sorted([('stable-aarch64-apple-darwin', ''), ('stable-x86_64-apple-darwin', '')])
+        assert get_sorted_completions(capture_zsh_path, 'cargo +') == sorted([('+stable-aarch64-apple-darwin', ''), ('+stable-x86_64-apple-darwin', '')])
 
 
 def test_jit_completes_prefix(complgen_binary_path: Path):
@@ -211,7 +211,7 @@ cargo +<toolchain>;
 
 def test_completes_strace_expr(complgen_binary_path: Path):
     with capture_grammar_completions(complgen_binary_path, STRACE_EXPR_GRAMMAR) as capture_zsh_path:
-        assert get_sorted_completions(capture_zsh_path, 'strace -e ') == sorted([('%file', ''), ('file', ''), ('all', '')])
+        assert get_sorted_completions(capture_zsh_path, 'strace -e ') == sorted([('%file', ''), ('!', ''), ('all', ''), ('fault', ''), ('file', ''), ('read', ''), ('trace', ''), ('write', '')])
 
 
 def test_jit_completes_strace_expr(complgen_binary_path: Path):
@@ -221,7 +221,7 @@ def test_jit_completes_strace_expr(complgen_binary_path: Path):
 
 def test_completes_lsof_filter(complgen_binary_path: Path):
     with capture_grammar_completions(complgen_binary_path, LSOF_FILTER_GRAMMAR) as capture_zsh_path:
-        assert get_sorted_completions(capture_zsh_path, 'lsof -sTCP:') == sorted([('LISTEN', ''), ('CLOSED', '')])
+        assert get_sorted_completions(capture_zsh_path, 'lsof -sTCP:') == sorted([('-sTCP:LISTEN', ''), ('-sTCP:CLOSED', ''), ('-sTCP:^', '')])
 
 
 def test_jit_completes_lsof_filter(complgen_binary_path: Path):
