@@ -655,6 +655,7 @@ fn compile_subword_exprs(expr: Rc<Expr>, specs: &UstrMap<Specialization>) -> Rc<
             let subword_expr = flatten_expr(subword_expr);
             let regex = AugmentedRegex::from_expr(&subword_expr, &specs, &arena);
             let dfa = DFA::from_regex(&regex);
+            let dfa = dfa.minimize();
             Rc::new(Expr::Subword(SubwordCompilationPhase::DFA(Rc::new(dfa)), *descr))
         },
         Expr::Terminal(..) | Expr::Nonterminal(..) | Expr::Command(..) => Rc::clone(&expr),

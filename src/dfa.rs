@@ -448,6 +448,69 @@ fn do_minimize(dfa: &DFA) -> DFA {
 }
 
 
+fn do_to_dot<W: Write>(output: &mut W, dfa: &DFA, identifiers_prefix: &str, recursion_level: usize) -> std::result::Result<(), std::io::Error> {
+    let indentation = format!("\t{}", str::repeat("\t", recursion_level));
+
+    let id_from_dfa = dfa.get_subwords(0);
+
+    if dfa.accepting_states.contains(dfa.starting_state.into()) {
+        writeln!(output, "{indentation}node [shape = doubleoctagon];")?;
+    }
+    else {
+        writeln!(output, "{indentation}node [shape = octagon];")?;
+    }
+    writeln!(output, "{indentation}_{identifiers_prefix}{}[label=\"{identifiers_prefix}{}\"];", dfa.starting_state, dfa.starting_state)?;
+
+    let regular_states = {
+        let mut states = [&dfa.get_all_states(), &dfa.accepting_states].difference();
+        states.remove(dfa.starting_state.into());
+        states
+    };
+
+    writeln!(output, "{indentation}node [shape = circle];")?;
+    for state in regular_states {
+        writeln!(output, "{indentation}_{identifiers_prefix}{}[label=\"{identifiers_prefix}{}\"];", state, state)?;
+    }
+
+    write!(output, "\n")?;
+
+    writeln!(output, "{indentation}node [shape = doublecircle];")?;
+    for state in &dfa.accepting_states {
+        writeln!(output, "{indentation}_{identifiers_prefix}{}[label=\"{identifiers_prefix}{}\"];", state, state)?;
+    }
+
+    write!(output, "\n")?;
+
+    for (from, to) in &dfa.transitions {
+        for (input, to) in to {
+            match input {
+                Input::Literal(_, _) | Input::Nonterminal(_, _) | Input::Command(_) => {
+                    let label = format!("{}", input).replace("\"", "\\\"");
+                    writeln!(output, "{indentation}_{identifiers_prefix}{} -> _{identifiers_prefix}{} [label = \"{}\"];", from, to, label)?;
+                }
+                Input::Subword(subdfa, _) => {
+                    let subdfa_id = *id_from_dfa.get(subdfa).unwrap();
+                    writeln!(output, "{indentation}subgraph cluster_{identifiers_prefix}{subdfa_id} {{")?;
+                    writeln!(output, "{indentation}\tlabel = \"subword {subdfa_id}\";")?;
+                    writeln!(output, "{indentation}\tcolor=grey91;")?;
+                    writeln!(output, "{indentation}\tstyle=filled;")?;
+                    let subdfa_identifiers_prefix = &format!("{subdfa_id}_");
+                    do_to_dot(output, subdfa, &subdfa_identifiers_prefix, recursion_level + 1)?;
+                    writeln!(output, "{indentation}}}")?;
+
+                    writeln!(output, "{indentation}_{identifiers_prefix}{} -> _{subdfa_identifiers_prefix}{};", from, subdfa.starting_state)?;
+                    for subdfa_accepting_state in &subdfa.accepting_states {
+                        writeln!(output, "{indentation}_{subdfa_identifiers_prefix}{} -> _{identifiers_prefix}{};", subdfa_accepting_state, to)?;
+                    }
+                },
+            }
+        }
+    }
+
+    Ok(())
+}
+
+
 impl DFA {
     pub fn from_regex(regex: &AugmentedRegex) -> Self {
         dfa_from_regex(regex)
@@ -639,42 +702,7 @@ impl DFA {
     pub fn to_dot<W: Write>(&self, output: &mut W) -> std::result::Result<(), std::io::Error> {
         writeln!(output, "digraph nfa {{")?;
         writeln!(output, "\trankdir=LR;")?;
-
-        if self.accepting_states.contains(self.starting_state.into()) {
-            writeln!(output, "\tnode [shape = doubleoctagon];")?;
-        }
-        else {
-            writeln!(output, "\tnode [shape = octagon];")?;
-        }
-        writeln!(output, "\t_{}[label=\"{}\"];", self.starting_state, self.starting_state)?;
-
-        let regular_states = {
-            let mut states = [&self.get_all_states(), &self.accepting_states].difference();
-            states.remove(self.starting_state.into());
-            states
-        };
-
-        writeln!(output, "\tnode [shape = circle];")?;
-        for state in regular_states {
-            writeln!(output, "\t_{}[label=\"{}\"];", state, state)?;
-        }
-
-        write!(output, "\n")?;
-
-        writeln!(output, "\tnode [shape = doublecircle];")?;
-        for state in &self.accepting_states {
-            writeln!(output, "\t_{}[label=\"{}\"];", state, state)?;
-        }
-
-        write!(output, "\n")?;
-
-        for (from, to) in &self.transitions {
-            for (input, to) in to {
-                let label = format!("{}", input).replace("\"", "\\\"");
-                writeln!(output, "\t_{} -> _{} [label = \"{}\"];", from, to, label)?;
-            }
-        }
-
+        do_to_dot(output, self, "", 0)?;
         writeln!(output, "}}")?;
         Ok(())
     }
