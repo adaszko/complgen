@@ -6,40 +6,28 @@ use ustr::{UstrMap, Ustr, ustr};
 use crate::dfa::DFA;
 
 
-/// `literals`: an associative array used for literals deduplication (interning) where:
-///   * key: the literal
-///   * value: literal's id
-///
-/// `transitions`: an associative array where:
-///   * key: source state number
-///   * value: a string that is an initializer of an associative array, e.g. "( [add]=23 [obliterate]=1080 [repair]=1543 )"
-///
-/// The initializer value above indicates there are 3 transitions from the state of id `key`.
-/// First of which is a transition on word `add`, to the state 23.
-///
-/// `match_anything_transitions`: an associative array where:
-///  * key: state number
-///  * value: state number
-/// An entry in the `match_anything_transitions` array indicates that there's a fallback transition that
-/// accepts any word
-///
-fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
+pub fn make_string_constant(s: &str) -> String {
+    format!(r#""{}""#, s.replace("\"", "\\\"").replace("`", "\\`").replace("$", "\\$"))
+}
+
+
+fn write_lookup_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
     let all_literals: Vec<(usize, Ustr, Ustr)> = dfa.get_all_literals().into_iter().enumerate().map(|(id, (literal, description))| (id, literal, description.unwrap_or(ustr("")))).collect();
 
     let literal_id_from_input_description: HashMap<(Ustr, Ustr), usize> = all_literals.iter().map(|(id, input, description)| ((*input, *description), *id)).collect();
-    let literals: String = itertools::join(all_literals.iter().map(|(_, literal, _)| literal), " ");
+    let literals: String = itertools::join(all_literals.iter().map(|(_, literal, _)| make_string_constant(literal)), " ");
     writeln!(buffer, r#"    local -a literals=({literals})"#)?;
     writeln!(buffer, "")?;
 
-    writeln!(buffer, r#"    declare -A transitions"#)?;
+    writeln!(buffer, r#"    declare -A literal_transitions"#)?;
     for state in dfa.get_all_states() {
-        let transitions = dfa.get_literal_transitions_from(StateId::try_from(state).unwrap());
-        if transitions.is_empty() {
+        let literal_transitions = dfa.get_literal_transitions_from(StateId::try_from(state).unwrap());
+        if literal_transitions.is_empty() {
             continue;
         }
-        let transitions: Vec<(usize, StateId)> = transitions.into_iter().map(|(input, description, to)| (*literal_id_from_input_description.get(&(input, description)).unwrap(), to)).collect();
-        let state_transitions: String = itertools::join(transitions.into_iter().map(|(input, to)| format!("[{}]={}", input, to)), " ");
-        writeln!(buffer, r#"    transitions[{state}]="({state_transitions})""#)?;
+        let literal_transitions: Vec<(usize, StateId)> = literal_transitions.into_iter().map(|(input, description, to)| (*literal_id_from_input_description.get(&(input, description)).unwrap(), to)).collect();
+        let state_transitions: String = itertools::join(literal_transitions.into_iter().map(|(input, to)| format!("[{}]={}", input, to)), " ");
+        writeln!(buffer, r#"    literal_transitions[{state}]="({state_transitions})""#)?;
     }
 
     writeln!(buffer, "")?;
@@ -48,6 +36,90 @@ fn write_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
     let match_anything_transitions = itertools::join(dfa.get_match_anything_transitions().into_iter().map(|(from, to)| format!("[{from}]={to}")), " ");
     writeln!(buffer, r#"    match_anything_transitions=({match_anything_transitions})"#)?;
 
+    Ok(())
+}
+
+
+fn write_subword_fn<W: Write>(buffer: &mut W, name: &str, dfa: &DFA) -> Result<()> {
+    writeln!(buffer, r#"{name} () {{
+    [[ $# -ne 2 ]] && return 1
+    local mode=$1
+    local word=$2
+"#)?;
+
+    write_lookup_tables(buffer, dfa)?;
+
+    write!(buffer, r#"
+    local state={starting_state}
+    local char_index=0
+    local matched=0
+    while true; do
+        if [[ $char_index -ge ${{#word}} ]]; then
+            matched=1
+            break
+        fi
+
+        local subword=${{word:$char_index}}
+
+        if [[ -v "literal_transitions[$state]" ]]; then
+            local state_transitions_initializer=${{literal_transitions[$state]}}
+            declare -A state_transitions
+            eval "state_transitions=$state_transitions_initializer"
+
+            local literal_matched=0
+            for literal_id in $(seq 0 $((${{#literals[@]}} - 1))); do
+                local literal=${{literals[$literal_id]}}
+                local literal_len=${{#literal}}
+                if [[ ${{subword:0:$literal_len}} = "$literal" ]]; then
+                    if [[ -v "state_transitions[$literal_id]" ]]; then
+                        state=${{state_transitions[$literal_id]}}
+                        char_index=$((char_index + literal_len))
+                        literal_matched=1
+                    fi
+                fi
+            done
+            if [[ $literal_matched -ne 0 ]]; then
+                continue
+            fi
+        fi
+
+        if [[ -v "match_anything_transitions[$state]" ]]; then
+            state=${{match_anything_transitions[$state]}}
+            matched=1
+            break
+        fi
+
+        break
+    done
+
+    if [[ $mode = matches ]]; then
+        return $((1 - matched))
+    fi
+"#, starting_state = dfa.starting_state)?;
+
+    // TODO Command-based completions (including specializations)
+
+    write!(buffer, r#"
+    local matched_prefix="${{word:0:$char_index}}"
+    local completed_prefix="${{word:$char_index}}"
+
+    if [[ -v "literal_transitions[$state]" ]]; then
+        local state_transitions_initializer=${{literal_transitions[$state]}}
+        declare -A state_transitions
+        eval "state_transitions=$state_transitions_initializer"
+
+        for literal_id in "${{!state_transitions[@]}}"; do
+            local literal=${{literals[$literal_id]}}
+            if [[ $literal = "${{completed_prefix}}"* ]]; then
+                echo "$matched_prefix$literal"
+            fi
+        done
+    fi
+    return 0
+"#)?;
+
+
+    writeln!(buffer, r#"}}"#)?;
     Ok(())
 }
 
@@ -71,23 +143,40 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 "#)?;
     }
 
-    write!(buffer, r#"_{command} () {{
-"#)?;
 
-    write_tables(buffer, dfa)?;
+    let id_from_dfa = dfa.get_subwords(0);
+    for (dfa, id) in &id_from_dfa {
+        let name = format!("_{command}_subword_{id}");
+        write_subword_fn(buffer, &name, dfa)?;
+        writeln!(buffer, "")?;
+    }
+
+
+    writeln!(buffer, r#"_{command} () {{"#)?;
+    write_lookup_tables(buffer, dfa)?;
+
+    writeln!(buffer, r#"    declare -A subword_transitions"#)?;
+    for state in dfa.get_all_states() {
+        let subword_transitions = dfa.get_subword_transitions_from(state.try_into().unwrap());
+        if subword_transitions.is_empty() {
+            continue;
+        }
+        let state_transitions: String = itertools::join(subword_transitions.into_iter().map(|(dfa, to)| format!("[{}]={}", id_from_dfa.get(&dfa).unwrap(), to)), " ");
+        writeln!(buffer, r#"    subword_transitions[{state}]="({state_transitions})""#)?;
+    }
 
     write!(buffer, r#"
     local state={starting_state}
     local word_index=1
     while [[ $word_index -lt $COMP_CWORD ]]; do
-        if [[ -v "transitions[$state]" ]]; then
-            local state_transitions_initializer=${{transitions[$state]}}
+        if [[ -v "literal_transitions[$state]" ]]; then
+            local state_transitions_initializer=${{literal_transitions[$state]}}
             declare -A state_transitions
             eval "state_transitions=$state_transitions_initializer"
 
             local word=${{COMP_WORDS[$word_index]}}
             local word_matched=0
-            for literal_id in $(seq 0 ${{#literals[@]}}); do
+            for literal_id in $(seq 0 $((${{#literals[@]}} - 1))); do
                 if [[ ${{literals[$literal_id]}} = "$word" ]]; then
                     if [[ -v "state_transitions[$literal_id]" ]]; then
                         state=${{state_transitions[$literal_id]}}
@@ -98,6 +187,25 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                 fi
             done
             if [[ $word_matched -ne 0 ]]; then
+                continue
+            fi
+        fi
+
+        if [[ -v "subword_transitions[$state]" ]]; then
+            local state_transitions_initializer=${{subword_transitions[$state]}}
+            declare -A state_transitions
+            eval "state_transitions=$state_transitions_initializer"
+
+            local subword_matched=0
+            for subword_id in "${{!state_transitions[@]}}"; do
+                if _{command}_subword_"${{subword_id}}" matches "$word"; then
+                    subword_matched=1
+                    state=${{state_transitions[$subword_id]}}
+                    word_index=$((word_index + 1))
+                    break
+                fi
+            done
+            if [[ $subword_matched -ne 0 ]]; then
                 continue
             fi
         fi
@@ -114,15 +222,30 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 "#, starting_state = dfa.starting_state)?;
 
     write!(buffer, r#"
-    local completions=()
+    local prefix="${{COMP_WORDS[$COMP_CWORD]}}"
 
-    if [[ -v "transitions[$state]" ]]; then
-        local state_transitions_initializer=${{transitions[$state]}}
+    if [[ -v "literal_transitions[$state]" ]]; then
+        local state_transitions_initializer=${{literal_transitions[$state]}}
         declare -A state_transitions
         eval "state_transitions=$state_transitions_initializer"
 
         for literal_id in "${{!state_transitions[@]}}"; do
-            completions+=("${{literals[$literal_id]}}")
+            local literal="${{literals[$literal_id]}}"
+            if [[ $literal = "${{prefix}}"* ]]; then
+                COMPREPLY+=("$literal")
+            fi
+        done
+    fi
+"#)?;
+
+    write!(buffer, r#"
+    if [[ -v "subword_transitions[$state]" ]]; then
+        local state_transitions_initializer=${{subword_transitions[$state]}}
+        declare -A state_transitions
+        eval "state_transitions=$state_transitions_initializer"
+
+        for subword_id in "${{!state_transitions[@]}}"; do
+            mapfile -t COMPREPLY -O "${{#COMPREPLY[@]}}" < <(_{command}_subword_"${{subword_id}}" complete "${{COMP_WORDS[$COMP_CWORD]}}")
         done
     fi
 "#)?;
@@ -135,7 +258,13 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         write!(buffer, r#"
     if [[ -v "commands[$state]" ]]; then
         local command_id=${{commands[$state]}}
-        mapfile -t completions -O "${{#completions[@]}}" < <(_{command}_${{command_id}} "${{COMP_WORDS[$COMP_CWORD]}}" | cut -f1)
+        local completions=()
+        mapfile -t completions < <(_{command}_${{command_id}} "$prefix" | cut -f1)
+        for item in "${{completions[@]}}"; do
+            if [[ $item = "${{prefix}}"* ]]; then
+                COMPREPLY+=("$item")
+            fi
+        done
     fi
 
 "#)?;
@@ -150,23 +279,23 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         write!(buffer, r#"
     if [[ -v "specialized_commands[$state]" ]]; then
         local command_id=${{specialized_commands[$state]}}
-        mapfile -t completions -O "${{#completions[@]}}" < <(_{command}_spec_"${{command_id}}" "${{COMP_WORDS[$COMP_CWORD]}}" | cut -f1)
+        local completions=()
+        mapfile -t completions < <(_{command}_spec_"${{command_id}}" "$prefix" | cut -f1)
+        for item in "${{completions[@]}}"; do
+            if [[ $item = "${{prefix}}"* ]]; then
+                COMPREPLY+=("$item")
+            fi
+        done
     fi
 
 "#)?;
     }
 
     write!(buffer, r#"
-    local prefix="${{COMP_WORDS[$COMP_CWORD]}}"
-    for item in "${{completions[@]}}"; do
-        if [[ $item = "${{prefix}}"* ]]; then
-            COMPREPLY+=("$item")
-        fi
-    done
     return 0
 }}
 
-complete -F _{command} {command}
+complete -o nospace -F _{command} {command}
 "#)?;
     Ok(())
 }

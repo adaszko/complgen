@@ -436,6 +436,8 @@ fn escape_description(s: &str) -> String {
 
 fn do_pretty_print(e: &Expr) -> String {
     match e {
+        Expr::Subword(dfa, None) => format!(r#"{dfa:?}"#),
+        Expr::Subword(dfa, Some(descr)) => format!(r#"{dfa:?} {descr:?}"#),
         Expr::Terminal(term, None) => format!(r#"{term}"#),
         Expr::Terminal(term, Some(descr)) => format!(r#"{term} "{}""#, escape_description(descr)),
         Expr::Nonterminal(nonterm) => format!(r#"<{nonterm}>"#),

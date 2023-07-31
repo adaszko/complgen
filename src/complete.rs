@@ -1,3 +1,4 @@
+use std::debug_assert;
 use std::ffi::OsStr;
 use std::{io::Write, process::Output};
 use std::process::Command;
@@ -9,7 +10,7 @@ use ustr::ustr;
 use anyhow::{anyhow, Context, bail};
 
 use crate::grammar::Specialization;
-use crate::{dfa::DFA, regex::{Input, MatchAnythingInput}};
+use crate::{dfa::DFA, regex::Input};
 
 
 
@@ -40,7 +41,7 @@ fn stdout_from_output(output: Output) -> anyhow::Result<String> {
     if !output.status.success() {
         let stdout: String = String::from_utf8_lossy(&output.stdout).to_string();
         let stderr: String = String::from_utf8_lossy(&output.stderr).to_string();
-        let result = anyhow::Result::Err(anyhow!("Command invokation failed"))
+        let result = anyhow::Result::Err(anyhow!("Command invocation failed"))
             .context(stdout)
             .context(stderr);
         return result;
@@ -110,31 +111,47 @@ impl Shell {
 
 
 pub fn get_match_final_state(dfa: &DFA, inputs: &[&str], completed_word_index: usize) -> Option<StateId> {
-    let mut backtracking_stack = Vec::from_iter([(0, dfa.starting_state)]);
-    while let Some((input_index, current_state)) = backtracking_stack.pop() {
-        if input_index >= inputs.len() {
-            return Some(current_state);
-        }
+    debug_assert!(completed_word_index <= inputs.len());
 
-        if input_index >= completed_word_index {
-            return Some(current_state);
-        }
+    let mut input_index = 0;
+    let mut current_state = dfa.starting_state;
 
-        for (transition_input, to) in dfa.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
-            if transition_input.matches_anything() {
-                backtracking_stack.push((input_index + 1, *to));
-            }
+    'outer: while input_index < inputs.len() {
+        if input_index == completed_word_index {
+            return Some(current_state);
         }
 
         for (transition_input, to) in dfa.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
             if let Input::Literal(s, _) = transition_input {
-                if s.as_str() == inputs[input_index] {
-                    backtracking_stack.push((input_index + 1, *to));
+                if inputs[input_index] == s.as_str() {
+                    input_index += 1;
+                    current_state = *to;
+                    continue 'outer;
                 }
             }
         }
+
+        for (transition_input, to) in dfa.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
+            if let Input::Subword(dfa, _) = transition_input {
+                if dfa.accepts_str(inputs[input_index]) {
+                    input_index += 1;
+                    current_state = *to;
+                    continue 'outer;
+                }
+            }
+        }
+
+        for (transition_input, to) in dfa.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
+            if transition_input.matches_anything() {
+                input_index += 1;
+                current_state = *to;
+                continue 'outer;
+            }
+        }
+
+        return None;
     }
-    None
+    Some(current_state)
 }
 
 
@@ -176,10 +193,51 @@ fn capture_specialized_completions(shell: Shell, specialization: &Specialization
 }
 
 
-fn do_get_completions_for_input(input: &Input, prefix: &str, shell: Shell) -> anyhow::Result<Vec<(String, String)>> {
+pub fn get_subword_match_final_state(dfa: &DFA, mut user_input: &str) -> Option<StateId> {
+    let mut current_state = dfa.starting_state;
+    'outer: while !user_input.is_empty() {
+        for (transition_input, to) in dfa.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
+            if let Input::Literal(s, _) = transition_input {
+                if user_input.starts_with(s.as_str()) {
+                    user_input = &user_input[s.len()..];
+                    current_state = *to;
+                    continue 'outer;
+                }
+            }
+        }
+
+        for (transition_input, to) in dfa.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
+            if transition_input.matches_anything() {
+                return Some(*to);
+            }
+        }
+
+        return None;
+    }
+    Some(current_state)
+}
+
+
+
+fn get_subword_completions(dfa: &DFA, entered_prefix: &str, shell: Shell) -> anyhow::Result<Vec<(String, String)>> {
+    let state_id = match get_subword_match_final_state(dfa, entered_prefix) {
+        Some(state_id) => state_id,
+        None => return Ok(vec![]),
+    };
+    let mut completions: Vec<(String, String)> = dfa.transitions.get(&state_id).unwrap_or(&HashMap::default()).iter().map(|(input, _)| get_completions_for_input(input, "", shell)).flatten().collect();
+    completions.sort_unstable();
+    Ok(completions)
+}
+
+
+fn do_get_completions_for_input(input: &Input, entered_prefix: &str, shell: Shell) -> anyhow::Result<Vec<(String, String)>> {
     let completions = match input {
+        Input::Subword(subword_dfa, _) => {
+            get_subword_completions(&subword_dfa, entered_prefix, shell)?
+        },
+
         Input::Literal(literal, description) => {
-            if literal.starts_with(prefix) {
+            if literal.starts_with(entered_prefix) {
                 vec![(literal.as_str().to_string(), description.unwrap_or(ustr("")).as_str().to_string())]
             }
             else {
@@ -187,10 +245,10 @@ fn do_get_completions_for_input(input: &Input, prefix: &str, shell: Shell) -> an
             }
         },
 
-        Input::Any(MatchAnythingInput::Command(command)) => {
+        Input::Command(command) => {
             let stdout = shell.shell_out(command.as_str())?;
 
-            let result: Vec<(String, String)> = stdout.lines().filter(|line| line.starts_with(prefix)).map(|line| match line.split_once("\t") {
+            let result: Vec<(String, String)> = stdout.lines().filter(|line| line.starts_with(entered_prefix)).map(|line| match line.split_once("\t") {
                 Some((completion, description)) => (completion.to_owned(), description.to_owned()),
                 None => (line.to_string(), "".to_string()),
             }).collect();
@@ -198,9 +256,9 @@ fn do_get_completions_for_input(input: &Input, prefix: &str, shell: Shell) -> an
             result
         },
 
-        Input::Any(MatchAnythingInput::Nonterminal(_, None)) => vec![],
+        Input::Nonterminal(_, None) => vec![],
 
-        Input::Any(MatchAnythingInput::Nonterminal(_, Some(specialization))) => capture_specialized_completions(shell, specialization, prefix)?
+        Input::Nonterminal(_, Some(specialization)) => capture_specialized_completions(shell, specialization, entered_prefix)?
     };
     Ok(completions)
 }
@@ -320,6 +378,32 @@ grep (--help | --version);
         let input = vec!["--h"];
         let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 0).into_iter().map(|(completion, _)| completion));
         let expected = HashSet::from_iter(["--help"].map(|s| s.to_string()));
+        assert_eq!(generated, expected);
+    }
+
+    #[test]
+    fn completes_nested_prefix() {
+        const GRAMMAR: &str = r#"
+dummy --prefix=<SUFFIX>;
+<SUFFIX> ::= another-prefix=<ANOTHER-SUFFIX>;
+<ANOTHER-SUFFIX> ::= foo | bar;
+"#;
+        let input = vec!["--prefix="];
+        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 0).into_iter().map(|(completion, _)| completion));
+        let expected = HashSet::from_iter(["another-prefix="].map(|s| s.to_string()));
+        assert_eq!(generated, expected);
+    }
+
+    #[test]
+    fn matches_prefix() {
+        const GRAMMAR: &str = r#"
+    cargo +<toolchain> foo;
+    cargo test --test testname;
+    <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
+"#;
+        let input = vec!["+stable-aarch64-apple-darwin"];
+        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 1).into_iter().map(|(completion, _)| completion));
+        let expected = HashSet::from_iter(["foo"].map(|s| s.to_string()));
         assert_eq!(generated, expected);
     }
 }

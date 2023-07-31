@@ -10,7 +10,7 @@ use grammar::{ValidGrammar, Grammar};
 
 use crate::dfa::DFA;
 use crate::regex::AugmentedRegex;
-use crate::zsh::escape_zsh_string;
+use crate::zsh::make_string_constant;
 
 mod grammar;
 mod dfa;
@@ -130,15 +130,15 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
             }
         },
         Shell::Zsh(_) => {
-            let completions_array_initializer = itertools::join(completions.iter().map(|(completion, _)| format!(r#""{}""#, escape_zsh_string(completion))), " ");
+            let completions_array_initializer = itertools::join(completions.iter().map(|(completion, _)| make_string_constant(completion)), " ");
             println!(r#"local -a completions=({completions_array_initializer})"#);
 
             let descriptions_array_initializer = itertools::join(completions.iter().map(|(completion, description)| {
                 if !description.is_empty() {
-                    format!(r#""{} ({})""#, escape_zsh_string(completion), escape_zsh_string(description))
+                    make_string_constant(&format!("{} ({})", completion, description))
                 }
                 else {
-                    format!(r#""{}""#, escape_zsh_string(completion))
+                    make_string_constant(completion)
                 }
             }), " ");
             println!(r#"local -a descriptions=({descriptions_array_initializer})"#);

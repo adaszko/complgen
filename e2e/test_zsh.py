@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Generator
 
 from conftest import set_working_dir
+from common import LSOF_FILTER_GRAMMAR, STRACE_EXPR_GRAMMAR
 
 
 def zsh_completions_from_stdout(stdout: str) -> list[tuple[str, str]]:
@@ -169,3 +170,60 @@ cargo [<toolchain>] [<COMMAND>];
 
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
         assert get_sorted_completions(capture_zsh_path, 'cargo t ') == sorted([('testname', '')])
+
+
+def test_matches_prefix(complgen_binary_path: Path):
+    GRAMMAR = '''
+cargo +<toolchain> foo;
+cargo test --test testname;
+<toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
+'''
+    with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
+        assert get_sorted_completions(capture_zsh_path, 'cargo +stable-aarch64-apple-darwin ') == sorted([('foo', '')])
+
+
+def test_jit_matches_prefix(complgen_binary_path: Path):
+    GRAMMAR = '''
+cargo +<toolchain> foo;
+<toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
+'''
+    expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, 1, ['+stable-aarch64-apple-darwin'])
+    assert expr == 'local -a completions=("foo")\nlocal -a descriptions=("foo")\ncompadd -d descriptions -a completions\n'
+
+
+def test_completes_prefix(complgen_binary_path: Path):
+    GRAMMAR = '''
+cargo +<toolchain>;
+<toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
+'''
+    with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
+        assert get_sorted_completions(capture_zsh_path, 'cargo +') == sorted([('+stable-aarch64-apple-darwin', ''), ('+stable-x86_64-apple-darwin', '')])
+
+
+def test_jit_completes_prefix(complgen_binary_path: Path):
+    GRAMMAR = '''
+cargo +<toolchain>;
+<toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
+'''
+    expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, 0, ['+'])
+    assert expr == 'local -a completions=("stable-aarch64-apple-darwin" "stable-x86_64-apple-darwin")\nlocal -a descriptions=("stable-aarch64-apple-darwin" "stable-x86_64-apple-darwin")\ncompadd -d descriptions -a completions\n'
+
+
+def test_completes_strace_expr(complgen_binary_path: Path):
+    with capture_grammar_completions(complgen_binary_path, STRACE_EXPR_GRAMMAR) as capture_zsh_path:
+        assert get_sorted_completions(capture_zsh_path, 'strace -e ') == sorted([('%file', ''), ('!', ''), ('all', ''), ('fault', ''), ('file', ''), ('read', ''), ('trace', ''), ('write', '')])
+
+
+def test_jit_completes_strace_expr(complgen_binary_path: Path):
+    expr = get_jit_zsh_completions_expr(complgen_binary_path, STRACE_EXPR_GRAMMAR, 1, ['-e', 'trace='])
+    assert expr == 'local -a completions=("!" "%file" "all" "file")\nlocal -a descriptions=("!" "%file" "all" "file")\ncompadd -d descriptions -a completions\n'
+
+
+def test_completes_lsof_filter(complgen_binary_path: Path):
+    with capture_grammar_completions(complgen_binary_path, LSOF_FILTER_GRAMMAR) as capture_zsh_path:
+        assert get_sorted_completions(capture_zsh_path, 'lsof -sTCP:') == sorted([('-sTCP:LISTEN', ''), ('-sTCP:CLOSED', ''), ('-sTCP:^', '')])
+
+
+def test_jit_completes_lsof_filter(complgen_binary_path: Path):
+    expr = get_jit_zsh_completions_expr(complgen_binary_path, LSOF_FILTER_GRAMMAR, 0, ['-sTCP:'])
+    assert expr == 'local -a completions=("CLOSED" "LISTEN" "^")\nlocal -a descriptions=("CLOSED" "LISTEN" "^")\ncompadd -d descriptions -a completions\n'
