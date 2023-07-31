@@ -9,7 +9,7 @@ pub enum Error {
     #[error("Grammar needs to contain at least one call variant, e.g. grep;")]
     MissingCallVariants,
 
-    #[error("One one command is allowed in completions definition")]
+    #[error("One command is allowed in completions definition")]
     VaryingCommandNames(Vec<Ustr>),
 
     #[error("Nonterminal definitions depend on each other cyclically")]

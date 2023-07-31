@@ -568,8 +568,8 @@ fn make_specializations_map(statements: &[Statement]) -> Result<UstrMap<Speciali
 
     specializations.entry(ustr("PATH")).or_insert_with(||
         Specialization {
-            bash: Some(ustr(&format!(r#"compgen -A file "$1""#))),
-            fish: Some(ustr(&format!(r#"__fish_complete_path "$1""#))),
+            bash: Some(ustr(r#"compgen -A file "$1""#)),
+            fish: Some(ustr(r#"__fish_complete_path "$1""#)),
             zsh: Some(ustr("_path_files")),
             generic: None,
         }
@@ -577,9 +577,63 @@ fn make_specializations_map(statements: &[Statement]) -> Result<UstrMap<Speciali
 
     specializations.entry(ustr("DIRECTORY")).or_insert_with(||
         Specialization {
-            bash: Some(ustr(&format!(r#"compgen -A directory "$1""#))),
-            fish: Some(ustr(&format!(r#"__fish_complete_directories "$1""#))),
+            bash: Some(ustr(r#"compgen -A directory "$1""#)),
+            fish: Some(ustr(r#"__fish_complete_directories "$1""#)),
             zsh: Some(ustr("_path_files -/")),
+            generic: None,
+        }
+    );
+
+    specializations.entry(ustr("PID")).or_insert_with(||
+        Specialization {
+            bash: None,
+            fish: Some(ustr(r#"__fish_complete_pids"#)),
+            zsh: Some(ustr(r#"_pids"#)),
+            generic: None,
+        }
+    );
+
+    specializations.entry(ustr("USER")).or_insert_with(||
+        Specialization {
+            bash: Some(ustr(r#"compgen -A user"#)),
+            fish: Some(ustr(r#"__fish_complete_users"#)),
+            zsh: Some(ustr(r#"_users"#)),
+            generic: None,
+        }
+    );
+
+    specializations.entry(ustr("GROUP")).or_insert_with(||
+        Specialization {
+            bash: Some(ustr(r#"compgen -A group"#)),
+            fish: Some(ustr(r#"__fish_complete_groups"#)),
+            zsh: Some(ustr(r#"_groups"#)),
+            generic: None,
+        }
+    );
+
+    specializations.entry(ustr("HOST")).or_insert_with(||
+        Specialization {
+            bash: Some(ustr(r#"compgen -A hostname"#)),
+            fish: Some(ustr(r#"__fish_complete_hostnames"#)),
+            zsh: Some(ustr(r#"_hosts"#)),
+            generic: None,
+        }
+    );
+
+    specializations.entry(ustr("INTERFACE")).or_insert_with(||
+        Specialization {
+            bash: None,
+            fish: Some(ustr(r#"__fish_complete_interfaces"#)),
+            zsh: Some(ustr(r#"_net_interfaces"#)),
+            generic: None,
+        }
+    );
+
+    specializations.entry(ustr("PACKAGE")).or_insert_with(||
+        Specialization {
+            bash: None,
+            fish: Some(ustr(r#"__fish_complete_packages"#)),
+            zsh: None,
             generic: None,
         }
     );
