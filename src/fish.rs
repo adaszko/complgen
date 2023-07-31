@@ -22,11 +22,17 @@ fn write_lookup_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
     writeln!(buffer, r#"    set --local literals {literals}"#)?;
     writeln!(buffer, "")?;
 
+    writeln!(buffer, r#"    set --local descriptions"#)?;
     for (id, _, description) in all_literals.iter() {
-        writeln!(buffer, r#"    set descriptions[{id}] {}"#, make_string_constant(description))?;
+        if description.is_empty() {
+            continue;
+        }
+        let quoted = make_string_constant(description);
+        writeln!(buffer, r#"    set descriptions[{id}] {}"#, quoted)?;
     }
     writeln!(buffer, "")?;
 
+    writeln!(buffer, r#"    set --local literal_transitions"#)?;
     for state in dfa.get_all_states() {
         let transitions = dfa.get_literal_transitions_from(StateId::try_from(state).unwrap());
         if transitions.is_empty() {
