@@ -141,10 +141,10 @@ A grammar is a series of lines terminated by a semicolon (`;`).  Each line eithe
 of invoking the completed command or is a nonterminal definition.
 
  * `a b` matches `a` followed by `b`.
- * `a b | c` matches either `a b` or `c`.
+ * `a b | c` matches either `a b` or `c` (IOW: sequence binds stronger than alternative).
  * `[a]` matches zero or one occurrences of `a`.
- * `a ...` matches one or more occurrences of `a` (**WARNING**: `a...` will match the literal `a...`, not one or more `a`!).
- * `[a] ...` matches zero or more occurrences of `a`.
+ * `a...` matches one or more occurrences of `a`
+ * `[a]...` matches zero or more occurrences of `a`.
 
 Use parentheses to group patterns:
 
@@ -156,11 +156,17 @@ Use parentheses to group patterns:
 
 There's a couple of predefined nonterminals that are handled specially by `complgen`:
 
- * `<PATH>` is completed as a file or directory path
- * `<DIRECTORY>` is completed as a directory path
+ * `<PATH>` is completed as a file or directory path (bash, fish, zsh)
+ * `<DIRECTORY>` is completed as a directory path (bash, fish, zsh)
+ * `<PID>` is completed as a process id (fish, zsh)
+ * `<USER>` is completed as a user name (bash, fish, zsh)
+ * `<GROUP>` is completed as a group name (bash, fish, zsh)
+ * `<HOST>` is completed as a hostname (bash, fish, zsh)
+ * `<INTERFACE>` is completed as a network interface name (fish, zsh)
+ * `<PACKAGE>` is completed as a package name (fish)
 
-These nonterminals can be defined in the grammar in the usual way (`<PATH> ::= ...`) in which case they lose
-their predefined meaning.
+These nonterminals can still be defined in the grammar in the usual way (`<PATH> ::= ...`) in which case they
+their predefined meaning get overriden.
 
 ### Descriptions (a.k.a. completion hints)
 
@@ -242,13 +248,9 @@ cmd <USER>;
 
 ## Limitations
 
- * Passing option arguments using `=` is not currently supported.  E.g. `--foo=bar` doesn't work, but `--foo
-   bar` does.
-
  * Grouping single character options into a single shell parameter isn't supported, e.g. `tar -xvf` (unless
    you manually enumerate all the combinations in the grammar which isn't very practical).  You need to pass
    each option in a separate shell argument instead: `tar -x -v -f`
 
- * Non-regular grammars are not supported, e.g. `find(1)`'s arguments can't be completed 100% *precisely* by
-   complgen—`complgen` won't accurately suggest a matching `\)` for example.  That doesn't mean it isn't
-   useful though.  It's still perfectly capable of suggesting every argument `find(1)` accepts.
+* Non-regular grammars aren't completed 100% *precisely*. For instance, in case of `find(1)`, `complgen` will
+  still suggest `)` even in cases when all `(` have already been properly closed before the cursor.
