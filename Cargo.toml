@@ -4,6 +4,14 @@ version = "0.1.0"
 edition = "2021"
 description = "A programming-language-agnostic shell completions generator"
 
+[lib]
+name = "complgen"
+path = "src/lib.rs"
+
+[[bin]]
+name = "complgen"
+path = "src/bin.rs"
+
 [profile.release]
 debug = true
 

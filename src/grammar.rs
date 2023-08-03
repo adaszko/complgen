@@ -10,7 +10,7 @@ use nom::{
     IResult, combinator::{fail, opt}, error::context, sequence::preceded,
 };
 
-use complgen::{Error, Result};
+use crate::{Error, Result};
 use ustr::{Ustr, ustr, UstrMap, UstrSet};
 
 use crate::{dfa::DFA, regex::AugmentedRegex};

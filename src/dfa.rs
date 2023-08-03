@@ -9,7 +9,7 @@ use roaring::{MultiOps, RoaringBitmap};
 use ustr::{Ustr, ustr};
 
 use crate::{regex::{Position, AugmentedRegex, Input}, grammar::Specialization};
-use complgen::StateId;
+use crate::StateId;
 
 
 // Every state in a DFA is formally defined to have a transition on *every* input symbol.  In

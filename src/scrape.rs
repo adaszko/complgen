@@ -415,14 +415,14 @@ pub fn usage(mut input: &str) -> IResult<&str, Vec<Statement>> {
 }
 
 
-pub fn scrape(input: &str) -> complgen::Result<Vec<Statement>> {
+pub fn scrape(input: &str) -> crate::Result<Vec<Statement>> {
     let (input, expr) = match usage(input) {
         Ok((input, expr)) => (input, expr),
-        Err(e) => return Err(complgen::Error::ParsingError(e.to_string())),
+        Err(e) => return Err(crate::Error::ParsingError(e.to_string())),
     };
 
     if !input.is_empty() {
-        return Err(complgen::Error::ParsingError(input.to_owned()));
+        return Err(crate::Error::ParsingError(input.to_owned()));
     }
 
     Ok(expr)

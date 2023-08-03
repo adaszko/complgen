@@ -1,6 +1,6 @@
 use std::io::Write;
 
-use complgen::{StateId, Result};
+use crate::{StateId, Result};
 use hashbrown::HashMap;
 use ustr::{Ustr, UstrMap, ustr};
 use crate::dfa::DFA;

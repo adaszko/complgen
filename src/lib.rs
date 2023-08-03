@@ -1,6 +1,15 @@
 use std::string::FromUtf8Error;
 use ustr::Ustr;
 
+pub mod grammar;
+pub mod dfa;
+pub mod bash;
+pub mod zsh;
+pub mod fish;
+pub mod complete;
+pub mod regex;
+pub mod scrape;
+
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("Parsing error: {:?}", .0)]

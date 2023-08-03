@@ -5,22 +5,12 @@ use anyhow::Context;
 use bumpalo::Bump;
 use clap::Parser;
 
-use complete::get_completions;
-use grammar::{ValidGrammar, Grammar};
+use complgen::complete::get_completions;
+use complgen::grammar::{ValidGrammar, Grammar, to_railroad_diagram, to_railroad_diagram_file};
 
-use crate::dfa::DFA;
-use crate::regex::AugmentedRegex;
-use crate::zsh::make_string_constant;
-
-mod grammar;
-mod dfa;
-mod bash;
-mod zsh;
-mod fish;
-mod complete;
-mod regex;
-mod scrape;
-
+use complgen::dfa::DFA;
+use complgen::regex::AugmentedRegex;
+use complgen::zsh::make_string_constant;
 
 #[derive(clap::Parser)]
 struct Cli {
@@ -101,7 +91,7 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
 
     if let Some(railroad_svg_path) = &args.railroad_svg {
         let mut railroad_svg = get_file_or_stdout(&railroad_svg_path)?;
-        grammar::to_railroad_diagram(Rc::clone(&validated.expr), &mut railroad_svg)?;
+        to_railroad_diagram(Rc::clone(&validated.expr), &mut railroad_svg)?;
     }
 
     let arena = Bump::new();
@@ -109,9 +99,9 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
     let dfa = DFA::from_regex(&regex);
 
     let (shell, completed_word_index, words) = match &args.shell {
-        Shell::Bash(a) => (complete::Shell::Bash, a.completed_word_index, &a.words),
-        Shell::Fish(a) => (complete::Shell::Fish, a.completed_word_index, &a.words),
-        Shell::Zsh(a) => (complete::Shell::Zsh, a.completed_word_index, &a.words),
+        Shell::Bash(a) => (complgen::complete::Shell::Bash, a.completed_word_index, &a.words),
+        Shell::Fish(a) => (complgen::complete::Shell::Fish, a.completed_word_index, &a.words),
+        Shell::Zsh(a) => (complgen::complete::Shell::Zsh, a.completed_word_index, &a.words),
     };
 
     let words_before_cursor: Vec<&str> = words.iter().map(|s| s.as_ref()).collect();
@@ -193,7 +183,7 @@ fn compile(args: &CompileArgs) -> anyhow::Result<()> {
     let arena = Bump::new();
 
     if let Some(railroad_svg_path) = &args.railroad_svg {
-        grammar::to_railroad_diagram_file(Rc::clone(&validated.expr), railroad_svg_path).context(railroad_svg_path.clone())?;
+        to_railroad_diagram_file(Rc::clone(&validated.expr), railroad_svg_path).context(railroad_svg_path.clone())?;
     }
 
     log::debug!("Grammar -> Regex");
@@ -214,21 +204,21 @@ fn compile(args: &CompileArgs) -> anyhow::Result<()> {
         log::debug!("Writing Bash completion script");
         let script_file = get_file_or_stdout(path)?;
         let mut writer = BufWriter::new(script_file);
-        bash::write_completion_script(&mut writer, &validated.command, &dfa)?;
+        complgen::bash::write_completion_script(&mut writer, &validated.command, &dfa)?;
     }
 
     if let Some(path) = &args.fish_script {
         log::debug!("Writing Fish completion script");
         let script_file = get_file_or_stdout(path)?;
         let mut writer = BufWriter::new(script_file);
-        fish::write_completion_script(&mut writer, &validated.command, &dfa)?;
+        complgen::fish::write_completion_script(&mut writer, &validated.command, &dfa)?;
     }
 
     if let Some(path) = &args.zsh_script {
         log::debug!("Writing Zsh completion script");
         let script_file = get_file_or_stdout(path)?;
         let mut writer = BufWriter::new(script_file);
-        zsh::write_completion_script(&mut writer, &validated.command, &dfa)?;
+        complgen::zsh::write_completion_script(&mut writer, &validated.command, &dfa)?;
     }
 
     Ok(())
@@ -242,8 +232,8 @@ fn scrape() -> anyhow::Result<()> {
         input
     };
 
-    let exprs = scrape::scrape(&input)?;
-    scrape::pretty_print(&exprs);
+    let exprs = complgen::scrape::scrape(&input)?;
+    complgen::scrape::pretty_print(&exprs);
     Ok(())
 }
 

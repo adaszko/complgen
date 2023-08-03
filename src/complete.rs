@@ -3,7 +3,7 @@ use std::ffi::OsStr;
 use std::{io::Write, process::Output};
 use std::process::Command;
 
-use complgen::StateId;
+use crate::StateId;
 use hashbrown::HashMap;
 
 use ustr::ustr;
