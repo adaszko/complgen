@@ -481,23 +481,26 @@ fn do_to_dot<W: Write>(output: &mut W, dfa: &DFA, identifiers_prefix: &str, recu
 
     write!(output, "\n")?;
 
-    for (from, to) in &dfa.transitions {
-        for (input, to) in to {
+    for (subdfa, subdfa_id) in &id_from_dfa {
+        writeln!(output, "{indentation}subgraph cluster_{identifiers_prefix}{subdfa_id} {{")?;
+        writeln!(output, "{indentation}\tlabel=\"subword {subdfa_id}\";")?;
+        writeln!(output, "{indentation}\tcolor=grey91;")?;
+        writeln!(output, "{indentation}\tstyle=filled;")?;
+        let subdfa_identifiers_prefix = &format!("{subdfa_id}_");
+        do_to_dot(output, subdfa.as_ref(), &subdfa_identifiers_prefix, recursion_level + 1)?;
+        writeln!(output, "{indentation}}}")?;
+    }
+
+    for (from, tos) in &dfa.transitions {
+        for (input, to) in tos {
             match input {
                 Input::Literal(_, _) | Input::Nonterminal(_, _) | Input::Command(_) => {
                     let label = format!("{}", input).replace("\"", "\\\"");
-                    writeln!(output, "{indentation}_{identifiers_prefix}{} -> _{identifiers_prefix}{} [label = \"{}\"];", from, to, label)?;
+                    writeln!(output, "{indentation}_{identifiers_prefix}{} -> _{identifiers_prefix}{} [label=\"{}\"];", from, to, label)?;
                 }
                 Input::Subword(subdfa, _) => {
                     let subdfa_id = *id_from_dfa.get(subdfa).unwrap();
-                    writeln!(output, "{indentation}subgraph cluster_{identifiers_prefix}{subdfa_id} {{")?;
-                    writeln!(output, "{indentation}\tlabel = \"subword {subdfa_id}\";")?;
-                    writeln!(output, "{indentation}\tcolor=grey91;")?;
-                    writeln!(output, "{indentation}\tstyle=filled;")?;
                     let subdfa_identifiers_prefix = &format!("{subdfa_id}_");
-                    do_to_dot(output, subdfa, &subdfa_identifiers_prefix, recursion_level + 1)?;
-                    writeln!(output, "{indentation}}}")?;
-
                     writeln!(output, "{indentation}_{identifiers_prefix}{} -> _{subdfa_identifiers_prefix}{};", from, subdfa.starting_state)?;
                     for subdfa_accepting_state in &subdfa.accepting_states {
                         writeln!(output, "{indentation}_{subdfa_identifiers_prefix}{} -> _{identifiers_prefix}{};", subdfa_accepting_state, to)?;
