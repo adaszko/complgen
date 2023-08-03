@@ -103,6 +103,7 @@ fn write_subword_fn<W: Write>(buffer: &mut W, name: &str, dfa: &DFA) -> Result<(
     write!(buffer, r#"
     local matched_prefix="${{word:0:$char_index}}"
     local completed_prefix="${{word:$char_index}}"
+    local superfluous_prefix=${{word%${{word##*=}}}}
 
     if [[ -v "literal_transitions[$state]" ]]; then
         local state_transitions_initializer=${{literal_transitions[$state]}}
@@ -112,7 +113,9 @@ fn write_subword_fn<W: Write>(buffer: &mut W, name: &str, dfa: &DFA) -> Result<(
         for literal_id in "${{!state_transitions[@]}}"; do
             local literal=${{literals[$literal_id]}}
             if [[ $literal = "${{completed_prefix}}"* ]]; then
-                echo "$matched_prefix$literal"
+                local completion="$matched_prefix$literal"
+                completion=${{completion#"$superfluous_prefix"}}
+                echo $completion
             fi
         done
     fi
@@ -153,7 +156,18 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     }
 
 
-    writeln!(buffer, r#"_{command} () {{"#)?;
+    write!(buffer, r#"_{command} () {{"#)?;
+
+    writeln!(buffer, r#"
+    if [[ $(type -t _get_comp_words_by_ref) != function ]]; then
+        echo _get_comp_words_by_ref: function not defined.  Make sure the bash-completions system package is installed
+        return 1
+    fi
+
+    local words cword
+    _get_comp_words_by_ref -n =:@ words cword
+"#)?;
+
     write_lookup_tables(buffer, dfa)?;
 
     writeln!(buffer, r#"    declare -A subword_transitions"#)?;
@@ -169,13 +183,14 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     write!(buffer, r#"
     local state={starting_state}
     local word_index=1
-    while [[ $word_index -lt $COMP_CWORD ]]; do
+    while [[ $word_index -lt $cword ]]; do
+        local word=${{words[$word_index]}}
+
         if [[ -v "literal_transitions[$state]" ]]; then
             local state_transitions_initializer=${{literal_transitions[$state]}}
             declare -A state_transitions
             eval "state_transitions=$state_transitions_initializer"
 
-            local word=${{COMP_WORDS[$word_index]}}
             local word_matched=0
             for literal_id in $(seq 0 $((${{#literals[@]}} - 1))); do
                 if [[ ${{literals[$literal_id]}} = "$word" ]]; then
@@ -223,7 +238,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 "#, starting_state = dfa.starting_state)?;
 
     write!(buffer, r#"
-    local prefix="${{COMP_WORDS[$COMP_CWORD]}}"
+    local prefix="${{words[$cword]}}"
+    local superfluous_prefix=${{prefix%${{prefix##*=}}}}
 
     if [[ -v "literal_transitions[$state]" ]]; then
         local state_transitions_initializer=${{literal_transitions[$state]}}
@@ -233,7 +249,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         for literal_id in "${{!state_transitions[@]}}"; do
             local literal="${{literals[$literal_id]}}"
             if [[ $literal = "${{prefix}}"* ]]; then
-                COMPREPLY+=("$literal")
+                local completion=${{literal#"$superfluous_prefix"}}
+                COMPREPLY+=("$completion")
             fi
         done
     fi
@@ -246,7 +263,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         eval "state_transitions=$state_transitions_initializer"
 
         for subword_id in "${{!state_transitions[@]}}"; do
-            mapfile -t COMPREPLY -O "${{#COMPREPLY[@]}}" < <(_{command}_subword_"${{subword_id}}" complete "${{COMP_WORDS[$COMP_CWORD]}}")
+            mapfile -t COMPREPLY -O "${{#COMPREPLY[@]}}" < <(_{command}_subword_"${{subword_id}}" complete "${{words[$cword]}}")
         done
     fi
 "#)?;
@@ -293,6 +310,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     }
 
     write!(buffer, r#"
+    __ltrim_colon_completions "$prefix"
     return 0
 }}
 

@@ -16,14 +16,19 @@ from common import LSOF_FILTER_GRAMMAR, STRACE_EXPR_GRAMMAR
 def completion_script_path(complgen_binary_path: Path, grammar: str) -> Generator[Path, None, None]:
     bash_script = subprocess.run([complgen_binary_path, 'compile', '--bash-script', '-', '-'], input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True).stdout
     with tempfile.NamedTemporaryFile() as f:
+        if os.path.exists('/opt/homebrew/etc/profile.d/bash_completion.sh'):
+            f.write('source /opt/homebrew/etc/profile.d/bash_completion.sh\n'.encode())
+        elif os.path.exists('/etc/bash_completion'):
+            f.write('source /etc/bash_completion\n'.encode())
+        else:
+            assert False, "Don't know how to initialize bash completions"
         f.write(bash_script)
         f.flush()
         yield Path(f.name)
 
 
 def get_sorted_completions(completions_file_path: Path, input: str) -> list[str]:
-    input = f'source {completions_file_path}\n' + input
-    bash_process = subprocess.run(['bash', '--noprofile', '--norc', '-i'], input=input.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
+    bash_process = subprocess.run(['bash', '--noprofile', '--rcfile', completions_file_path, '-i'], input=input.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
     lines = bash_process.stdout.decode().splitlines()
     lines.sort()
     return lines
@@ -177,7 +182,7 @@ cargo +<toolchain>;
 def test_completes_strace_expr(complgen_binary_path: Path):
     with completion_script_path(complgen_binary_path, STRACE_EXPR_GRAMMAR) as path:
         input = r'''COMP_WORDS=(strace -e trace=); COMP_CWORD=2; _strace; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_completions(path, input) == sorted(['trace=!', 'trace=%file', 'trace=file', 'trace=all'])
+        assert get_sorted_completions(path, input) == sorted(['!', '%file', 'file', 'all'])
 
 
 def test_jit_completes_strace_expr(complgen_binary_path: Path):
@@ -186,9 +191,9 @@ def test_jit_completes_strace_expr(complgen_binary_path: Path):
 
 def test_completes_lsof_filter(complgen_binary_path: Path):
     with completion_script_path(complgen_binary_path, LSOF_FILTER_GRAMMAR) as path:
-        input = r'''COMP_WORDS=(lsof -sTCP:); COMP_CWORD=1; _lsof; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_completions(path, input) == sorted(['-sTCP:LISTEN', '-sTCP:CLOSED', '-sTCP:^'])
+        input = r'''COMP_WORDS=(lsf -sTCP:); COMP_CWORD=1; _lsf; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_completions(path, input) == sorted(['LISTEN', 'CLOSED', '^'])
 
 
-def test_jit_completes_lsof_filter(complgen_binary_path: Path):
+def test_jit_completes_lsf_filter(complgen_binary_path: Path):
     assert get_sorted_jit_bash_completions(complgen_binary_path, LSOF_FILTER_GRAMMAR, 0, ['-sTCP:']) == sorted(['^', 'LISTEN', 'CLOSED'])

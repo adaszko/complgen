@@ -57,15 +57,10 @@ _complgen_jit_$stem () {
     return 0
 }
 "
-    complete -F _complgen_jit_$stem "$stem"
+    complete -o nospace -F _complgen_jit_$stem "$stem"
     unset stem
 done
 ```
-
-Note that because Bash breaks command line arguments into words based on characters in
-[`COMP_WORDBREAKS`](https://www.gnu.org/software/bash/manual/html_node/Bash-Variables.html#index-COMP_005fWORDBREAKS),
-completion of prefixes containing one of those characters does not behave 100% correctly.  For instance, with
-the default value of `COMP_WORDBREAKS`, completing `foo::bar` will work only up to the first `:`.
 
 ### Fish Integration
 

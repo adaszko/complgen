@@ -6,7 +6,7 @@ strace -e <EXPR>;
 '''
 
 LSOF_FILTER_GRAMMAR = '''
-lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
+lsf -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
 <PROTOCOL> ::= TCP | UDP;
 <STATE-SPEC> ::= [^]<STATE>;
 <STATE> ::= LISTEN | CLOSED;

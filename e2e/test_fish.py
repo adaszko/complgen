@@ -193,7 +193,7 @@ def test_jit_completes_strace_expr(complgen_binary_path: Path):
 
 def test_completes_lsof_filter(complgen_binary_path: Path):
     with completion_script_path(complgen_binary_path, LSOF_FILTER_GRAMMAR) as completions_file_path:
-        input = 'source {}; complete --command cargo --do-complete "lsof "'.format(completions_file_path)
+        input = 'source {}; complete --command cargo --do-complete "lsf "'.format(completions_file_path)
         completions = get_sorted_completions(input)
         assert completions == sorted([('-s', '')])
 

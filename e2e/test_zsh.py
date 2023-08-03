@@ -221,7 +221,7 @@ def test_jit_completes_strace_expr(complgen_binary_path: Path):
 
 def test_completes_lsof_filter(complgen_binary_path: Path):
     with capture_grammar_completions(complgen_binary_path, LSOF_FILTER_GRAMMAR) as capture_zsh_path:
-        assert get_sorted_completions(capture_zsh_path, 'lsof -sTCP:') == sorted([('-sTCP:LISTEN', ''), ('-sTCP:CLOSED', ''), ('-sTCP:^', '')])
+        assert get_sorted_completions(capture_zsh_path, 'lsf -sTCP:') == sorted([('-sTCP:LISTEN', ''), ('-sTCP:CLOSED', ''), ('-sTCP:^', '')])
 
 
 def test_jit_completes_lsof_filter(complgen_binary_path: Path):
