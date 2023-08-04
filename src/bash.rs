@@ -103,7 +103,13 @@ fn write_subword_fn<W: Write>(buffer: &mut W, name: &str, dfa: &DFA) -> Result<(
     write!(buffer, r#"
     local matched_prefix="${{word:0:$char_index}}"
     local completed_prefix="${{word:$char_index}}"
-    local superfluous_prefix=${{word%${{word##*=}}}}
+
+    local suffix=${{word##*:}}
+    local candidate=${{word##*=}}
+    if [[ ${{#candidate}} -lt ${{#suffix}} ]]; then
+        suffix=$candidate
+    fi
+    local superfluous_prefix=${{word%$suffix}}
 
     if [[ -v "literal_transitions[$state]" ]]; then
         local state_transitions_initializer=${{literal_transitions[$state]}}
@@ -239,7 +245,13 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
     write!(buffer, r#"
     local prefix="${{words[$cword]}}"
-    local superfluous_prefix=${{prefix%${{prefix##*=}}}}
+
+    local suffix=${{word##*:}}
+    local candidate=${{word##*=}}
+    if [[ ${{#candidate}} -lt ${{#suffix}} ]]; then
+        suffix=$candidate
+    fi
+    local superfluous_prefix=${{word%$suffix}}
 
     if [[ -v "literal_transitions[$state]" ]]; then
         local state_transitions_initializer=${{literal_transitions[$state]}}
@@ -310,7 +322,6 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     }
 
     write!(buffer, r#"
-    __ltrim_colon_completions "$prefix"
     return 0
 }}
 
