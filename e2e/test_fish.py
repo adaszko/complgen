@@ -30,8 +30,8 @@ def completion_script_path(complgen_binary_path: Path, grammar: str) -> Generato
         yield Path(f.name)
 
 
-def get_sorted_completions(input: str) -> list[tuple[str, str]]:
-    completed_process = subprocess.run(['fish', '--private', '--no-config', '--command', input], stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
+def get_sorted_completions(completions_script_path: Path, input: str) -> list[tuple[str, str]]:
+    completed_process = subprocess.run(['fish', '--private', '--no-config', '--init-command', 'source {}'.format(completions_script_path), '--command', input], stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
     completions = completed_process.stdout.decode()
     parsed = fish_completions_from_stdout(completions)
     parsed.sort(key=lambda pair: pair[0])
@@ -50,8 +50,8 @@ cmd <COMMAND> [--help];
 '''
 
     with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        input = 'source {}; complete --command cmd --do-complete "cmd "'.format(completions_file_path)
-        assert get_sorted_completions(input) == sorted([('rm', "Remove a project"), ('remote', "Manage a project's remotes")], key=lambda pair: pair[0])
+        input = 'complete --command cmd --do-complete "cmd "'
+        assert get_sorted_completions(completions_file_path, input) == sorted([('rm', "Remove a project"), ('remote', "Manage a project's remotes")], key=lambda pair: pair[0])
 
 
 def test_fish_uses_correct_description_with_duplicated_descriptions(complgen_binary_path: Path):
@@ -64,8 +64,8 @@ cmd [<OPTION>]...;
 '''
 
     with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        input = 'source {}; complete --command cmd --do-complete "cmd "'.format(completions_file_path)
-        assert get_sorted_completions(input) == sorted([('--color', "use markers to highlight the matching strings"), ('--colour', "use markers to highlight the matching strings")], key=lambda pair: pair[0])
+        input = 'complete --command cmd --do-complete "cmd "'
+        assert get_sorted_completions(completions_file_path, input) == sorted([('--color', "use markers to highlight the matching strings"), ('--colour', "use markers to highlight the matching strings")], key=lambda pair: pair[0])
 
 
 def test_fish_external_command_produces_description(complgen_binary_path: Path):
@@ -74,8 +74,8 @@ cmd { echo -e "completion\tdescription" };
 '''
 
     with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        input = 'source {}; complete --command cmd --do-complete "cmd "'.format(completions_file_path)
-        assert get_sorted_completions(input) == [('completion', 'description')]
+        input = 'complete --command cmd --do-complete "cmd "'
+        assert get_sorted_completions(completions_file_path, input) == [('completion', 'description')]
 
 
 SPECIAL_CHARACTERS = '?[^a]*{foo,*bar}'
@@ -88,8 +88,8 @@ def test_completes_paths(complgen_binary_path: Path):
                 Path('filename with spaces').write_text('dummy')
                 Path(SPECIAL_CHARACTERS).write_text('dummy')
                 os.mkdir('dir with spaces')
-                input = 'source {}; complete --command cmd --do-complete "cmd "'.format(completions_file_path)
-                completions = get_sorted_completions(input)
+                input = 'complete --command cmd --do-complete "cmd "'
+                completions = get_sorted_completions(completions_file_path, input)
                 assert completions == sorted([(SPECIAL_CHARACTERS, ''), ('dir with spaces/', ''), ('filename with spaces', '')])
 
 
@@ -100,8 +100,8 @@ def test_completes_directories(complgen_binary_path: Path):
                 os.mkdir('dir with spaces')
                 os.mkdir(SPECIAL_CHARACTERS)
                 Path('baz').write_text('dummy')
-                input = 'source {}; complete --command cmd --do-complete "cmd "'.format(completions_file_path)
-                completions = get_sorted_completions(input)
+                input = 'complete --command cmd --do-complete "cmd "'
+                completions = get_sorted_completions(completions_file_path, input)
                 assert completions == sorted([(SPECIAL_CHARACTERS + '/', 'Directory'), ('dir with spaces/', 'Directory')])
 
 
@@ -132,8 +132,8 @@ def test_jit_completes_directories_fish(complgen_binary_path: Path):
 def test_specializes_for_fish(complgen_binary_path: Path):
     GRAMMAR = '''cmd <FOO>; <FOO> ::= { echo foo }; <FOO@fish> ::= { echo fish };'''
     with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        input = 'source {}; complete --command cmd --do-complete "cmd "'.format(completions_file_path)
-        assert get_sorted_completions(input) == [('fish', '')]
+        input = 'complete --command cmd --do-complete "cmd "'
+        assert get_sorted_completions(completions_file_path, input) == [('fish', '')]
 
 
 def test_jit_specializes_for_fish(complgen_binary_path: Path):
@@ -148,8 +148,8 @@ cargo test --test testname;
 <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 '''
     with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        input = 'source {}; complete --command cargo --do-complete "cargo +stable-aarch64-apple-darwin "'.format(completions_file_path)
-        completions = get_sorted_completions(input)
+        input = 'complete --command cargo --do-complete "cargo +stable-aarch64-apple-darwin "'
+        completions = get_sorted_completions(completions_file_path, input)
         assert completions == sorted([('foo', '')])
 
 
@@ -167,8 +167,8 @@ cargo +<toolchain>;
 <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 '''
     with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        input = 'source {}; complete --command cargo --do-complete "cargo +"'.format(completions_file_path)
-        completions = get_sorted_completions(input)
+        input = 'complete --command cargo --do-complete "cargo +"'
+        completions = get_sorted_completions(completions_file_path, input)
         assert completions == sorted([('+stable-aarch64-apple-darwin', ''), ('+stable-x86_64-apple-darwin', '')])
 
 
@@ -182,8 +182,8 @@ cargo +<toolchain>;
 
 def test_completes_strace_expr(complgen_binary_path: Path):
     with completion_script_path(complgen_binary_path, STRACE_EXPR_GRAMMAR) as completions_file_path:
-        input = 'source {}; complete --command cargo --do-complete "strace -e "'.format(completions_file_path)
-        completions = get_sorted_completions(input)
+        input = 'complete --command cargo --do-complete "strace -e "'
+        completions = get_sorted_completions(completions_file_path, input)
         assert completions == sorted([('!', ''), ('%file', ''), ('file', ''), ('all', ''), ('read', ''), ('trace', ''), ('write', ''), ('fault', '')])
 
 
@@ -193,8 +193,8 @@ def test_jit_completes_strace_expr(complgen_binary_path: Path):
 
 def test_completes_lsof_filter(complgen_binary_path: Path):
     with completion_script_path(complgen_binary_path, LSOF_FILTER_GRAMMAR) as completions_file_path:
-        input = 'source {}; complete --command cargo --do-complete "lsf "'.format(completions_file_path)
-        completions = get_sorted_completions(input)
+        input = 'complete --command cargo --do-complete "lsf "'
+        completions = get_sorted_completions(completions_file_path, input)
         assert completions == sorted([('-s', '')])
 
 
