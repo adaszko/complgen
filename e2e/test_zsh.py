@@ -132,7 +132,7 @@ def test_jit_completes_paths_zsh(complgen_binary_path: Path):
             assert expr.splitlines() == [
                 r'local -a completions=("\?\[\^a\]\*\{foo,\*bar\}" "dir\ with\ spaces" "filename\ with\ spaces")',
                 r'local -a descriptions=("\?\[\^a\]\*\{foo,\*bar\}" "dir\ with\ spaces" "filename\ with\ spaces")',
-                'compadd -d descriptions -a completions'
+                '''compadd -Q -S '' -d descriptions -a completions'''
             ]
 
 
@@ -146,7 +146,7 @@ def test_jit_completes_directories_zsh(complgen_binary_path: Path):
             assert expr.splitlines() == [
                 r'local -a completions=("\?\[\^a\]\*\{foo,\*bar\}" "dir\ with\ spaces")',
                 r'local -a descriptions=("\?\[\^a\]\*\{foo,\*bar\}" "dir\ with\ spaces")',
-                'compadd -d descriptions -a completions'
+                '''compadd -Q -S '' -d descriptions -a completions'''
             ]
 
 
@@ -157,7 +157,7 @@ def test_specializes_for_zsh(complgen_binary_path: Path):
 
 def test_jit_specializes_for_zsh(complgen_binary_path: Path):
     expr = get_jit_zsh_completions_expr(complgen_binary_path, '''cmd <FOO>; <FOO> ::= { echo foo }; <FOO@zsh> ::= { compadd zsh };''', 0, [])
-    assert expr == 'local -a completions=("zsh")\nlocal -a descriptions=("zsh")\ncompadd -d descriptions -a completions\n'
+    assert expr == '''local -a completions=("zsh")\nlocal -a descriptions=("zsh")\ncompadd -Q -S '' -d descriptions -a completions\n'''
 
 
 def test_mycargo(complgen_binary_path: Path):
@@ -188,7 +188,7 @@ cargo +<toolchain> foo;
 <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 '''
     expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, 1, ['+stable-aarch64-apple-darwin'])
-    assert expr == 'local -a completions=("foo")\nlocal -a descriptions=("foo")\ncompadd -d descriptions -a completions\n'
+    assert expr == '''local -a completions=("foo")\nlocal -a descriptions=("foo")\ncompadd -Q -S '' -d descriptions -a completions\n'''
 
 
 def test_completes_prefix(complgen_binary_path: Path):
@@ -206,7 +206,7 @@ cargo +<toolchain>;
 <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 '''
     expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, 0, ['+'])
-    assert expr == 'local -a completions=("stable-aarch64-apple-darwin" "stable-x86_64-apple-darwin")\nlocal -a descriptions=("stable-aarch64-apple-darwin" "stable-x86_64-apple-darwin")\ncompadd -d descriptions -a completions\n'
+    assert expr == '''local -a completions=("stable-aarch64-apple-darwin" "stable-x86_64-apple-darwin")\nlocal -a descriptions=("stable-aarch64-apple-darwin" "stable-x86_64-apple-darwin")\ncompadd -Q -S '' -d descriptions -a completions\n'''
 
 
 def test_completes_strace_expr(complgen_binary_path: Path):
@@ -216,7 +216,7 @@ def test_completes_strace_expr(complgen_binary_path: Path):
 
 def test_jit_completes_strace_expr(complgen_binary_path: Path):
     expr = get_jit_zsh_completions_expr(complgen_binary_path, STRACE_EXPR_GRAMMAR, 1, ['-e', 'trace='])
-    assert expr == 'local -a completions=("!" "%file" "all" "file")\nlocal -a descriptions=("!" "%file" "all" "file")\ncompadd -d descriptions -a completions\n'
+    assert expr == '''local -a completions=("!" "%file" "all" "file")\nlocal -a descriptions=("!" "%file" "all" "file")\ncompadd -Q -S '' -d descriptions -a completions\n'''
 
 
 def test_completes_lsof_filter(complgen_binary_path: Path):
@@ -226,4 +226,4 @@ def test_completes_lsof_filter(complgen_binary_path: Path):
 
 def test_jit_completes_lsof_filter(complgen_binary_path: Path):
     expr = get_jit_zsh_completions_expr(complgen_binary_path, LSOF_FILTER_GRAMMAR, 0, ['-sTCP:'])
-    assert expr == 'local -a completions=("CLOSED" "LISTEN" "^")\nlocal -a descriptions=("CLOSED" "LISTEN" "^")\ncompadd -d descriptions -a completions\n'
+    assert expr == '''local -a completions=("CLOSED" "LISTEN" "^")\nlocal -a descriptions=("CLOSED" "LISTEN" "^")\ncompadd -Q -S '' -d descriptions -a completions\n'''

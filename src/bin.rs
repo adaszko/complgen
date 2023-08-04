@@ -133,7 +133,7 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
             }), " ");
             println!(r#"local -a descriptions=({descriptions_array_initializer})"#);
 
-            println!(r#"compadd -d descriptions -a completions"#);
+            println!(r#"compadd -Q -S '' -d descriptions -a completions"#);
         },
     }
 
