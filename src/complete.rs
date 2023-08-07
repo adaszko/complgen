@@ -1,10 +1,8 @@
-use std::debug_assert;
 use std::ffi::OsStr;
 use std::{io::Write, process::Output};
 use std::process::Command;
 
 use crate::StateId;
-use hashbrown::HashMap;
 
 use ustr::ustr;
 use anyhow::{anyhow, Context, bail};
@@ -110,62 +108,17 @@ impl Shell {
 }
 
 
-pub fn get_match_final_state(dfa: &DFA, inputs: &[&str], completed_word_index: usize) -> Option<StateId> {
-    debug_assert!(completed_word_index <= inputs.len());
-
-    let mut input_index = 0;
-    let mut current_state = dfa.starting_state;
-
-    'outer: while input_index < inputs.len() {
-        if input_index == completed_word_index {
-            return Some(current_state);
-        }
-
-        for (transition_input, to) in dfa.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
-            if let Input::Literal(s, _) = transition_input {
-                if inputs[input_index] == s.as_str() {
-                    input_index += 1;
-                    current_state = *to;
-                    continue 'outer;
-                }
-            }
-        }
-
-        for (transition_input, to) in dfa.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
-            if let Input::Subword(dfa, _) = transition_input {
-                if dfa.accepts_str(inputs[input_index]) {
-                    input_index += 1;
-                    current_state = *to;
-                    continue 'outer;
-                }
-            }
-        }
-
-        for (transition_input, to) in dfa.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
-            if transition_input.matches_anything() {
-                input_index += 1;
-                current_state = *to;
-                continue 'outer;
-            }
-        }
-
-        return None;
-    }
-    Some(current_state)
-}
-
-
-fn capture_specialized_completions(shell: Shell, specialization: &Specialization, prefix: &str) -> anyhow::Result<Vec<(String, String)>> {
+fn capture_specialized_completions(shell: Shell, specialization: &Specialization, prefix: &str, output: &mut Vec<(String, String)>) -> anyhow::Result<()> {
     let stdout = match shell {
         Shell::Bash => {
             let Some(command) = specialization.bash.or(specialization.generic) else {
-                return Ok(vec![]);
+                return Ok(());
             };
             get_bash_command_stdout(&command)?
         },
         Shell::Fish => {
             let Some(command) = specialization.fish.or(specialization.generic) else {
-                return Ok(vec![]);
+                return Ok(());
             };
             get_fish_command_stdout(&command)?
         },
@@ -177,122 +130,142 @@ fn capture_specialized_completions(shell: Shell, specialization: &Specialization
                 get_zsh_command_stdout(&command)?
             }
             else {
-                return Ok(vec![]);
+                return Ok(());
             }
         },
     };
 
-    let result: Vec<(String, String)> = stdout
-        .lines()
-        .filter(|line| line.starts_with(prefix)).map(|line| match line.split_once("\t") {
+    for line in stdout.lines() {
+        if !line.starts_with(prefix) {
+            continue;
+        }
+        let (completion, description) = match line.split_once("\t") {
             Some((completion, description)) => (completion.to_owned(), description.to_owned()),
             None => (line.to_string(), "".to_string()),
-        }).collect();
-
-    Ok(result)
+        };
+        output.push((completion, description));
+    }
+    Ok(())
 }
 
 
-pub fn get_subword_match_final_state(dfa: &DFA, mut user_input: &str) -> Option<StateId> {
+pub fn get_subword_match_final_state<'a>(dfa: &DFA, mut remaining_input: &'a str) -> Option<(StateId, &'a str)> {
     let mut current_state = dfa.starting_state;
-    'outer: while !user_input.is_empty() {
-        for (transition_input, to) in dfa.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
+    'outer: while !remaining_input.is_empty() {
+        for (transition_input, to) in dfa.iter_transitions_from(current_state) {
             if let Input::Literal(s, _) = transition_input {
-                if user_input.starts_with(s.as_str()) {
-                    user_input = &user_input[s.len()..];
-                    current_state = *to;
+                if remaining_input.starts_with(s.as_str()) {
+                    remaining_input = &remaining_input[s.len()..];
+                    current_state = to;
                     continue 'outer;
                 }
             }
         }
 
-        for (transition_input, to) in dfa.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
+        for (transition_input, _) in dfa.iter_transitions_from(current_state) {
             if transition_input.matches_anything() {
-                return Some(*to);
+                remaining_input = "";
+                continue 'outer;
             }
         }
 
-        return None;
+        break;
     }
-    Some(current_state)
+    Some((current_state, remaining_input))
 }
 
 
 
-fn get_subword_completions(dfa: &DFA, entered_prefix: &str, shell: Shell) -> anyhow::Result<Vec<(String, String)>> {
-    let state_id = match get_subword_match_final_state(dfa, entered_prefix) {
-        Some(state_id) => state_id,
-        None => return Ok(vec![]),
-    };
-    let mut completions: Vec<(String, String)> = dfa.transitions.get(&state_id).unwrap_or(&HashMap::default()).iter().map(|(input, _)| get_completions_for_input(input, "", shell)).flatten().collect();
-    completions.sort_unstable();
-    Ok(completions)
-}
-
-
-fn do_get_completions_for_input(input: &Input, entered_prefix: &str, shell: Shell) -> anyhow::Result<Vec<(String, String)>> {
-    let completions = match input {
+fn get_completions_for_input(input: &Input, entered_prefix: &str, shell: Shell, output: &mut Vec<(String, String)>) -> anyhow::Result<()> {
+    match input {
         Input::Subword(subword_dfa, _) => {
-            get_subword_completions(&subword_dfa, entered_prefix, shell)?
+            let (state, remaining_input) = match get_subword_match_final_state(subword_dfa, entered_prefix) {
+                Some(state) => state,
+                None => return Ok(()),
+            };
+            for (input, _) in subword_dfa.iter_transitions_from(state) {
+                get_completions_for_input(&input, remaining_input, shell, output)?;
+            }
         },
 
-        Input::Literal(literal, description) => {
-            if literal.starts_with(entered_prefix) {
-                vec![(literal.as_str().to_string(), description.unwrap_or(ustr("")).as_str().to_string())]
-            }
-            else {
-                vec![]
-            }
-        },
+        Input::Literal(literal, description) if literal.starts_with(entered_prefix) => output.push((literal.as_str().to_string(), description.unwrap_or(ustr("")).as_str().to_string())),
+        Input::Literal(_, _) => {},
 
         Input::Command(command) => {
             let stdout = shell.shell_out(command.as_str())?;
-
-            let result: Vec<(String, String)> = stdout.lines().filter(|line| line.starts_with(entered_prefix)).map(|line| match line.split_once("\t") {
-                Some((completion, description)) => (completion.to_owned(), description.to_owned()),
-                None => (line.to_string(), "".to_string()),
-            }).collect();
-
-            result
+            for line in stdout.lines() {
+                if !line.starts_with(entered_prefix) {
+                    continue;
+                }
+                let (completion, description) = match line.split_once("\t") {
+                    Some((completion, description)) => (completion.to_owned(), description.to_owned()),
+                    None => (line.to_owned(), "".to_owned()),
+                };
+                output.push((completion, description));
+            }
         },
 
-        Input::Nonterminal(_, None) => vec![],
+        Input::Nonterminal(_, None) => {},
 
-        Input::Nonterminal(_, Some(specialization)) => capture_specialized_completions(shell, specialization, entered_prefix)?
-    };
-    Ok(completions)
+        Input::Nonterminal(_, Some(specialization)) => capture_specialized_completions(shell, specialization, entered_prefix, output)?
+    }
+    Ok(())
 }
 
 
-fn get_completions_for_input(input: &Input, prefix: &str, shell: Shell) -> Vec<(String, String)> {
-    match do_get_completions_for_input(input, prefix, shell) {
-        Ok(completions) => completions,
-        Err(e) => {
-            eprintln!("{:?}", e);
-            return vec![];
-        },
+pub fn get_completions<'a, 'b>(dfa: &DFA, words: &'b [&'a str], completed_word_index: usize, shell: Shell) -> anyhow::Result<Vec<(String, String)>> {
+    let prefix = if completed_word_index < words.len() {
+        words[completed_word_index]
     }
-}
-
-
-pub fn get_completions<'a, 'b>(dfa: &DFA, words_before_cursor: &'b [&'a str], completed_word_index: usize, shell: Shell) -> anyhow::Result<Vec<(String, String)>> {
-    let prefix = if completed_word_index < words_before_cursor.len() {
-        words_before_cursor[completed_word_index]
-    }
-    else if completed_word_index == words_before_cursor.len() {
+    else if completed_word_index == words.len() {
         ""
     } else {
         bail!("Trying to complete a word too far beyond the last one");
     };
 
-    let state_id = match get_match_final_state(dfa, words_before_cursor, completed_word_index) {
-        Some(state_id) => state_id,
-        None => return Ok(vec![]),
-    };
+    // Match words up to `completed_word_index`
+    let mut word_index = 0;
+    let mut state = dfa.starting_state;
+    assert!(completed_word_index <= words.len()); // an invariant
+    'outer: while word_index < words.len() && word_index < completed_word_index {
+        for (transition_input, to) in dfa.iter_transitions_from(state) {
+            if let Input::Literal(s, _) = transition_input {
+                if words[word_index] == s.as_str() {
+                    word_index += 1;
+                    state = to;
+                    continue 'outer;
+                }
+            }
+        }
 
-    let mut completions: Vec<(String, String)> = dfa.transitions.get(&state_id).unwrap_or(&HashMap::default()).iter().map(|(input, _)| get_completions_for_input(input, prefix, shell)).flatten().collect();
-    completions.sort_unstable();
-    Ok(completions)
+        for (transition_input, to) in dfa.iter_transitions_from(state) {
+            if let Input::Subword(dfa, _) = transition_input {
+                if dfa.accepts_str(words[word_index]) {
+                    word_index += 1;
+                    state = to;
+                    continue 'outer;
+                }
+            }
+        }
+
+        for (transition_input, to) in dfa.iter_transitions_from(state) {
+            if transition_input.matches_anything() {
+                word_index += 1;
+                state = to;
+                continue 'outer;
+            }
+        }
+
+        return Ok(vec![]);
+    }
+
+    // Complete `prefix` based on `state`.
+    let mut output: Vec<(String, String)> = Default::default();
+    for (input, _) in dfa.iter_transitions_from(state) {
+        get_completions_for_input(&input, prefix, shell, &mut output)?;
+    }
+    output.sort_unstable();
+    Ok(output)
 }
 
 
@@ -404,6 +377,20 @@ dummy --prefix=<SUFFIX>;
         let input = vec!["+stable-aarch64-apple-darwin"];
         let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 1).into_iter().map(|(completion, _)| completion));
         let expected = HashSet::from_iter(["foo"].map(|s| s.to_string()));
+        assert_eq!(generated, expected);
+    }
+
+    #[test]
+    fn completes_subword_prefix() {
+        const GRAMMAR: &str = r#"
+strace -e <EXPR>;
+<EXPR> ::= [<qualifier>=][!]<value>[,<value>]...;
+<qualifier> ::= trace | read | write | fault;
+<value> ::= %file | file | all;
+"#;
+        let input = vec!["-e", "tr"];
+        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 1).into_iter().map(|(completion, _)| completion));
+        let expected = HashSet::from_iter(["trace"].map(|s| s.to_string()));
         assert_eq!(generated, expected);
     }
 }

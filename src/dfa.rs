@@ -523,6 +523,13 @@ impl DFA {
         do_minimize(self)
     }
 
+    pub fn iter_transitions_from(&self, from: StateId) -> impl Iterator<Item=(Input, StateId)> {
+        match self.transitions.get(&from) {
+            Some(transitions) => transitions.clone().into_iter(),
+            None => HashMap::<Input, StateId>::default().into_iter(),
+        }
+    }
+
     pub fn accepts_str(&self, mut input: &str) -> bool {
         let mut current_state = self.starting_state;
         'outer: while !input.is_empty() {
