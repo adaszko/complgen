@@ -533,20 +533,20 @@ impl DFA {
     pub fn accepts_str(&self, mut input: &str) -> bool {
         let mut current_state = self.starting_state;
         'outer: while !input.is_empty() {
-            for (transition_input, to) in self.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
+            for (transition_input, to) in self.iter_transitions_from(current_state) {
                 if let Input::Literal(ustr, _) = transition_input {
                     let s = ustr.as_str();
                     if input.starts_with(s) {
                         input = &input[s.len()..];
-                        current_state = *to;
+                        current_state = to;
                         continue 'outer;
                     }
                 }
             }
 
-            for (transition_input, to) in self.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
+            for (transition_input, to) in self.iter_transitions_from(current_state) {
                 if transition_input.matches_anything() {
-                    current_state = *to;
+                    current_state = to;
                     break 'outer;
                 }
             }
@@ -761,27 +761,27 @@ mod tests {
                     break;
                 }
 
-                for (transition_input, to) in self.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
+                for (transition_input, to) in self.iter_transitions_from(current_state) {
                     if let Input::Literal(s, _) = transition_input {
                         if inputs[input_index] == s.as_str() {
                             input_index += 1;
-                            current_state = *to;
+                            current_state = to;
                             continue 'outer;
                         }
                     }
                 }
 
-                for (transition_input, to) in self.transitions.get(&current_state).unwrap_or(&HashMap::default()) {
+                for (transition_input, to) in self.iter_transitions_from(current_state) {
                     if let Input::Subword(dfa, _) = transition_input {
                         if dfa.accepts_str(inputs[input_index]) {
                             input_index += 1;
-                            current_state = *to;
+                            current_state = to;
                             continue 'outer;
                         }
                     }
                 }
 
-                let anys: Vec<(Input, StateId)> = self.transitions.get(&current_state).unwrap_or(&HashMap::default()).iter().filter(|(input, _)| input.matches_anything()).map(|(k, v)| (k.clone(), *v)).collect();
+                let anys: Vec<(Input, StateId)> = self.iter_transitions_from(current_state).filter(|(input, _)| input.matches_anything()).map(|(k, v)| (k.clone(), v)).collect();
                 // It's ambiguous which transition to take if there are two transitions
                 // representing a nonterminal.
                 prop_assume!(anys.len() <= 1);
