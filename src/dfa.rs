@@ -501,9 +501,9 @@ fn do_to_dot<W: Write>(output: &mut W, dfa: &DFA, identifiers_prefix: &str, recu
                 Input::Subword(subdfa, _) => {
                     let subdfa_id = *id_from_dfa.get(subdfa).unwrap();
                     let subdfa_identifiers_prefix = &format!("{subdfa_id}_");
-                    writeln!(output, "{indentation}_{identifiers_prefix}{} -> _{subdfa_identifiers_prefix}{};", from, subdfa.starting_state)?;
+                    writeln!(output, r#"{indentation}_{identifiers_prefix}{} -> _{subdfa_identifiers_prefix}{} [style="dashed"];"#, from, subdfa.starting_state)?;
                     for subdfa_accepting_state in &subdfa.accepting_states {
-                        writeln!(output, "{indentation}_{subdfa_identifiers_prefix}{} -> _{identifiers_prefix}{};", subdfa_accepting_state, to)?;
+                        writeln!(output, r#"{indentation}_{subdfa_identifiers_prefix}{} -> _{identifiers_prefix}{} [style="dashed"];"#, subdfa_accepting_state, to)?;
                     }
                 },
             }
