@@ -249,3 +249,9 @@ cmd <USER>;
 
 * Non-regular grammars aren't completed 100% *precisely*. For instance, in case of `find(1)`, `complgen` will
   still suggest `)` even in cases when all `(` have already been properly closed before the cursor.
+
+## Related Projects
+
+ * https://docs.rs/clap_complete/
+ * https://github.com/kislyuk/argcomplete
+ * https://github.com/oilshell/oil/wiki/Shell-Autocompletion
