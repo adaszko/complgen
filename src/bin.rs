@@ -1,5 +1,4 @@
 use std::io::{BufWriter, Write, Read};
-use std::rc::Rc;
 
 use anyhow::Context;
 use bumpalo::Bump;
@@ -87,12 +86,13 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
     let mut input: String = Default::default();
     input_file.read_to_string(&mut input)?;
     let grammar = Grammar::parse(&input)?;
-    let validated = ValidGrammar::from_grammar(grammar)?;
 
     if let Some(railroad_svg_path) = &args.railroad_svg {
         let mut railroad_svg = get_file_or_stdout(&railroad_svg_path)?;
-        to_railroad_diagram(Rc::clone(&validated.expr), &mut railroad_svg)?;
+        to_railroad_diagram(&grammar, &mut railroad_svg)?;
     }
+
+    let validated = ValidGrammar::from_grammar(grammar)?;
 
     let arena = Bump::new();
     let regex = AugmentedRegex::from_expr(&validated.expr, &validated.specializations, &arena);
@@ -168,6 +168,11 @@ fn compile(args: &CompileArgs) -> anyhow::Result<()> {
     };
 
     let grammar = Grammar::parse(&input)?;
+
+    if let Some(railroad_svg_path) = &args.railroad_svg {
+        to_railroad_diagram_file(&grammar, railroad_svg_path).context(railroad_svg_path.clone())?;
+    }
+
     let validated = ValidGrammar::from_grammar(grammar)?;
 
     if !validated.undefined_nonterminals.is_empty() {
@@ -181,10 +186,6 @@ fn compile(args: &CompileArgs) -> anyhow::Result<()> {
     }
 
     let arena = Bump::new();
-
-    if let Some(railroad_svg_path) = &args.railroad_svg {
-        to_railroad_diagram_file(Rc::clone(&validated.expr), railroad_svg_path).context(railroad_svg_path.clone())?;
-    }
 
     log::debug!("Grammar -> Regex");
     let regex = AugmentedRegex::from_expr(&validated.expr, &validated.specializations, &arena);

@@ -89,48 +89,76 @@ impl std::fmt::Debug for Expr {
 }
 
 
-fn do_to_railroad_diagram(expr: Rc<Expr>) -> Box<dyn railroad::Node> {
+fn railroad_node_from_expr(expr: Rc<Expr>) -> Box<dyn railroad::Node> {
     match expr.as_ref() {
-        Expr::Subword(subword, _) => Box::new(railroad::Terminal::new(format!("{subword:?}"))),
+        Expr::Subword(subword, _) => {
+            let expr = match subword {
+                SubwordCompilationPhase::Expr(expr) => expr,
+                SubwordCompilationPhase::DFA(_) => unreachable!(),
+            };
+            let mut seq: Box<railroad::Sequence<Box<dyn railroad::Node>>> = Default::default();
+            seq.push(Box::new(railroad::SimpleStart));
+            seq.push(railroad_node_from_expr(Rc::clone(&expr)));
+            seq.push(Box::new(railroad::SimpleEnd));
+            seq
+        },
         Expr::Terminal(s, _) => Box::new(railroad::Terminal::new(s.as_str().to_string())),
         Expr::Nonterminal(s) => Box::new(railroad::NonTerminal::new(s.as_str().to_string())),
         Expr::Command(s) => Box::new(railroad::Comment::new(s.as_str().to_string())),
         Expr::Sequence(subexprs) => {
-            let subnodes: Vec<Box<dyn railroad::Node>> = subexprs.iter().map(|e| do_to_railroad_diagram(Rc::clone(e))).collect();
+            let subnodes: Vec<Box<dyn railroad::Node>> = subexprs.iter().map(|e| railroad_node_from_expr(Rc::clone(e))).collect();
             Box::new(railroad::Sequence::new(subnodes))
         },
         Expr::Alternative(subexprs) => {
-            let subnodes: Vec<Box<dyn railroad::Node>> = subexprs.iter().map(|e| do_to_railroad_diagram(Rc::clone(e))).collect();
+            let subnodes: Vec<Box<dyn railroad::Node>> = subexprs.iter().map(|e| railroad_node_from_expr(Rc::clone(e))).collect();
             Box::new(railroad::Choice::new(subnodes))
         },
-        Expr::Optional(subexpr) => Box::new(railroad::Optional::new(do_to_railroad_diagram(Rc::clone(subexpr)))),
+        Expr::Optional(subexpr) => Box::new(railroad::Optional::new(railroad_node_from_expr(Rc::clone(subexpr)))),
         Expr::Many1(subexpr) => {
-            let subnode = do_to_railroad_diagram(Rc::clone(subexpr));
+            let subnode = railroad_node_from_expr(Rc::clone(subexpr));
             Box::new(railroad::Repeat::new(subnode, Box::new(railroad::Empty)))
         },
     }
 }
 
-pub fn to_railroad_diagram<W: std::io::Write>(expr: Rc<Expr>, output: &mut W) -> std::result::Result<(), std::io::Error> {
-    let root = {
-        let node = do_to_railroad_diagram(expr);
-        let mut seq: railroad::Sequence<Box<dyn railroad::Node>> = Default::default();
-        seq.push(Box::new(railroad::Start));
-        seq.push(node);
-        seq.push(Box::new(railroad::End));
-        seq
-    };
-    let mut dia = railroad::Diagram::new(root);
+pub fn to_railroad_diagram<W: std::io::Write>(grammar: &Grammar, output: &mut W) -> std::result::Result<(), std::io::Error> {
+    let mut vertical: railroad::VerticalGrid<Box<dyn railroad::Node>> = Default::default();
+
+    for stmt in &grammar.statements {
+        let node: Box<dyn railroad::Node> = match stmt {
+            Statement::CallVariant { head, expr } => {
+                let mut seq: Box<railroad::Sequence<Box<dyn railroad::Node>>> = Default::default();
+                seq.push(Box::new(railroad::Start));
+                seq.push(Box::new(railroad::Terminal::new(head.to_string())));
+                seq.push(railroad_node_from_expr(Rc::clone(&expr)));
+                seq.push(Box::new(railroad::End));
+                seq
+            },
+            Statement::NonterminalDefinition { symbol, shell, expr } => {
+                let inner = railroad_node_from_expr(Rc::clone(&expr));
+                let label = if let Some(shell) = shell {
+                    format!("{}@{}", symbol, shell)
+                } else {
+                    symbol.to_string()
+                };
+                let label = railroad::Comment::new(label);
+                Box::new(railroad::LabeledBox::new(inner, label))
+            },
+        };
+        vertical.push(node);
+    }
+
+    let mut dia = railroad::Diagram::new(vertical);
     dia.add_element(railroad::svg::Element::new("style").set("type", "text/css").text(railroad::DEFAULT_CSS));
     dia.write(output)
 }
 
 pub fn to_railroad_diagram_file<P: AsRef<std::path::Path>>(
-    expr: Rc<Expr>,
+    grammar: &Grammar,
     path: P,
 ) -> std::result::Result<(), std::io::Error> {
     let mut file = std::fs::File::create(path)?;
-    to_railroad_diagram(expr, &mut file)?;
+    to_railroad_diagram(grammar, &mut file)?;
     Ok(())
 }
 
