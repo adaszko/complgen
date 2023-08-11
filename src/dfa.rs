@@ -8,7 +8,7 @@ use hashbrown::{HashMap, HashSet};
 use roaring::{MultiOps, RoaringBitmap};
 use ustr::{Ustr, ustr};
 
-use crate::{regex::{Position, AugmentedRegex, Input}, grammar::Specialization};
+use crate::{regex::{Position, AugmentedRegex, Input}, grammar::{Specialization, DFARef}};
 use crate::StateId;
 
 
@@ -26,34 +26,6 @@ pub struct DFA {
     pub accepting_states: RoaringBitmap,
     pub input_symbols: Rc<HashSet<Input>>,
 }
-
-
-impl PartialEq for DFA {
-    fn eq(&self, other: &Self) -> bool {
-        if self.starting_state != other.starting_state {
-            return false;
-        }
-
-        if self.transitions != other.transitions {
-            return false;
-        }
-
-        if self.input_symbols != other.input_symbols {
-            return false;
-        }
-
-        for (left, right) in self.accepting_states.iter().zip(other.accepting_states.iter()) {
-            if left != right {
-                return false;
-            }
-        }
-
-        true
-    }
-}
-
-
-impl Eq for DFA {}
 
 
 impl std::hash::Hash for DFA {
@@ -501,8 +473,8 @@ fn do_to_dot<W: Write>(output: &mut W, dfa: &DFA, identifiers_prefix: &str, recu
                 Input::Subword(subdfa, _) => {
                     let subdfa_id = *id_from_dfa.get(subdfa).unwrap();
                     let subdfa_identifiers_prefix = &format!("{subdfa_id}_");
-                    writeln!(output, r#"{indentation}_{identifiers_prefix}{} -> _{subdfa_identifiers_prefix}{} [style="dashed"];"#, from, subdfa.starting_state)?;
-                    for subdfa_accepting_state in &subdfa.accepting_states {
+                    writeln!(output, r#"{indentation}_{identifiers_prefix}{} -> _{subdfa_identifiers_prefix}{} [style="dashed"];"#, from, subdfa.as_ref().starting_state)?;
+                    for subdfa_accepting_state in &subdfa.as_ref().accepting_states {
                         writeln!(output, r#"{indentation}_{subdfa_identifiers_prefix}{} -> _{identifiers_prefix}{} [style="dashed"];"#, subdfa_accepting_state, to)?;
                     }
                 },
@@ -649,13 +621,13 @@ impl DFA {
         transitions
     }
 
-    pub fn get_subword_transitions_from(&self, from: StateId) -> Vec<(Rc<DFA>, StateId)> {
+    pub fn get_subword_transitions_from(&self, from: StateId) -> Vec<(DFARef, StateId)> {
         let map = match self.transitions.get(&StateId::try_from(from).unwrap()) {
             Some(map) => map,
             None => return vec![],
         };
-        let transitions: Vec<(Rc<DFA>, StateId)> = map.iter().filter_map(|(input, to)| match input {
-            Input::Subword(dfa, _) => Some((Rc::clone(&dfa), *to)),
+        let transitions: Vec<(DFARef, StateId)> = map.iter().filter_map(|(input, to)| match input {
+            Input::Subword(dfa, _) => Some((dfa.clone(), *to)),
             Input::Literal(..) => None,
             Input::Nonterminal(..) => None,
             Input::Command(..) => None,
@@ -688,9 +660,9 @@ impl DFA {
         result
     }
 
-    pub fn get_subwords(&self, first_id: usize) -> HashMap<Rc<DFA>, usize> {
+    pub fn get_subwords(&self, first_id: usize) -> HashMap<DFARef, usize> {
         let mut unallocated_id = first_id;
-        let mut result: HashMap<Rc<DFA>, usize> = Default::default();
+        let mut result: HashMap<DFARef, usize> = Default::default();
         for (_, tos) in &self.transitions {
             for (input, _) in tos {
                 let dfa = match input {
@@ -699,7 +671,7 @@ impl DFA {
                     Input::Command(..) => continue,
                     Input::Literal(..) => continue,
                 };
-                result.entry(Rc::clone(&dfa)).or_insert_with(|| {
+                result.entry(dfa.clone()).or_insert_with(|| {
                     let save = unallocated_id;
                     unallocated_id += 1;
                     save
@@ -773,7 +745,7 @@ mod tests {
 
                 for (transition_input, to) in self.iter_transitions_from(current_state) {
                     if let Input::Subword(dfa, _) = transition_input {
-                        if dfa.accepts_str(inputs[input_index]) {
+                        if dfa.as_ref().accepts_str(inputs[input_index]) {
                             input_index += 1;
                             current_state = to;
                             continue 'outer;

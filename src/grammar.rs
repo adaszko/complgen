@@ -16,10 +16,37 @@ use ustr::{Ustr, ustr, UstrMap, UstrSet};
 use crate::{dfa::DFA, regex::AugmentedRegex};
 
 
+// A wrapper so that we use Rc::ptr_eq() for equality comparisons instead of comparing entire DFAs,
+// which is expensive.
+#[derive(Debug, Clone, Hash)]
+pub struct DFARef(Rc<DFA>);
+
+
+impl DFARef {
+    pub fn new(dfa: DFA) -> Self {
+        Self(Rc::new(dfa))
+    }
+
+    pub fn as_ref(&self) -> &DFA {
+        self.0.as_ref()
+    }
+}
+
+
+impl PartialEq for DFARef {
+    fn eq(&self, other: &Self) -> bool {
+        Rc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+
+impl Eq for DFARef {}
+
+
 #[derive(Clone, PartialEq)]
 pub enum SubwordCompilationPhase {
     Expr(Rc<Expr>),
-    DFA(Rc<DFA>),
+    DFA(DFARef),
 }
 
 
@@ -738,7 +765,7 @@ fn compile_subword_exprs(expr: Rc<Expr>, specs: &UstrMap<Specialization>) -> Rc<
             let regex = AugmentedRegex::from_expr(&subword_expr, &specs, &arena);
             let dfa = DFA::from_regex(&regex);
             let dfa = dfa.minimize();
-            Rc::new(Expr::Subword(SubwordCompilationPhase::DFA(Rc::new(dfa)), *descr))
+            Rc::new(Expr::Subword(SubwordCompilationPhase::DFA(DFARef::new(dfa)), *descr))
         },
         Expr::Terminal(..) | Expr::Nonterminal(..) | Expr::Command(..) => Rc::clone(&expr),
         Expr::Sequence(children) => {

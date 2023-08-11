@@ -6,8 +6,7 @@ use bumpalo::Bump;
 use ustr::{Ustr, UstrMap};
 use roaring::RoaringBitmap;
 
-use crate::dfa::DFA;
-use crate::grammar::{Expr, Specialization, SubwordCompilationPhase};
+use crate::grammar::{Expr, Specialization, SubwordCompilationPhase, DFARef};
 
 pub type Position = u32;
 
@@ -15,7 +14,7 @@ pub type Position = u32;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Input {
     Literal(Ustr, Option<Ustr>),
-    Subword(Rc<DFA>, Option<Ustr>),
+    Subword(DFARef, Option<Ustr>),
     Nonterminal(Ustr, Option<Specialization>),
     Command(Ustr),
 }
@@ -216,7 +215,7 @@ fn do_from_expr<'a>(e: &Expr, specs: &UstrMap<Specialization>, arena: &'a Bump, 
                 SubwordCompilationPhase::DFA(dfa) => dfa,
                 SubwordCompilationPhase::Expr(_) => unreachable!(),
             };
-            let input = Input::Subword(Rc::clone(&dfa), *descr);
+            let input = Input::Subword(dfa.clone(), *descr);
             input_from_position.push(input.clone());
             symbols.insert(input);
             result
