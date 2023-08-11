@@ -250,3 +250,23 @@ def test_jit_completes_subword_external_command(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option={ echo -e "argument\tdescription" };'''
     expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, 0, ['--option='])
     assert expr == '''local -a completions=("argument")\nlocal -a descriptions=("argument (description)")\ncompadd -Q -S '' -d descriptions -a completions\n'''
+
+
+def test_subword_specialization(complgen_binary_path: Path):
+    GRAMMAR = r'''
+cmd --option=<FOO>;
+<FOO> ::= { echo generic };
+<FOO@zsh> ::= { echo zsh };
+'''
+    with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
+        assert get_sorted_completions(capture_zsh_path, 'cmd --option=') == sorted([('zsh', '')])
+
+
+def test_jit_subword_specialization(complgen_binary_path: Path):
+    GRAMMAR = r'''
+cmd --option=<FOO>;
+<FOO> ::= { echo generic };
+<FOO@zsh> ::= { echo zsh };
+'''
+    expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, 0, ['--option='])
+    assert expr == '''local -a completions=("zsh")\nlocal -a descriptions=("zsh")\ncompadd -Q -S '' -d descriptions -a completions\n'''

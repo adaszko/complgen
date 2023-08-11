@@ -223,3 +223,24 @@ def test_jit_completes_subword_external_command(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option={ echo -e "argument\tdescription" };'''
     process = subprocess.run([complgen_binary_path, 'complete', '-', 'bash', '--', '0', '--option='], input=GRAMMAR.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
     assert sorted(process.stdout.decode().splitlines()) == sorted(['argument'])
+
+
+def test_subword_specialization(complgen_binary_path: Path):
+    GRAMMAR = r'''
+cmd --option=<FOO>;
+<FOO> ::= { echo generic };
+<FOO@bash> ::= { echo bash };
+'''
+    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
+        input = r'''COMP_WORDS=(cmd --option=); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_completions(path, input) == sorted(['bash'])
+
+
+def test_jit_specialization(complgen_binary_path: Path):
+    GRAMMAR = r'''
+cmd --option=<FOO>;
+<FOO> ::= { echo generic };
+<FOO@bash> ::= { echo bash };
+'''
+    process = subprocess.run([complgen_binary_path, 'complete', '-', 'bash', '--', '0', '--option='], input=GRAMMAR.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
+    assert sorted(process.stdout.decode().splitlines()) == sorted(['bash'])
