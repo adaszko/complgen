@@ -80,7 +80,7 @@ impl Expr {
             Expr::Terminal(..) => false,
             Expr::Nonterminal(..) => false,
             Expr::Command(..) => false,
-            Expr::Subword(..) => false,
+            Expr::Subword(..) => unreachable!("bug in grammar"),
             Expr::Sequence(..) => true,
             Expr::Alternative(..) => true,
             Expr::Optional(e) => e.is_subword_expr(),
@@ -216,7 +216,7 @@ fn multiblanks1(input: &str) -> IResult<&str, ()> {
 
 
 const ESCAPE_CHARACTER: char = '\\';
-const RESERVED_CHARACTERS: &str = r#"()[]{}<>.|;"#;
+const RESERVED_CHARACTERS: &str = r#"()[]{}<>.|;""#;
 
 
 fn is_terminal_char(c: char) -> bool {
@@ -246,13 +246,20 @@ fn subword_parenthesized_expr(input: &str) -> IResult<&str, Expr> {
     Ok((input, e))
 }
 
+fn subword_terminal_opt_description_expr(input: &str) -> IResult<&str, Expr> {
+    let (input, term) = terminal(input)?;
+    let (input, descr) = opt(description)(input)?;
+    let expr = Expr::Terminal(ustr(&term), descr.map(ustr));
+    Ok((input, expr))
+}
+
 fn subword_unary_expr(input: &str) -> IResult<&str, Expr> {
     let (input, e) = alt((
         nonterminal_expr,
         subword_optional_expr,
         subword_parenthesized_expr,
         command_expr,
-        terminal_opt_description_expr,
+        subword_terminal_opt_description_expr,
     ))(input)?;
 
     if let Ok((input, ())) = many1_tag(input) {
@@ -291,6 +298,13 @@ fn subword_alternative_expr(input: &str) -> IResult<&str, Expr> {
 fn subword_expr(input: &str) -> IResult<&str, Expr> {
     let (input, expr) = subword_alternative_expr(input)?;
     let (input, descr) = opt(multiblanks1_description)(input)?;
+
+    if let Expr::Terminal(..) = expr {
+        if let Some(_) = descr {
+            return fail("Terminal description special case hit");
+        }
+    }
+
     let result = if expr.is_subword_expr() {
         match expr {
             Expr::Optional(e) => Expr::Optional(Rc::new(Expr::Subword(SubwordCompilationPhase::Expr(e), descr.map(ustr)))),
