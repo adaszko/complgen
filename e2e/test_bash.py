@@ -197,3 +197,16 @@ def test_completes_lsof_filter(complgen_binary_path: Path):
 
 def test_jit_completes_lsf_filter(complgen_binary_path: Path):
     assert get_sorted_jit_bash_completions(complgen_binary_path, LSOF_FILTER_GRAMMAR, 0, ['-sTCP:']) == sorted(['^', 'LISTEN', 'CLOSED'])
+
+
+def test_completes_subword_external_command(complgen_binary_path: Path):
+    GRAMMAR = r'''cmd --option={ echo -e "argument\tdescription" };'''
+    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
+        input = r'''COMP_WORDS=(cmd --option=); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_completions(path, input) == sorted(['argument'])
+
+
+def test_jit_completes_subword_external_command(complgen_binary_path: Path):
+    GRAMMAR = r'''cmd --option={ echo -e "argument\tdescription" };'''
+    process = subprocess.run([complgen_binary_path, 'complete', '-', 'bash', '--', '0', '--option='], input=GRAMMAR.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
+    assert sorted(process.stdout.decode().splitlines()) == sorted(['argument'])

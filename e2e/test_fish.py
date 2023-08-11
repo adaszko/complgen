@@ -200,3 +200,14 @@ def test_completes_lsof_filter(complgen_binary_path: Path):
 
 def test_jit_completes_lsof_filter(complgen_binary_path: Path):
     assert get_sorted_jit_fish_completions(complgen_binary_path, LSOF_FILTER_GRAMMAR, 0, ['-sTCP:']) == sorted([('^', ''), ('LISTEN', ''), ('CLOSED', '')])
+
+
+def test_completes_subword_external_command(complgen_binary_path: Path):
+    GRAMMAR = r'''cmd --option={ echo -e "argument\tdescription" };'''
+    with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
+        input = 'complete --command cmd --do-complete "cmd --option="'
+        assert get_sorted_completions(completions_file_path, input) == [('argument', 'description')]
+
+def test_jit_completes_subword_external_command(complgen_binary_path: Path):
+    GRAMMAR = r'''cmd --option={ echo -e "argument\tdescription" };'''
+    assert get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR, 0, ['--option=']) == sorted([('argument', 'description')])
