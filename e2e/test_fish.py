@@ -203,13 +203,13 @@ def test_jit_completes_lsof_filter(complgen_binary_path: Path):
 
 
 def test_subword_descriptions(complgen_binary_path: Path):
-    GRAMMAR = r'''cmd --option=(arg1"descr1"|arg2"descr2");'''
+    GRAMMAR = r'''cmd --option=(arg1 "descr1" | arg2 "descr2");'''
     with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
         input = 'complete --command cmd --do-complete "cmd --option="'
         assert get_sorted_completions(completions_file_path, input) == [('--option=arg1', 'descr1'), ('--option=arg2', 'descr2')]
 
 def test_jit_subword_descriptions(complgen_binary_path: Path):
-    GRAMMAR = r'''cmd --option=(arg1"descr1"|arg2"descr2");'''
+    GRAMMAR = r'''cmd --option=(arg1 "descr1" | arg2 "descr2");'''
     assert get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR, 0, ['--option=']) == sorted([('arg1', 'descr1'), ('arg2', 'descr2')])
 
 

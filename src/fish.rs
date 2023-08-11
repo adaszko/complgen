@@ -182,7 +182,11 @@ fn write_subword_fn<W: Write>(buffer: &mut W, name: &str, dfa: &DFA) -> Result<(
         set --local --erase tos
         eval $literal_transitions[$state]
         for literal_id in $inputs
-            printf '%s%s\n' $matched_prefix $literals[$literal_id]
+            if test -n $descriptions[$literal_id]
+                printf '%s%s\t%s\n' $matched_prefix $literals[$literal_id] $descriptions[$literal_id]
+            else
+                printf '%s%s\n' $matched_prefix $literals[$literal_id]
+            end
         end
     end
 

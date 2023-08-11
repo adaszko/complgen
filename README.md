@@ -241,6 +241,15 @@ cmd <USER>;
 <USER@zsh> ::= { _users };
 ```
 
+##### Subword matching
+
+Caveats:
+ * Fish only allows [a limited set of
+   characters](https://github.com/fish-shell/fish-shell/blob/408ab860906fbf6e08f314bea982220fdee3428e/src/complete.cpp#L183)
+   within subwords.  Otherwise, it automatically inserts a space characters that ends completion of the
+   current word thereby completer out of the subword state.
+    * [Not adding space after dot at completion time · Issue #6928 · fish-shell/fish-shell · GitHub](https://github.com/fish-shell/fish-shell/issues/6928)
+
 ## Limitations
 
  * Grouping single character options into a single shell parameter isn't supported, e.g. `tar -xvf` (unless
