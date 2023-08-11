@@ -156,7 +156,11 @@ fn write_subword_fn<W: Write>(buffer: &mut W, name: &str, dfa: &DFA) -> Result<(
         for literal_id in ${{(k)state_transitions}}; do
             local literal=${{literals[$literal_id]}}
             if [[ $literal = "${{completed_prefix}}"* ]]; then
-                echo "$matched_prefix$literal"
+                if [[ -v "descriptions[$literal_id]" ]]; then
+                    echo "$matched_prefix$literal\t$literal (${{descriptions[$literal_id]}})"
+                else
+                    echo "$matched_prefix$literal"
+                fi
             fi
         done
     fi

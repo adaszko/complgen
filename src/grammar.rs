@@ -1568,6 +1568,23 @@ grep --color=<WHEN> --version;
         );
     }
 
+    #[ignore]
+    #[test]
+    fn parens_are_enough_to_parse_as_subword() {
+        const INPUT: &str = r#"
+grep --color=(always | never | auto);
+"#;
+        let g = Grammar::parse(INPUT).unwrap();
+        assert_eq!(
+            g.statements,
+            [
+                Statement::CallVariant {
+                    head: ustr("grep"),
+                    expr: Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="), None)), Rc::new(Alternative(vec![Rc::new(Terminal(ustr("always"), None)), Rc::new(Terminal(ustr("never"), None)), Rc::new(Terminal(ustr("auto"), None))]))]))), None)),
+                },
+            ],
+        );
+    }
 
     #[test]
     fn parses_strace_expr_grammar() {
