@@ -217,7 +217,7 @@ def test_completes_subword_external_command(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option={ echo -e "argument\tdescription" };'''
     with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
         input = 'complete --command cmd --do-complete "cmd --option="'
-        assert get_sorted_completions(completions_file_path, input) == [('argument', 'description')]
+        assert get_sorted_completions(completions_file_path, input) == [('--option=argument', 'description')]
 
 
 def test_jit_completes_subword_external_command(complgen_binary_path: Path):

@@ -230,12 +230,12 @@ def test_jit_completes_lsof_filter(complgen_binary_path: Path):
 
 
 def test_subword_descriptions(complgen_binary_path: Path):
-    GRAMMAR = r'''cmd --option=(arg1"descr1"|arg2"descr2");'''
+    GRAMMAR = r'''cmd --option=(arg1 "descr1" | arg2 "descr2");'''
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
         assert get_sorted_completions(capture_zsh_path, 'cmd --option=') == sorted([('--option=arg1', 'arg1 (descr1)'), ('--option=arg2', 'arg2 (descr2)')])
 
 def test_jit_subword_descriptions(complgen_binary_path: Path):
-    GRAMMAR = r'''cmd --option=(arg1"descr1"|arg2"descr2");'''
+    GRAMMAR = r'''cmd --option=(arg1 "descr1" | arg2 "descr2");'''
     expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, 0, ['--option='])
     assert expr == '''local -a completions=("arg1" "arg2")\nlocal -a descriptions=("arg1 (descr1)" "arg2 (descr2)")\ncompadd -Q -S '' -d descriptions -a completions\n'''
 
@@ -243,7 +243,7 @@ def test_jit_subword_descriptions(complgen_binary_path: Path):
 def test_completes_subword_external_command(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option={ echo -e "argument\tdescription" };'''
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
-        assert get_sorted_completions(capture_zsh_path, 'cmd --option=') == sorted([('argument', 'description')])
+        assert get_sorted_completions(capture_zsh_path, 'cmd --option=') == sorted([('--option=argument', 'description')])
 
 
 def test_jit_completes_subword_external_command(complgen_binary_path: Path):

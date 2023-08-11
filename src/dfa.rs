@@ -485,6 +485,42 @@ fn do_to_dot<W: Write>(output: &mut W, dfa: &DFA, identifiers_prefix: &str, recu
     Ok(())
 }
 
+fn do_get_subdfa_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)>) {
+    for (from, tos) in &dfa.transitions {
+        for (input, _) in tos {
+            let cmd = match input {
+                Input::Command(cmd) => *cmd,
+                Input::Subword(_, _) => unreachable!(),
+                Input::Nonterminal(..) => continue,
+                Input::Literal(..) => continue,
+            };
+            result.push((*from, cmd));
+        }
+    }
+}
+
+
+fn do_get_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)>, subdfas: &mut HashMap<DFARef, Vec<(StateId, Ustr)>>) {
+    for (from, tos) in &dfa.transitions {
+        for (input, _) in tos {
+            let cmd = match input {
+                Input::Command(cmd) => *cmd,
+                Input::Subword(subdfa, _) => {
+                    if subdfas.contains_key(subdfa) {
+                        continue;
+                    }
+                    let mut transitions = subdfas.entry(subdfa.clone()).or_default();
+                    do_get_subdfa_command_transitions(subdfa.as_ref(), &mut transitions);
+                    continue;
+                },
+                Input::Nonterminal(..) => continue,
+                Input::Literal(..) => continue,
+            };
+            result.push((*from, cmd));
+        }
+    }
+}
+
 
 impl DFA {
     pub fn from_regex(regex: &AugmentedRegex) -> Self {
@@ -537,20 +573,11 @@ impl DFA {
         }).collect()
     }
 
-    pub fn get_command_transitions(&self) -> Vec<(StateId, Ustr)> {
-        let mut result: Vec<(StateId, Ustr)> = Default::default();
-        for (from, tos) in &self.transitions {
-            for (input, _) in tos {
-                let cmd = match input {
-                    Input::Command(cmd) => *cmd,
-                    Input::Nonterminal(..) => continue,
-                    Input::Subword(..) => continue,
-                    Input::Literal(..) => continue,
-                };
-                result.push((*from, cmd));
-            }
-        }
-        result
+    pub fn get_command_transitions(&self) -> (Vec<(StateId, Ustr)>, HashMap<DFARef, Vec<(StateId, Ustr)>>) {
+        let mut top_level: Vec<(StateId, Ustr)> = Default::default();
+        let mut subdfas: HashMap<DFARef, Vec<(StateId, Ustr)>> = Default::default();
+        do_get_command_transitions(self, &mut top_level, &mut subdfas);
+        (top_level, subdfas)
     }
 
     pub fn get_bash_command_transitions(&self) -> Vec<(StateId, Ustr)> {

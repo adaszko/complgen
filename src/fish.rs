@@ -111,8 +111,8 @@ fn write_specialized_commands_completion_code<W: Write>(buffer: &mut W, command:
 }
 
 
-fn write_subword_fn<W: Write>(buffer: &mut W, name: &str, dfa: &DFA) -> Result<()> {
-    writeln!(buffer, r#"function {name}
+fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DFA, command_id_from_state: &HashMap<StateId, usize>) -> Result<()> {
+    writeln!(buffer, r#"function _{command}_subword_{id}
     set mode $argv[1]
     set word $argv[2]
 "#)?;
@@ -192,6 +192,24 @@ fn write_subword_fn<W: Write>(buffer: &mut W, name: &str, dfa: &DFA) -> Result<(
 
 "#)?;
 
+
+    if !command_id_from_state.is_empty() {
+        writeln!(buffer, r#"    set command_states {}"#, itertools::join(command_id_from_state.iter().map(|(state, _)| state + 1), " "))?;
+        write!(buffer, r#"    set command_ids {}"#, itertools::join(command_id_from_state.iter().map(|(_, id)| id), " "))?;
+        write!(buffer, r#"
+    if contains $state $command_states
+        set --local index (contains --index $state $command_states)
+        set --local function_id $command_ids[$index]
+        set --local function_name _{command}_subword_cmd_$function_id
+        set --local --erase inputs
+        set --local --erase tos
+        $function_name "$matched_prefix" | while read --local line
+            printf '%s%s' $matched_prefix $line
+        end
+    end
+"#)?;
+    }
+
     writeln!(buffer, r#"
     return 0
 end
@@ -202,24 +220,27 @@ end
 
 
 pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
-    let command_transitions: Vec<(usize, StateId, Ustr)> = dfa.get_command_transitions().into_iter().enumerate().map(|(id, (from, input))| (id + 1, from, input)).collect();
+    let (top_level_command_transitions, subword_command_transitions) = dfa.get_command_transitions();
 
-    // We can't identify commands by state ids because we're deduplicating them
-    let mut id_from_command: UstrMap<usize> = Default::default();
-    let mut id_from_state: HashMap<StateId, usize> = Default::default();
-    for (id, state, command) in &command_transitions {
-        if let Some(canonical_id) = id_from_command.get(command) {
-            id_from_state.insert(*state, *canonical_id);
-        }
-        else {
-            id_from_command.insert(*command, *id);
-            id_from_state.insert(*state, *id);
-        }
-    }
-
-    for (cmd, id) in &id_from_command {
+    let id_from_top_level_command: UstrMap<usize> = top_level_command_transitions.iter().enumerate().map(|(id, (_, cmd))| (*cmd, id + 1)).collect();
+    for (cmd, id) in &id_from_top_level_command {
         write!(buffer, r#"function _{command}_{id}
     set 1 $argv[1]
+    {cmd}
+end
+
+"#)?;
+    }
+
+    let id_from_subword_command: UstrMap<usize> = subword_command_transitions
+        .iter()
+        .enumerate()
+        .map(|(id, (_, transitions))| {
+            transitions.iter().map(move |(_, cmd)| (*cmd, id))
+        }).flatten()
+        .collect();
+    for (cmd, id) in &id_from_subword_command {
+        write!(buffer, r#"function _{command}_subword_cmd_{id}
     {cmd}
 end
 
@@ -230,8 +251,9 @@ end
 
     let id_from_dfa = dfa.get_subwords(1);
     for (dfa, id) in &id_from_dfa {
-        let name = format!("_{command}_subword_{id}");
-        write_subword_fn(buffer, &name, dfa.as_ref())?;
+        let transitions = subword_command_transitions.get(dfa).unwrap();
+        let subword_command_id_from_state: HashMap<StateId, usize> = transitions.into_iter().map(|(state, cmd)| (*state, *id_from_subword_command.get(cmd).unwrap())).collect();
+        write_subword_fn(buffer, command, *id, dfa.as_ref(), &subword_command_id_from_state)?;
         writeln!(buffer, "")?;
     }
 
@@ -353,9 +375,10 @@ end
 
 "#)?;
 
-    if !command_transitions.is_empty() {
-        writeln!(buffer, r#"    set command_states {}"#, itertools::join(id_from_state.iter().map(|(state, _)| state + 1), " "))?;
-        write!(buffer, r#"    set command_ids {}"#, itertools::join(id_from_state.iter().map(|(_, id)| id), " "))?;
+    let top_level_command_id_from_state: HashMap<StateId, usize> = top_level_command_transitions.into_iter().map(|(state, cmd)| (state, *id_from_top_level_command.get(&cmd).unwrap())).collect();
+    if !top_level_command_id_from_state.is_empty() {
+        writeln!(buffer, r#"    set command_states {}"#, itertools::join(top_level_command_id_from_state.iter().map(|(state, _)| state + 1), " "))?;
+        write!(buffer, r#"    set command_ids {}"#, itertools::join(top_level_command_id_from_state.iter().map(|(_, id)| id), " "))?;
         write!(buffer, r#"
     if contains $state $command_states
         set --local index (contains --index $state $command_states)
