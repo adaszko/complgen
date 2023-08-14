@@ -252,10 +252,6 @@ Caveats:
 
 ## Limitations
 
- * Grouping single character options into a single shell parameter isn't supported, e.g. `tar -xvf` (unless
-   you manually enumerate all the combinations in the grammar which isn't very practical).  You need to pass
-   each option in a separate shell argument instead: `tar -x -v -f`
-
 * Non-regular grammars aren't completed 100% *precisely*. For instance, in case of `find(1)`, `complgen` will
   still suggest `)` even in cases when all `(` have already been properly closed before the cursor.
 
