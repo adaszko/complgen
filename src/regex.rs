@@ -14,7 +14,7 @@ pub type Position = u32;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Input {
     Literal(Ustr, Option<Ustr>),
-    Subword(DFARef, Option<Ustr>),
+    Subword(DFARef),
     Nonterminal(Ustr, Option<Specialization>),
     Command(Ustr),
 }
@@ -35,7 +35,7 @@ impl Input {
 impl std::fmt::Display for Input {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Subword(subword, _) => write!(f, r#"{subword:?}"#),
+            Self::Subword(subword) => write!(f, r#"{subword:?}"#),
             Self::Literal(literal, _) => write!(f, r#"{literal}"#),
             Self::Nonterminal(nonterminal, _) => write!(f, r#"{nonterminal}"#),
             Self::Command(command) => write!(f, r#"{command}"#),
@@ -209,13 +209,13 @@ fn do_from_expr<'a>(e: &Expr, specs: &UstrMap<Specialization>, arena: &'a Bump, 
             symbols.insert(input);
             result
         },
-        Expr::Subword(subword, descr) => {
+        Expr::Subword(subword) => {
             let result = AugmentedRegexNode::Subword(Position::try_from(input_from_position.len()).unwrap());
             let dfa = match subword {
                 SubwordCompilationPhase::DFA(dfa) => dfa,
                 SubwordCompilationPhase::Expr(_) => unreachable!(),
             };
-            let input = Input::Subword(dfa.clone(), *descr);
+            let input = Input::Subword(dfa.clone());
             input_from_position.push(input.clone());
             symbols.insert(input);
             result

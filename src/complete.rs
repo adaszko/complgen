@@ -178,7 +178,7 @@ pub fn get_subword_match_final_state<'a>(dfa: &DFA, mut remaining_input: &'a str
 
 fn get_completions_for_input(input: &Input, entered_prefix: &str, shell: Shell, output: &mut Vec<(String, String)>) -> anyhow::Result<()> {
     match input {
-        Input::Subword(subword_dfa, _) => {
+        Input::Subword(subword_dfa) => {
             let (state, remaining_input) = match get_subword_match_final_state(subword_dfa.as_ref(), entered_prefix) {
                 Some(state) => state,
                 None => return Ok(()),
@@ -239,7 +239,7 @@ pub fn get_completions<'a, 'b>(dfa: &DFA, words: &'b [&'a str], completed_word_i
         }
 
         for (transition_input, to) in dfa.iter_transitions_from(state) {
-            if let Input::Subword(dfa, _) = transition_input {
+            if let Input::Subword(dfa) = transition_input {
                 if dfa.as_ref().accepts_str(words[word_index]) {
                     word_index += 1;
                     state = to;

@@ -470,7 +470,7 @@ fn do_to_dot<W: Write>(output: &mut W, dfa: &DFA, identifiers_prefix: &str, recu
                     let label = format!("{}", input).replace("\"", "\\\"");
                     writeln!(output, "{indentation}_{identifiers_prefix}{} -> _{identifiers_prefix}{} [label=\"{}\"];", from, to, label)?;
                 }
-                Input::Subword(subdfa, _) => {
+                Input::Subword(subdfa) => {
                     let subdfa_id = *id_from_dfa.get(subdfa).unwrap();
                     let subdfa_identifiers_prefix = &format!("{subdfa_id}_");
                     writeln!(output, r#"{indentation}_{identifiers_prefix}{} -> _{subdfa_identifiers_prefix}{} [style="dashed"];"#, from, subdfa.as_ref().starting_state)?;
@@ -490,7 +490,7 @@ fn do_get_subdfa_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)
         for (input, _) in tos {
             let cmd = match input {
                 Input::Command(cmd) => *cmd,
-                Input::Subword(_, _) => unreachable!(),
+                Input::Subword(..) => unreachable!(),
                 Input::Nonterminal(..) => continue,
                 Input::Literal(..) => continue,
             };
@@ -505,7 +505,7 @@ fn do_get_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)>, subd
         for (input, _) in tos {
             let cmd = match input {
                 Input::Command(cmd) => *cmd,
-                Input::Subword(subdfa, _) => {
+                Input::Subword(subdfa) => {
                     if subdfas.contains_key(subdfa) {
                         continue;
                     }
@@ -654,7 +654,7 @@ impl DFA {
             None => return vec![],
         };
         let transitions: Vec<(DFARef, StateId)> = map.iter().filter_map(|(input, to)| match input {
-            Input::Subword(dfa, _) => Some((dfa.clone(), *to)),
+            Input::Subword(dfa) => Some((dfa.clone(), *to)),
             Input::Literal(..) => None,
             Input::Nonterminal(..) => None,
             Input::Command(..) => None,
@@ -693,7 +693,7 @@ impl DFA {
         for (_, tos) in &self.transitions {
             for (input, _) in tos {
                 let dfa = match input {
-                    Input::Subword(dfa, _) => dfa,
+                    Input::Subword(dfa) => dfa,
                     Input::Nonterminal(..) => continue,
                     Input::Command(..) => continue,
                     Input::Literal(..) => continue,
@@ -771,7 +771,7 @@ mod tests {
                 }
 
                 for (transition_input, to) in self.iter_transitions_from(current_state) {
-                    if let Input::Subword(dfa, _) = transition_input {
+                    if let Input::Subword(dfa) = transition_input {
                         if dfa.as_ref().accepts_str(inputs[input_index]) {
                             input_index += 1;
                             current_state = to;

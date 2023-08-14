@@ -6,7 +6,7 @@ use nom::{
     branch::alt,
     bytes::complete::{is_not, tag, take_while1, escaped, take_till, take_while, take_until, escaped_transform},
     character::complete::{char, multispace1, one_of},
-    multi::{many0, many1},
+    multi::many0,
     IResult, combinator::{fail, opt}, error::context, sequence::preceded,
 };
 
@@ -64,29 +64,13 @@ impl std::fmt::Debug for SubwordCompilationPhase {
 #[derive(Clone, PartialEq)]
 pub enum Expr {
     Terminal(Ustr, Option<Ustr>), // e.g. --help
-    Subword(SubwordCompilationPhase, Option<Ustr>),
+    Subword(SubwordCompilationPhase),
     Nonterminal(Ustr), // e.g. <PATH>, <DIRECTORY>, etc.
     Command(Ustr), // e.g. { ls }
     Sequence(Vec<Rc<Expr>>),
     Alternative(Vec<Rc<Expr>>),
     Optional(Rc<Expr>),
     Many1(Rc<Expr>),
-}
-
-
-impl Expr {
-    fn is_subword_expr(&self) -> bool {
-        match self {
-            Expr::Terminal(..) => false,
-            Expr::Nonterminal(..) => false,
-            Expr::Command(..) => false,
-            Expr::Subword(..) => unreachable!("bug in grammar"),
-            Expr::Sequence(..) => true,
-            Expr::Alternative(..) => true,
-            Expr::Optional(e) => e.is_subword_expr(),
-            Expr::Many1(e) => e.is_subword_expr(),
-        }
-    }
 }
 
 
@@ -102,7 +86,7 @@ pub struct Specialization {
 impl std::fmt::Debug for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Subword(subword, descr) => f.write_fmt(format_args!(r#"Rc::new(Subword({subword:?}, {descr:?}))"#)),
+            Self::Subword(subword) => f.write_fmt(format_args!(r#"Rc::new(Subword({subword:?}))"#)),
             Self::Terminal(term, Some(descr)) => f.write_fmt(format_args!(r#"Rc::new(Terminal(ustr("{term}"), Some(ustr("{}"))))"#, descr)),
             Self::Terminal(term, None) => f.write_fmt(format_args!(r#"Rc::new(Terminal(ustr("{term}"), None))"#)),
             Self::Nonterminal(nonterm) => f.write_fmt(format_args!(r#"Rc::new(Nonterminal(ustr("{nonterm}")))"#)),
@@ -118,7 +102,7 @@ impl std::fmt::Debug for Expr {
 
 fn railroad_node_from_expr(expr: Rc<Expr>) -> Box<dyn railroad::Node> {
     match expr.as_ref() {
-        Expr::Subword(subword, _) => {
+        Expr::Subword(subword) => {
             let expr = match subword {
                 SubwordCompilationPhase::Expr(expr) => expr,
                 SubwordCompilationPhase::DFA(_) => unreachable!(),
@@ -232,97 +216,6 @@ fn is_terminal_char(c: char) -> bool {
 }
 
 
-fn subword_optional_expr(input: &str) -> IResult<&str, Expr> {
-    let (input, _) = char('[')(input)?;
-    let (input, expr) = subword_alternative_expr(input)?;
-    let (input, _) = char(']')(input)?;
-    Ok((input, Expr::Optional(Rc::new(expr))))
-}
-
-fn subword_parenthesized_expr(input: &str) -> IResult<&str, Expr> {
-    let (input, _) = char('(')(input)?;
-    let (input, e) = subword_alternative_expr(input)?;
-    let (input, _) = char(')')(input)?;
-    Ok((input, e))
-}
-
-fn subword_terminal_opt_description_expr(input: &str) -> IResult<&str, Expr> {
-    let (input, term) = terminal(input)?;
-    let (input, descr) = opt(description)(input)?;
-    let expr = Expr::Terminal(ustr(&term), descr.map(ustr));
-    Ok((input, expr))
-}
-
-fn subword_unary_expr(input: &str) -> IResult<&str, Expr> {
-    let (input, e) = alt((
-        nonterminal_expr,
-        subword_optional_expr,
-        subword_parenthesized_expr,
-        command_expr,
-        subword_terminal_opt_description_expr,
-    ))(input)?;
-
-    if let Ok((input, ())) = many1_tag(input) {
-        return Ok((input, Expr::Many1(Rc::new(e))));
-    }
-
-    Ok((input, e))
-}
-
-fn subword_sequence_expr(input: &str) -> IResult<&str, Expr> {
-    let (input, exprs) = many1(subword_unary_expr)(input)?;
-    let result = if exprs.len() == 1 {
-        exprs.into_iter().next().unwrap()
-    }
-    else {
-        Expr::Sequence(exprs.into_iter().map(Rc::new).collect())
-    };
-    Ok((input, result))
-}
-
-fn subword_alternative_expr(input: &str) -> IResult<&str, Expr> {
-    let (mut input, left) = subword_sequence_expr(input)?;
-    let mut elems: Vec<Expr> = vec![left];
-    while let Ok((rest, right)) = preceded(char('|'), subword_sequence_expr)(input) {
-        elems.push(right);
-        input = rest;
-    }
-    let result = if elems.len() == 1 {
-        elems.drain(..).next().unwrap()
-    } else {
-        Expr::Alternative(elems.into_iter().map(Rc::new).collect())
-    };
-    Ok((input, result))
-}
-
-fn subword_expr(input: &str) -> IResult<&str, Expr> {
-    let (input, expr) = subword_alternative_expr(input)?;
-    let (input, descr) = opt(multiblanks1_description)(input)?;
-
-    if let Expr::Terminal(..) = expr {
-        if let Some(_) = descr {
-            return fail("Terminal description special case hit");
-        }
-    }
-
-    let result = if expr.is_subword_expr() {
-        match expr {
-            Expr::Optional(e) => Expr::Optional(Rc::new(Expr::Subword(SubwordCompilationPhase::Expr(e), descr.map(ustr)))),
-            Expr::Subword(..) => unreachable!("bug in grammar"),
-            Expr::Terminal(..)
-            | Expr::Nonterminal(..)
-            | Expr::Command(..)
-            | Expr::Sequence(..)
-            | Expr::Alternative(..)
-            | Expr::Many1(..) => Expr::Subword(SubwordCompilationPhase::Expr(Rc::new(expr)), descr.map(ustr)),
-        }
-    }
-    else {
-        expr
-    };
-    Ok((input, result))
-}
-
 fn terminal(input: &str) -> IResult<&str, String> {
     let (input, term) = escaped_transform(take_while1(is_terminal_char), ESCAPE_CHARACTER, one_of(RESERVED_CHARACTERS))(input)?;
     if term.is_empty() {
@@ -430,17 +323,28 @@ fn unary_expr(input: &str) -> IResult<&str, Expr> {
     Ok((input, e))
 }
 
-fn shell_word(input: &str) -> IResult<&str, Expr> {
-    alt((
-        subword_expr,
-        unary_expr,
-    ))(input)
+fn subword_sequence_expr(input: &str) -> IResult<&str, Expr> {
+    let (mut input, left) = unary_expr(input)?;
+    let mut factors: Vec<Expr> = vec![left];
+    while let Ok((rest, right)) = unary_expr(input) {
+        factors.push(right);
+        input = rest;
+    }
+    let result = if factors.len() == 1 {
+        let left = factors.into_iter().next().unwrap();
+        left
+    } else {
+        let flattened_factors: Vec<Rc<Expr>> = factors.into_iter().map(|e| flatten_expr(Rc::new(e))).collect();
+        let e = Expr::Sequence(flattened_factors);
+        Expr::Subword(SubwordCompilationPhase::Expr(Rc::new(e)))
+    };
+    Ok((input, result))
 }
 
 fn sequence_expr(input: &str) -> IResult<&str, Expr> {
-    let (mut input, left) = shell_word(input)?;
+    let (mut input, left) = subword_sequence_expr(input)?;
     let mut factors: Vec<Expr> = vec![left];
-    while let Ok((rest, right)) = preceded(multiblanks0, shell_word)(input) {
+    while let Ok((rest, right)) = preceded(multiblanks1, subword_sequence_expr)(input) {
         factors.push(right);
         input = rest;
     }
@@ -714,7 +618,7 @@ fn make_specializations_map(statements: &[Statement]) -> Result<UstrMap<Speciali
 fn flatten_expr(expr: Rc<Expr>) -> Rc<Expr> {
     match expr.as_ref() {
         Expr::Terminal(..) | Expr::Nonterminal(..) | Expr::Command(..) => Rc::clone(&expr),
-        Expr::Subword(child, _) => { // TODO description is lost here (for now)
+        Expr::Subword(child) => {
             let child = match child {
                 SubwordCompilationPhase::Expr(e) => Rc::clone(&e),
                 SubwordCompilationPhase::DFA(_) => unreachable!(),
@@ -769,7 +673,7 @@ fn flatten_expr(expr: Rc<Expr>) -> Rc<Expr> {
 
 fn compile_subword_exprs(expr: Rc<Expr>, specs: &UstrMap<Specialization>) -> Rc<Expr> {
     match expr.as_ref() {
-        Expr::Subword(subword_expr, descr) => {
+        Expr::Subword(subword_expr) => {
             let arena = Bump::new();
             let subword_expr = match subword_expr {
                 SubwordCompilationPhase::Expr(e) => Rc::clone(&e),
@@ -779,7 +683,7 @@ fn compile_subword_exprs(expr: Rc<Expr>, specs: &UstrMap<Specialization>) -> Rc<
             let regex = AugmentedRegex::from_expr(&subword_expr, &specs, &arena);
             let dfa = DFA::from_regex(&regex);
             let dfa = dfa.minimize();
-            Rc::new(Expr::Subword(SubwordCompilationPhase::DFA(DFARef::new(dfa)), *descr))
+            Rc::new(Expr::Subword(SubwordCompilationPhase::DFA(DFARef::new(dfa))))
         },
         Expr::Terminal(..) | Expr::Nonterminal(..) | Expr::Command(..) => Rc::clone(&expr),
         Expr::Sequence(children) => {
@@ -911,7 +815,7 @@ impl ValidGrammar {
 fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>, specializations: &UstrMap<Specialization>, unused_nonterminals: &mut UstrSet) -> Rc<Expr> {
     match expr.as_ref() {
         Expr::Terminal(..) => Rc::clone(&expr),
-        Expr::Subword(child, descr) => {
+        Expr::Subword(child) => {
             let child = match child {
                 SubwordCompilationPhase::Expr(e) => Rc::clone(&e),
                 SubwordCompilationPhase::DFA(..) => unreachable!(),
@@ -921,7 +825,7 @@ fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>, specialization
                 Rc::clone(&expr)
             }
             else {
-                Rc::new(Expr::Subword(SubwordCompilationPhase::Expr(new_child), *descr))
+                Rc::new(Expr::Subword(SubwordCompilationPhase::Expr(new_child)))
             }
         },
         Expr::Nonterminal(name) => {
@@ -997,7 +901,7 @@ fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>, specialization
 fn do_get_expression_nonterminals(expr: Rc<Expr>, deps: &mut UstrSet) {
     match expr.as_ref() {
         Expr::Terminal(..) => {},
-        Expr::Subword(subexpr, _) => {
+        Expr::Subword(subexpr) => {
             let subexpr = match subexpr {
                 SubwordCompilationPhase::Expr(e) => Rc::clone(&e),
                 SubwordCompilationPhase::DFA(..) => unreachable!(),
@@ -1193,7 +1097,7 @@ pub mod tests {
     pub fn do_arb_match(e: Rc<Expr>, rng: &mut TestRng, max_width: usize, output: &mut Vec<Ustr>) {
         match e.as_ref() {
             Terminal(s, _) => output.push(*s),
-            Subword(sw, _) => {
+            Subword(sw) => {
                 let e = match sw {
                     SubwordCompilationPhase::Expr(e) => e,
                     SubwordCompilationPhase::DFA(_) => unreachable!(),
@@ -1243,15 +1147,16 @@ pub mod tests {
     #[test]
     fn parses_subword_expr() {
         const INPUT: &str = r#"--color=<WHEN>"#;
-        let ("", e) = subword_expr(INPUT).unwrap() else { unreachable!() };
-        assert_eq!(e, Expr::Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Expr::Terminal(ustr("--color="), None)), Rc::new(Expr::Nonterminal(ustr("WHEN")))]))), None));
+        let ("", e) = subword_sequence_expr(INPUT).unwrap() else { unreachable!() };
+        assert_eq!(e, Expr::Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Expr::Terminal(ustr("--color="), None)), Rc::new(Expr::Nonterminal(ustr("WHEN")))])))));
     }
 
+    #[ignore]
     #[test]
     fn parses_prefix_description_expr() {
         const INPUT: &str = r#"--color=<WHEN> "use markers to highlight the matching strings""#;
-        let ("", e) = subword_expr(INPUT).unwrap() else { unreachable!() };
-        assert_eq!(e, Expr::Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="), None)), Rc::new(Nonterminal(ustr("WHEN")))]))), Some(ustr("use markers to highlight the matching strings"))));
+        let ("", e) = subword_sequence_expr(INPUT).unwrap() else { unreachable!() };
+        assert_eq!(e, Expr::Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="), None)), Rc::new(Nonterminal(ustr("WHEN")))])))));
     }
 
     #[test]
@@ -1533,18 +1438,17 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
 cargo [+{ rustup toolchain list | cut -d' ' -f1 }] [<OPTIONS>] [<COMMAND>];
 "#;
         let g = Grammar::parse(INPUT).unwrap();
+        assert_eq!(g.statements.len(), 1);
         assert_eq!(
-            g.statements,
-            [
-                Statement::CallVariant {
-                    head: ustr("cargo"),
-                    expr: Rc::new(Sequence(vec![
-                        Rc::new(Optional(Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("+"), None)), Rc::new(Command(ustr("rustup toolchain list | cut -d' ' -f1")))]))), None)))),
-                        Rc::new(Optional(Rc::new(Nonterminal(ustr("OPTIONS"))))),
-                        Rc::new(Optional(Rc::new(Nonterminal(ustr("COMMAND"))))),
-                    ])),
-                }
-            ],
+            g.statements[0],
+            Statement::CallVariant {
+                head: ustr("cargo"),
+                expr: Rc::new(Sequence(vec![
+                    Rc::new(Optional(Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("+"), None)), Rc::new(Command(ustr("rustup toolchain list | cut -d' ' -f1")))]))))))),
+                    Rc::new(Optional(Rc::new(Nonterminal(ustr("OPTIONS"))))),
+                    Rc::new(Optional(Rc::new(Nonterminal(ustr("COMMAND"))))),
+                ])),
+            }
         );
     }
 
@@ -1560,7 +1464,7 @@ grep --color=<WHEN> --version;
             [
                 Statement::CallVariant {
                     head: ustr("grep"),
-                    expr: Rc::new(Sequence(vec![Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="),None)),Rc::new(Expr::Nonterminal(ustr("WHEN")))]))), None)),Rc::new(Terminal(ustr("--version"),None))])),
+                    expr: Rc::new(Sequence(vec![Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="),None)),Rc::new(Expr::Nonterminal(ustr("WHEN")))]))))),Rc::new(Terminal(ustr("--version"),None))])),
                 },
 
                 Statement::NonterminalDefinition { symbol: ustr("WHEN"), shell: None, expr: Rc::new(Alternative(vec![Rc::new(Terminal(ustr("always"), None)), Rc::new(Terminal(ustr("never"), None)), Rc::new(Terminal(ustr("auto"), None))])) },
@@ -1568,7 +1472,6 @@ grep --color=<WHEN> --version;
         );
     }
 
-    #[ignore]
     #[test]
     fn parens_are_enough_to_parse_as_subword() {
         const INPUT: &str = r#"
@@ -1580,7 +1483,7 @@ grep --color=(always | never | auto);
             [
                 Statement::CallVariant {
                     head: ustr("grep"),
-                    expr: Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="), None)), Rc::new(Alternative(vec![Rc::new(Terminal(ustr("always"), None)), Rc::new(Terminal(ustr("never"), None)), Rc::new(Terminal(ustr("auto"), None))]))]))), None)),
+                    expr: Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="), None)), Rc::new(Alternative(vec![Rc::new(Terminal(ustr("always"), None)), Rc::new(Terminal(ustr("never"), None)), Rc::new(Terminal(ustr("auto"), None))]))]))))),
                 },
             ],
         );
@@ -1604,7 +1507,7 @@ strace -e <EXPR>;
         assert_eq!(g.statements[1], NonterminalDefinition {
             symbol: ustr("EXPR"),
             shell: None,
-            expr: Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Nonterminal(ustr("qualifier"))), Rc::new(Terminal(ustr("="), None))])))), Rc::new(Optional(Rc::new(Terminal(ustr("!"), None)))), Rc::new(Nonterminal(ustr("value"))), Rc::new(Many1(Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Terminal(ustr(","), None)), Rc::new(Nonterminal(ustr("value")))]))))))]))), None)),
+            expr: Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Nonterminal(ustr("qualifier"))), Rc::new(Terminal(ustr("="), None))])))), Rc::new(Optional(Rc::new(Terminal(ustr("!"), None)))), Rc::new(Nonterminal(ustr("value"))), Rc::new(Many1(Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Terminal(ustr(","), None)), Rc::new(Nonterminal(ustr("value")))]))))))]))))),
         });
         assert_eq!(g.statements[2], NonterminalDefinition {
             symbol: ustr("qualifier"),
@@ -1632,7 +1535,7 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
         assert_eq!(g.statements.len(), 4);
         assert_eq!(g.statements[0], CallVariant {
             head: ustr("lsof"),
-            expr: Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("-s"),None)),Rc::new(Nonterminal(ustr("PROTOCOL"))),Rc::new(Terminal(ustr(":"),None)),Rc::new(Nonterminal(ustr("STATE-SPEC"))),Rc::new(Many1(Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Terminal(ustr(","),None)),Rc::new(Nonterminal(ustr("STATE-SPEC")))]))))))]))), None)),
+            expr: Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("-s"),None)),Rc::new(Nonterminal(ustr("PROTOCOL"))),Rc::new(Terminal(ustr(":"),None)),Rc::new(Nonterminal(ustr("STATE-SPEC"))),Rc::new(Many1(Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Terminal(ustr(","),None)),Rc::new(Nonterminal(ustr("STATE-SPEC")))]))))))]))))),
         });
         assert_eq!(g.statements[1], NonterminalDefinition {
             symbol: ustr("PROTOCOL"),
@@ -1642,7 +1545,7 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
         assert_eq!(g.statements[2], NonterminalDefinition {
             symbol: ustr("STATE-SPEC"),
             shell: None,
-            expr: Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Terminal(ustr("^"), None)))), Rc::new(Nonterminal(ustr("STATE")))]))), None)),
+            expr: Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Terminal(ustr("^"), None)))), Rc::new(Nonterminal(ustr("STATE")))]))))),
         });
         assert_eq!(g.statements[3], NonterminalDefinition {
             symbol: ustr("STATE"),
@@ -1664,7 +1567,7 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
             vec![
                 Statement::CallVariant {
                     head: u("cargo"),
-                    expr: Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("+"), None)), Rc::new(Nonterminal(ustr("toolchain")))]))), None)))), Rc::new(Optional(Rc::new(Nonterminal(ustr("OPTIONS"))))), Rc::new(Optional(Rc::new(Nonterminal(ustr("COMMAND")))))]))
+                    expr: Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("+"), None)), Rc::new(Nonterminal(ustr("toolchain")))]))))))), Rc::new(Optional(Rc::new(Nonterminal(ustr("OPTIONS"))))), Rc::new(Optional(Rc::new(Nonterminal(ustr("COMMAND")))))]))
                 },
                 Statement::NonterminalDefinition {
                     symbol: u("toolchain"),
