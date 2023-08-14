@@ -1,0 +1,19 @@
+# It's possible to match not only entire words, but also *within* words themselves, using the same grammar:
+
+# `grep --color=<TAB>` should result in completing the color.
+grep --color=(always | never | auto);
+
+# Note the mechanism is fully general, it should work for arbitrary grammars, e.g.:
+# strace -e <EXPR>;
+# <EXPR> ::= [<qualifier>=][!]<value>[,<value>]...;
+# <qualifier> ::= trace | read | write | fault;
+# <value> ::= %file | file | all;
+
+# Another real-life example:
+# lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
+# <PROTOCOL> ::= TCP | UDP;
+# <STATE-SPEC> ::= [^]<STATE>;
+# <STATE> ::= LISTEN | CLOSED;
+
+# In general, two consecutive iterms that aren't separated by any whitespaces
+# characters are parsed as a single word.

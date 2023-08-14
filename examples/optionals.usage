@@ -1,3 +1,0 @@
-grep [<OPTION>]...;
-<OPTION> ::= --extended-regexp | (--color [<WHEN>]);
-<WHEN> ::= always | never | auto;

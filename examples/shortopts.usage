@@ -1,0 +1,7 @@
+# Combining short options can be achieved using the subword matching mechanism:
+
+tar -(<SHORTOPT>...);
+<SHORTOPT> ::= x "extract archive"
+             | v "verbose mode"
+             | f "specify archive file as argument"
+             ;
