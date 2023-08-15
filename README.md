@@ -241,12 +241,30 @@ cmd <USER>;
 <USER@zsh> ::= { _users };
 ```
 
-##### Subword matching
+##### `--option=ARGUMENT` and subwords
+
+It's possible to match not only entire words, but also *within* words themselves, using the same grammar
+syntax as for matching entire words.  In that sense, it all fractally works on subwords too.  The most common
+application of that general mechanism is to handle equal sign arguments (`--option=ARGUMENT`):
+
+```
+grep --color=(always | never | auto);
+```
+
+Note however that equal sign arguments aren't some special case within complgen — the same mechanism works for
+more complicated things, e.g.:
+
+```
+strace -e <EXPR>;
+<EXPR> ::= [<qualifier>=][!]<value>[,<value>]...;
+<qualifier> ::= trace | read | write | fault;
+<value> ::= %file | file | all;
+```
 
 Caveats:
  * Fish only allows [a limited set of
    characters](https://github.com/fish-shell/fish-shell/blob/408ab860906fbf6e08f314bea982220fdee3428e/src/complete.cpp#L183)
-   within subwords.  Otherwise, it automatically inserts a space characters that ends completion of the
+   within subwords.  Otherwise, it automatically inserts a space character that ends completion of the
    current word thereby completer out of the subword state.
     * [Not adding space after dot at completion time · Issue #6928 · fish-shell/fish-shell · GitHub](https://github.com/fish-shell/fish-shell/issues/6928)
 
