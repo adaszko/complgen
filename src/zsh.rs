@@ -165,7 +165,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
     let id_from_top_level_command: UstrMap<usize> = top_level_command_transitions.iter().enumerate().map(|(id, (_, cmd))| (*cmd, id)).collect();
     for (cmd, id) in &id_from_top_level_command {
-        write!(buffer, r#"_{command}_{id} () {{
+        write!(buffer, r#"_{command}_cmd_{id} () {{
     {cmd}
 }}
 
@@ -181,6 +181,32 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         .collect();
     for (cmd, id) in &id_from_subword_command {
         write!(buffer, r#"_{command}_subword_cmd_{id} () {{
+    {cmd}
+}}
+
+"#)?;
+    }
+
+    let (top_level_spec_transitions, subword_spec_transitions) = dfa.get_zsh_command_transitions();
+    let id_from_specialized_command: UstrMap<usize> = top_level_spec_transitions.iter().enumerate().map(|(id, (_, cmd))| (*cmd, id)).collect();
+    for (cmd, id) in &id_from_specialized_command {
+        write!(buffer, r#"_{command}_spec_{id} () {{
+    {cmd}
+}}
+
+"#)?;
+    }
+
+    let id_from_subword_spec: UstrMap<usize> = subword_spec_transitions
+        .iter()
+        .enumerate()
+        .map(|(id, (_, transitions))| {
+            transitions.iter().map(move |(_, cmd)| (*cmd, id))
+        })
+        .flatten()
+        .collect();
+    for (cmd, id) in &id_from_subword_spec {
+        write!(buffer, r#"_{command}_subword_spec_{id} () {{
     {cmd}
 }}
 
@@ -328,7 +354,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         local command_id=${{commands[$state]}}
         local -a args=()
         local -a descrs=()
-        local output=$(_{command}_${{command_id}} "${{words[$CURRENT]}}")
+        local output=$(_{command}_cmd_${{command_id}} "${{words[$CURRENT]}}")
         local -a command_completions=("${{(@f)output}}")
         for line in ${{command_completions[@]}}; do
             local a=$(echo "$line" | cut -f1)
@@ -346,16 +372,6 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 "#)?;
     }
 
-    let (top_level_spec_transitions, subword_spec_transitions) = dfa.get_zsh_command_transitions();
-    let id_from_specialized_command: UstrMap<usize> = top_level_spec_transitions.iter().enumerate().map(|(id, (_, cmd))| (*cmd, id)).collect();
-    for (cmd, id) in &id_from_specialized_command {
-        write!(buffer, r#"_{command}_{id} () {{
-    {cmd}
-}}
-
-"#)?;
-    }
-
     let specialized_command_id_from_state: HashMap<StateId, usize> = top_level_spec_transitions.into_iter().map(|(state, cmd)| (state, *id_from_specialized_command.get(&cmd).unwrap())).collect();
     if !specialized_command_id_from_state.is_empty() {
         writeln!(buffer, "")?;
@@ -364,7 +380,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         write!(buffer, r#"
     if [[ -v "specialized_commands[$state]" ]]; then
         local command_id=${{specialized_commands[$state]}}
-        _{command}_${{command_id}} ${{words[$CURRENT]}}
+        _{command}_spec_${{command_id}} ${{words[$CURRENT]}}
     fi
 "#)?;
     }
