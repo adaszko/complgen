@@ -197,22 +197,9 @@ end
     }
 
     let (top_level_spec_transitions, subword_spec_transitions) = dfa.get_fish_command_transitions();
-    let specialized_command_transitions: Vec<(usize, StateId, Ustr)> = top_level_spec_transitions.into_iter().enumerate().map(|(id, (from, input))| (id + 1, from, input)).collect();
 
-    // We can't identify commands by state ids because we're deduplicating them
-    let mut specialized_id_from_command: UstrMap<usize> = Default::default();
-    let mut specialized_id_from_state: HashMap<StateId, usize> = Default::default();
-    for (id, state, command) in &specialized_command_transitions {
-        if let Some(canonical_id) = specialized_id_from_command.get(command) {
-            specialized_id_from_state.insert(*state, *canonical_id);
-        }
-        else {
-            specialized_id_from_command.insert(*command, *id);
-            specialized_id_from_state.insert(*state, *id);
-        }
-    }
-
-    for (cmd, id) in &specialized_id_from_command {
+    let id_from_specialized_command: UstrMap<usize> = top_level_spec_transitions.iter().enumerate().map(|(id, (_, cmd))| (*cmd, id + 1)).collect();
+    for (cmd, id) in &id_from_specialized_command {
         write!(buffer, r#"function _{command}_spec_{id}
 set 1 $argv[1]
 {cmd}
@@ -363,9 +350,10 @@ end
 "#)?;
     }
 
-    if !specialized_command_transitions.is_empty() {
-        writeln!(buffer, r#"    set specialized_command_states {}"#, itertools::join(specialized_id_from_state.iter().map(|(state, _)| state + 1), " "))?;
-        write!(buffer, r#"    set specialized_command_ids {}"#, itertools::join(specialized_id_from_state.iter().map(|(_, id)| id), " "))?;
+    let specialized_command_id_from_state: HashMap<StateId, usize> = top_level_spec_transitions.into_iter().map(|(state, cmd)| (state, *id_from_specialized_command.get(&cmd).unwrap())).collect();
+    if !specialized_command_id_from_state.is_empty() {
+        writeln!(buffer, r#"    set specialized_command_states {}"#, itertools::join(specialized_command_id_from_state.iter().map(|(state, _)| state + 1), " "))?;
+        write!(buffer, r#"    set specialized_command_ids {}"#, itertools::join(specialized_command_id_from_state.iter().map(|(_, id)| id), " "))?;
         write!(buffer, r#"
 if contains $state $specialized_command_states
     set --local index (contains --index $state $specialized_command_states)
