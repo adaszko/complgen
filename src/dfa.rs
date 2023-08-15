@@ -77,7 +77,7 @@ fn dfa_from_regex(regex: &AugmentedRegex) -> DFA {
             for pos in &combined_state {
                 let pos_usize = usize::try_from(*pos).unwrap();
                 if regex.input_from_position.get(pos_usize) == Some(input) {
-                    if let Some(positions) = followpos.get(&pos) {
+                    if let Some(positions) = followpos.get(pos) {
                         u |= positions;
                     }
                 }
@@ -444,14 +444,14 @@ fn do_to_dot<W: Write>(output: &mut W, dfa: &DFA, identifiers_prefix: &str, recu
         writeln!(output, "{indentation}_{identifiers_prefix}{}[label=\"{identifiers_prefix}{}\"];", state, state)?;
     }
 
-    write!(output, "\n")?;
+    writeln!(output)?;
 
     writeln!(output, "{indentation}node [shape = doublecircle];")?;
     for state in &dfa.accepting_states {
         writeln!(output, "{indentation}_{identifiers_prefix}{}[label=\"{identifiers_prefix}{}\"];", state, state)?;
     }
 
-    write!(output, "\n")?;
+    writeln!(output)?;
 
     for (subdfa, subdfa_id) in &id_from_dfa {
         writeln!(output, "{indentation}subgraph cluster_{identifiers_prefix}{subdfa_id} {{")?;
@@ -459,7 +459,7 @@ fn do_to_dot<W: Write>(output: &mut W, dfa: &DFA, identifiers_prefix: &str, recu
         writeln!(output, "{indentation}\tcolor=grey91;")?;
         writeln!(output, "{indentation}\tstyle=filled;")?;
         let subdfa_identifiers_prefix = &format!("{subdfa_id}_");
-        do_to_dot(output, subdfa.as_ref(), &subdfa_identifiers_prefix, recursion_level + 1)?;
+        do_to_dot(output, subdfa.as_ref(), subdfa_identifiers_prefix, recursion_level + 1)?;
         writeln!(output, "{indentation}}}")?;
     }
 
@@ -467,7 +467,7 @@ fn do_to_dot<W: Write>(output: &mut W, dfa: &DFA, identifiers_prefix: &str, recu
         for (input, to) in tos {
             match input {
                 Input::Literal(_, _) | Input::Nonterminal(_, _) | Input::Command(_) => {
-                    let label = format!("{}", input).replace("\"", "\\\"");
+                    let label = format!("{}", input).replace('\"', "\\\"");
                     writeln!(output, "{indentation}_{identifiers_prefix}{} -> _{identifiers_prefix}{} [label=\"{}\"];", from, to, label)?;
                 }
                 Input::Subword(subdfa) => {
@@ -548,7 +548,7 @@ impl DFA {
     }
 
     pub fn iter_inputs(&self) -> impl Iterator<Item=(StateId, Input)> + '_ {
-        self.transitions.iter().map(|(from, tos)| tos.iter().map(|(input, _)| (*from, input.clone()))).flatten()
+        self.transitions.iter().flat_map(|(from, tos)| tos.iter().map(|(input, _)| (*from, input.clone())))
     }
 
     pub fn iter_transitions_from(&self, from: StateId) -> impl Iterator<Item=(Input, StateId)> {
@@ -604,8 +604,8 @@ impl DFA {
                         if subdfas.contains_key(subdfa) {
                             continue;
                         }
-                        let mut transitions = subdfas.entry(subdfa.clone()).or_default();
-                        do_get_subdfa_command_transitions(subdfa.as_ref(), &mut transitions);
+                        let transitions = subdfas.entry(subdfa.clone()).or_default();
+                        do_get_subdfa_command_transitions(subdfa.as_ref(), transitions);
                         continue;
                     },
                     Input::Nonterminal(..) => continue,
@@ -627,8 +627,8 @@ impl DFA {
                     if subdfas.contains_key(&subdfa) {
                         continue;
                     }
-                    let mut transitions = subdfas.entry(subdfa.clone()).or_default();
-                    do_get_subdfa_bash_command_transitions(subdfa.as_ref(), &mut transitions);
+                    let transitions = subdfas.entry(subdfa.clone()).or_default();
+                    do_get_subdfa_bash_command_transitions(subdfa.as_ref(), transitions);
                     continue;
                 },
                 Input::Nonterminal(..) | Input::Command(..) | Input::Literal(..) => {},
@@ -647,8 +647,8 @@ impl DFA {
                     if subdfas.contains_key(&subdfa) {
                         continue;
                     }
-                    let mut transitions = subdfas.entry(subdfa.clone()).or_default();
-                    do_get_subdfa_fish_command_transitions(subdfa.as_ref(), &mut transitions);
+                    let transitions = subdfas.entry(subdfa.clone()).or_default();
+                    do_get_subdfa_fish_command_transitions(subdfa.as_ref(), transitions);
                     continue;
                 },
                 Input::Nonterminal(..) | Input::Command(..) | Input::Literal(..) => {},
@@ -668,8 +668,8 @@ impl DFA {
                         if subdfas.contains_key(subdfa) {
                             continue;
                         }
-                        let mut transitions = subdfas.entry(subdfa.clone()).or_default();
-                        do_get_subdfa_zsh_command_transitions(subdfa.as_ref(), &mut transitions);
+                        let transitions = subdfas.entry(subdfa.clone()).or_default();
+                        do_get_subdfa_zsh_command_transitions(subdfa.as_ref(), transitions);
                         continue;
                     },
                     Input::Nonterminal(..) | Input::Command(..) | Input::Literal(..) => {},
@@ -680,7 +680,7 @@ impl DFA {
     }
 
     pub fn get_literal_transitions_from(&self, from: StateId) -> Vec<(Ustr, Ustr, StateId)> {
-        let map = match self.transitions.get(&StateId::try_from(from).unwrap()) {
+        let map = match self.transitions.get(&from) {
             Some(map) => map,
             None => return vec![],
         };
@@ -694,7 +694,7 @@ impl DFA {
     }
 
     pub fn get_subword_transitions_from(&self, from: StateId) -> Vec<(DFARef, StateId)> {
-        let map = match self.transitions.get(&StateId::try_from(from).unwrap()) {
+        let map = match self.transitions.get(&from) {
             Some(map) => map,
             None => return vec![],
         };

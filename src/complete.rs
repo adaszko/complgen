@@ -79,9 +79,9 @@ fn capture_zsh_completions(completion_code: &str, command: &str, user_input: &st
     write!(capture_script, "{}", preamble)?;
 
     writeln!(capture_script, r#"_{command} () {{"#)?;
-    writeln!(capture_script, "{}", completion_code.replace("'", "''"))?;
+    writeln!(capture_script, "{}", completion_code.replace('\'', "''"))?;
     writeln!(capture_script, r#"}}"#)?;
-    writeln!(capture_script, r#""#)?;
+    writeln!(capture_script)?;
     writeln!(capture_script, "compdef _{command} {command}")?;
 
     write!(capture_script, "{}", postamble)?;
@@ -124,7 +124,7 @@ fn capture_specialized_completions(shell: Shell, specialization: &Specialization
         },
         Shell::Zsh => {
             if let Some(command) = specialization.zsh {
-                capture_zsh_completions(&command, "dummy", &format!("dummy "))?
+                capture_zsh_completions(&command, "dummy", "dummy ")?
             }
             else if let Some(command) = specialization.generic {
                 get_zsh_command_stdout(&command)?
@@ -139,7 +139,7 @@ fn capture_specialized_completions(shell: Shell, specialization: &Specialization
         if !line.starts_with(prefix) {
             continue;
         }
-        let (completion, description) = match line.split_once("\t") {
+        let (completion, description) = match line.split_once('\t') {
             Some((completion, description)) => (completion.to_owned(), description.to_owned()),
             None => (line.to_string(), "".to_string()),
         };
@@ -197,7 +197,7 @@ fn get_completions_for_input(input: &Input, entered_prefix: &str, shell: Shell, 
                 if !line.starts_with(entered_prefix) {
                     continue;
                 }
-                let (completion, description) = match line.split_once("\t") {
+                let (completion, description) = match line.split_once('\t') {
                     Some((completion, description)) => (completion.to_owned(), description.to_owned()),
                     None => (line.to_owned(), "".to_owned()),
                 };

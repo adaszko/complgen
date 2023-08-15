@@ -26,8 +26,11 @@ impl DFARef {
     pub fn new(dfa: DFA) -> Self {
         Self(Rc::new(dfa))
     }
+}
 
-    pub fn as_ref(&self) -> &DFA {
+
+impl AsRef<DFA> for DFARef {
+    fn as_ref(&self) -> &DFA {
         self.0.as_ref()
     }
 }
@@ -109,7 +112,7 @@ fn railroad_node_from_expr(expr: Rc<Expr>) -> Box<dyn railroad::Node> {
             };
             let mut seq: Box<railroad::Sequence<Box<dyn railroad::Node>>> = Default::default();
             seq.push(Box::new(railroad::SimpleStart));
-            seq.push(railroad_node_from_expr(Rc::clone(&expr)));
+            seq.push(railroad_node_from_expr(Rc::clone(expr)));
             seq.push(Box::new(railroad::SimpleEnd));
             seq
         },
@@ -141,12 +144,12 @@ pub fn to_railroad_diagram<W: std::io::Write>(grammar: &Grammar, output: &mut W)
                 let mut seq: Box<railroad::Sequence<Box<dyn railroad::Node>>> = Default::default();
                 seq.push(Box::new(railroad::Start));
                 seq.push(Box::new(railroad::Terminal::new(head.to_string())));
-                seq.push(railroad_node_from_expr(Rc::clone(&expr)));
+                seq.push(railroad_node_from_expr(Rc::clone(expr)));
                 seq.push(Box::new(railroad::End));
                 seq
             },
             Statement::NonterminalDefinition { symbol, shell, expr } => {
-                let inner = railroad_node_from_expr(Rc::clone(&expr));
+                let inner = railroad_node_from_expr(Rc::clone(expr));
                 let label = if let Some(shell) = shell {
                     format!("{}@{}", symbol, shell)
                 } else {
@@ -280,7 +283,7 @@ fn command(input: &str) -> IResult<&str, &str> {
 
 fn command_expr(input: &str) -> IResult<&str, Expr> {
     let (input, cmd) = command(input)?;
-    Ok((input, Expr::Command(ustr(&cmd))))
+    Ok((input, Expr::Command(ustr(cmd))))
 }
 
 fn optional_expr(input: &str) -> IResult<&str, Expr> {
@@ -331,8 +334,7 @@ fn subword_sequence_expr(input: &str) -> IResult<&str, Expr> {
         input = rest;
     }
     let result = if factors.len() == 1 {
-        let left = factors.into_iter().next().unwrap();
-        left
+        factors.into_iter().next().unwrap()
     } else {
         let flattened_factors: Vec<Rc<Expr>> = factors.into_iter().map(|e| flatten_expr(Rc::new(e))).collect();
         let e = Expr::Sequence(flattened_factors);
@@ -445,7 +447,7 @@ fn nonterminal_definition(input: &str) -> IResult<&str, Statement> {
 
     let stmt = Statement::NonterminalDefinition {
         symbol: ustr(name),
-        shell: shell.map(|s| ustr(s)),
+        shell: shell.map(ustr),
         expr: Rc::new(e),
     };
 
@@ -493,29 +495,26 @@ fn make_specializations_map(statements: &[Statement]) -> Result<UstrMap<Speciali
             Expr::Command(cmd) => cmd,
             _ => return Err(Error::NonCommandSpecialization(name, Some(*shell))),
         };
-        let known_shell = match shell.as_str() {
-            "bash" | "fish" | "zsh" => true,
-            _ => false,
-        };
+        let known_shell = matches!(shell.as_str(), "bash" | "fish" | "zsh");
         if !known_shell {
             return Err(Error::UnknownShell(*shell));
         }
         let spec = specializations.entry(name).or_default();
         match shell.as_str() {
             "bash" => {
-                if let Some(_) = spec.bash {
+                if spec.bash.is_some() {
                     return Err(Error::DuplicateNonterminalDefinition(name, Some(*shell)));
                 }
                 spec.bash = Some(*command);
             },
             "fish" => {
-                if let Some(_) = spec.fish {
+                if spec.fish.is_some() {
                     return Err(Error::DuplicateNonterminalDefinition(name, Some(*shell)));
                 }
                 spec.fish = Some(*command);
             },
             "zsh" => {
-                if let Some(_) = spec.zsh {
+                if spec.zsh.is_some() {
                     return Err(Error::DuplicateNonterminalDefinition(name, Some(*shell)));
                 }
                 spec.zsh = Some(*command);
@@ -533,7 +532,7 @@ fn make_specializations_map(statements: &[Statement]) -> Result<UstrMap<Speciali
         let Expr::Command(command) = expr.borrow() else {
             return Err(Error::NonCommandSpecialization(*name, None));
         };
-        if let Some(_) = spec.generic {
+        if spec.generic.is_some() {
             return Err(Error::DuplicateNonterminalDefinition(*name, None));
         }
         spec.generic = Some(*command);
@@ -620,7 +619,7 @@ fn flatten_expr(expr: Rc<Expr>) -> Rc<Expr> {
         Expr::Terminal(..) | Expr::Nonterminal(..) | Expr::Command(..) => Rc::clone(&expr),
         Expr::Subword(child) => {
             let child = match child {
-                SubwordCompilationPhase::Expr(e) => Rc::clone(&e),
+                SubwordCompilationPhase::Expr(e) => Rc::clone(e),
                 SubwordCompilationPhase::DFA(_) => unreachable!(),
             };
             let new_child = flatten_expr(Rc::clone(&child));
@@ -632,8 +631,8 @@ fn flatten_expr(expr: Rc<Expr>) -> Rc<Expr> {
             }
         },
         Expr::Sequence(children) => {
-            let new_children: Vec<Rc<Expr>> = children.iter().map(|e| flatten_expr(Rc::clone(&e))).collect();
-            if children.iter().zip_eq(new_children.iter()).all(|(left, right)| Rc::ptr_eq(left, &right)) {
+            let new_children: Vec<Rc<Expr>> = children.iter().map(|e| flatten_expr(Rc::clone(e))).collect();
+            if children.iter().zip_eq(new_children.iter()).all(|(left, right)| Rc::ptr_eq(left, right)) {
                 Rc::clone(&expr)
             }
             else {
@@ -641,8 +640,8 @@ fn flatten_expr(expr: Rc<Expr>) -> Rc<Expr> {
             }
         },
         Expr::Alternative(children) => {
-            let new_children: Vec<Rc<Expr>> = children.iter().map(|e| flatten_expr(Rc::clone(&e))).collect();
-            if children.iter().zip_eq(new_children.iter()).all(|(left, right)| Rc::ptr_eq(left, &right)) {
+            let new_children: Vec<Rc<Expr>> = children.iter().map(|e| flatten_expr(Rc::clone(e))).collect();
+            if children.iter().zip_eq(new_children.iter()).all(|(left, right)| Rc::ptr_eq(left, right)) {
                 Rc::clone(&expr)
             }
             else {
@@ -650,8 +649,8 @@ fn flatten_expr(expr: Rc<Expr>) -> Rc<Expr> {
             }
         },
         Expr::Optional(child) => {
-            let new_child = flatten_expr(Rc::clone(&child));
-            if Rc::ptr_eq(&child, &new_child) {
+            let new_child = flatten_expr(Rc::clone(child));
+            if Rc::ptr_eq(child, &new_child) {
                 Rc::clone(&expr)
             }
             else {
@@ -659,8 +658,8 @@ fn flatten_expr(expr: Rc<Expr>) -> Rc<Expr> {
             }
         },
         Expr::Many1(child) => {
-            let new_child = flatten_expr(Rc::clone(&child));
-            if Rc::ptr_eq(&child, &new_child) {
+            let new_child = flatten_expr(Rc::clone(child));
+            if Rc::ptr_eq(child, &new_child) {
                 Rc::clone(&expr)
             }
             else {
@@ -676,19 +675,19 @@ fn compile_subword_exprs(expr: Rc<Expr>, specs: &UstrMap<Specialization>) -> Rc<
         Expr::Subword(subword_expr) => {
             let arena = Bump::new();
             let subword_expr = match subword_expr {
-                SubwordCompilationPhase::Expr(e) => Rc::clone(&e),
+                SubwordCompilationPhase::Expr(e) => Rc::clone(e),
                 SubwordCompilationPhase::DFA(_) => unreachable!(),
             };
             let subword_expr = flatten_expr(subword_expr);
-            let regex = AugmentedRegex::from_expr(&subword_expr, &specs, &arena);
+            let regex = AugmentedRegex::from_expr(&subword_expr, specs, &arena);
             let dfa = DFA::from_regex(&regex);
             let dfa = dfa.minimize();
             Rc::new(Expr::Subword(SubwordCompilationPhase::DFA(DFARef::new(dfa))))
         },
         Expr::Terminal(..) | Expr::Nonterminal(..) | Expr::Command(..) => Rc::clone(&expr),
         Expr::Sequence(children) => {
-            let new_children: Vec<Rc<Expr>> = children.iter().map(|e| compile_subword_exprs(Rc::clone(&e), specs)).collect();
-            if children.iter().zip_eq(new_children.iter()).all(|(left, right)| Rc::ptr_eq(left, &right)) {
+            let new_children: Vec<Rc<Expr>> = children.iter().map(|e| compile_subword_exprs(Rc::clone(e), specs)).collect();
+            if children.iter().zip_eq(new_children.iter()).all(|(left, right)| Rc::ptr_eq(left, right)) {
                 Rc::clone(&expr)
             }
             else {
@@ -696,8 +695,8 @@ fn compile_subword_exprs(expr: Rc<Expr>, specs: &UstrMap<Specialization>) -> Rc<
             }
         },
         Expr::Alternative(children) => {
-            let new_children: Vec<Rc<Expr>> = children.iter().map(|e| compile_subword_exprs(Rc::clone(&e), specs)).collect();
-            if children.iter().zip_eq(new_children.iter()).all(|(left, right)| Rc::ptr_eq(left, &right)) {
+            let new_children: Vec<Rc<Expr>> = children.iter().map(|e| compile_subword_exprs(Rc::clone(e), specs)).collect();
+            if children.iter().zip_eq(new_children.iter()).all(|(left, right)| Rc::ptr_eq(left, right)) {
                 Rc::clone(&expr)
             }
             else {
@@ -705,8 +704,8 @@ fn compile_subword_exprs(expr: Rc<Expr>, specs: &UstrMap<Specialization>) -> Rc<
             }
         },
         Expr::Optional(child) => {
-            let new_child = compile_subword_exprs(Rc::clone(&child), specs);
-            if Rc::ptr_eq(&child, &new_child) {
+            let new_child = compile_subword_exprs(Rc::clone(child), specs);
+            if Rc::ptr_eq(child, &new_child) {
                 Rc::clone(&expr)
             }
             else {
@@ -714,8 +713,8 @@ fn compile_subword_exprs(expr: Rc<Expr>, specs: &UstrMap<Specialization>) -> Rc<
             }
         },
         Expr::Many1(child) => {
-            let new_child = compile_subword_exprs(Rc::clone(&child), specs);
-            if Rc::ptr_eq(&child, &new_child) {
+            let new_child = compile_subword_exprs(Rc::clone(child), specs);
+            if Rc::ptr_eq(child, &new_child) {
                 Rc::clone(&expr)
             }
             else {
@@ -779,7 +778,7 @@ impl ValidGrammar {
                 if nonterminal_definitions.contains_key(&symbol) {
                     return Err(Error::DuplicateNonterminalDefinition(symbol, None));
                 }
-                nonterminal_definitions.insert(symbol, Rc::clone(&expr));
+                nonterminal_definitions.insert(symbol, Rc::clone(expr));
             }
             nonterminal_definitions
         };
@@ -817,7 +816,7 @@ fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>, specialization
         Expr::Terminal(..) => Rc::clone(&expr),
         Expr::Subword(child) => {
             let child = match child {
-                SubwordCompilationPhase::Expr(e) => Rc::clone(&e),
+                SubwordCompilationPhase::Expr(e) => Rc::clone(e),
                 SubwordCompilationPhase::DFA(..) => unreachable!(),
             };
             let new_child = resolve_nonterminals(Rc::clone(&child), vars, specializations, unused_nonterminals);
@@ -833,10 +832,10 @@ fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>, specialization
                 // Specialized nonterminals are resolved when the target shell is known, not earlier.
                 return Rc::clone(&expr);
             }
-            match vars.get(&name) {
+            match vars.get(name) {
                 Some(replacement) => {
                     unused_nonterminals.remove(name);
-                    Rc::clone(&replacement)
+                    Rc::clone(replacement)
                 },
                 None => {
                     Rc::clone(&expr)
@@ -849,7 +848,7 @@ fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>, specialization
             let mut any_child_replaced = false;
             for child in children {
                 let new_child = resolve_nonterminals(Rc::clone(child), vars, specializations, unused_nonterminals);
-                if !Rc::ptr_eq(&child, &new_child) {
+                if !Rc::ptr_eq(child, &new_child) {
                     any_child_replaced = true;
                 }
                 new_children.push(new_child);
@@ -865,7 +864,7 @@ fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>, specialization
             let mut any_child_replaced = false;
             for child in children {
                 let new_child = resolve_nonterminals(Rc::clone(child), vars, specializations, unused_nonterminals);
-                if !Rc::ptr_eq(&child, &new_child) {
+                if !Rc::ptr_eq(child, &new_child) {
                     any_child_replaced = true;
                 }
                 new_children.push(new_child);
@@ -878,7 +877,7 @@ fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>, specialization
         },
         Expr::Optional(child) => {
             let new_child = resolve_nonterminals(Rc::clone(child), vars, specializations, unused_nonterminals);
-            if Rc::ptr_eq(&child, &new_child) {
+            if Rc::ptr_eq(child, &new_child) {
                 Rc::clone(&expr)
             }
             else {
@@ -887,7 +886,7 @@ fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>, specialization
         },
         Expr::Many1(child) => {
             let new_child = resolve_nonterminals(Rc::clone(child), vars, specializations, unused_nonterminals);
-            if Rc::ptr_eq(&child, &new_child) {
+            if Rc::ptr_eq(child, &new_child) {
                 Rc::clone(&expr)
             }
             else {
@@ -903,7 +902,7 @@ fn do_get_expression_nonterminals(expr: Rc<Expr>, deps: &mut UstrSet) {
         Expr::Terminal(..) => {},
         Expr::Subword(subexpr) => {
             let subexpr = match subexpr {
-                SubwordCompilationPhase::Expr(e) => Rc::clone(&e),
+                SubwordCompilationPhase::Expr(e) => Rc::clone(e),
                 SubwordCompilationPhase::DFA(..) => unreachable!(),
             };
             do_get_expression_nonterminals(Rc::clone(&subexpr), deps);
@@ -914,16 +913,16 @@ fn do_get_expression_nonterminals(expr: Rc<Expr>, deps: &mut UstrSet) {
         Expr::Command(_) => {},
         Expr::Sequence(children) => {
             for child in children {
-                do_get_expression_nonterminals(Rc::clone(&child), deps);
+                do_get_expression_nonterminals(Rc::clone(child), deps);
             }
         },
         Expr::Alternative(children) => {
             for child in children {
-                do_get_expression_nonterminals(Rc::clone(&child), deps);
+                do_get_expression_nonterminals(Rc::clone(child), deps);
             }
         },
-        Expr::Optional(child) => { do_get_expression_nonterminals(Rc::clone(&child), deps); }
-        Expr::Many1(child) => { do_get_expression_nonterminals(Rc::clone(&child), deps); }
+        Expr::Optional(child) => { do_get_expression_nonterminals(Rc::clone(child), deps); }
+        Expr::Many1(child) => { do_get_expression_nonterminals(Rc::clone(child), deps); }
     }
 }
 
@@ -959,7 +958,7 @@ pub fn get_not_depended_on_nonterminals(dependency_graph: &UstrMap<UstrSet>) -> 
 fn traverse_nonterminal_dependencies_dfs(vertex: Ustr, graph: &UstrMap<UstrSet>, path: &mut Vec<Ustr>, visited: &mut UstrSet, result: &mut Vec<Ustr>) -> Result<()> {
     visited.insert(vertex);
     let dummy = UstrSet::default();
-    for child in graph.get(&vertex).unwrap_or_else(|| &dummy) {
+    for child in graph.get(&vertex).unwrap_or(&dummy) {
         if path.contains(child) {
             let mut path = path.clone();
             path.push(vertex);
@@ -986,7 +985,7 @@ fn get_nonterminals_resolution_order(nonterminal_definitions: &UstrMap<Rc<Expr>>
 
     let mut dependency_graph: UstrMap<UstrSet> = Default::default();
     for (varname, expr) in nonterminal_definitions {
-        let mut referenced_nonterminals = get_expression_nonterminals(Rc::clone(&expr));
+        let mut referenced_nonterminals = get_expression_nonterminals(Rc::clone(expr));
         referenced_nonterminals.retain(|var| nonterminal_definitions.contains_key(var));
         dependency_graph.insert(*varname, referenced_nonterminals);
     }

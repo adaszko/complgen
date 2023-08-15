@@ -10,7 +10,7 @@ use crate::dfa::DFA;
 // variables are block-scoped, so set --local sets a variable local to even a single if statement (!)
 
 pub fn make_string_constant(s: &str) -> String {
-    format!(r#""{}""#, s.replace("\"", "\\\"").replace("$", "\\$"))
+    format!(r#""{}""#, s.replace('\"', "\\\"").replace('$', "\\$"))
 }
 
 
@@ -20,7 +20,7 @@ fn write_lookup_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
     let literal_id_from_input_description: HashMap<(Ustr, Ustr), usize> = all_literals.iter().map(|(id, literal, description)| ((*literal, *description), *id)).collect();
     let literals: String = itertools::join(all_literals.iter().map(|(_, literal, _)| make_string_constant(literal)), " ");
     writeln!(buffer, r#"    set --local literals {literals}"#)?;
-    writeln!(buffer, "")?;
+    writeln!(buffer)?;
 
     writeln!(buffer, r#"    set --local descriptions"#)?;
     for (id, _, description) in all_literals.iter() {
@@ -30,7 +30,7 @@ fn write_lookup_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
         let quoted = make_string_constant(description);
         writeln!(buffer, r#"    set descriptions[{id}] {}"#, quoted)?;
     }
-    writeln!(buffer, "")?;
+    writeln!(buffer)?;
 
     writeln!(buffer, r#"    set --local literal_transitions"#)?;
     for state in dfa.get_all_states() {
@@ -48,7 +48,7 @@ fn write_lookup_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
         writeln!(buffer, r#"    set literal_transitions[{}] "set inputs {state_inputs}; set tos {state_tos}""#, state + 1)?;
     }
 
-    writeln!(buffer, "")?;
+    writeln!(buffer)?;
 
     let match_anything_transitions = dfa.get_match_anything_transitions();
     let match_anything_transitions_from = itertools::join(match_anything_transitions.iter().map(|(from, _)| format!("{}", from + 1)), " ");
@@ -201,9 +201,9 @@ end
     let id_from_subword_command: UstrMap<usize> = subword_command_transitions
         .iter()
         .enumerate()
-        .map(|(id, (_, transitions))| {
+        .flat_map(|(id, (_, transitions))| {
             transitions.iter().map(move |(_, cmd)| (*cmd, id))
-        }).flatten()
+        })
         .collect();
     for (cmd, id) in &id_from_subword_command {
         write!(buffer, r#"function _{command}_subword_cmd_{id}
@@ -228,10 +228,9 @@ end
     let id_from_subword_spec: UstrMap<usize> = subword_spec_transitions
         .iter()
         .enumerate()
-        .map(|(id, (_, transitions))| {
+        .flat_map(|(id, (_, transitions))| {
             transitions.iter().map(move |(_, cmd)| (*cmd, id))
         })
-        .flatten()
         .collect();
     for (cmd, id) in &id_from_subword_spec {
         write!(buffer, r#"function _{command}_subword_spec_{id}
@@ -244,10 +243,10 @@ end
     let id_from_dfa = dfa.get_subwords(1);
     for (dfa, id) in &id_from_dfa {
         let transitions = subword_command_transitions.get(dfa).unwrap();
-        let subword_command_id_from_state: HashMap<StateId, usize> = transitions.into_iter().map(|(state, cmd)| (*state, *id_from_subword_command.get(cmd).unwrap())).collect();
-        let subword_spec_id_from_state: HashMap<StateId, usize> = subword_spec_transitions.get(dfa).unwrap().into_iter().map(|(state, cmd)| (*state, *id_from_subword_spec.get(cmd).unwrap())).collect();
+        let subword_command_id_from_state: HashMap<StateId, usize> = transitions.iter().map(|(state, cmd)| (*state, *id_from_subword_command.get(cmd).unwrap())).collect();
+        let subword_spec_id_from_state: HashMap<StateId, usize> = subword_spec_transitions.get(dfa).unwrap().iter().map(|(state, cmd)| (*state, *id_from_subword_spec.get(cmd).unwrap())).collect();
         write_subword_fn(buffer, command, *id, dfa.as_ref(), &subword_command_id_from_state, &subword_spec_id_from_state)?;
-        writeln!(buffer, "")?;
+        writeln!(buffer)?;
     }
 
     write!(buffer, r#"function _{command}"#)?;

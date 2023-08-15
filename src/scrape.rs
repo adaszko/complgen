@@ -377,7 +377,7 @@ fn options_list(input: &str) -> IResult<&str, Statement> {
     let (input, _) = tag_no_case("options:")(input)?;
     let (input, _) = multispace1(input)?;
     let (input, options) = many1(option_line)(input)?;
-    let refcounted_options = options.into_iter().map(|e| Rc::new(e)).collect();
+    let refcounted_options = options.into_iter().map(Rc::new).collect();
     Ok((input, Statement::OptionList(refcounted_options)))
 }
 
@@ -430,7 +430,7 @@ pub fn scrape(input: &str) -> crate::Result<Vec<Statement>> {
 
 
 fn escape_description(s: &str) -> String {
-    s.replace("\"", "\\\"")
+    s.replace('\"', "\\\"")
 }
 
 
