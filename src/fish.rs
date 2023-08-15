@@ -60,7 +60,7 @@ fn write_lookup_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
 }
 
 
-fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DFA, command_id_from_state: &HashMap<StateId, usize>) -> Result<()> {
+fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DFA, command_id_from_state: &HashMap<StateId, usize>, subword_spec_id_from_state: &HashMap<StateId, usize>) -> Result<()> {
     writeln!(buffer, r#"function _{command}_subword_{id}
     set mode $argv[1]
     set word $argv[2]
@@ -159,6 +159,23 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
 "#)?;
     }
 
+    if !subword_spec_id_from_state.is_empty() {
+        writeln!(buffer, r#"    set specialized_command_states {}"#, itertools::join(subword_spec_id_from_state.iter().map(|(state, _)| state + 1), " "))?;
+        write!(buffer, r#"    set specialized_command_ids {}"#, itertools::join(subword_spec_id_from_state.iter().map(|(_, id)| id), " "))?;
+        write!(buffer, r#"
+    if contains $state $specialized_command_states
+        set --local index (contains --index $state $specialized_command_states)
+        set --local function_id $specialized_command_ids[$index]
+        set --local function_name _{command}_subword_spec_$function_id
+        set --local --erase inputs
+        set --local --erase tos
+        $function_name "$matched_prefix" | while read --local line
+            printf '%s%s' $matched_prefix $line
+        end
+    end
+"#)?;
+    }
+
     writeln!(buffer, r#"
     return 0
 end
@@ -208,11 +225,28 @@ end
 "#)?;
     }
 
+    let id_from_subword_spec: UstrMap<usize> = subword_spec_transitions
+        .iter()
+        .enumerate()
+        .map(|(id, (_, transitions))| {
+            transitions.iter().map(move |(_, cmd)| (*cmd, id))
+        })
+        .flatten()
+        .collect();
+    for (cmd, id) in &id_from_subword_spec {
+        write!(buffer, r#"function _{command}_subword_spec_{id}
+    {cmd}
+end
+
+"#)?;
+    }
+
     let id_from_dfa = dfa.get_subwords(1);
     for (dfa, id) in &id_from_dfa {
         let transitions = subword_command_transitions.get(dfa).unwrap();
         let subword_command_id_from_state: HashMap<StateId, usize> = transitions.into_iter().map(|(state, cmd)| (*state, *id_from_subword_command.get(cmd).unwrap())).collect();
-        write_subword_fn(buffer, command, *id, dfa.as_ref(), &subword_command_id_from_state)?;
+        let subword_spec_id_from_state: HashMap<StateId, usize> = subword_spec_transitions.get(dfa).unwrap().into_iter().map(|(state, cmd)| (*state, *id_from_subword_spec.get(cmd).unwrap())).collect();
+        write_subword_fn(buffer, command, *id, dfa.as_ref(), &subword_command_id_from_state, &subword_spec_id_from_state)?;
         writeln!(buffer, "")?;
     }
 

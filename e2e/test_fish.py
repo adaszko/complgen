@@ -233,7 +233,7 @@ cmd --option=<FOO>;
 '''
     with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
         input = 'complete --command cmd --do-complete "cmd --option="'
-        assert get_sorted_completions(completions_file_path, input) == [('fish', '')]
+        assert get_sorted_completions(completions_file_path, input) == [('--option=fish', '')]
 
 
 def test_jit_subword_specialization(complgen_binary_path: Path):
