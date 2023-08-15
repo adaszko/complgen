@@ -259,7 +259,7 @@ cmd --option=<FOO>;
 <FOO@zsh> ::= { echo zsh };
 '''
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
-        assert get_sorted_completions(capture_zsh_path, 'cmd --option=') == sorted([('zsh', '')])
+        assert get_sorted_completions(capture_zsh_path, 'cmd --option=') == sorted([('--option=zsh', '')])
 
 
 def test_jit_subword_specialization(complgen_binary_path: Path):

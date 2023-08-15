@@ -669,7 +669,7 @@ impl DFA {
                             continue;
                         }
                         let mut transitions = subdfas.entry(subdfa.clone()).or_default();
-                        do_get_subdfa_fish_command_transitions(subdfa.as_ref(), &mut transitions);
+                        do_get_subdfa_zsh_command_transitions(subdfa.as_ref(), &mut transitions);
                         continue;
                     },
                     Input::Nonterminal(..) | Input::Command(..) | Input::Literal(..) => {},

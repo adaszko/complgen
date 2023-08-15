@@ -53,7 +53,7 @@ fn write_lookup_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
 }
 
 
-fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DFA, command_id_from_state: &HashMap<StateId, usize>) -> Result<()> {
+fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DFA, command_id_from_state: &HashMap<StateId, usize>, spec_id_from_state: &HashMap<StateId, usize>) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{
     [[ $# -ne 2 ]] && return 1
     local mode=$1
@@ -110,8 +110,6 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
     fi
 "#, starting_state = dfa.starting_state + 1)?;
 
-    // TODO Command-based completions (including specializations)
-
     write!(buffer, r#"
     local matched_prefix="${{word:0:$char_index}}"
     local completed_prefix="${{word:$char_index}}"
@@ -140,11 +138,27 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
         write!(buffer, r#"
     if [[ -v "commands[$state]" ]]; then
         local command_id=${{commands[$state]}}
-        local -a args=()
-        local -a descrs=()
         local output=$(_{command}_subword_cmd_${{command_id}} "$matched_prefix")
         local -a command_completions=("${{(@f)output}}")
         for line in ${{command_completions[@]}}; do
+            if [[ $line = "${{completed_prefix}}"* ]]; then
+                echo "$matched_prefix$line"
+            fi
+        done
+    fi
+"#)?;
+    }
+
+    if !spec_id_from_state.is_empty() {
+        writeln!(buffer, "")?;
+        let array_initializer = itertools::join(spec_id_from_state.into_iter().map(|(state, id)| format!("[{}]={id}", state + 1)), " ");
+        write!(buffer, r#"    local -A specialized_commands=({array_initializer})"#)?;
+        write!(buffer, r#"
+    if [[ -v "specialized_commands[$state]" ]]; then
+        local command_id=${{specialized_commands[$state]}}
+        local output=$(_{command}_subword_spec_${{command_id}} "$matched_prefix")
+        local -a completions=("${{(@f)output}}")
+        for line in ${{completions[@]}}; do
             if [[ $line = "${{completed_prefix}}"* ]]; then
                 echo "$matched_prefix$line"
             fi
@@ -215,9 +229,9 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
     let id_from_dfa = dfa.get_subwords(1);
     for (dfa, id) in &id_from_dfa {
-        let transitions = subword_command_transitions.get(dfa).unwrap();
-        let subword_command_id_from_state: HashMap<StateId, usize> = transitions.into_iter().map(|(state, cmd)| (*state, *id_from_subword_command.get(cmd).unwrap())).collect();
-        write_subword_fn(buffer, command, *id, dfa.as_ref(), &subword_command_id_from_state)?;
+        let subword_command_id_from_state: HashMap<StateId, usize> = subword_command_transitions.get(dfa).unwrap().into_iter().map(|(state, cmd)| (*state, *id_from_subword_command.get(cmd).unwrap())).collect();
+        let subword_spec_id_from_state: HashMap<StateId, usize> = subword_spec_transitions.get(dfa).unwrap().into_iter().map(|(state, cmd)| (*state, *id_from_subword_spec.get(cmd).unwrap())).collect();
+        write_subword_fn(buffer, command, *id, dfa.as_ref(), &subword_command_id_from_state, &subword_spec_id_from_state)?;
         writeln!(buffer, "")?;
     }
 
