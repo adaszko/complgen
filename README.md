@@ -160,10 +160,10 @@ There's a couple of predefined nonterminals that are handled specially by `compl
  * `<INTERFACE>` is completed as a network interface name (fish, zsh)
  * `<PACKAGE>` is completed as a package name (fish)
 
-These nonterminals can still be defined in the grammar in the usual way (`<PATH> ::= ...`) in which case they
-their predefined meaning get overriden.
+These nonterminals can still be defined in the grammar in the usual way (`<PATH> ::= ...`), in which case
+their predefined meaning gets overriden.
 
-### Descriptions (a.k.a. completion hints)
+### Descriptions
 
 If a literal is immediately followed with a quoted string, it's going to appear as a hint to the user at
 completion time.  E.g. the grammar:
@@ -227,7 +227,7 @@ For fish and zsh, the `DESCRIPTION` part will be presented to the user.  Under b
 part will be visible.  All external commands nonetheless need to take care as to *not* produce superfluous
 `\t` characters that may confuse the resulting shell scripts.
 
-##### Specialization
+### Specialization
 
 In order to make use of shell-specific completion functions, `complgen` supports a mechanism that allows for
 picking a specific nonterminal expansion based on the target shell.  To use an example, all shells are able to
@@ -241,7 +241,7 @@ cmd <USER>;
 <USER@zsh> ::= { _users };
 ```
 
-##### `--option=ARGUMENT` and subwords
+### `--option=ARGUMENT` and subwords
 
 It's possible to match not only entire words, but also *within* words themselves, using the same grammar
 syntax as for matching entire words.  In that sense, it all fractally works on subwords too.  The most common
