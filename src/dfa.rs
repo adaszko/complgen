@@ -500,28 +500,6 @@ fn do_get_subdfa_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)
 }
 
 
-fn do_get_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)>, subdfas: &mut HashMap<DFARef, Vec<(StateId, Ustr)>>) {
-    for (from, tos) in &dfa.transitions {
-        for (input, _) in tos {
-            let cmd = match input {
-                Input::Command(cmd) => *cmd,
-                Input::Subword(subdfa) => {
-                    if subdfas.contains_key(subdfa) {
-                        continue;
-                    }
-                    let mut transitions = subdfas.entry(subdfa.clone()).or_default();
-                    do_get_subdfa_command_transitions(subdfa.as_ref(), &mut transitions);
-                    continue;
-                },
-                Input::Nonterminal(..) => continue,
-                Input::Literal(..) => continue,
-            };
-            result.push((*from, cmd));
-        }
-    }
-}
-
-
 impl DFA {
     pub fn from_regex(regex: &AugmentedRegex) -> Self {
         dfa_from_regex(regex)
@@ -576,7 +554,24 @@ impl DFA {
     pub fn get_command_transitions(&self) -> (Vec<(StateId, Ustr)>, HashMap<DFARef, Vec<(StateId, Ustr)>>) {
         let mut top_level: Vec<(StateId, Ustr)> = Default::default();
         let mut subdfas: HashMap<DFARef, Vec<(StateId, Ustr)>> = Default::default();
-        do_get_command_transitions(self, &mut top_level, &mut subdfas);
+        for (from, tos) in &self.transitions {
+            for (input, _) in tos {
+                let cmd = match input {
+                    Input::Command(cmd) => *cmd,
+                    Input::Subword(subdfa) => {
+                        if subdfas.contains_key(subdfa) {
+                            continue;
+                        }
+                        let mut transitions = subdfas.entry(subdfa.clone()).or_default();
+                        do_get_subdfa_command_transitions(subdfa.as_ref(), &mut transitions);
+                        continue;
+                    },
+                    Input::Nonterminal(..) => continue,
+                    Input::Literal(..) => continue,
+                };
+                top_level.push((*from, cmd));
+            }
+        }
         (top_level, subdfas)
     }
 
