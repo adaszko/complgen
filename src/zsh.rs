@@ -53,38 +53,6 @@ fn write_lookup_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
 }
 
 
-fn write_specialized_commands<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<UstrMap<usize>> {
-    let id_from_specialized_command: UstrMap<usize> = dfa.get_zsh_command_transitions().into_iter().enumerate().map(|(id, (_, cmd))| (cmd, id)).collect();
-    for (cmd, id) in &id_from_specialized_command {
-        write!(buffer, r#"_{command}_{id} () {{
-    {cmd}
-}}
-
-"#)?;
-    }
-
-    Ok(id_from_specialized_command)
-}
-
-
-fn write_specialized_commands_completion_code<W: Write>(buffer: &mut W, command: &str, dfa: &DFA, id_from_specialized_command: &UstrMap<usize>) -> Result<()> {
-    let specialized_command_id_from_state: HashMap<StateId, usize> = dfa.get_zsh_command_transitions().into_iter().map(|(state, cmd)| (state, *id_from_specialized_command.get(&cmd).unwrap())).collect();
-    if !specialized_command_id_from_state.is_empty() {
-        writeln!(buffer, "")?;
-        let array_initializer = itertools::join(specialized_command_id_from_state.into_iter().map(|(state, id)| format!("[{}]={id}", state + 1)), " ");
-        write!(buffer, r#"    local -A specialized_commands=({array_initializer})"#)?;
-        write!(buffer, r#"
-    if [[ -v "specialized_commands[$state]" ]]; then
-        local command_id=${{specialized_commands[$state]}}
-        _{command}_${{command_id}} ${{words[$CURRENT]}}
-    fi
-"#)?;
-    }
-
-    Ok(())
-}
-
-
 fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DFA, command_id_from_state: &HashMap<StateId, usize>) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{
     [[ $# -ne 2 ]] && return 1
@@ -378,8 +346,29 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 "#)?;
     }
 
-    let id_from_specialized_command = write_specialized_commands(buffer, command, dfa)?;
-    write_specialized_commands_completion_code(buffer, command, dfa, &id_from_specialized_command)?;
+    let (top_level_spec_transitions, subword_spec_transitions) = dfa.get_zsh_command_transitions();
+    let id_from_specialized_command: UstrMap<usize> = top_level_spec_transitions.iter().enumerate().map(|(id, (_, cmd))| (*cmd, id)).collect();
+    for (cmd, id) in &id_from_specialized_command {
+        write!(buffer, r#"_{command}_{id} () {{
+    {cmd}
+}}
+
+"#)?;
+    }
+
+    let specialized_command_id_from_state: HashMap<StateId, usize> = top_level_spec_transitions.into_iter().map(|(state, cmd)| (state, *id_from_specialized_command.get(&cmd).unwrap())).collect();
+    if !specialized_command_id_from_state.is_empty() {
+        writeln!(buffer, "")?;
+        let array_initializer = itertools::join(specialized_command_id_from_state.into_iter().map(|(state, id)| format!("[{}]={id}", state + 1)), " ");
+        write!(buffer, r#"    local -A specialized_commands=({array_initializer})"#)?;
+        write!(buffer, r#"
+    if [[ -v "specialized_commands[$state]" ]]; then
+        local command_id=${{specialized_commands[$state]}}
+        _{command}_${{command_id}} ${{words[$CURRENT]}}
+    fi
+"#)?;
+    }
+
 
     write!(buffer, r#"
     return 0

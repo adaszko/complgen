@@ -61,7 +61,8 @@ fn write_lookup_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
 
 
 fn write_specialized_commands<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<(Vec<(usize, StateId, Ustr)>, HashMap<StateId, usize>)> {
-    let specialized_command_transitions: Vec<(usize, StateId, Ustr)> = dfa.get_fish_command_transitions().into_iter().enumerate().map(|(id, (from, input))| (id + 1, from, input)).collect();
+    let (top_level_spec_transitions, subword_spec_transitions) = dfa.get_fish_command_transitions();
+    let specialized_command_transitions: Vec<(usize, StateId, Ustr)> = top_level_spec_transitions.into_iter().enumerate().map(|(id, (from, input))| (id + 1, from, input)).collect();
 
     // We can't identify commands by state ids because we're deduplicating them
     let mut specialized_id_from_command: UstrMap<usize> = Default::default();
