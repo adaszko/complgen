@@ -18,7 +18,7 @@ use crate::{dfa::DFA, regex::AugmentedRegex};
 
 // A wrapper so that we use Rc::ptr_eq() for equality comparisons instead of comparing entire DFAs,
 // which is expensive.
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone)]
 pub struct DFARef(Rc<DFA>);
 
 
@@ -44,6 +44,14 @@ impl PartialEq for DFARef {
 
 
 impl Eq for DFARef {}
+
+
+impl std::hash::Hash for DFARef {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        let pointer_value: usize = self.0.as_ref() as *const _ as usize;
+        pointer_value.hash(state);
+    }
+}
 
 
 #[derive(Clone, PartialEq)]
