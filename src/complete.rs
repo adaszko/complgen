@@ -213,14 +213,11 @@ fn get_completions_for_input(input: &Input, entered_prefix: &str, shell: Shell, 
 }
 
 
-pub fn get_completions<'a, 'b>(dfa: &DFA, words: &'b [&'a str], completed_word_index: usize, shell: Shell) -> anyhow::Result<Vec<(String, String)>> {
-    let prefix = if completed_word_index < words.len() {
-        words[completed_word_index]
-    }
-    else if completed_word_index == words.len() {
-        ""
-    } else {
-        bail!("Trying to complete a word too far beyond the last one");
+pub fn get_completions(dfa: &DFA, words: &[&str], completed_word_index: usize, shell: Shell) -> anyhow::Result<Vec<(String, String)>> {
+    let prefix = match completed_word_index.cmp(&words.len()) {
+        std::cmp::Ordering::Less => words[completed_word_index],
+        std::cmp::Ordering::Equal => "",
+        std::cmp::Ordering::Greater => bail!("Trying to complete a word too far beyond the last one"),
     };
 
     // Match words up to `completed_word_index`

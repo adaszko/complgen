@@ -88,7 +88,7 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
     let grammar = Grammar::parse(&input)?;
 
     if let Some(railroad_svg_path) = &args.railroad_svg {
-        let mut railroad_svg = get_file_or_stdout(&railroad_svg_path)?;
+        let mut railroad_svg = get_file_or_stdout(railroad_svg_path)?;
         to_railroad_diagram(&grammar, &mut railroad_svg)?;
     }
 
@@ -152,12 +152,9 @@ fn get_file_or_stdout(path: &str) -> anyhow::Result<Box<dyn Write>> {
 
 
 fn compile(args: &CompileArgs) -> anyhow::Result<()> {
-    match (&args.railroad_svg, &args.dfa_dot, &args.bash_script, &args.fish_script, &args.zsh_script) {
-        (None, None, None, None, None) => {
-            eprintln!("Please specify at least one of --railroad-svg, --dfa-dot, --bash-script, --fish-script, --zsh-script options");
-            std::process::exit(1);
-        },
-        _ => {},
+    if let (None, None, None, None, None) = (&args.railroad_svg, &args.dfa_dot, &args.bash_script, &args.fish_script, &args.zsh_script) {
+        eprintln!("Please specify at least one of --railroad-svg, --dfa-dot, --bash-script, --fish-script, --zsh-script options");
+        std::process::exit(1);
     }
 
     let input = {
@@ -197,7 +194,7 @@ fn compile(args: &CompileArgs) -> anyhow::Result<()> {
     let dfa = dfa.minimize();
 
     if let Some(dot_file_path) = &args.dfa_dot {
-        let mut dot_file = get_file_or_stdout(&dot_file_path)?;
+        let mut dot_file = get_file_or_stdout(dot_file_path)?;
         dfa.to_dot(&mut dot_file).context(dot_file_path.clone())?;
     }
 
