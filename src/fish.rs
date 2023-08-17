@@ -388,17 +388,17 @@ end
         writeln!(buffer, r#"    set specialized_command_states {}"#, itertools::join(specialized_command_id_from_state.iter().map(|(state, _)| state + 1), " "))?;
         write!(buffer, r#"    set specialized_command_ids {}"#, itertools::join(specialized_command_id_from_state.iter().map(|(_, id)| id), " "))?;
         write!(buffer, r#"
-if contains $state $specialized_command_states
-    set --local index (contains --index $state $specialized_command_states)
-    set --local function_id $specialized_command_ids[$index]
-    set --local function_name _{command}_spec_$function_id
-    set --local --erase inputs
-    set --local --erase tos
-    set --local lines (eval $function_name $COMP_WORDS[$COMP_CWORD])
-    for line in $lines
-        printf '%s\n' $line
+    if contains $state $specialized_command_states
+        set --local index (contains --index $state $specialized_command_states)
+        set --local function_id $specialized_command_ids[$index]
+        set --local function_name _{command}_spec_$function_id
+        set --local --erase inputs
+        set --local --erase tos
+        set --local lines (eval $function_name $COMP_WORDS[$COMP_CWORD])
+        for line in $lines
+            printf '%s\n' $line
+        end
     end
-end
 "#)?;
     }
 

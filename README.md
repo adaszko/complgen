@@ -261,6 +261,8 @@ strace -e <EXPR>;
 <value> ::= %file | file | all;
 ```
 
+The above grammar was pulled straight out of [`strace` man page](https://man7.org/linux/man-pages/man1/strace.1.html#OPTIONS).
+
 Caveats:
  * Fish only allows [a limited set of
    characters](https://github.com/fish-shell/fish-shell/blob/408ab860906fbf6e08f314bea982220fdee3428e/src/complete.cpp#L183)
