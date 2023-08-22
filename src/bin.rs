@@ -20,9 +20,15 @@ struct Cli {
 
 #[derive(clap::Subcommand)]
 enum Mode {
+    Check(CheckArgs),
     Complete(CompleteArgs),
     Compile(CompileArgs),
     Scrape,
+}
+
+#[derive(clap::Args)]
+struct CheckArgs {
+    usage_file_path: String,
 }
 
 #[derive(clap::Args)]
@@ -78,6 +84,19 @@ fn get_file_or_stdin(path: &str) -> anyhow::Result<Box<dyn Read>> {
         Box::new(std::fs::File::open(path).context(path.to_owned())?)
     };
     Ok(result)
+}
+
+
+fn check(args: &CheckArgs) -> anyhow::Result<()> {
+    let mut input_file = get_file_or_stdin(&args.usage_file_path).context(args.usage_file_path.to_owned())?;
+    let mut input: String = Default::default();
+    input_file.read_to_string(&mut input)?;
+    let grammar = Grammar::parse(&input)?;
+    let validated = ValidGrammar::from_grammar(grammar)?;
+    let arena = Bump::new();
+    let regex = AugmentedRegex::from_expr(&validated.expr, &validated.specializations, &arena);
+    let _ = DFA::from_regex(&regex);
+    Ok(())
 }
 
 
@@ -240,6 +259,7 @@ fn main() -> anyhow::Result<()> {
     env_logger::init();
     let args = Cli::parse();
     match args.mode {
+        Mode::Check(args) => check(&args)?,
         Mode::Complete(args) => complete(&args)?,
         Mode::Compile(args) => compile(&args)?,
         Mode::Scrape => scrape()?,

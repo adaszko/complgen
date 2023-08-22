@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- New CLI subcommand: `complgen check` that checks the passed grammar and doesn't write annything to disk.
+
 ### Fixed
 
 - Bug in JIT mode: Completing subdirectory files wasn't working due to the entered prefix not being passed
