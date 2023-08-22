@@ -77,7 +77,7 @@ function _complgen_jit
         set COMP_CWORD (count $COMP_WORDS)
     end
     set --local usage_file_path $argv[1]
-    complgen complete $usage_file_path fish -- (math $COMP_CWORD - 2) $COMP_WORDS[2..-1]
+    complgen complete $usage_file_path fish -- (math $COMP_CWORD - 2) $COMP_WORDS[2..]
 end
 
 for path in ~/.config/complgen/*.usage

@@ -177,7 +177,7 @@ def test_jit_completes_prefix(complgen_binary_path: Path):
 cargo +<toolchain>;
 <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 '''
-    assert get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR, 0, ['+']) == sorted([('stable-aarch64-apple-darwin', ''), ('stable-x86_64-apple-darwin', '')])
+    assert get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR, 0, ['+']) == sorted([('+stable-aarch64-apple-darwin', ''), ('+stable-x86_64-apple-darwin', '')])
 
 
 def test_completes_strace_expr(complgen_binary_path: Path):
@@ -188,7 +188,7 @@ def test_completes_strace_expr(complgen_binary_path: Path):
 
 
 def test_jit_completes_strace_expr(complgen_binary_path: Path):
-    assert get_sorted_jit_fish_completions(complgen_binary_path, STRACE_EXPR_GRAMMAR, 1, ['-e', 'trace=']) == sorted([('!', ''), ('%file', ''), ('file', ''), ('all', '')])
+    assert get_sorted_jit_fish_completions(complgen_binary_path, STRACE_EXPR_GRAMMAR, 1, ['-e', 'trace=']) == sorted([('trace=!', ''), ('trace=%file', ''), ('trace=file', ''), ('trace=all', '')])
 
 
 def test_completes_lsof_filter(complgen_binary_path: Path):
@@ -199,7 +199,7 @@ def test_completes_lsof_filter(complgen_binary_path: Path):
 
 
 def test_jit_completes_lsof_filter(complgen_binary_path: Path):
-    assert get_sorted_jit_fish_completions(complgen_binary_path, LSOF_FILTER_GRAMMAR, 0, ['-sTCP:']) == sorted([('^', ''), ('LISTEN', ''), ('CLOSED', '')])
+    assert get_sorted_jit_fish_completions(complgen_binary_path, LSOF_FILTER_GRAMMAR, 0, ['-sTCP:']) == sorted([('-sTCP:^', ''), ('-sTCP:LISTEN', ''), ('-sTCP:CLOSED', '')])
 
 
 def test_subword_descriptions(complgen_binary_path: Path):
@@ -210,7 +210,7 @@ def test_subword_descriptions(complgen_binary_path: Path):
 
 def test_jit_subword_descriptions(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option=(arg1 "descr1" | arg2 "descr2");'''
-    assert get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR, 0, ['--option=']) == sorted([('arg1', 'descr1'), ('arg2', 'descr2')])
+    assert get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR, 0, ['--option=']) == sorted([('--option=arg1', 'descr1'), ('--option=arg2', 'descr2')])
 
 
 def test_completes_subword_external_command(complgen_binary_path: Path):
@@ -222,7 +222,7 @@ def test_completes_subword_external_command(complgen_binary_path: Path):
 
 def test_jit_completes_subword_external_command(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option={ echo -e "argument\tdescription" };'''
-    assert get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR, 0, ['--option=']) == sorted([('argument', 'description')])
+    assert get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR, 0, ['--option=']) == sorted([('--option=argument', 'description')])
 
 
 def test_subword_specialization(complgen_binary_path: Path):

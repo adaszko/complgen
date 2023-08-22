@@ -176,7 +176,7 @@ def test_jit_completes_prefix(complgen_binary_path: Path):
 cargo +<toolchain>;
 <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 '''
-    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, 0, ['+']) == sorted(['stable-aarch64-apple-darwin', 'stable-x86_64-apple-darwin'])
+    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, 0, ['+']) == sorted(['+stable-aarch64-apple-darwin', '+stable-x86_64-apple-darwin'])
 
 
 def test_completes_strace_expr(complgen_binary_path: Path):
@@ -186,7 +186,7 @@ def test_completes_strace_expr(complgen_binary_path: Path):
 
 
 def test_jit_completes_strace_expr(complgen_binary_path: Path):
-    assert get_sorted_jit_bash_completions(complgen_binary_path, STRACE_EXPR_GRAMMAR, 1, ['-e', 'trace=']) == sorted(['!', '%file', 'file', 'all'])
+    assert get_sorted_jit_bash_completions(complgen_binary_path, STRACE_EXPR_GRAMMAR, 1, ['-e', 'trace=']) == sorted(['trace=!', 'trace=%file', 'trace=file', 'trace=all'])
 
 
 def test_completes_lsof_filter(complgen_binary_path: Path):
@@ -196,7 +196,7 @@ def test_completes_lsof_filter(complgen_binary_path: Path):
 
 
 def test_jit_completes_lsf_filter(complgen_binary_path: Path):
-    assert get_sorted_jit_bash_completions(complgen_binary_path, LSOF_FILTER_GRAMMAR, 0, ['-sTCP:']) == sorted(['^', 'LISTEN', 'CLOSED'])
+    assert get_sorted_jit_bash_completions(complgen_binary_path, LSOF_FILTER_GRAMMAR, 0, ['-sTCP:']) == sorted(['-sTCP:^', '-sTCP:LISTEN', '-sTCP:CLOSED'])
 
 
 def test_subword_descriptions(complgen_binary_path: Path):
@@ -209,7 +209,7 @@ def test_subword_descriptions(complgen_binary_path: Path):
 def test_jit_subword_descriptions(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option=(arg1 "descr1" | arg2 "descr2");'''
     process = subprocess.run([complgen_binary_path, 'complete', '-', 'bash', '--', '0', '--option='], input=GRAMMAR.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
-    assert sorted(process.stdout.decode().splitlines()) == sorted(['arg1', 'arg2'])
+    assert sorted(process.stdout.decode().splitlines()) == sorted(['--option=arg1', '--option=arg2'])
 
 
 def test_completes_subword_external_command(complgen_binary_path: Path):
@@ -222,7 +222,7 @@ def test_completes_subword_external_command(complgen_binary_path: Path):
 def test_jit_completes_subword_external_command(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option={ echo -e "argument\tdescription" };'''
     process = subprocess.run([complgen_binary_path, 'complete', '-', 'bash', '--', '0', '--option='], input=GRAMMAR.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
-    assert sorted(process.stdout.decode().splitlines()) == sorted(['argument'])
+    assert sorted(process.stdout.decode().splitlines()) == sorted(['--option=argument'])
 
 
 def test_subword_specialization(complgen_binary_path: Path):
