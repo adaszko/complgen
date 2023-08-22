@@ -244,3 +244,36 @@ cmd --option=<FOO>;
 '''
     process = subprocess.run([complgen_binary_path, 'complete', '-', 'bash', '--', '0', '--option='], input=GRAMMAR.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
     assert sorted(process.stdout.decode().splitlines()) == sorted(['bash'])
+
+
+def test_shell_integration(complgen_binary_path: Path):
+    GRAMMAR = '''
+mycargo +<toolchain>;
+<toolchain> ::= { echo foo; echo bar };
+'''
+    with tempfile.TemporaryDirectory() as usage_files_dir:
+        (Path(usage_files_dir) / 'mycargo.usage').write_text(GRAMMAR)
+        INTEGRATION_SCRIPT = r'''
+for path in {usage_files_dir}/*.usage; do
+    stem=$(basename "$path" .usage)
+    eval "
+_complgen_jit_$stem () {{
+    local -a completions=(\$({complgen_binary_path} complete \"{usage_files_dir}/$stem.usage\" bash \$((COMP_CWORD - 1)) -- \${{COMP_WORDS[@]:1}}))
+    local prefix="\${{COMP_WORDS[\$COMP_CWORD]}}"
+    for item in "\${{completions[@]}}"; do
+        if [[ \$item = "\$prefix"* ]]; then
+            COMPREPLY+=("\$item")
+        fi
+    done
+    return 0
+}}
+"
+    complete -o nospace -F _complgen_jit_$stem "$stem"
+    unset stem
+done
+'''.format(complgen_binary_path=complgen_binary_path, usage_files_dir=usage_files_dir)
+        with tempfile.NamedTemporaryFile() as f:
+            f.write(INTEGRATION_SCRIPT.encode())
+            f.flush()
+            input = r'''COMP_WORDS=(mycargo +); COMP_CWORD=1; _complgen_jit_mycargo; printf '%s\n' "${COMPREPLY[@]}"'''
+            assert get_sorted_completions(f.name, input) == sorted(['+foo', '+bar'])
