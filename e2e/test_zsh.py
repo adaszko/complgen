@@ -150,6 +150,20 @@ def test_jit_completes_directories_zsh(complgen_binary_path: Path):
             ]
 
 
+def test_jit_completes_subdirectory_files(complgen_binary_path: Path):
+    with tempfile.TemporaryDirectory() as dir:
+        with set_working_dir(Path(dir)):
+            os.mkdir('subdir')
+            (Path('subdir') / 'file.txt').write_text('dummy')
+            expr = get_jit_zsh_completions_expr(complgen_binary_path, '''cmd <PATH>;''', 0, ['subdir/'])
+            assert expr.splitlines() == [
+                r'local -a completions=("subdir/file.txt")',
+                r'local -a descriptions=("subdir/file.txt")',
+                '''compadd -Q -S '' -d descriptions -a completions'''
+            ]
+
+
+
 def test_specializes_for_zsh(complgen_binary_path: Path):
     with capture_grammar_completions(complgen_binary_path, '''cmd <FOO>; <FOO> ::= { echo foo }; <FOO@zsh> ::= { compadd zsh };''') as capture_zsh_path:
         assert get_sorted_completions(capture_zsh_path, 'cmd ') == sorted([('zsh', '')])

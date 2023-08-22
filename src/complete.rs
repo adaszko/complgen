@@ -20,18 +20,37 @@ pub enum Shell {
 }
 
 
-fn shell_out_bash(command: &str) -> anyhow::Result<Output> {
-    Command::new("bash").arg("-c").arg(command).output().map_err(Into::into)
+fn shell_out_bash(command: &str, prefix: &str) -> anyhow::Result<Output> {
+    let mut script_file = tempfile::NamedTempFile::new()?;
+    writeln!(script_file, r#"_complgen_complete_function () {{"#)?;
+    writeln!(script_file, "{}", command)?;
+    writeln!(script_file, r#"}}"#)?;
+    writeln!(script_file, r#"_complgen_complete_function "{}""#, prefix)?;
+    script_file.flush()?;
+    Command::new("bash").arg("--noprofile").arg(script_file.path()).output().map_err(Into::into)
 }
 
 
-fn shell_out_fish(command: &str) -> anyhow::Result<Output> {
-    Command::new("fish").arg("-c").arg(command).output().map_err(Into::into)
+fn shell_out_fish(command: &str, prefix: &str) -> anyhow::Result<Output> {
+    let mut script_file = tempfile::NamedTempFile::new()?;
+    writeln!(script_file, r#"function _complgen_complete_function"#)?;
+    writeln!(script_file, r#"set 1 $argv[1]"#)?;
+    writeln!(script_file, "{}", command)?;
+    writeln!(script_file, r#"end"#)?;
+    writeln!(script_file, r#"_complgen_complete_function "{}""#, prefix)?;
+    script_file.flush()?;
+    Command::new("fish").arg("--private").arg("--no-config").arg(script_file.path()).output().map_err(Into::into)
 }
 
 
-fn shell_out_zsh(command: &str) -> anyhow::Result<Output> {
-    Command::new("zsh").arg("-c").arg(command).output().map_err(Into::into)
+fn shell_out_zsh(command: &str, prefix: &str) -> anyhow::Result<Output> {
+    let mut script_file = tempfile::NamedTempFile::new()?;
+    writeln!(script_file, r#"_complgen_complete_function () {{"#)?;
+    writeln!(script_file, "{}", command)?;
+    writeln!(script_file, r#"}}"#)?;
+    writeln!(script_file, r#"_complgen_complete_function "{}""#, prefix)?;
+    script_file.flush()?;
+    Command::new("zsh").arg(script_file.path()).output().map_err(Into::into)
 }
 
 
@@ -50,18 +69,18 @@ fn stdout_from_output(output: Output) -> anyhow::Result<String> {
 }
 
 
-fn get_bash_command_stdout(command: &str) -> anyhow::Result<String> {
-    let output = shell_out_bash(command).with_context(|| command.to_string())?;
+fn get_bash_command_stdout(command: &str, prefix: &str) -> anyhow::Result<String> {
+    let output = shell_out_bash(command, prefix).with_context(|| command.to_string())?;
     stdout_from_output(output)
 }
 
-fn get_fish_command_stdout(command: &str) -> anyhow::Result<String> {
-    let output = shell_out_fish(command).with_context(|| command.to_string())?;
+fn get_fish_command_stdout(command: &str, prefix: &str) -> anyhow::Result<String> {
+    let output = shell_out_fish(command, prefix).with_context(|| command.to_string())?;
     stdout_from_output(output)
 }
 
-fn get_zsh_command_stdout(command: &str) -> anyhow::Result<String> {
-    let output = shell_out_zsh(command).with_context(|| command.to_string())?;
+fn get_zsh_command_stdout(command: &str, prefix: &str) -> anyhow::Result<String> {
+    let output = shell_out_zsh(command, prefix).with_context(|| command.to_string())?;
     stdout_from_output(output)
 }
 
@@ -96,11 +115,11 @@ fn capture_zsh_completions(completion_code: &str, command: &str, user_input: &st
 
 
 impl Shell {
-    fn shell_out(&self, command: &str) -> anyhow::Result<String> {
+    fn shell_out(&self, command: &str, prefix: &str) -> anyhow::Result<String> {
         let output = match self {
-            Shell::Bash => shell_out_bash(command)?,
-            Shell::Fish => shell_out_fish(command)?,
-            Shell::Zsh => shell_out_zsh(command)?,
+            Shell::Bash => shell_out_bash(command, prefix)?,
+            Shell::Fish => shell_out_fish(command, prefix)?,
+            Shell::Zsh => shell_out_zsh(command, prefix)?,
         };
 
         stdout_from_output(output)
@@ -114,20 +133,20 @@ fn capture_specialized_completions(shell: Shell, specialization: &Specialization
             let Some(command) = specialization.bash.or(specialization.generic) else {
                 return Ok(());
             };
-            get_bash_command_stdout(&command)?
+            get_bash_command_stdout(&command, prefix)?
         },
         Shell::Fish => {
             let Some(command) = specialization.fish.or(specialization.generic) else {
                 return Ok(());
             };
-            get_fish_command_stdout(&command)?
+            get_fish_command_stdout(&command, prefix)?
         },
         Shell::Zsh => {
             if let Some(command) = specialization.zsh {
-                capture_zsh_completions(&command, "dummy", "dummy ")?
+                capture_zsh_completions(&command, "dummy", &format!("dummy {}", prefix))?
             }
             else if let Some(command) = specialization.generic {
-                get_zsh_command_stdout(&command)?
+                get_zsh_command_stdout(&command, prefix)?
             }
             else {
                 return Ok(());
@@ -200,7 +219,7 @@ fn get_completions_for_input(input: &Input, entered_prefix: &str, matched_subwor
         Input::Literal(_, _) => {},
 
         Input::Command(command) => {
-            let stdout = shell.shell_out(command.as_str())?;
+            let stdout = shell.shell_out(command.as_str(), entered_prefix)?;
             for line in stdout.lines() {
                 if !line.starts_with(entered_prefix) {
                     continue;
@@ -215,7 +234,9 @@ fn get_completions_for_input(input: &Input, entered_prefix: &str, matched_subwor
 
         Input::Nonterminal(_, None) => {},
 
-        Input::Nonterminal(_, Some(specialization)) => capture_specialized_completions(shell, specialization, entered_prefix, output)?
+        Input::Nonterminal(_, Some(specialization)) => {
+            capture_specialized_completions(shell, specialization, entered_prefix, output)?
+        },
     }
     Ok(())
 }

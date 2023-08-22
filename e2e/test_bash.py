@@ -111,6 +111,14 @@ def test_jit_completes_paths_bash(complgen_binary_path: Path):
             assert get_sorted_jit_bash_completions(complgen_binary_path, '''cmd <PATH> [--help];''', 0, []) == sorted(['filename with spaces', SPECIAL_CHARACTERS, 'dir with spaces'])
 
 
+def test_jit_completes_subdirectory_files(complgen_binary_path: Path):
+    with tempfile.TemporaryDirectory() as dir:
+        with set_working_dir(Path(dir)):
+            os.mkdir('subdir')
+            (Path('subdir') / 'file.txt').write_text('dummy')
+            assert get_sorted_jit_bash_completions(complgen_binary_path, '''cmd <PATH>;''', 0, ['subdir/']) == sorted(['subdir/file.txt'])
+
+
 def test_jit_completes_directories_bash(complgen_binary_path: Path):
     with tempfile.TemporaryDirectory() as dir:
         with set_working_dir(Path(dir)):
