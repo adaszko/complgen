@@ -160,6 +160,9 @@ There's a couple of predefined nonterminals that are handled specially by `compl
  * `<INTERFACE>` is completed as a network interface name (fish, zsh)
  * `<PACKAGE>` is completed as a package name (fish)
 
+The reason there's no predefined `<FILE>` nonterminal is that it would work only for files from the current
+directory which is too specific to be generally useful.
+
 These nonterminals can still be defined in the grammar in the usual way (`<PATH> ::= ...`), in which case
 their predefined meaning gets overriden.
 
