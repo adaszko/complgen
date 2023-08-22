@@ -278,6 +278,11 @@ Caveats:
 * Non-regular grammars aren't completed 100% *precisely*. For instance, in case of `find(1)`, `complgen` will
   still suggest `)` even in cases when all `(` have already been properly closed before the cursor.
 
+## Keeping abreast
+
+Subscribe to [`CHANGELOG.md` commits](https://github.com/adaszko/complgen/commits/master/CHANGELOG.md.atom)
+via your preferred feed reader.
+
 ## Related Projects
 
  * https://docs.rs/clap_complete/
