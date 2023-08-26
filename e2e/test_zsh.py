@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import tempfile
 import contextlib
@@ -13,13 +14,11 @@ from common import LSOF_FILTER_GRAMMAR, STRACE_EXPR_GRAMMAR
 def zsh_completions_from_stdout(stdout: str) -> list[tuple[str, str]]:
     completions = []
     for line in stdout.splitlines():
-        fields = line.split(' -- ')
-        if len(fields) == 2:
-            completions.append((fields[0], fields[1]))
-        elif len(fields) == 1:
-            completions.append((fields[0], ''))
+        match = re.match(r'^(\S+)\s+--\s+(.+)$', line)
+        if match is not None:
+            completions.append((match.group(1), match.group(2)))
         else:
-            assert False
+            completions.append((line, ''))
     return completions
 
 
@@ -65,7 +64,7 @@ cmd <COMMAND> [--help];
 '''
 
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
-        assert get_sorted_completions(capture_zsh_path, 'cmd ') == sorted([('rm', "(Remove a project)"), ('remote', "(Manage a project's remotes)")], key=lambda pair: pair[0])
+        assert get_sorted_completions(capture_zsh_path, 'cmd ') == sorted([('rm', "Remove a project"), ('remote', "Manage a project's remotes")], key=lambda pair: pair[0])
 
 
 def test_zsh_uses_correct_description_with_duplicated_descriptions(complgen_binary_path: Path):
@@ -78,7 +77,7 @@ mygrep [<OPTION>]...;
 '''
 
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
-        assert get_sorted_completions(capture_zsh_path, 'mygrep ') == sorted([('--color', "(use markers to highlight the matching strings)"), ('--colour', "(use markers to highlight the matching strings)")], key=lambda pair: pair[0])
+        assert get_sorted_completions(capture_zsh_path, 'mygrep ') == sorted([('--color', "use markers to highlight the matching strings"), ('--colour', "use markers to highlight the matching strings")], key=lambda pair: pair[0])
 
 
 def test_zsh_external_command_produces_description(complgen_binary_path: Path):

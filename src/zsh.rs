@@ -321,18 +321,25 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         for literal_id in ${{(k)state_transitions}}; do
             if [[ -v "descriptions[$literal_id]" ]]; then
                 args+=("${{literals[$literal_id]}}")
-                descrs+=("${{literals[$literal_id]}} (${{descriptions[$literal_id]}})")
+                descrs+=("${{descriptions[$literal_id]}}")
             else
                 args+=("${{literals[$literal_id]}}")
                 descrs+=("${{literals[$literal_id]}}")
             fi
         done
-        local joined=${{(j::)descrs}}
-        if [[ -z $joined ]]; then
-            compadd -a args
-        else
-            compadd -l -d descrs -a args
-        fi
+        local maxlen=${{#args[1]}}
+        for a in $args; do
+            if [[ ${{#a}} -gt $maxlen ]]; then
+                maxlen=${{#a}}
+            fi
+        done
+        for i in {{1..$#args}}; do
+            if [[ ${{args[$i]}} = ${{descrs[$i]}} ]]; then
+                continue
+            fi
+            descrs[$i]="${{(r($maxlen)( ))${{args[$i]}}}} -- ${{descrs[$i]}}"
+        done
+        compadd -l -d descrs -a args
     fi
 "#)?;
 
@@ -352,14 +359,25 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                 local a=$(echo "$line" | cut -f1)
                 args+=($a)
                 local d=$(echo "$line" | cut -f2-)
-                descrs+=($d)
+                if [[ -n $d ]]; then
+                    descrs+=($d)
+                else
+                    descrs+=($a)
+                fi
             done
-            local joined=${{(j::)descrs}}
-            if [[ -z $joined ]]; then
-                compadd -Q -S '' -a args
-            else
-                compadd -l -Q -S '' -d descrs -a args
-            fi
+            local maxlen=${{#args[1]}}
+            for a in $args; do
+                if [[ ${{#a}} -gt $maxlen ]]; then
+                    maxlen=${{#a}}
+                fi
+            done
+            for i in {{1..$#args}}; do
+                if [[ ${{args[$i]}} = ${{descrs[$i]}} ]]; then
+                    continue
+                fi
+                descrs[$i]="${{(r($maxlen)( ))${{args[$i]}}}} -- ${{descrs[$i]}}"
+            done
+            compadd -l -Q -S '' -d descrs -a args
         done
     fi
 "#)?;
@@ -380,14 +398,25 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             local a=$(echo "$line" | cut -f1)
             args+=($a)
             local d=$(echo "$line" | cut -f2-)
-            descrs+=($d)
+            if [[ -n $d ]]; then
+                descrs+=($d)
+            else
+                descrs+=($a)
+            fi
         done
-        local joined=${{(j::)descrs}}
-        if [[ -z $joined ]]; then
-            compadd -a args
-        else
-            compadd -l -d descrs -a args
-        fi
+        local maxlen=${{#args[1]}}
+        for a in $args; do
+            if [[ ${{#a}} -gt $maxlen ]]; then
+                maxlen=${{#a}}
+            fi
+        done
+        for i in {{1..$#args}}; do
+            if [[ ${{args[$i]}} = ${{descrs[$i]}} ]]; then
+                continue
+            fi
+            descrs[$i]="${{(r($maxlen)( ))${{args[$i]}}}} -- ${{descrs[$i]}}"
+        done
+        compadd -l -d descrs -a args
     fi
 "#)?;
     }
