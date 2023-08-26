@@ -325,7 +325,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         if [[ -z $joined ]]; then
             compadd -a args
         else
-            compadd -d descrs -a args
+            compadd -l -d descrs -a args
         fi
     fi
 "#)?;
@@ -351,7 +351,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             if [[ -z $joined ]]; then
                 compadd -Q -S '' -a args
             else
-                compadd -Q -S '' -d descrs -a args
+                compadd -l -Q -S '' -d descrs -a args
             fi
         done
     fi
@@ -378,7 +378,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         if [[ -z $joined ]]; then
             compadd -a args
         else
-            compadd -d descrs -a args
+            compadd -l -d descrs -a args
         fi
     fi
 "#)?;
