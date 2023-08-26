@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - New CLI subcommand: `complgen check` that checks the passed grammar and doesn't write annything to disk.
 - Write ZSH completion each on separate lines if any contains a description to better mimic what _arguments does
+- Only emit subword processing shell script code if it's actually used in the grammar to conserve space
 
 ### Fixed
 

@@ -284,7 +284,10 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                 continue
             fi
         fi
+"#, starting_state = dfa.starting_state)?;
 
+    if dfa.has_subword_transitions() {
+        write!(buffer, r#"
         if [[ -v "subword_transitions[$state]" ]]; then
             local state_transitions_initializer=${{subword_transitions[$state]}}
             declare -A state_transitions
@@ -303,7 +306,10 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                 continue
             fi
         fi
+"#)?;
+    }
 
+        write!(buffer, r#"
         if [[ -v "match_anything_transitions[$state]" ]]; then
             state=${{match_anything_transitions[$state]}}
             word_index=$((word_index + 1))
@@ -313,7 +319,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         return 1
     done
 
-"#, starting_state = dfa.starting_state)?;
+"#)?;
 
     write!(buffer, r#"
     local prefix="${{words[$cword]}}"
@@ -340,7 +346,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     fi
 "#)?;
 
-    write!(buffer, r#"
+    if dfa.has_subword_transitions() {
+        write!(buffer, r#"
     if [[ -v "subword_transitions[$state]" ]]; then
         local state_transitions_initializer=${{subword_transitions[$state]}}
         declare -A state_transitions
@@ -351,6 +358,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         done
     fi
 "#)?;
+    }
 
     let top_level_command_id_from_state: HashMap<StateId, usize> = top_level_command_transitions.into_iter().map(|(state, cmd)| (state, *id_from_top_level_command.get(&cmd).unwrap())).collect();
     if !top_level_command_id_from_state.is_empty() {

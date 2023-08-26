@@ -708,6 +708,16 @@ impl DFA {
     }
 
 
+    pub fn has_subword_transitions(&self) -> bool {
+        for state in self.get_all_states() {
+            if !self.get_subword_transitions_from(state.try_into().unwrap()).is_empty() {
+                return true;
+            }
+        }
+        return false;
+    }
+
+
     pub fn get_all_states(&self) -> RoaringBitmap {
         let mut states: RoaringBitmap = Default::default();
         for (from, to) in &self.transitions {

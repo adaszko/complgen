@@ -306,7 +306,10 @@ end
                 end
             end
         end
+"#, starting_state = dfa.starting_state + 1)?;
 
+    if dfa.has_subword_transitions() {
+        write!(buffer, r#"
         if set --query subword_transitions[$state] && test -n $subword_transitions[$state]
             set --local --erase subword_ids
             set --local --erase tos
@@ -325,7 +328,10 @@ end
                 continue
             end
         end
+"#)?;
+    }
 
+    write!(buffer, r#"
         if set --query match_anything_transitions_from[$state] && test -n $match_anything_transitions_from[$state]
             set --local index (contains --index -- $state $match_anything_transitions_from)
             set state $match_anything_transitions_to[$index]
@@ -335,7 +341,7 @@ end
 
         return 1
     end
-"#, starting_state = dfa.starting_state + 1)?;
+"#)?;
 
     write!(buffer, r#"
     if set --query literal_transitions[$state] && test -n $literal_transitions[$state]
@@ -353,7 +359,8 @@ end
 
 "#)?;
 
-    write!(buffer, r#"
+    if dfa.has_subword_transitions() {
+        write!(buffer, r#"
     if set --query subword_transitions[$state] && test -n $subword_transitions[$state]
         set --local --erase subword_ids
         set --local --erase tos
@@ -366,6 +373,7 @@ end
     end
 
 "#)?;
+    }
 
     let top_level_command_id_from_state: HashMap<StateId, usize> = top_level_command_transitions.into_iter().map(|(state, cmd)| (state, *id_from_top_level_command.get(&cmd).unwrap())).collect();
     if !top_level_command_id_from_state.is_empty() {
