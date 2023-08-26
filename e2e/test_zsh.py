@@ -250,7 +250,7 @@ def test_subword_descriptions(complgen_binary_path: Path):
 def test_jit_subword_descriptions(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option=(arg1 "descr1" | arg2 "descr2");'''
     expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, 0, ['--option='])
-    assert expr == '''local -a completions=("--option=arg1" "--option=arg2")\nlocal -a descriptions=("--option=arg1 (descr1)" "--option=arg2 (descr2)")\ncompadd -Q -S '' -d descriptions -a completions\n'''
+    assert expr == '''local -a completions=("--option=arg1" "--option=arg2")\nlocal -a descriptions=("--option=arg1 -- descr1" "--option=arg2 -- descr2")\ncompadd -Q -S '' -d descriptions -a completions\n'''
 
 
 def test_completes_subword_external_command(complgen_binary_path: Path):
@@ -262,7 +262,7 @@ def test_completes_subword_external_command(complgen_binary_path: Path):
 def test_jit_completes_subword_external_command(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option={ echo -e "argument\tdescription" };'''
     expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, 0, ['--option='])
-    assert expr == '''local -a completions=("--option=argument")\nlocal -a descriptions=("--option=argument (description)")\ncompadd -Q -S '' -d descriptions -a completions\n'''
+    assert expr == '''local -a completions=("--option=argument")\nlocal -a descriptions=("--option=argument -- description")\ncompadd -Q -S '' -d descriptions -a completions\n'''
 
 
 def test_subword_specialization(complgen_binary_path: Path):

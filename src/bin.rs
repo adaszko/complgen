@@ -142,17 +142,19 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
             let completions_array_initializer = itertools::join(completions.iter().map(|(completion, _)| make_string_constant(completion)), " ");
             println!(r#"local -a completions=({completions_array_initializer})"#);
 
-            let descriptions_array_initializer = itertools::join(completions.iter().map(|(completion, description)| {
-                if !description.is_empty() {
-                    make_string_constant(&format!("{} ({})", completion, description))
+            let maxlen = completions.iter().map(|(compl, _)| compl.len()).max().unwrap_or(0);
+            let descriptions: Vec<String> = completions.iter().map(|(compl, descr)| {
+                if !descr.is_empty() {
+                    format!("{:width$} -- {descr}", compl, width = maxlen)
+                } else {
+                    compl.clone()
                 }
-                else {
-                    make_string_constant(completion)
-                }
-            }), " ");
+            }).collect();
+
+            let descriptions_array_initializer = itertools::join(descriptions.into_iter().map(|s| make_string_constant(&s)), " ");
             println!(r#"local -a descriptions=({descriptions_array_initializer})"#);
 
-            println!(r#"compadd -Q -S '' -d descriptions -a completions"#);
+            println!(r#"compadd -l -Q -S '' -d descriptions -a completions"#);
         },
     }
 
