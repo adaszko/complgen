@@ -129,26 +129,25 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
 
     match args.shell {
         Shell::Bash(_) => {
-            for (completion, _) in completions {
-                println!("{}", completion);
+            for completion in completions {
+                println!("{}", completion.completion);
             }
         },
         Shell::Fish(_) => {
-            for (completion, description) in completions {
-                println!("{}\t{}", completion, description);
+            for completion in completions {
+                println!("{}\t{}", completion.completion, completion.description);
             }
         },
         Shell::Zsh(_) => {
-            let completions_array_initializer = itertools::join(completions.iter().map(|(completion, _)| make_string_constant(completion)), " ");
+            let completions_array_initializer = itertools::join(completions.iter().map(|completion| make_string_constant(&completion.completion)), " ");
             println!(r#"local -a completions=({completions_array_initializer})"#);
 
-            let maxlen = completions.iter().map(|(compl, _)| compl.len()).max().unwrap_or(0);
-            let descriptions: Vec<String> = completions.iter().map(|(compl, descr)| {
-                if !descr.is_empty() {
-                    format!("{:width$} -- {descr}", compl, width = maxlen)
-                } else {
-                    compl.clone()
+            let maxlen = completions.iter().map(|compl| compl.completion.len()).max().unwrap_or(0);
+            let descriptions: Vec<String> = completions.iter().map(|compl| {
+                if compl.description.is_empty() {
+                    return compl.completion.clone();
                 }
+                format!("{:width$} -- {descr}", compl.completion, width = maxlen, descr = compl.description)
             }).collect();
 
             let descriptions_array_initializer = itertools::join(descriptions.into_iter().map(|s| make_string_constant(&s)), " ");

@@ -20,6 +20,14 @@ pub enum Shell {
 }
 
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Completion {
+    pub matched_subword_prefix: String,
+    pub completion: String,
+    pub description: String,
+}
+
+
 fn shell_out_bash(command: &str, prefix: &str) -> anyhow::Result<Output> {
     let mut script_file = tempfile::NamedTempFile::new()?;
     writeln!(script_file, r#"_complgen_complete_function () {{"#)?;
@@ -127,7 +135,7 @@ impl Shell {
 }
 
 
-fn capture_specialized_completions(shell: Shell, specialization: &Specialization, prefix: &str, output: &mut Vec<(String, String)>) -> anyhow::Result<()> {
+fn capture_specialized_completions(shell: Shell, specialization: &Specialization, prefix: &str, output: &mut Vec<Completion>) -> anyhow::Result<()> {
     let stdout = match shell {
         Shell::Bash => {
             let Some(command) = specialization.bash.or(specialization.generic) else {
@@ -162,7 +170,7 @@ fn capture_specialized_completions(shell: Shell, specialization: &Specialization
             Some((completion, description)) => (completion.to_owned(), description.to_owned()),
             None => (line.to_string(), "".to_string()),
         };
-        output.push((completion, description));
+        output.push(Completion {matched_subword_prefix: "".to_string(), completion, description});
     }
     Ok(())
 }
@@ -199,7 +207,7 @@ pub fn get_subword_match_final_state<'a>(dfa: &DFA, input: &'a str) -> Option<(S
 
 
 
-fn get_completions_for_input(input: &Input, entered_prefix: &str, matched_subword_prefix: &str, shell: Shell, output: &mut Vec<(String, String)>) -> anyhow::Result<()> {
+fn get_completions_for_input(input: &Input, entered_prefix: &str, matched_subword_prefix: &str, shell: Shell, output: &mut Vec<Completion>) -> anyhow::Result<()> {
     match input {
         Input::Subword(subword_dfa) => {
             let (state, matched_input, remaining_input) = match get_subword_match_final_state(subword_dfa.as_ref(), entered_prefix) {
@@ -214,7 +222,11 @@ fn get_completions_for_input(input: &Input, entered_prefix: &str, matched_subwor
         Input::Literal(literal, description) if literal.starts_with(entered_prefix) => {
             let completion = format!("{}{}", matched_subword_prefix, literal.as_str().to_string());
             let description = description.unwrap_or(ustr("")).as_str().to_string();
-            output.push((completion, description))
+            output.push(Completion {
+                matched_subword_prefix: matched_subword_prefix.to_string(),
+                completion,
+                description,
+            })
         },
         Input::Literal(_, _) => {},
 
@@ -228,7 +240,11 @@ fn get_completions_for_input(input: &Input, entered_prefix: &str, matched_subwor
                     Some((completion, description)) => (completion.to_owned(), description.to_owned()),
                     None => (line.to_owned(), "".to_owned()),
                 };
-                output.push((format!("{}{}", matched_subword_prefix, completion), description));
+                output.push(Completion {
+                    matched_subword_prefix: matched_subword_prefix.to_string(),
+                    completion: format!("{}{}", matched_subword_prefix, completion),
+                    description,
+                });
             }
         },
 
@@ -242,7 +258,7 @@ fn get_completions_for_input(input: &Input, entered_prefix: &str, matched_subwor
 }
 
 
-pub fn get_completions(dfa: &DFA, words: &[&str], completed_word_index: usize, shell: Shell) -> anyhow::Result<Vec<(String, String)>> {
+pub fn get_completions(dfa: &DFA, words: &[&str], completed_word_index: usize, shell: Shell) -> anyhow::Result<Vec<Completion>> {
     let prefix = match completed_word_index.cmp(&words.len()) {
         std::cmp::Ordering::Less => words[completed_word_index],
         std::cmp::Ordering::Equal => "",
@@ -286,11 +302,11 @@ pub fn get_completions(dfa: &DFA, words: &[&str], completed_word_index: usize, s
     }
 
     // Complete `prefix` based on `state`.
-    let mut output: Vec<(String, String)> = Default::default();
+    let mut output: Vec<Completion> = Default::default();
     for (input, _) in dfa.iter_transitions_from(state) {
         get_completions_for_input(&input, prefix, "", shell, &mut output)?;
     }
-    output.sort_unstable();
+    output.sort_unstable_by(|left, right| left.completion.cmp(&right.completion));
     Ok(output)
 }
 
@@ -304,7 +320,7 @@ mod tests {
 
     use super::*;
 
-    fn get_grammar_completions<'a, 'b>(grammar: &str, words_before_cursor: &'b [&'a str], completed_word_index: usize) -> Vec<(String, String)> {
+    fn get_grammar_completions<'a, 'b>(grammar: &str, words_before_cursor: &'b [&'a str], completed_word_index: usize) -> Vec<Completion> {
         let g = Grammar::parse(grammar).unwrap();
         let validated = ValidGrammar::from_grammar(g).unwrap();
         let arena = Bump::new();
@@ -317,10 +333,10 @@ mod tests {
     #[test]
     fn completes_darcs_add() {
         const GRAMMAR: &str = r#"darcs add ( --boring | ( --case-ok | --reserved-ok ) | ( ( -r | --recursive ) | --not-recursive ) | ( --date-trick | --no-date-trick ) | --repodir <DIRECTORY> | --dry-run | --umask <UMASK> | ( --debug | --debug-verbose | --debug-http | ( -v | --verbose ) | ( -q | --quiet ) | --standard-verbosity ) | --timings | ( --posthook <COMMAND> | --no-posthook ) | ( --prompt-posthook | --run-posthook ) | ( --prehook <COMMAND> | --no-prehook ) | ( --prompt-prehook | --run-prehook ) ) ... ( <FILE> | <DIRECTORY> )...;"#;
-        assert_eq!(get_grammar_completions(GRAMMAR, &[], 0), vec![("add".to_string(), "".to_string())]);
+        assert_eq!(get_grammar_completions(GRAMMAR, &[], 0), vec![Completion {matched_subword_prefix: "".to_string(), completion: "add".to_string(), description: "".to_string()}]);
 
         let input = vec!["add"];
-        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 1).into_iter().map(|(completion, _)| completion));
+        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 1).into_iter().map(|completion| completion.completion));
         let expected = HashSet::from_iter(["--boring", "--debug", "--dry-run", "--no-prehook", "--prehook", "--quiet", "--reserved-ok", "--standard-verbosity", "--verbose", "-v", "--case-ok", "--debug-http", "--no-date-trick", "--not-recursive", "--prompt-posthook", "--recursive", "--run-posthook", "--timings", "-q", "--date-trick", "--debug-verbose", "--no-posthook", "--posthook", "--prompt-prehook", "--repodir", "--run-prehook", "--umask", "-r"].map(|s| s.to_string()));
         assert_eq!(generated, expected);
     }
@@ -329,7 +345,7 @@ mod tests {
     fn does_not_hang_on_many1_of_optional() {
         const GRAMMAR: &str = r#"grep [--help]...;"#;
         let input = vec!["--version"];
-        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 1));
+        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 1).into_iter().map(|completion| completion.completion));
         assert!(generated.is_empty());
     }
 
@@ -341,7 +357,7 @@ grep [<OPTION>]...;
 <WHEN> ::= always | never | auto;
 "#;
         let input = vec!["--color"];
-        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 1).into_iter().map(|(completion, _)| completion));
+        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 1).into_iter().map(|completion| completion.completion));
         let expected = HashSet::from_iter(["always", "auto", "never", "--extended-regexp", "--color"].map(|s| s.to_string()));
         assert_eq!(generated, expected);
     }
@@ -353,7 +369,7 @@ cargo [<toolchain>] (--version | --help);
 <toolchain> ::= { rustup toolchain list | cut -d' ' -f1 | sed 's/^/+/' };
 "#;
         let input = vec!["foo"];
-        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 1).into_iter().map(|(completion, _)| completion));
+        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 1).into_iter().map(|completion| completion.completion));
         let expected = HashSet::from_iter(["--version", "--help"].map(|s| s.to_string()));
         assert_eq!(generated, expected);
     }
@@ -364,7 +380,7 @@ cargo [<toolchain>] (--version | --help);
 grep (--context "print NUM lines of output context" <NUM> | --version | --help)...;
 "#;
         let input = vec!["--context", "123"];
-        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 2).into_iter().map(|(completion, _)| completion));
+        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 2).into_iter().map(|completion| completion.completion));
         let expected = HashSet::from_iter(["--version", "--help", "--context"].map(|s| s.to_string()));
         assert_eq!(generated, expected);
     }
@@ -375,7 +391,7 @@ grep (--context "print NUM lines of output context" <NUM> | --version | --help).
 grep (--help | --version);
 "#;
         let input = vec!["--h"];
-        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 0).into_iter().map(|(completion, _)| completion));
+        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 0).into_iter().map(|completion| completion.completion));
         let expected = HashSet::from_iter(["--help"].map(|s| s.to_string()));
         assert_eq!(generated, expected);
     }
@@ -388,7 +404,7 @@ dummy --prefix=<SUFFIX>;
 <ANOTHER-SUFFIX> ::= foo | bar;
 "#;
         let input = vec!["--prefix="];
-        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 0).into_iter().map(|(completion, _)| completion));
+        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 0).into_iter().map(|completion| completion.completion));
         let expected = HashSet::from_iter(["--prefix=another-prefix="].map(|s| s.to_string()));
         assert_eq!(generated, expected);
     }
@@ -401,7 +417,7 @@ dummy --prefix=<SUFFIX>;
     <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 "#;
         let input = vec!["+stable-aarch64-apple-darwin"];
-        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 1).into_iter().map(|(completion, _)| completion));
+        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 1).into_iter().map(|completion| completion.completion));
         let expected = HashSet::from_iter(["foo"].map(|s| s.to_string()));
         assert_eq!(generated, expected);
     }
@@ -415,7 +431,7 @@ strace -e <EXPR>;
 <value> ::= %file | file | all;
 "#;
         let input = vec!["-e", "tr"];
-        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 1).into_iter().map(|(completion, _)| completion));
+        let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 1).into_iter().map(|completion| completion.completion));
         let expected = HashSet::from_iter(["trace"].map(|s| s.to_string()));
         assert_eq!(generated, expected);
     }
