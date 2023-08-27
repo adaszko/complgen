@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Write ZSH completion each on separate lines if any contains a description to better mimic what _arguments does
 - Only emit subword processing shell script code if it's actually used in the grammar to conserve space
 - Zsh descriptions now look like the ones produced by _arguments for consistency
+- Only the completed part appears in ZSH description now instead of the entire shell word (less noise, more like native ZSH)
 
 ### Fixed
 

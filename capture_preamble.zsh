@@ -105,20 +105,18 @@ compadd () {
     # descriptions in $__dscr!
 
     # display all matches
-    local dsuf dscr
+    local dsuf
     for i in {1..$#__hits}; do
 
         # add a dir suffix?
         (( dirsuf )) && [[ -d $__hits[$i] ]] && dsuf=/ || dsuf=
         # description to be displayed afterwards
+        local compl="$IPREFIX$apre$hpre$__hits[$i]$dsuf$hsuf$asuf"
         if (( $#__dscr >= $i )); then
-            dscr=" ${${__dscr[$i]}##$__hits[$i] #}"
-            [[ -z "${dscr// }" ]] && dscr=
+            echo -E - "$compl ${__dscr[$i]}"
         else
-            dscr=
+            echo -E - $compl
         fi
-
-        echo -E - $IPREFIX$apre$hpre$__hits[$i]$dsuf$hsuf$asuf$dscr
 
     done
 

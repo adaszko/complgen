@@ -130,24 +130,24 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
     match args.shell {
         Shell::Bash(_) => {
             for completion in completions {
-                println!("{}", completion.completion);
+                println!("{}", completion.get_completion());
             }
         },
         Shell::Fish(_) => {
             for completion in completions {
-                println!("{}\t{}", completion.completion, completion.description);
+                println!("{}\t{}", completion.get_completion(), completion.description);
             }
         },
         Shell::Zsh(_) => {
-            let completions_array_initializer = itertools::join(completions.iter().map(|completion| make_string_constant(&completion.completion)), " ");
+            let completions_array_initializer = itertools::join(completions.iter().map(|completion| make_string_constant(&completion.get_completion())), " ");
             println!(r#"local -a completions=({completions_array_initializer})"#);
 
-            let maxlen = completions.iter().map(|compl| compl.completion.len()).max().unwrap_or(0);
+            let maxlen = completions.iter().map(|compl| compl.completed_subword_suffix.len()).max().unwrap_or(0);
             let descriptions: Vec<String> = completions.iter().map(|compl| {
                 if compl.description.is_empty() {
-                    return compl.completion.clone();
+                    return compl.completed_subword_suffix.clone();
                 }
-                format!("{:width$} -- {descr}", compl.completion, width = maxlen, descr = compl.description)
+                format!("{:width$} -- {descr}", compl.completed_subword_suffix, width = maxlen, descr = compl.description)
             }).collect();
 
             let descriptions_array_initializer = itertools::join(descriptions.into_iter().map(|s| make_string_constant(&s)), " ");
