@@ -270,7 +270,7 @@ Caveats:
  * Fish only allows [a limited set of
    characters](https://github.com/fish-shell/fish-shell/blob/408ab860906fbf6e08f314bea982220fdee3428e/src/complete.cpp#L183)
    within subwords.  Otherwise, it automatically inserts a space character that ends completion of the
-   current word thereby completer out of the subword state.
+   current word thereby taking completer out of the subword completion mode.
     * [Not adding space after dot at completion time · Issue #6928 · fish-shell/fish-shell · GitHub](https://github.com/fish-shell/fish-shell/issues/6928)
 
 ## Limitations
@@ -285,6 +285,9 @@ via your preferred feed reader.
 
 ## Related Projects
 
- * https://docs.rs/clap_complete/
- * https://github.com/kislyuk/argcomplete
- * https://github.com/oilshell/oil/wiki/Shell-Autocompletion
+ * [zsh-capture-completion](https://github.com/Valodim/zsh-capture-completion)
+    * This must have been painful to implement but is indispensable to complgen!
+ * [Rust's clap](https://docs.rs/clap_complete/)
+ * [argcomplete Python library](https://github.com/kislyuk/argcomplete)
+ * [Oil's shellac protocol](https://github.com/oilshell/oil/wiki/Shell-Autocompletion)
+ * [zsh's _regex_arguments and _regex_words completions](https://github.com/zsh-users/zsh-completions/blob/master/zsh-completions-howto.org#writing-completion-functions-using-_regex_arguments-and-_regex_words)
