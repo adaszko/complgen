@@ -334,13 +334,24 @@ fn do_minimize(dfa: &DFA) -> DFA {
             upper_bound
         };
 
-        let group_transitions: Vec<Transition> = inverse_transitions[lower_bound..=upper_bound].iter().filter(|transition| group.contains(transition.to.into())).cloned().collect();
+        let group_transitions: HashMap<Input, RoaringBitmap> = {
+            let mut group_transitions: HashMap<Input, RoaringBitmap> = Default::default();
+            for transition in &inverse_transitions[lower_bound..=upper_bound] {
+                if group.contains(transition.to.into()) {
+                    group_transitions.entry(transition.input.clone()).or_default().insert(transition.from.into());
+                }
+            }
+            group_transitions
+        };
         for input in dfa.input_symbols.iter() {
-            let from_states: RoaringBitmap = group_transitions.iter().filter(|transition| transition.input == *input).map(|transition| u32::from(transition.from)).collect();
+            let from_states = match group_transitions.get(input) {
+                Some(from_states) => from_states,
+                None => continue,
+            };
             let overlapping_sets: Vec<SetInternId> = partition.iter().filter(|set_id| !pool.get(**set_id).unwrap().is_disjoint(&from_states)).copied().collect();
             for intern_id in overlapping_sets {
                 let states = pool.get(intern_id).unwrap();
-                let states_to_remove = [&states, &from_states].intersection();
+                let states_to_remove = [&states, from_states].intersection();
                 let remaining_states = [&states, &states_to_remove].difference();
                 if remaining_states.is_empty() {
                     continue;
