@@ -74,14 +74,34 @@ impl std::fmt::Debug for SubwordCompilationPhase {
 // Can't use an arena here until proptest supports non-owned types: https://github.com/proptest-rs/proptest/issues/9
 #[derive(Clone, PartialEq)]
 pub enum Expr {
-    Terminal(Ustr, Option<Ustr>), // e.g. --help
+    /// `--help`
+    Terminal(Ustr, Option<Ustr>),
+
+    /// `--option=argument`
     Subword(SubwordCompilationPhase),
-    Nonterminal(Ustr), // e.g. <PATH>, <DIRECTORY>, etc.
-    Command(Ustr), // e.g. { ls }
+
+    /// `<PATH>`, `<DIRECTORY>`, etc.
+    Nonterminal(Ustr),
+
+    /// `{ ls }`
+    Command(Ustr),
+
+    /// `foo bar`
     Sequence(Vec<Rc<Expr>>),
+
+    /// `foo | bar`
     Alternative(Vec<Rc<Expr>>),
+
+    /// `[EXPR]`
     Optional(Rc<Expr>),
+
+    // `EXPR...`
     Many1(Rc<Expr>),
+
+    /// `(b | build) "Compile the current package"` means the description applies to both `b` and
+    /// `build`. `(b build) "Compile the current package"` means means the description applies just
+    /// to `b` (i.e. the first literal)
+    DistributiveDescription(Rc<Expr>, Ustr),
 }
 
 
@@ -106,6 +126,7 @@ impl std::fmt::Debug for Expr {
             Self::Alternative(arg0) => f.write_fmt(format_args!(r#"Rc::new(Alternative(vec!{:?}))"#, arg0)),
             Self::Optional(arg0) => f.write_fmt(format_args!(r#"Rc::new(Optional({:?}))"#, arg0)),
             Self::Many1(arg0) => f.write_fmt(format_args!(r#"Rc::new(Many1({:?}))"#, arg0)),
+            Self::DistributiveDescription(expr, descr) => f.write_fmt(format_args!(r#"Rc::new(DistributiveDescription({expr:?}, {descr:?}))"#)),
         }
     }
 }
@@ -139,6 +160,11 @@ fn railroad_node_from_expr(expr: Rc<Expr>) -> Box<dyn railroad::Node> {
         Expr::Many1(subexpr) => {
             let subnode = railroad_node_from_expr(Rc::clone(subexpr));
             Box::new(railroad::Repeat::new(subnode, Box::new(railroad::Empty)))
+        },
+        Expr::DistributiveDescription(subexpr, description) => {
+            let inner = railroad_node_from_expr(Rc::clone(subexpr));
+            let label = railroad::Comment::new(description.to_string());
+            Box::new(railroad::LabeledBox::new(inner, label))
         },
     }
 }
@@ -242,15 +268,15 @@ fn description(input: &str) -> IResult<&str, &str> {
     Ok((input, descr))
 }
 
-fn multiblanks1_description(input: &str) -> IResult<&str, &str> {
-    let (input, _) = multiblanks1(input)?;
+fn multiblanks0_description(input: &str) -> IResult<&str, &str> {
+    let (input, _) = multiblanks0(input)?;
     let (input, descr) = description(input)?;
     Ok((input, descr))
 }
 
 fn terminal_opt_description_expr(input: &str) -> IResult<&str, Expr> {
     let (input, term) = terminal(input)?;
-    let (input, descr) = opt(multiblanks1_description)(input)?;
+    let (input, descr) = opt(multiblanks0_description)(input)?;
     let expr = Expr::Terminal(ustr(&term), descr.map(ustr));
     Ok((input, expr))
 }
@@ -390,7 +416,13 @@ fn alternative_expr(input: &str) -> IResult<&str, Expr> {
 }
 
 fn expr(input: &str) -> IResult<&str, Expr> {
-    alternative_expr(input)
+    let (input, expr) = alternative_expr(input)?;
+    let (input, description) = opt(preceded(multiblanks0, description))(input)?;
+    let result = match description {
+        Some(descr) => Expr::DistributiveDescription(Rc::new(expr), ustr(descr)),
+        None => expr,
+    };
+    Ok((input, result))
 }
 
 
@@ -674,6 +706,15 @@ fn flatten_expr(expr: Rc<Expr>) -> Rc<Expr> {
                 Rc::new(Expr::Many1(new_child))
             }
         },
+        Expr::DistributiveDescription(child, description) => {
+            let new_child = flatten_expr(Rc::clone(child));
+            if Rc::ptr_eq(child, &new_child) {
+                Rc::clone(&expr)
+            }
+            else {
+                Rc::new(Expr::DistributiveDescription(new_child, *description))
+            }
+        },
     }
 }
 
@@ -727,6 +768,15 @@ fn compile_subword_exprs(expr: Rc<Expr>, specs: &UstrMap<Specialization>) -> Rc<
             }
             else {
                 Rc::new(Expr::Many1(new_child))
+            }
+        },
+        Expr::DistributiveDescription(child, description) => {
+            let new_child = compile_subword_exprs(Rc::clone(child), specs);
+            if Rc::ptr_eq(child, &new_child) {
+                Rc::clone(&expr)
+            }
+            else {
+                Rc::new(Expr::DistributiveDescription(new_child, *description))
             }
         }
     }
@@ -901,6 +951,15 @@ fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>, specialization
                 Rc::new(Expr::Many1(new_child))
             }
         },
+        Expr::DistributiveDescription(child, description) => {
+            let new_child = resolve_nonterminals(Rc::clone(child), vars, specializations, unused_nonterminals);
+            if Rc::ptr_eq(child, &new_child) {
+                Rc::clone(&expr)
+            }
+            else {
+                Rc::new(Expr::DistributiveDescription(new_child, *description))
+            }
+        },
     }
 }
 
@@ -931,6 +990,7 @@ fn do_get_expression_nonterminals(expr: Rc<Expr>, deps: &mut UstrSet) {
         },
         Expr::Optional(child) => { do_get_expression_nonterminals(Rc::clone(child), deps); }
         Expr::Many1(child) => { do_get_expression_nonterminals(Rc::clone(child), deps); }
+        Expr::DistributiveDescription(child, _) => { do_get_expression_nonterminals(Rc::clone(child), deps); }
     }
 }
 
@@ -1137,6 +1197,10 @@ pub mod tests {
                     do_arb_match(Rc::clone(&subexpr), rng, max_width, output);
                 }
             },
+            DistributiveDescription(subexpr, description) => {
+                do_arb_match(Rc::clone(&subexpr), rng, max_width, output);
+                output.push(ustr(&format!(r#""{description}""#)));
+            },
         }
     }
 
@@ -1158,12 +1222,23 @@ pub mod tests {
         assert_eq!(e, Expr::Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Expr::Terminal(ustr("--color="), None)), Rc::new(Expr::Nonterminal(ustr("WHEN")))])))));
     }
 
-    #[ignore]
     #[test]
     fn parses_prefix_description_expr() {
         const INPUT: &str = r#"--color=<WHEN> "use markers to highlight the matching strings""#;
         let ("", e) = subword_sequence_expr(INPUT).unwrap() else { unreachable!() };
         assert_eq!(e, Expr::Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="), None)), Rc::new(Nonterminal(ustr("WHEN")))])))));
+    }
+
+    #[test]
+    fn parses_option_argument_alternative_description_expr() {
+        const INPUT: &str = r#"(--color=<WHEN> | --color <WHEN>) "use markers to highlight the matching strings""#;
+        let ("", e) = expr(INPUT).unwrap() else { unreachable!() };
+        assert_eq!(e,
+            DistributiveDescription(Rc::new(Alternative(vec![
+                        Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="), None)), Rc::new(Nonterminal(ustr("WHEN")))]))))),
+                        Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color"), None)), Rc::new(Nonterminal(ustr("WHEN")))]))
+            ])), ustr("use markers to highlight the matching strings"))
+        );
     }
 
     #[test]

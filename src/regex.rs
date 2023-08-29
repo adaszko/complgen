@@ -260,6 +260,7 @@ fn do_from_expr<'a>(e: &Expr, specs: &UstrMap<Specialization>, arena: &'a Bump, 
             let star = arena.alloc(AugmentedRegexNode::Star(subregex));
             AugmentedRegexNode::Cat(subregex, star)
         },
+        Expr::DistributiveDescription(_, _) => unreachable!("DistributiveDescription Expr type should have been erased before compilation to regex"),
     }
 }
 

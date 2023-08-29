@@ -444,7 +444,8 @@ fn do_pretty_print(e: &Expr) -> String {
         Expr::Sequence(subexprs) => itertools::join(subexprs.iter().map(|e| do_pretty_print(e)), " "),
         Expr::Alternative(subexprs) => itertools::join(subexprs.iter().map(|e| do_pretty_print(e)), " | "),
         Expr::Optional(subexpr) => format!(r#"[{}]"#, do_pretty_print(subexpr)),
-        Expr::Many1(subexpr) => format!(r#"{} ..."#, do_pretty_print(subexpr)),
+        Expr::Many1(subexpr) => format!(r#"{}..."#, do_pretty_print(subexpr)),
+        Expr::DistributiveDescription(subexpr, description) => format!(r#"{} "{description}"#, do_pretty_print(subexpr)),
     }
 }
 
