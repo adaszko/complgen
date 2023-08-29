@@ -9,14 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- New CLI subcommand: `complgen check` that checks the passed grammar and doesn't write annything to disk.
-- Write ZSH completion each on separate lines if any contains a description to better mimic what _arguments does
-- Only emit subword processing shell script code if it's actually used in the grammar to conserve space
-- Zsh descriptions now look like the ones produced by _arguments for consistency
-- Only the completed part appears in ZSH description now instead of the entire shell word (less noise, more like native ZSH)
 - Improve performance when running on `darcs.usage` example by 4x :O
+- Only the completed part appears in ZSH description now instead of the entire shell word (less noise, more like native ZSH)
+- Zsh descriptions now look like the ones produced by _arguments for consistency
+- Only emit subword processing shell script code if it's actually used in the grammar to conserve space
+- Write ZSH completion each on separate lines if any contains a description to better mimic what _arguments does
+- New CLI subcommand: `complgen check` that checks the passed grammar and doesn't write annything to disk.
 
 ### Fixed
+
+- In Bash integration script, `grep --color=<TAB>` didn't complete anything.
 
 - Bug in JIT mode: Completing subdirectory files wasn't working due to the entered prefix not being passed
   properly.
