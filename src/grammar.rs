@@ -268,15 +268,9 @@ fn description(input: &str) -> IResult<&str, &str> {
     Ok((input, descr))
 }
 
-fn multiblanks0_description(input: &str) -> IResult<&str, &str> {
-    let (input, _) = multiblanks0(input)?;
-    let (input, descr) = description(input)?;
-    Ok((input, descr))
-}
-
 fn terminal_opt_description_expr(input: &str) -> IResult<&str, Expr> {
     let (input, term) = terminal(input)?;
-    let (input, descr) = opt(multiblanks0_description)(input)?;
+    let (input, descr) = opt(preceded(multiblanks0, description))(input)?;
     let expr = Expr::Terminal(ustr(&term), descr.map(ustr));
     Ok((input, expr))
 }
@@ -770,16 +764,81 @@ fn compile_subword_exprs(expr: Rc<Expr>, specs: &UstrMap<Specialization>) -> Rc<
                 Rc::new(Expr::Many1(new_child))
             }
         },
+        Expr::DistributiveDescription(..) => unreachable!("DistributiveDescription Expr type should have been erased by the time subwords are being compiled"),
+    }
+}
+
+
+/// Move descriptions to their corresponding terminals.
+fn do_distribute_descriptions(expr: Rc<Expr>, description: &mut Option<Ustr>) -> Rc<Expr> {
+    match expr.as_ref() {
         Expr::DistributiveDescription(child, description) => {
-            let new_child = compile_subword_exprs(Rc::clone(child), specs);
+            let new_child = do_distribute_descriptions(Rc::clone(child), &mut Some(*description));
+            if Rc::ptr_eq(child, &new_child) {
+                Rc::clone(&child)
+            }
+            else {
+                new_child
+            }
+        },
+        Expr::Terminal(term, None) if description.is_some() => Rc::new(Expr::Terminal(*term, *description)),
+        Expr::Terminal(_, None) => Rc::clone(&expr),
+        Expr::Terminal(_, Some(_)) => Rc::clone(&expr),
+        Expr::Nonterminal(..) => Rc::clone(&expr),
+        Expr::Command(..) => Rc::clone(&expr),
+        Expr::Sequence(children) => {
+            let new_children: Vec<Rc<Expr>> = children.iter().map(|e| do_distribute_descriptions(Rc::clone(e), description)).collect();
+            if children.iter().zip_eq(new_children.iter()).all(|(left, right)| Rc::ptr_eq(left, right)) {
+                Rc::clone(&expr)
+            }
+            else {
+                Rc::new(Expr::Sequence(new_children))
+            }
+        },
+        Expr::Alternative(children) => {
+            let new_children: Vec<Rc<Expr>> = children.iter().map(|e| do_distribute_descriptions(Rc::clone(e), &mut description.clone())).collect();
+            if children.iter().zip_eq(new_children.iter()).all(|(left, right)| Rc::ptr_eq(left, right)) {
+                Rc::clone(&expr)
+            }
+            else {
+                Rc::new(Expr::Alternative(new_children))
+            }
+        },
+        Expr::Optional(child) => {
+            let new_child = do_distribute_descriptions(Rc::clone(child), description);
             if Rc::ptr_eq(child, &new_child) {
                 Rc::clone(&expr)
             }
             else {
-                Rc::new(Expr::DistributiveDescription(new_child, *description))
+                Rc::new(Expr::Optional(new_child))
             }
-        }
+        },
+        Expr::Many1(child) => {
+            let new_child = do_distribute_descriptions(Rc::clone(child), description);
+            if Rc::ptr_eq(child, &new_child) {
+                Rc::clone(&expr)
+            }
+            else {
+                Rc::new(Expr::Many1(new_child))
+            }
+        },
+        Expr::Subword(SubwordCompilationPhase::Expr(child)) => {
+            let new_child = do_distribute_descriptions(Rc::clone(&child), description);
+            if Rc::ptr_eq(&child, &new_child) {
+                Rc::clone(&expr)
+            }
+            else {
+                Rc::new(Expr::Subword(SubwordCompilationPhase::Expr(new_child)))
+            }
+        },
+        Expr::Subword(SubwordCompilationPhase::DFA(_)) => unreachable!(),
     }
+}
+
+
+fn distribute_descriptions(expr: Rc<Expr>) -> Rc<Expr> {
+    let mut description = None;
+    do_distribute_descriptions(expr, &mut description)
 }
 
 
@@ -824,6 +883,8 @@ impl ValidGrammar {
             }
         };
 
+        let expr = distribute_descriptions(expr);
+
         let specializations = make_specializations_map(&grammar.statements)?;
 
         let mut nonterminal_definitions: UstrMap<Rc<Expr>> = {
@@ -836,7 +897,8 @@ impl ValidGrammar {
                 if nonterminal_definitions.contains_key(&symbol) {
                     return Err(Error::DuplicateNonterminalDefinition(symbol, None));
                 }
-                nonterminal_definitions.insert(symbol, Rc::clone(expr));
+                let expr = distribute_descriptions(Rc::clone(&expr));
+                nonterminal_definitions.insert(symbol, expr);
             }
             nonterminal_definitions
         };
@@ -951,15 +1013,7 @@ fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>, specialization
                 Rc::new(Expr::Many1(new_child))
             }
         },
-        Expr::DistributiveDescription(child, description) => {
-            let new_child = resolve_nonterminals(Rc::clone(child), vars, specializations, unused_nonterminals);
-            if Rc::ptr_eq(child, &new_child) {
-                Rc::clone(&expr)
-            }
-            else {
-                Rc::new(Expr::DistributiveDescription(new_child, *description))
-            }
-        },
+        Expr::DistributiveDescription(..) => unreachable!("Expr::DistributiveDescription should have been erased by the time nonterminals are being resolved"),
     }
 }
 
@@ -990,7 +1044,7 @@ fn do_get_expression_nonterminals(expr: Rc<Expr>, deps: &mut UstrSet) {
         },
         Expr::Optional(child) => { do_get_expression_nonterminals(Rc::clone(child), deps); }
         Expr::Many1(child) => { do_get_expression_nonterminals(Rc::clone(child), deps); }
-        Expr::DistributiveDescription(child, _) => { do_get_expression_nonterminals(Rc::clone(child), deps); }
+        Expr::DistributiveDescription(..) => unreachable!("Expr::DistributiveDescription should have been erased by the time nonterminals are being collected"),
     }
 }
 
@@ -1225,8 +1279,8 @@ pub mod tests {
     #[test]
     fn parses_prefix_description_expr() {
         const INPUT: &str = r#"--color=<WHEN> "use markers to highlight the matching strings""#;
-        let ("", e) = subword_sequence_expr(INPUT).unwrap() else { unreachable!() };
-        assert_eq!(e, Expr::Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="), None)), Rc::new(Nonterminal(ustr("WHEN")))])))));
+        let ("", e) = expr(INPUT).unwrap() else { unreachable!() };
+        assert_eq!(e, DistributiveDescription(Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="), None)), Rc::new(Nonterminal(ustr("WHEN")))]))))), ustr("use markers to highlight the matching strings")));
     }
 
     #[test]
@@ -1670,8 +1724,15 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
     #[test]
     fn parses_term_descr() {
         const INPUT: &str = r#"--extended-regexp "PATTERNS are extended regular expressions""#;
-        let ("", e) = terminal_opt_description_expr(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, Expr::Terminal(ustr("--extended-regexp"), Some(ustr("PATTERNS are extended regular expressions"))));
+        let ("", e) = expr(INPUT).unwrap() else { unreachable!() };
+        assert_eq!(e, Terminal(ustr("--extended-regexp"), Some(ustr("PATTERNS are extended regular expressions"))));
+    }
+
+    #[test]
+    fn parses_term_descr_arg() {
+        const INPUT: &str = r#"--context "print NUM lines of output context" <NUM>"#;
+        let ("", e) = expr(INPUT).unwrap() else { unreachable!() };
+        assert_eq!(e, Sequence(vec![Rc::new(Terminal(ustr("--context"), Some(ustr("print NUM lines of output context")))), Rc::new(Nonterminal(ustr("NUM")))]));
     }
 
     #[test]
@@ -1683,7 +1744,7 @@ grep --extended-regexp "PATTERNS are extended regular expressions";
         assert_eq!(
             g.statements,
             vec![
-                Statement::CallVariant { head: u("grep"), expr: Rc::new(Terminal(ustr("--extended-regexp"), Some(u("PATTERNS are extended regular expressions")))) }
+                Statement::CallVariant { head: u("grep"), expr: Rc::new(Terminal(ustr("--extended-regexp"), Some(ustr("PATTERNS are extended regular expressions")))) }
             ],
         );
     }
@@ -1744,5 +1805,14 @@ ls <FILE>;
         assert_eq!(spec.bash, Some(ustr(r#"compgen -A file "$1""#)));
         assert_eq!(spec.fish, Some(ustr(r#"__fish_complete_path "$1""#)));
         assert_eq!(spec.zsh, None);
+    }
+
+
+    #[test]
+    fn distributes_descriptions() {
+        const INPUT: &str = r#"mygrep (--color=<WHEN> | --color <WHEN>) "use markers to highlight the matching strings""#;
+        let ("", e) = expr(INPUT).unwrap() else { unreachable!() };
+        let distributed = distribute_descriptions(Rc::new(e));
+        assert_eq!(distributed, Rc::new(Sequence(vec![Rc::new(Terminal(ustr("mygrep"), Some(ustr("use markers to highlight the matching strings")))), Rc::new(Alternative(vec![Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="), Some(ustr("use markers to highlight the matching strings")))), Rc::new(Nonterminal(ustr("WHEN")))]))))), Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color"), Some(ustr("use markers to highlight the matching strings")))), Rc::new(Nonterminal(ustr("WHEN")))]))]))])));
     }
 }

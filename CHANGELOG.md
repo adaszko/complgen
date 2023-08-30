@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- "Distributive" descriptions: you can now use a shorthand descriptions:
+  `mygrep (--color=<WHEN> | --color <WHEN>) "use markers to highlight the matching strings"`
+  and the "use marker..." description is going to apply to both `--color=` and `--color ...` so you don't need to repeat it.
+
 - Improve performance when running on `darcs.usage` example by 4x :O
 - Only the completed part appears in ZSH description now instead of the entire shell word (less noise, more like native ZSH)
 - Zsh descriptions now look like the ones produced by _arguments for consistency
