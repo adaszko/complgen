@@ -343,11 +343,7 @@ fn do_minimize(dfa: &DFA) -> DFA {
             }
             group_transitions
         };
-        for input in dfa.input_symbols.iter() {
-            let from_states = match group_transitions.get(input) {
-                Some(from_states) => from_states,
-                None => continue,
-            };
+        for from_states in group_transitions.values() {
             let overlapping_sets: Vec<SetInternId> = partition.iter().filter(|set_id| !pool.get(**set_id).unwrap().is_disjoint(&from_states)).copied().collect();
             for intern_id in overlapping_sets {
                 let states = pool.get(intern_id).unwrap();
