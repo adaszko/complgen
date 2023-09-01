@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## 0.1.1
+
+### Added
+
+- Binary releases on GitHub
+
+### Fixed
+
+- Bug in parser where descriptions were being distributed too generously.
+
+## 0.1.0
+
 ### Added
 
 - Add a Homebrew tap formula for automatic updates on new versions.
@@ -23,8 +35,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New CLI subcommand: `complgen check` that checks the passed grammar and doesn't write annything to disk.
 
 ### Fixed
-
-- Bug in parser where descriptions were being distributed too generously.
 
 - In Bash integration script, `grep --color=<TAB>` didn't complete anything.
 

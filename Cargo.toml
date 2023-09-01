@@ -1,6 +1,6 @@
 [package]
 name = "complgen"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "A programming-language-agnostic shell completions generator"
 

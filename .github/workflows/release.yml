@@ -83,6 +83,7 @@ jobs:
           key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
       - uses: actions-rs/toolchain@v1
         with:
+          toolchain: stable
           profile: minimal
           target: ${{ matrix.target }}
       - name: Build the release binaries
