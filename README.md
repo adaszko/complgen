@@ -130,6 +130,13 @@ $ brew tap adaszko/complgen https://github.com/adaszko/complgen-homebrew-tap.git
 $ brew install adaszko/complgen/complgen
 ```
 
+### Downloading binaries (Linux, macOS)
+
+Just `wget` a binary for your architecture from [the releases
+page](https://github.com/adaszko/complgen/releases), `chmod a+x` the downloaded file and you're good to go.
+The Linux binaries are linked against [musl libc](http://musl.libc.org/), so they should work on any Linux
+distribution.
+
 ## Syntax
 
 See the [`examples` subdirectory](examples/) for simple examples and [`usage` subdirectory](usage/) for more
