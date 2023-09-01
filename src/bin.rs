@@ -139,21 +139,31 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
             }
         },
         Shell::Zsh(_) => {
-            let completions_array_initializer = itertools::join(completions.iter().map(|completion| make_string_constant(&completion.get_completion())), " ");
-            println!(r#"local -a completions=({completions_array_initializer})"#);
+            let (without_description, with_description): (Vec<_>, Vec<_>) = completions.iter().partition(|completion| completion.has_empty_description());
 
-            let maxlen = completions.iter().map(|compl| compl.completed_subword_suffix.len()).max().unwrap_or(0);
-            let descriptions: Vec<String> = completions.iter().map(|compl| {
-                if compl.description.is_empty() {
-                    return compl.completed_subword_suffix.clone();
-                }
-                format!("{:width$} -- {descr}", compl.completed_subword_suffix, width = maxlen, descr = compl.description)
-            }).collect();
+            {
+                let completions_array_initializer = itertools::join(without_description.iter().map(|completion| make_string_constant(&completion.get_completion())), " ");
+                println!(r#"local -a completions=({completions_array_initializer})"#);
+                println!(r#"compadd -Q -S '' -a completions"#);
+            }
 
-            let descriptions_array_initializer = itertools::join(descriptions.into_iter().map(|s| make_string_constant(&s)), " ");
-            println!(r#"local -a descriptions=({descriptions_array_initializer})"#);
+            {
+                let completions_array_initializer = itertools::join(with_description.iter().map(|completion| make_string_constant(&completion.get_completion())), " ");
+                println!(r#"local -a completions=({completions_array_initializer})"#);
 
-            println!(r#"compadd -l -Q -S '' -d descriptions -a completions"#);
+                let maxlen = with_description.iter().map(|compl| compl.completed_subword_suffix.len()).max().unwrap_or(0);
+                let descriptions: Vec<String> = with_description.iter().map(|compl| {
+                    if compl.description.is_empty() {
+                        return compl.completed_subword_suffix.clone();
+                    }
+                    format!("{:width$} -- {descr}", compl.completed_subword_suffix, width = maxlen, descr = compl.description)
+                }).collect();
+
+                let descriptions_array_initializer = itertools::join(descriptions.into_iter().map(|s| make_string_constant(&s)), " ");
+                println!(r#"local -a descriptions=({descriptions_array_initializer})"#);
+
+                println!(r#"compadd -l -Q -S '' -d descriptions -a completions"#);
+            }
         },
     }
 

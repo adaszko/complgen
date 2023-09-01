@@ -7,8 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+
 ### Fixed
 
+- Zsh,JIT: Only consider completions with descriptions when aligning completions for better appearance
 - A bug in Bash output where order of arguments to `mapfile` was wrong
 - Remove leftover parenthesis in ZSH subword descriptions
 

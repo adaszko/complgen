@@ -32,6 +32,15 @@ impl Completion {
     pub fn get_completion(&self) -> String {
         format!("{}{}", self.matched_subword_prefix, self.completed_subword_suffix)
     }
+
+    pub fn has_empty_description(&self) -> bool {
+        if self.matched_subword_prefix.is_empty() {
+            self.description.is_empty()
+        }
+        else {
+            false
+        }
+    }
 }
 
 
