@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Bug in parser where descriptions were being distributed too generously.
+
 - In Bash integration script, `grep --color=<TAB>` didn't complete anything.
 
 - Bug in JIT mode: Completing subdirectory files wasn't working due to the entered prefix not being passed

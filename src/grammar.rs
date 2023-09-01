@@ -371,10 +371,20 @@ fn subword_sequence_expr(input: &str) -> IResult<&str, Expr> {
     Ok((input, result))
 }
 
+fn subword_sequence_expr_opt_description(input: &str) -> IResult<&str, Expr> {
+    let (input, expr) = subword_sequence_expr(input)?;
+    let (input, description) = opt(preceded(multiblanks0, description))(input)?;
+    let result = match description {
+        Some(descr) => Expr::DistributiveDescription(Rc::new(expr), ustr(descr)),
+        None => expr,
+    };
+    Ok((input, result))
+}
+
 fn sequence_expr(input: &str) -> IResult<&str, Expr> {
-    let (mut input, left) = subword_sequence_expr(input)?;
+    let (mut input, left) = subword_sequence_expr_opt_description(input)?;
     let mut factors: Vec<Expr> = vec![left];
-    while let Ok((rest, right)) = preceded(multiblanks1, subword_sequence_expr)(input) {
+    while let Ok((rest, right)) = preceded(multiblanks1, subword_sequence_expr_opt_description)(input) {
         factors.push(right);
         input = rest;
     }
@@ -410,13 +420,7 @@ fn alternative_expr(input: &str) -> IResult<&str, Expr> {
 }
 
 fn expr(input: &str) -> IResult<&str, Expr> {
-    let (input, expr) = alternative_expr(input)?;
-    let (input, description) = opt(preceded(multiblanks0, description))(input)?;
-    let result = match description {
-        Some(descr) => Expr::DistributiveDescription(Rc::new(expr), ustr(descr)),
-        None => expr,
-    };
-    Ok((input, result))
+    alternative_expr(input)
 }
 
 
@@ -772,8 +776,8 @@ fn compile_subword_exprs(expr: Rc<Expr>, specs: &UstrMap<Specialization>) -> Rc<
 /// Move descriptions to their corresponding terminals.
 fn do_distribute_descriptions(expr: Rc<Expr>, description: &mut Option<Ustr>) -> Rc<Expr> {
     match expr.as_ref() {
-        Expr::DistributiveDescription(child, description) => {
-            let new_child = do_distribute_descriptions(Rc::clone(child), &mut Some(*description));
+        Expr::DistributiveDescription(child, descr) => {
+            let new_child = do_distribute_descriptions(Rc::clone(child), &mut Some(*descr));
             if Rc::ptr_eq(child, &new_child) {
                 Rc::clone(&child)
             }
@@ -781,7 +785,11 @@ fn do_distribute_descriptions(expr: Rc<Expr>, description: &mut Option<Ustr>) ->
                 new_child
             }
         },
-        Expr::Terminal(term, None) if description.is_some() => Rc::new(Expr::Terminal(*term, *description)),
+        Expr::Terminal(term, None) if description.is_some() => {
+            let result = Rc::new(Expr::Terminal(*term, *description));
+            *description = None; // spend it
+            result
+        },
         Expr::Terminal(_, None) => Rc::clone(&expr),
         Expr::Terminal(_, Some(_)) => Rc::clone(&expr),
         Expr::Nonterminal(..) => Rc::clone(&expr),
@@ -1813,6 +1821,22 @@ ls <FILE>;
         const INPUT: &str = r#"mygrep (--color=<WHEN> | --color <WHEN>) "use markers to highlight the matching strings""#;
         let ("", e) = expr(INPUT).unwrap() else { unreachable!() };
         let distributed = distribute_descriptions(Rc::new(e));
-        assert_eq!(distributed, Rc::new(Sequence(vec![Rc::new(Terminal(ustr("mygrep"), Some(ustr("use markers to highlight the matching strings")))), Rc::new(Alternative(vec![Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="), Some(ustr("use markers to highlight the matching strings")))), Rc::new(Nonterminal(ustr("WHEN")))]))))), Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color"), Some(ustr("use markers to highlight the matching strings")))), Rc::new(Nonterminal(ustr("WHEN")))]))]))])));
+        assert_eq!(distributed, Rc::new(Sequence(vec![Rc::new(Terminal(ustr("mygrep"), None)), Rc::new(Alternative(vec![Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="), Some(ustr("use markers to highlight the matching strings")))), Rc::new(Nonterminal(ustr("WHEN")))]))))), Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color"), Some(ustr("use markers to highlight the matching strings")))), Rc::new(Nonterminal(ustr("WHEN")))]))]))])));
+    }
+
+    #[test]
+    fn spends_distributed_description() {
+        const INPUT: &str = r#"mygrep --help | (--color=<WHEN> | --color <WHEN>) "use markers to highlight the matching strings""#;
+        let ("", e) = expr(INPUT).unwrap() else { unreachable!() };
+        let distributed = distribute_descriptions(Rc::new(e));
+        assert_eq!(distributed, Rc::new(Alternative(vec![Rc::new(Sequence(vec![Rc::new(Terminal(ustr("mygrep"), None)), Rc::new(Terminal(ustr("--help"), None))])), Rc::new(Alternative(vec![Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="), Some(ustr("use markers to highlight the matching strings")))), Rc::new(Nonterminal(ustr("WHEN")))]))))), Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color"), Some(ustr("use markers to highlight the matching strings")))), Rc::new(Nonterminal(ustr("WHEN")))]))]))])));
+    }
+
+    #[test]
+    fn spends_distributed_description2() {
+        const INPUT: &str = r#"mygrep (--help | (--color=<WHEN> | --color <WHEN>) "use markers to highlight the matching strings")"#;
+        let ("", e) = expr(INPUT).unwrap() else { unreachable!() };
+        let distributed = distribute_descriptions(Rc::new(e));
+        assert_eq!(distributed, Rc::new(Sequence(vec![Rc::new(Terminal(ustr("mygrep"), None)), Rc::new(Alternative(vec![Rc::new(Terminal(ustr("--help"), None)), Rc::new(Alternative(vec![Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="), Some(ustr("use markers to highlight the matching strings")))), Rc::new(Nonterminal(ustr("WHEN")))]))))), Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color"), Some(ustr("use markers to highlight the matching strings")))), Rc::new(Nonterminal(ustr("WHEN")))]))]))]))])));
     }
 }
