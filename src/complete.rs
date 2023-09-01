@@ -33,13 +33,16 @@ impl Completion {
         format!("{}{}", self.matched_subword_prefix, self.completed_subword_suffix)
     }
 
-    pub fn has_empty_description(&self) -> bool {
-        if self.matched_subword_prefix.is_empty() {
-            self.description.is_empty()
-        }
-        else {
-            false
-        }
+    pub fn is_subword_completion(&self) -> bool {
+        !self.matched_subword_prefix.is_empty()
+    }
+
+    pub fn has_zsh_description(&self) -> bool {
+        self.is_subword_completion() || !self.description.is_empty()
+    }
+
+    pub fn is_zsh_separate_line_completion(&self) -> bool {
+        !self.description.is_empty()
     }
 }
 
