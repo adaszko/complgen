@@ -12,9 +12,6 @@ path = "src/lib.rs"
 name = "complgen"
 path = "src/bin.rs"
 
-[profile.release]
-debug = true
-
 [dependencies]
 anyhow = "1.0.71"
 bumpalo = "3.12.2"
