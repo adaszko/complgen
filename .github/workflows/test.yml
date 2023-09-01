@@ -20,3 +20,5 @@ jobs:
       run: cargo build
     - name: Run tests
       run: cargo test
+    - name: Run e2e tests
+      run: ./run-e2e-tests.bash
