@@ -123,7 +123,7 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
             local literal=${{literals[$literal_id]}}
             if [[ $literal = "${{completed_prefix}}"* ]]; then
                 if [[ -v "descriptions[$literal_id]" ]]; then
-                    echo "$matched_prefix$literal\t$literal (${{descriptions[$literal_id]}})"
+                    echo "$matched_prefix$literal\t${{descriptions[$literal_id]}}"
                 else
                     echo "$matched_prefix$literal"
                 fi
@@ -284,7 +284,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             eval "state_transitions=$state_transitions_initializer"
 
             local subword_matched=0
-            for subword_id in "${{(k)state_transitions}}"; do
+            for subword_id in ${{(k)state_transitions}}; do
                 if _{command}_subword_"${{subword_id}}" matches "$word"; then
                     subword_matched=1
                     state=${{state_transitions[$subword_id]}}
@@ -350,7 +350,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         declare -A state_transitions
         eval "state_transitions=$state_transitions_initializer"
 
-        for subword_id in "${{(k)state_transitions}}"; do
+        for subword_id in ${{(k)state_transitions}}; do
             local -a args=()
             local -a descrs=()
             local output=$(_{command}_subword_${{subword_id}} complete "${{words[$CURRENT]}}")
