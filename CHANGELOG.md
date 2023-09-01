@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Add a Homebrew tap formula for automatic updates on new versions.
+
 - "Distributive" descriptions: you can now use a shorthand descriptions:
   `mygrep (--color=<WHEN> | --color <WHEN>) "use markers to highlight the matching strings"`
   and the "use marker..." description is going to apply to both `--color=` and `--color ...` so you don't need to repeat it.
