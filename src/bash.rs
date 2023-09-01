@@ -354,7 +354,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         eval "state_transitions=$state_transitions_initializer"
 
         for subword_id in "${{!state_transitions[@]}}"; do
-            mapfile -t COMPREPLY -O "${{#COMPREPLY[@]}}" < <(_{command}_subword_"${{subword_id}}" complete "${{words[$cword]}}")
+            mapfile -t -O "${{#COMPREPLY[@]}}" COMPREPLY < <(_{command}_subword_"${{subword_id}}" complete "${{words[$cword]}}")
         done
     fi
 "#)?;

@@ -308,3 +308,23 @@ mygrep --color "use markers to highlight the matching strings"=<WHEN>;
     with temp_usage_file_path(complgen_binary_path, GRAMMAR, 'mygrep') as usage_file_path:
         input = r'''COMP_WORDS=(mygrep --color=); COMP_CWORD=1; _complgen_jit_mygrep; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_completions(usage_file_path, input) == sorted(['--color=always', '--color=never', '--color=auto'])
+
+
+def test_mygrep_example(complgen_binary_path: Path, usage_directory_path: Path):
+    GRAMMAR = (usage_directory_path / "mygrep.usage").read_text()
+    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
+        input = r'''COMP_WORDS=(mygrep); COMP_CWORD=1; _mygrep; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_completions(path, input) == sorted(['-E', '--extended-regexp', '-F', '--fixed-strings', '-G', '--basic-regexp',
+'-P', '--perl-regexp', '-e', '--regexp', '-f', '--file', '-i',
+'--ignore-case', '--no-ignore-case', '-w', '--word-regexp', '-x',
+'--line-regexp', '-z', '--null-data', '-s', '--no-messages', '-v',
+'--invert-match', '-V', '--version', '--help', '-m', '--max-count=',
+'--max-count', '-b', '--byte-offset', '-n', '--line-number',
+'--line-buffered', '-H', '--with-filename', '-h', '--no-filename', '--label',
+'-o', '--only-matching', '-q', '--quiet', '--silent', '--binary-files', '-a',
+'--text', '-d', '--directories', '-D', '--devices', '-r', '--recursive',
+'-R', '--dereference-recursive', '--include', '--exclude', '--exclude-from', '--exclude-dir', '-L', '--files-without-match', '-l',
+'--files-with-matches', '-c', '--count', '-T', '--initial-tab', '-Z',
+'--null', '-B', '--before-context', '-A', '--after-context', '-C',
+'--context', '-', '--group-separator=', '--no-group-separator', '--color',
+'--colour', '--color=', '--colour=', '-U', '--binary'])

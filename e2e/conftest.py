@@ -14,6 +14,12 @@ def cargo_manifest_path() -> Path:
 
 
 @pytest.fixture(scope='session')
+def usage_directory_path() -> Path:
+    this_file = Path(__file__)
+    return this_file.parent.parent / 'usage'
+
+
+@pytest.fixture(scope='session')
 def complgen_binary_path(cargo_manifest_path: Path) -> Path:
     subprocess.run(['cargo', 'build', '--manifest-path', cargo_manifest_path, '--release'], cwd='..', stdout=sys.stdout, stderr=sys.stderr)
     binary_path = cargo_manifest_path.parent / 'target/release/complgen'
