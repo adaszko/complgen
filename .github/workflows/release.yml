@@ -26,7 +26,7 @@ jobs:
             options: -v ${{ github.workspace }}:/workdir -v /home/runner/.cargo/git:/root/.cargo/git -v /home/runner/.cargo/registry:/root/.cargo/registry
             run: |
               rustup target add x86_64-unknown-linux-musl
-              cargo build --release -v --target=x86_64-unknown-linux-musl
+              cargo build --release --target=x86_64-unknown-linux-musl
               cp target/x86_64-unknown-linux-musl/release/complgen complgen-x86_64-unknown-linux-musl
       - uses: softprops/action-gh-release@v1
         with:
