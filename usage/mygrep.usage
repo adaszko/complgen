@@ -1,0 +1,65 @@
+mygrep [<OPTION>]... <PATTERNS> [<PATH>]...;
+
+<OPTION> ::= (-E | --extended-regexp)							    "PATTERNS are extended regular expressions"
+           | (-F | --fixed-strings)			    				    "PATTERNS are strings"
+           | (-G | --basic-regexp)			    				    "PATTERNS are basic regular expressions"
+           | (-P | --perl-regexp)			    				    "PATTERNS are Perl regular expressions"
+           | (-e <PATTERNS> | --regexp <PATTERNS>)	    				    "use PATTERNS for matching"
+           | (-f <PATH> | --file <PATH>)		    				    "take PATTERNS from FILE"
+           | (-i | --ignore-case)			    				    "ignore case distinctions in patterns and data"
+           | --no-ignore-case				    				    "do not ignore case distinctions (default)"
+           | (-w | --word-regexp)			    				    "match only whole words"
+           | (-x | --line-regexp)                           				    "match only whole lines"
+           | (-z | --null-data)				    				    "a data line ends in 0 byte, not newline"
+           | (-s | --no-messages)			    				    "suppress error messages"
+           | (-v | --invert-match)			    				    "select non-matching lines"
+           | (-V | --version)				    				    "display version information and exit"
+           | --help									    "display this help text and exit"
+           | (-m <NUM> | --max-count=<NUM> | --max-count <NUM>)				    "stop after NUM selected lines"
+           | (-b | --byte-offset)							    "print the byte offset with output lines"
+           | (-n | --line-number)							    "print line number with output lines"
+           | --line-buffered				    				    "flush output on every line"
+           | (-H | --with-filename)			    				    "print file name with output lines"
+           | (-h | --no-filename)			    				    "suppress the file name prefix on output"
+           | (--label <LABEL>)								    "use LABEL as the standard input file name prefix"
+           | (-o | --only-matching)			    				    "show only nonempty parts of lines that match"
+           | (-q | --quiet)				    				    "suppress all normal output"
+           | --silent					    				    "suppress all normal output"
+           | (--binary-files <TYPE>)							    "assume that binary files are <TYPE>"
+           | (-a | --text)				    				    "equivalent to --binary-files=text"
+           | (-d <ACTION-DIRECTORIES> | --directories <ACTION-DIRECTORIES>)		    "how to handle directories"
+           | (-D <ACTION-DEVICES> | --devices <ACTION-DEVICES>)				    "how to handle devices, FIFOs and sockets"
+           | (-r | --recursive)				    				    "like --directories=recurse"
+           | (-R | --dereference-recursive)		    				    "like --directories=recurse, but follow all symlinks"
+           | (--include <GLOB>)					    			    "search only files that match GLOB (a file pattern)"
+           | (--exclude <GLOB>)					 			    "skip files that match GLOB"
+           | (--exclude-from <PATH>)							    "skip files that match any file pattern from FILE"
+           | (--exclude-dir <GLOB>)							    "skip directories that match GLOB"
+           | (-L | --files-without-match)		    				    "print only names of FILEs with no selected lines"
+           | (-l | --files-with-matches)		    				    "print only names of FILEs with selected lines"
+           | (-c | --count)				    				    "print only a count of selected lines per FILE"
+           | (-T | --initial-tab)			    				    "make tabs line up (if needed)"
+           | (-Z | --null)				    				    "print 0 byte after FILE name"
+           | (-B <NUM> | --before-context <NUM>)					    "print NUM lines of leading context"
+           | (-A <NUM> | --after-context <NUM>)						    "print NUM lines of trailing context"
+           | (-C <NUM> | --context <NUM> | -<NUM>)					    "print NUM lines of output context"
+           | --group-separator=<SEP>							    "print SEP on line between matches with context"
+           | --no-group-separator							    "do not print separator for matches with context"
+           | (--color=[<WHEN>] | --colour=[<WHEN>] | --color [<WHEN>] | --colour [<WHEN>])  "use markers to highlight the matching strings"
+           | (-U | --binary)								    "do not strip CR characters at EOL (MSDOS/Windows)"
+	   ;
+
+<NUM> ::= (0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9)... "print NUM lines of output context";
+
+<ACTION-DIRECTORIES> ::= read "read directories in the same manner as normal files"
+                       | recurse "read directories recursively (same effect as -R and -r option)"
+		       | skip "silently ignore the directories";
+
+<ACTION-DEVICES> ::= read "read devices as if they were normal files"
+                   | skip "devices are skipped silently";
+
+<TYPE> ::= binary "Search binary files but do not print them"
+	 | text "Treat all files as text"
+	 | without-match "Do not search binary files";
+
+<WHEN> ::= always | never | auto "only when stdout is a tty";
