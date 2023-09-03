@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A bug in Bash output where order of arguments to `mapfile` was wrong
 - Remove leftover parenthesis in ZSH subword descriptions
 
+## 0.1.3
+
+- More compact zsh completions in JIT mode
+
 ## 0.1.1
 
 ### Added
