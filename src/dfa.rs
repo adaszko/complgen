@@ -334,7 +334,7 @@ fn do_minimize(dfa: &DFA) -> DFA {
             upper_bound
         };
 
-        let group_transitions: HashMap<Input, RoaringBitmap> = {
+        let transitions_to_group: HashMap<Input, RoaringBitmap> = {
             let mut group_transitions: HashMap<Input, RoaringBitmap> = Default::default();
             for transition in &inverse_transitions[lower_bound..=upper_bound] {
                 if group.contains(transition.to.into()) {
@@ -343,7 +343,7 @@ fn do_minimize(dfa: &DFA) -> DFA {
             }
             group_transitions
         };
-        for from_states in group_transitions.values() {
+        for from_states in transitions_to_group.values() {
             let overlapping_sets: Vec<SetInternId> = partition.iter().filter(|set_id| !pool.get(**set_id).unwrap().is_disjoint(&from_states)).copied().collect();
             for intern_id in overlapping_sets {
                 let states = pool.get(intern_id).unwrap();
