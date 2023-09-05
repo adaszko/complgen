@@ -309,8 +309,6 @@ fn find_bounds(transitions: &[Transition], group_min: u32, group_max: u32) -> Op
 //  * The Dragon Book: Minimizing the Number of states of a DFA
 //  * Engineering a Compiler, 3rd ed, 2.4.4 DFA to Minimal DFA
 //  * https://github.com/BurntSushi/regex-automata/blob/c61a6d0f19b013dc832755375709023dfb9d5a8f/src/dfa/minimize.rs#L87
-//
-// TODO Use https://docs.rs/nohash-hasher/ for Hash{Map,Set}<StateId, ...>?
 fn do_minimize(dfa: &DFA) -> DFA {
     let mut pool = SetInternPool::default();
     let mut partitions: HashSet<SetInternId> = {
