@@ -161,7 +161,7 @@ impl SetInternPool {
         SetInternId(id)
     }
 
-    fn get(&self, id: SetInternId) -> Option<Rc<RoaringBitmap>> {
+    fn lookup(&self, id: SetInternId) -> Option<Rc<RoaringBitmap>> {
         self.pool.get(id.0).cloned()
     }
 }
@@ -332,7 +332,7 @@ fn do_minimize(dfa: &DFA) -> DFA {
             None => break,
         };
         worklist.remove(&group_id);
-        let group = pool.get(group_id).unwrap();
+        let group = pool.lookup(group_id).unwrap();
         let group_min = group.min().unwrap();
         let group_max = group.max().unwrap();
 
@@ -351,9 +351,9 @@ fn do_minimize(dfa: &DFA) -> DFA {
             group_transitions
         };
         for from_states in transitions_to_group.values() {
-            let overlapping_sets: Vec<SetInternId> = partitions.iter().filter(|set_id| !pool.get(**set_id).unwrap().is_disjoint(&from_states)).copied().collect();
+            let overlapping_sets: Vec<SetInternId> = partitions.iter().filter(|set_id| !pool.lookup(**set_id).unwrap().is_disjoint(&from_states)).copied().collect();
             for intern_id in overlapping_sets {
-                let states = pool.get(intern_id).unwrap();
+                let states = pool.lookup(intern_id).unwrap();
                 let states_to_remove = [&states, from_states].intersection();
                 let remaining_states = [&states, &states_to_remove].difference();
                 if remaining_states.is_empty() {
@@ -390,7 +390,7 @@ fn do_minimize(dfa: &DFA) -> DFA {
     let representative_id_from_state_id = {
         let mut representative_id_from_state_id: HashMap<StateId, StateId> = Default::default();
         for intern_id in &partitions {
-            let partition_element = pool.get(*intern_id).unwrap();
+            let partition_element = pool.lookup(*intern_id).unwrap();
             let representative_state_id = partition_element.min().unwrap();
             for state_id in partition_element.iter() {
                 representative_id_from_state_id.insert(StateId::try_from(state_id).unwrap(), StateId::try_from(representative_state_id).unwrap());
