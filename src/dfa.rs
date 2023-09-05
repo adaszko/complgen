@@ -248,7 +248,7 @@ fn hashmap_transitions_from_vec(transitions: &[Transition]) -> HashMap<StateId, 
     result
 }
 
-fn make_inverse_transitions_lookup_table(transitions: &HashMap<StateId, HashMap<Input, StateId>>, input_symbols: Rc<HashSet<Input>>) -> Vec<Transition> {
+fn make_transitions_image(transitions: &HashMap<StateId, HashMap<Input, StateId>>, input_symbols: Rc<HashSet<Input>>) -> Vec<Transition> {
     let mut result: Vec<Transition> = Default::default();
     for (from, tos) in transitions {
         let meaningful_inputs: HashSet<Input> = tos.keys().cloned().collect();
@@ -327,7 +327,7 @@ fn do_minimize(dfa: &DFA) -> DFA {
         HashSet::from_iter([dead_state_intern_id, accepting_states_intern_id, nonaccepting_states_intern_id])
     };
     let mut worklist = partitions.clone();
-    let inverse_transitions = make_inverse_transitions_lookup_table(&dfa.transitions, Rc::clone(&dfa.input_symbols));
+    let transitions_image = make_transitions_image(&dfa.transitions, Rc::clone(&dfa.input_symbols));
     loop {
         let group_id = match worklist.iter().next() {
             Some(group_id) => *group_id,
@@ -338,7 +338,7 @@ fn do_minimize(dfa: &DFA) -> DFA {
         let group_min = group.min().unwrap();
         let group_max = group.max().unwrap();
 
-        let transitions = match find_bounds(&inverse_transitions, group_min, group_max) {
+        let transitions = match find_bounds(&transitions_image, group_min, group_max) {
             Some(t) => t,
             None => continue,
         };
