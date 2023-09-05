@@ -273,6 +273,37 @@ fn make_inverse_transitions_lookup_table(transitions: &HashMap<StateId, HashMap<
     result
 }
 
+fn find_bounds(transitions: &[Transition], group_min: u32, group_max: u32) -> Option<&[Transition]> {
+    let inbetween_index = match transitions.binary_search_by(|transition| {
+        let to: u32 = transition.to.into();
+        if to < group_min {
+            return Ordering::Less;
+        }
+        if to > group_max {
+            return Ordering::Greater;
+        }
+        Ordering::Equal
+    }) {
+        Ok(index) => index,
+        Err(_) => return None,
+    };
+    let lower_bound = {
+        let mut lower_bound = inbetween_index;
+        while lower_bound > 0 && u32::from(transitions[lower_bound-1].to) >= group_min {
+            lower_bound -= 1;
+        }
+        lower_bound
+    };
+    let upper_bound = {
+        let mut upper_bound = inbetween_index;
+        while upper_bound < transitions.len() - 1 && u32::from(transitions[upper_bound+1].to) <= group_max {
+            upper_bound += 1;
+        }
+        upper_bound
+    };
+    Some(&transitions[lower_bound..=upper_bound])
+}
+
 // Hopcroft's DFA minimization algorithm.
 // References:
 //  * The Dragon Book: Minimizing the Number of states of a DFA
@@ -303,40 +334,18 @@ fn do_minimize(dfa: &DFA) -> DFA {
             None => break,
         };
         worklist.remove(&group_id);
-        let group = pool.get(group_id).unwrap(); // group is a better name for 's' from the book
+        let group = pool.get(group_id).unwrap();
         let group_min = group.min().unwrap();
         let group_max = group.max().unwrap();
-        let inbetween_index = match inverse_transitions.binary_search_by(|transition| {
-            let to: u32 = transition.to.into();
-            if to < group_min {
-                return Ordering::Less;
-            }
-            if to > group_max {
-                return Ordering::Greater;
-            }
-            Ordering::Equal
-        }) {
-            Ok(index) => index,
-            Err(_) => continue,
-        };
-        let lower_bound = {
-            let mut lower_bound = inbetween_index;
-            while lower_bound > 0 && u32::from(inverse_transitions[lower_bound-1].to) >= group_min {
-                lower_bound -= 1;
-            }
-            lower_bound
-        };
-        let upper_bound = {
-            let mut upper_bound = inbetween_index;
-            while upper_bound < inverse_transitions.len() - 1 && u32::from(inverse_transitions[upper_bound+1].to) <= group_max {
-                upper_bound += 1;
-            }
-            upper_bound
+
+        let transitions = match find_bounds(&inverse_transitions, group_min, group_max) {
+            Some(t) => t,
+            None => continue,
         };
 
         let transitions_to_group: HashMap<Input, RoaringBitmap> = {
             let mut group_transitions: HashMap<Input, RoaringBitmap> = Default::default();
-            for transition in &inverse_transitions[lower_bound..=upper_bound] {
+            for transition in transitions {
                 if group.contains(transition.to.into()) {
                     group_transitions.entry(transition.input.clone()).or_default().insert(transition.from.into());
                 }
