@@ -313,7 +313,7 @@ fn find_bounds(transitions: &[Transition], group_min: u32, group_max: u32) -> Op
 // TODO Use https://docs.rs/nohash-hasher/ for Hash{Map,Set}<StateId, ...>?
 fn do_minimize(dfa: &DFA) -> DFA {
     let mut pool = SetInternPool::default();
-    let mut partition: HashSet<SetInternId> = {
+    let mut partitions: HashSet<SetInternId> = {
         let dead_state_group = RoaringBitmap::from_iter([u32::from(DEAD_STATE_ID)]);
         let all_states = dfa.get_all_states();
         let nonaccepting_states = [&all_states, &dfa.accepting_states, &dead_state_group].difference();
@@ -326,7 +326,7 @@ fn do_minimize(dfa: &DFA) -> DFA {
         let dead_state_intern_id = pool.intern(dead_state_group);
         HashSet::from_iter([dead_state_intern_id, accepting_states_intern_id, nonaccepting_states_intern_id])
     };
-    let mut worklist = partition.clone();
+    let mut worklist = partitions.clone();
     let inverse_transitions = make_inverse_transitions_lookup_table(&dfa.transitions, Rc::clone(&dfa.input_symbols));
     loop {
         let group_id = match worklist.iter().next() {
@@ -353,7 +353,7 @@ fn do_minimize(dfa: &DFA) -> DFA {
             group_transitions
         };
         for from_states in transitions_to_group.values() {
-            let overlapping_sets: Vec<SetInternId> = partition.iter().filter(|set_id| !pool.get(**set_id).unwrap().is_disjoint(&from_states)).copied().collect();
+            let overlapping_sets: Vec<SetInternId> = partitions.iter().filter(|set_id| !pool.get(**set_id).unwrap().is_disjoint(&from_states)).copied().collect();
             for intern_id in overlapping_sets {
                 let states = pool.get(intern_id).unwrap();
                 let states_to_remove = [&states, from_states].intersection();
@@ -365,11 +365,11 @@ fn do_minimize(dfa: &DFA) -> DFA {
                 let num_states_to_remove = states_to_remove.len();
                 let num_remaining_states = remaining_states.len();
 
-                partition.remove(&intern_id);
+                partitions.remove(&intern_id);
                 let states_to_remove_intern_id = pool.intern(states_to_remove);
                 let remaining_states_intern_id = pool.intern(remaining_states);
-                partition.insert(states_to_remove_intern_id);
-                partition.insert(remaining_states_intern_id);
+                partitions.insert(states_to_remove_intern_id);
+                partitions.insert(remaining_states_intern_id);
 
                 if worklist.contains(&intern_id) {
                     worklist.remove(&intern_id);
@@ -391,7 +391,7 @@ fn do_minimize(dfa: &DFA) -> DFA {
 
     let representative_id_from_state_id = {
         let mut representative_id_from_state_id: HashMap<StateId, StateId> = Default::default();
-        for intern_id in &partition {
+        for intern_id in &partitions {
             let partition_element = pool.get(*intern_id).unwrap();
             let representative_state_id = partition_element.min().unwrap();
             for state_id in partition_element.iter() {
