@@ -7,7 +7,7 @@ meant to be used in interactive shells (see below).
 
 ## Demo
 
-[![asciicast](https://asciinema.org/a/rRfe9MmZpzBRQIb21LPADWb6n.svg)](https://asciinema.org/a/rRfe9MmZpzBRQIb21LPADWb6n)
+[![asciicast](https://asciinema.org/a/SAH1uGqgwBEhyRV7G6Zasu45y.svg)](https://asciinema.org/a/SAH1uGqgwBEhyRV7G6Zasu45y)
 
 ## Usage
 
