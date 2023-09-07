@@ -11,18 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - More readable parsing errors using the chic Rust crate
 
+## 0.1.3
 ### Fixed
 
+- More compact zsh completions in JIT mode
 - Zsh,JIT: Only consider completions with descriptions when aligning completions for better appearance
-- A bug in Bash output where order of arguments to `mapfile` was wrong
 - Remove leftover parenthesis in ZSH subword descriptions
 
-## 0.1.3
+## 0.1.2
+### Fixed
 
-- More compact zsh completions in JIT mode
+- A bug in Bash output where order of arguments to `mapfile` was wrong
 
 ## 0.1.1
-
 ### Added
 
 - Binary releases on GitHub
@@ -32,7 +33,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bug in parser where descriptions were being distributed too generously.
 
 ## 0.1.0
-
 ### Added
 
 - Add a Homebrew tap formula for automatic updates on new versions.
