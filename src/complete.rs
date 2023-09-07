@@ -343,7 +343,7 @@ mod tests {
     use super::*;
 
     fn get_grammar_completions<'a, 'b>(grammar: &str, words_before_cursor: &'b [&'a str], completed_word_index: usize) -> Vec<Completion> {
-        let g = Grammar::parse(grammar).unwrap();
+        let g = Grammar::parse(grammar).map_err(|e| e.to_string()).unwrap();
         let validated = ValidGrammar::from_grammar(g).unwrap();
         let arena = Bump::new();
         let regex = AugmentedRegex::from_expr(&validated.expr, &validated.specializations, &arena);

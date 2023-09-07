@@ -1,4 +1,5 @@
 use std::io::{BufWriter, Write, Read};
+use std::process::exit;
 
 use anyhow::Context;
 use bumpalo::Bump;
@@ -87,11 +88,22 @@ fn get_file_or_stdin(path: &str) -> anyhow::Result<Box<dyn Read>> {
 }
 
 
+fn handle_parse_error(input: &str) -> anyhow::Result<Grammar> {
+    match Grammar::parse(&input) {
+        Ok(g) => Ok(g),
+        Err(e) => {
+            eprintln!("{}", e.to_string());
+            exit(1);
+        },
+    }
+}
+
+
 fn check(args: &CheckArgs) -> anyhow::Result<()> {
     let mut input_file = get_file_or_stdin(&args.usage_file_path).context(args.usage_file_path.to_owned())?;
     let mut input: String = Default::default();
     input_file.read_to_string(&mut input)?;
-    let grammar = Grammar::parse(&input)?;
+    let grammar = handle_parse_error(&input)?;
     let validated = ValidGrammar::from_grammar(grammar)?;
     let arena = Bump::new();
     let regex = AugmentedRegex::from_expr(&validated.expr, &validated.specializations, &arena);
@@ -104,7 +116,7 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
     let mut input_file = get_file_or_stdin(&args.usage_file_path).context(args.usage_file_path.to_owned())?;
     let mut input: String = Default::default();
     input_file.read_to_string(&mut input)?;
-    let grammar = Grammar::parse(&input)?;
+    let grammar = handle_parse_error(&input)?;
 
     if let Some(railroad_svg_path) = &args.railroad_svg {
         let mut railroad_svg = get_file_or_stdout(railroad_svg_path)?;
@@ -205,7 +217,7 @@ fn compile(args: &CompileArgs) -> anyhow::Result<()> {
         input
     };
 
-    let grammar = Grammar::parse(&input)?;
+    let grammar = handle_parse_error(&input)?;
 
     if let Some(railroad_svg_path) = &args.railroad_svg {
         to_railroad_diagram_file(&grammar, railroad_svg_path).context(railroad_svg_path.clone())?;

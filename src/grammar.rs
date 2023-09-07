@@ -7,7 +7,7 @@ use nom::{
     bytes::complete::{is_not, tag, take_while1, escaped, take_till, take_while, take_until, escaped_transform},
     character::complete::{char, multispace1, one_of},
     multi::many0,
-    IResult, combinator::{fail, opt}, error::context, sequence::preceded,
+    IResult, combinator::{fail, opt}, error::context, sequence::preceded, Finish,
 };
 
 use crate::{Error, Result};
@@ -211,25 +211,29 @@ pub fn to_railroad_diagram_file<P: AsRef<std::path::Path>>(
 }
 
 
-fn comment(input: &str) -> IResult<&str, &str> {
+use nom_locate::LocatedSpan;
+pub type Span<'a> = LocatedSpan<&'a str>;
+
+
+fn comment(input: Span) -> IResult<Span, Span> {
     let (input, _) = char('#')(input)?;
     let (input, content) = take_till(|c| c == '\n')(input)?;
     Ok((input, content))
 }
 
-fn blanks(input: &str) -> IResult<&str, ()> {
+fn blanks(input: Span) -> IResult<Span, ()> {
     let (input, _) = alt((multispace1, comment))(input)?;
     Ok((input, ()))
 }
 
-fn multiblanks0(mut input: &str) -> IResult<&str, ()> {
+fn multiblanks0(mut input: Span) -> IResult<Span, ()> {
     while let Ok((rest, _)) = blanks(input) {
         input = rest;
     }
     Ok((input, ()))
 }
 
-fn multiblanks1(input: &str) -> IResult<&str, ()> {
+fn multiblanks1(input: Span) -> IResult<Span, ()> {
     let (input, _) = blanks(input)?;
     let (input, _) = multiblanks0(input)?;
     Ok((input, ()))
@@ -253,7 +257,7 @@ fn is_terminal_char(c: char) -> bool {
 }
 
 
-fn terminal(input: &str) -> IResult<&str, String> {
+fn terminal(input: Span) -> IResult<Span, String> {
     let (input, term) = escaped_transform(take_while1(is_terminal_char), ESCAPE_CHARACTER, one_of(RESERVED_CHARACTERS))(input)?;
     if term.is_empty() {
         return fail(input);
@@ -261,33 +265,33 @@ fn terminal(input: &str) -> IResult<&str, String> {
     Ok((input, term))
 }
 
-fn description(input: &str) -> IResult<&str, &str> {
+fn description(input: Span) -> IResult<Span, Span> {
     let (input, _) = char('"')(input)?;
     let (input, descr) = escaped(take_till(|c| c == '"'), ESCAPE_CHARACTER, char('"'))(input)?;
     let (input, _) = char('"')(input)?;
     Ok((input, descr))
 }
 
-fn terminal_opt_description_expr(input: &str) -> IResult<&str, Expr> {
+fn terminal_opt_description_expr(input: Span) -> IResult<Span, Expr> {
     let (input, term) = terminal(input)?;
     let (input, descr) = opt(preceded(multiblanks0, description))(input)?;
-    let expr = Expr::Terminal(ustr(&term), descr.map(ustr));
+    let expr = Expr::Terminal(ustr(&term), descr.map(|span| ustr(span.into_fragment())));
     Ok((input, expr))
 }
 
-fn nonterminal(input: &str) -> IResult<&str, &str> {
+fn nonterminal(input: Span) -> IResult<Span, Span> {
     let (input, _) = char('<')(input)?;
     let (input, name) = is_not(">")(input)?;
     let (input, _) = char('>')(input)?;
     Ok((input, name))
 }
 
-fn nonterminal_expr(input: &str) -> IResult<&str, Expr> {
+fn nonterminal_expr(input: Span) -> IResult<Span, Expr> {
     let (input, nonterm) = context("nonterminal", nonterminal)(input)?;
-    Ok((input, Expr::Nonterminal(ustr(nonterm))))
+    Ok((input, Expr::Nonterminal(ustr(nonterm.into_fragment()))))
 }
 
-fn single_bracket_command(input: &str) -> IResult<&str, &str> {
+fn single_bracket_command(input: Span) -> IResult<Span, Span> {
     fn is_command_char(c: char) -> bool {
         c != '}'
     }
@@ -295,26 +299,26 @@ fn single_bracket_command(input: &str) -> IResult<&str, &str> {
     let (input, _) = char('{')(input)?;
     let (input, cmd) = escaped(take_while(is_command_char), ESCAPE_CHARACTER, one_of("{}"))(input)?;
     let (input, _) = char('}')(input)?;
-    Ok((input, cmd.trim()))
+    Ok((input, Span::new(cmd.into_fragment().trim())))
 }
 
-fn triple_bracket_command(input: &str) -> IResult<&str, &str> {
+fn triple_bracket_command(input: Span) -> IResult<Span, Span> {
     let (input, _) = tag("{{{")(input)?;
     let (input, cmd) = take_until("}}}")(input)?;
     let (input, _) = tag("}}}")(input)?;
-    Ok((input, cmd.trim()))
+    Ok((input, Span::new(cmd.into_fragment().trim())))
 }
 
-fn command(input: &str) -> IResult<&str, &str> {
+fn command(input: Span) -> IResult<Span, Span> {
     alt((triple_bracket_command, single_bracket_command))(input)
 }
 
-fn command_expr(input: &str) -> IResult<&str, Expr> {
+fn command_expr(input: Span) -> IResult<Span, Expr> {
     let (input, cmd) = command(input)?;
-    Ok((input, Expr::Command(ustr(cmd))))
+    Ok((input, Expr::Command(ustr(cmd.into_fragment()))))
 }
 
-fn optional_expr(input: &str) -> IResult<&str, Expr> {
+fn optional_expr(input: Span) -> IResult<Span, Expr> {
     let (input, _) = char('[')(input)?;
     let (input, _) = multiblanks0(input)?;
     let (input, expr) = expr(input)?;
@@ -323,7 +327,7 @@ fn optional_expr(input: &str) -> IResult<&str, Expr> {
     Ok((input, Expr::Optional(Rc::new(expr))))
 }
 
-fn parenthesized_expr(input: &str) -> IResult<&str, Expr> {
+fn parenthesized_expr(input: Span) -> IResult<Span, Expr> {
     let (input, _) = char('(')(input)?;
     let (input, _) = multiblanks0(input)?;
     let (input, e) = expr(input)?;
@@ -332,13 +336,13 @@ fn parenthesized_expr(input: &str) -> IResult<&str, Expr> {
     Ok((input, e))
 }
 
-fn many1_tag(input: &str) -> IResult<&str, ()> {
+fn many1_tag(input: Span) -> IResult<Span, ()> {
     let (input, _) = multiblanks0(input)?;
     let (input, _) = tag("...")(input)?;
     Ok((input, ()))
 }
 
-fn unary_expr(input: &str) -> IResult<&str, Expr> {
+fn unary_expr(input: Span) -> IResult<Span, Expr> {
     let (input, e) = alt((
         nonterminal_expr,
         optional_expr,
@@ -354,7 +358,7 @@ fn unary_expr(input: &str) -> IResult<&str, Expr> {
     Ok((input, e))
 }
 
-fn subword_sequence_expr(input: &str) -> IResult<&str, Expr> {
+fn subword_sequence_expr(input: Span) -> IResult<Span, Expr> {
     let (mut input, left) = unary_expr(input)?;
     let mut factors: Vec<Expr> = vec![left];
     while let Ok((rest, right)) = unary_expr(input) {
@@ -371,17 +375,17 @@ fn subword_sequence_expr(input: &str) -> IResult<&str, Expr> {
     Ok((input, result))
 }
 
-fn subword_sequence_expr_opt_description(input: &str) -> IResult<&str, Expr> {
+fn subword_sequence_expr_opt_description(input: Span) -> IResult<Span, Expr> {
     let (input, expr) = subword_sequence_expr(input)?;
     let (input, description) = opt(preceded(multiblanks0, description))(input)?;
     let result = match description {
-        Some(descr) => Expr::DistributiveDescription(Rc::new(expr), ustr(descr)),
+        Some(descr) => Expr::DistributiveDescription(Rc::new(expr), ustr(descr.into_fragment())),
         None => expr,
     };
     Ok((input, result))
 }
 
-fn sequence_expr(input: &str) -> IResult<&str, Expr> {
+fn sequence_expr(input: Span) -> IResult<Span, Expr> {
     let (mut input, left) = subword_sequence_expr_opt_description(input)?;
     let mut factors: Vec<Expr> = vec![left];
     while let Ok((rest, right)) = preceded(multiblanks1, subword_sequence_expr_opt_description)(input) {
@@ -396,8 +400,8 @@ fn sequence_expr(input: &str) -> IResult<&str, Expr> {
     Ok((input, result))
 }
 
-fn alternative_expr(input: &str) -> IResult<&str, Expr> {
-    fn do_alternative_expr(input: &str) -> IResult<&str, Expr> {
+fn alternative_expr(input: Span) -> IResult<Span, Expr> {
+    fn do_alternative_expr(input: Span) -> IResult<Span, Expr> {
         let (input, _) = multiblanks0(input)?;
         let (input, _) = char('|')(input)?;
         let (input, _) = multiblanks0(input)?;
@@ -419,7 +423,7 @@ fn alternative_expr(input: &str) -> IResult<&str, Expr> {
     Ok((input, result))
 }
 
-fn expr(input: &str) -> IResult<&str, Expr> {
+fn expr(input: Span) -> IResult<Span, Expr> {
     alternative_expr(input)
 }
 
@@ -438,7 +442,7 @@ pub enum Statement {
 }
 
 
-fn call_variant(input: &str) -> IResult<&str, Statement> {
+fn call_variant(input: Span) -> IResult<Span, Statement> {
     let (input, name) = terminal(input)?;
     let (input, _) = multiblanks1(input)?;
     let (input, expr) = expr(input)?;
@@ -454,7 +458,7 @@ fn call_variant(input: &str) -> IResult<&str, Statement> {
 }
 
 
-fn specialized_nonterminal(input: &str) -> IResult<&str, (&str, &str)> {
+fn specialized_nonterminal(input: Span) -> IResult<Span, (Span, Span)> {
     let (input, _) = char('<')(input)?;
     let (input, name) = is_not(">@")(input)?;
     let (input, _) = char('@')(input)?;
@@ -464,7 +468,7 @@ fn specialized_nonterminal(input: &str) -> IResult<&str, (&str, &str)> {
 }
 
 
-fn optionally_specialized_nonterminal(input: &str) -> IResult<&str, (&str, Option<&str>)> {
+fn optionally_specialized_nonterminal(input: Span) -> IResult<Span, (Span, Option<Span>)> {
     if let Ok((input, (name, shell))) = specialized_nonterminal(input) {
         return Ok((input, (name, Some(shell))));
     }
@@ -474,7 +478,7 @@ fn optionally_specialized_nonterminal(input: &str) -> IResult<&str, (&str, Optio
     fail(input)
 }
 
-fn nonterminal_definition(input: &str) -> IResult<&str, Statement> {
+fn nonterminal_definition(input: Span) -> IResult<Span, Statement> {
     let (input, (name, shell)) = optionally_specialized_nonterminal(input)?;
     let (input, _) = multiblanks0(input)?;
     let (input, _) = tag("::=")(input)?;
@@ -484,21 +488,21 @@ fn nonterminal_definition(input: &str) -> IResult<&str, Statement> {
     let (input, _) = char(';')(input)?;
 
     let stmt = Statement::NonterminalDefinition {
-        symbol: ustr(name),
-        shell: shell.map(ustr),
+        symbol: ustr(name.into_fragment()),
+        shell: shell.map(|span| ustr(span.into_fragment())),
         expr: Rc::new(e),
     };
 
     Ok((input, stmt))
 }
 
-fn statement(input: &str) -> IResult<&str, Statement> {
+fn statement(input: Span) -> IResult<Span, Statement> {
     let (input, stmt) = alt((call_variant, nonterminal_definition))(input)?;
     let (input, _) = multiblanks0(input)?;
     Ok((input, stmt))
 }
 
-fn grammar(input: &str) -> IResult<&str, Vec<Statement>> {
+fn grammar(input: Span) -> IResult<Span, Vec<Statement>> {
     let (input, _) = multiblanks0(input)?;
     let (input, statements) = many0(statement)(input)?;
     let (input, _) = multiblanks0(input)?;
@@ -1144,14 +1148,24 @@ fn get_nonterminals_resolution_order(nonterminal_definitions: &UstrMap<Rc<Expr>>
 
 
 impl Grammar {
-    pub fn parse(input: &str) -> Result<Self> {
-        let (input, statements) = match grammar(input) {
+    pub fn parse(input: &str) -> std::result::Result<Self, chic::Error> {
+        let (input, statements) = match grammar(Span::new(input)).finish() {
             Ok((input, statements)) => (input, statements),
-            Err(e) => return Err(Error::ParsingError(e.to_string())),
+            Err(e) => {
+                let line = String::from_utf8(e.input.get_line_beginning().to_vec()).unwrap();
+                let code = e.input.lines().take(10).join("\n");
+                let error = chic::Error::new("Parsing failed")
+                    .error(e.input.location_line() as usize, 0, line.len(), code, "");
+                return Err(error);
+            },
         };
 
         if !input.is_empty() {
-            return Err(Error::ParsingError(input.to_owned()));
+            let line = String::from_utf8(input.get_line_beginning().to_vec()).unwrap();
+            let code = input.lines().take(10).join("\n");
+            let error = chic::Error::new("Parsing failed")
+                .error(input.location_line() as usize, 0, line.len(), code, "");
+            return Err(error);
         }
 
         let g = Grammar {
@@ -1280,21 +1294,25 @@ pub mod tests {
     #[test]
     fn parses_subword_expr() {
         const INPUT: &str = r#"--color=<WHEN>"#;
-        let ("", e) = subword_sequence_expr(INPUT).unwrap() else { unreachable!() };
+        let (s, e) = subword_sequence_expr(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty());
         assert_eq!(e, Expr::Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Expr::Terminal(ustr("--color="), None)), Rc::new(Expr::Nonterminal(ustr("WHEN")))])))));
     }
 
     #[test]
     fn parses_prefix_description_expr() {
         const INPUT: &str = r#"--color=<WHEN> "use markers to highlight the matching strings""#;
-        let ("", e) = expr(INPUT).unwrap() else { unreachable!() };
+        let (s, e) = expr(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty());
         assert_eq!(e, DistributiveDescription(Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="), None)), Rc::new(Nonterminal(ustr("WHEN")))]))))), ustr("use markers to highlight the matching strings")));
     }
+
 
     #[test]
     fn parses_option_argument_alternative_description_expr() {
         const INPUT: &str = r#"(--color=<WHEN> | --color <WHEN>) "use markers to highlight the matching strings""#;
-        let ("", e) = expr(INPUT).unwrap() else { unreachable!() };
+        let (s, e) = expr(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty());
         assert_eq!(e,
             DistributiveDescription(Rc::new(Alternative(vec![
                         Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="), None)), Rc::new(Nonterminal(ustr("WHEN")))]))))),
@@ -1306,63 +1324,72 @@ pub mod tests {
     #[test]
     fn parses_word_terminal() {
         const INPUT: &str = r#"foo\.bar"#;
-        let ("", e) = terminal_opt_description_expr(INPUT).unwrap() else { panic!("parsing error"); };
+        let (s, e) = terminal_opt_description_expr(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty());
         assert_eq!(e, Terminal(u("foo.bar"), None));
     }
 
     #[test]
     fn parses_short_option_terminal() {
         const INPUT: &str = r#"-f"#;
-        let ("", e) = terminal_opt_description_expr(INPUT).unwrap() else { panic!("parsing error"); };
+        let (s, e) = terminal_opt_description_expr(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty());
         assert_eq!(e, Terminal(u("-f"), None));
     }
 
     #[test]
     fn parses_long_option_terminal() {
         const INPUT: &str = r#"--foo"#;
-        let ("", e) = terminal_opt_description_expr(INPUT).unwrap() else { panic!("parsing error"); };
+        let (s, e) = terminal_opt_description_expr(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty());
         assert_eq!(e, Terminal(u("--foo"), None));
     }
 
     #[test]
     fn parses_symbol() {
         const INPUT: &str = "<FILE>";
-        let ("", e) = nonterminal_expr(INPUT).unwrap() else { panic!("parsing error"); };
+        let (s, e) = nonterminal_expr(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty());
         assert_eq!(e, Nonterminal(u("FILE")));
     }
 
     #[test]
     fn parses_command() {
         const INPUT: &str = "{ rustup toolchain list | cut -d' ' -f1 }";
-        let ("", e) = command_expr(INPUT).unwrap() else { panic!("parsing error"); };
+        let (s, e) = command_expr(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty());
         assert_eq!(e, Command(u("rustup toolchain list | cut -d' ' -f1")));
     }
 
     #[test]
     fn parses_triple_brackets_command() {
         const INPUT: &str = "{{{ rad patch list | awk '{print $3}' | grep . | grep -vw ID }}}";
-        let ("", e) = command_expr(INPUT).unwrap() else { panic!("parsing error"); };
+        let (s, e) = command_expr(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty());
         assert_eq!(e, Command(u("rad patch list | awk '{print $3}' | grep . | grep -vw ID")));
     }
 
     #[test]
     fn parses_optional_expr() {
         const INPUT: &str = "[<foo>]";
-        let ("", e) = expr(INPUT).unwrap() else { panic!("parsing error"); };
+        let (s, e) = expr(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty());
         assert_eq!(e, Optional(Rc::new(Nonterminal(u("foo")))));
     }
 
     #[test]
     fn parses_one_or_more_expr() {
         const INPUT: &str = "<foo>...";
-        let ("", e) = expr(INPUT).unwrap() else { panic!("parsing error"); };
+        let (s, e) = expr(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty());
         assert_eq!(e, Many1(Rc::new(Nonterminal(u("foo")))));
     }
 
     #[test]
     fn parses_sequence_expr() {
         const INPUT: &str = "<first-symbol> <second symbol>";
-        let ("", e) = expr(INPUT).unwrap() else { panic!("parsing error"); };
+        let (s, e) = expr(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty());
         assert_eq!(
             e,
             Sequence(vec![
@@ -1375,7 +1402,8 @@ pub mod tests {
     #[test]
     fn parses_alternative_expr() {
         const INPUT: &str = "a b | c";
-        let ("", e) = expr(INPUT).unwrap() else { panic!("parsing error"); };
+        let (s, e) = expr(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty());
         assert_eq!(
             e,
             Alternative(vec![
@@ -1388,7 +1416,8 @@ pub mod tests {
     #[test]
     fn parses_parenthesised_expr() {
         const INPUT: &str = r#"a (b | c)"#;
-        let ("", e) = expr(INPUT).unwrap() else { panic!("parsing error"); };
+        let (s, e) = expr(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty());
         assert_eq!(
             e,
             Sequence(vec![
@@ -1401,7 +1430,8 @@ pub mod tests {
     #[test]
     fn parses_variant() {
         const INPUT: &str = r#"foo bar;"#;
-        let ("", v) = call_variant(INPUT).unwrap() else { panic!("parsing error"); };
+        let (s, v) = call_variant(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty());
         assert_eq!(
             v,
             Statement::CallVariant {
@@ -1417,7 +1447,7 @@ pub mod tests {
 foo bar;
 foo baz;
 "#;
-        let g = Grammar::parse(INPUT).unwrap();
+        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(
             g,
             Grammar {
@@ -1433,7 +1463,7 @@ foo baz;
     fn bug1() {
         // Did not consider whitespace before ...
         const INPUT: &str = "darcs help ( ( -v | --verbose ) | ( -q | --quiet ) ) ... [<DARCS_COMMAND> [DARCS_SUBCOMMAND]]  ;";
-        let g = Grammar::parse(INPUT).unwrap();
+        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(
             g.statements,
             vec![
@@ -1491,7 +1521,7 @@ darcs check ( ( --complete | --partial ) | ( --no-test | --test ) | ( --leave-te
 darcs repair ( --repodir <DIRECTORY> | --umask <UMASK> | ( --debug | --debug-verbose | --debug-http | ( -v | --verbose ) | ( -q | --quiet ) | --standard-verbosity ) | --timings | ( --posthook <COMMAND> | --no-posthook ) | ( --prompt-posthook | --run-posthook ) | ( --prehook <COMMAND> | --no-prehook ) | ( --prompt-prehook | --run-prehook ) ) ... ;
 darcs convert ( ( --repo-name <DIRECTORY> | --repodir <DIRECTORY> ) | ( --set-scripts-executable | --dont-set-scripts-executable ) | ( --ssh-cm | --no-ssh-cm ) | ( --http-pipelining | --no-http-pipelining ) | --no-cache | ( --debug | --debug-verbose | --debug-http | ( -v | --verbose ) | ( -q | --quiet ) | --standard-verbosity ) | --timings | ( --posthook <COMMAND> | --no-posthook ) | ( --prompt-posthook | --run-posthook ) | ( --prehook <COMMAND> | --no-prehook ) | ( --prompt-prehook | --run-prehook ) ) ... <SOURCE> [<DESTINATION>];
 "#;
-        let _ = Grammar::parse(INPUT).unwrap();
+        let _ = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
     }
 
     #[test]
@@ -1501,7 +1531,7 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
 <OPTION> ::= --color <WHEN>;
 <WHEN> ::= always | never | auto;
 "#;
-        let g = Grammar::parse(INPUT).unwrap();
+        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(
             g.statements,
             [
@@ -1518,7 +1548,9 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
     #[test]
     fn skips_comment() {
         const INPUT: &str = r#"#foo"#;
-        assert_eq!(comment(INPUT).unwrap(), ("", "foo"));
+        let (s, e) = comment(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty());
+        assert_eq!(e.into_fragment(), "foo");
     }
 
     #[test]
@@ -1532,7 +1564,7 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
 # another comment
            ;
 "#;
-        let g = Grammar::parse(INPUT).unwrap();
+        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(
             g,
             Grammar {
@@ -1581,7 +1613,7 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
         const INPUT: &str = r#"
 cargo [+{ rustup toolchain list | cut -d' ' -f1 }] [<OPTIONS>] [<COMMAND>];
 "#;
-        let g = Grammar::parse(INPUT).unwrap();
+        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements.len(), 1);
         assert_eq!(
             g.statements[0],
@@ -1602,7 +1634,7 @@ cargo [+{ rustup toolchain list | cut -d' ' -f1 }] [<OPTIONS>] [<COMMAND>];
 grep --color=<WHEN> --version;
 <WHEN> ::= always | never | auto;
 "#;
-        let g = Grammar::parse(INPUT).unwrap();
+        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(
             g.statements,
             [
@@ -1621,7 +1653,7 @@ grep --color=<WHEN> --version;
         const INPUT: &str = r#"
 grep --color=(always | never | auto);
 "#;
-        let g = Grammar::parse(INPUT).unwrap();
+        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(
             g.statements,
             [
@@ -1642,7 +1674,7 @@ strace -e <EXPR>;
 <qualifier> ::= trace | read | write | fault;
 <value> ::= %file | file | all;
 "#;
-        let g = Grammar::parse(INPUT).unwrap();
+        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements.len(), 4);
         assert_eq!(g.statements[0], CallVariant {
             head: ustr("strace"),
@@ -1675,7 +1707,7 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
 <STATE-SPEC> ::= [^]<STATE>;
 <STATE> ::= LISTEN | CLOSED;
 "#;
-        let g = Grammar::parse(INPUT).unwrap();
+        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements.len(), 4);
         assert_eq!(g.statements[0], CallVariant {
             head: ustr("lsof"),
@@ -1705,7 +1737,7 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
 cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
 <toolchain> ::= { rustup toolchain list | cut -d' ' -f1 };
 "#;
-        let g = Grammar::parse(INPUT).unwrap();
+        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(
             g.statements,
             vec![
@@ -1725,21 +1757,24 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
     #[test]
     fn parses_descr() {
         const INPUT: &str = r#""PATTERNS are extended regular expressions""#;
-        let ("", e) = description(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(e, "PATTERNS are extended regular expressions");
+        let (s, e) = description(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty());
+        assert_eq!(e.into_fragment(), "PATTERNS are extended regular expressions");
     }
 
     #[test]
     fn parses_term_descr() {
         const INPUT: &str = r#"--extended-regexp "PATTERNS are extended regular expressions""#;
-        let ("", e) = expr(INPUT).unwrap() else { unreachable!() };
+        let (s, e) = expr(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty());
         assert_eq!(e, Terminal(ustr("--extended-regexp"), Some(ustr("PATTERNS are extended regular expressions"))));
     }
 
     #[test]
     fn parses_term_descr_arg() {
         const INPUT: &str = r#"--context "print NUM lines of output context" <NUM>"#;
-        let ("", e) = expr(INPUT).unwrap() else { unreachable!() };
+        let (s, e) = expr(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty());
         assert_eq!(e, Sequence(vec![Rc::new(Terminal(ustr("--context"), Some(ustr("print NUM lines of output context")))), Rc::new(Nonterminal(ustr("NUM")))]));
     }
 
@@ -1748,7 +1783,7 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
         const INPUT: &str = r#"
 grep --extended-regexp "PATTERNS are extended regular expressions";
 "#;
-        let g = Grammar::parse(INPUT).unwrap();
+        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(
             g.statements,
             vec![
@@ -1764,14 +1799,14 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
 <OPTION> ::= --color <WHEN>;
 <OPTION> ::= always | never | auto;
 "#;
-        let g = Grammar::parse(INPUT).unwrap();
+        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert!(matches!(ValidGrammar::from_grammar(g), Err(Error::DuplicateNonterminalDefinition(nonterm, None)) if nonterm == "OPTION"));
     }
 
     #[test]
     fn issue_15() {
         const INPUT: &str = r#"foo\.sh [-h] ;"#;
-        let g = Grammar::parse(INPUT).unwrap();
+        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements, vec![
             Statement::CallVariant {
                 head: u("foo.sh"),
@@ -1783,9 +1818,10 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
     #[test]
     fn parses_nonterminal_shell_specific() {
         const INPUT: &str = r#"<FILE@bash>"#;
-        let ("", (nonterm, shell)) = specialized_nonterminal(INPUT).unwrap() else { panic!("parsing error"); };
-        assert_eq!(nonterm, "FILE");
-        assert_eq!(shell, "bash");
+        let (s, (nonterm, shell)) = specialized_nonterminal(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty());
+        assert_eq!(nonterm.into_fragment(), "FILE");
+        assert_eq!(shell.into_fragment(), "bash");
     }
 
     #[test]
@@ -1796,7 +1832,7 @@ ls <FILE>;
 <FILE@bash> ::= { compgen -A file "$1" };
 <FILE@fish> ::= { __fish_complete_path "$1" };
 "#;
-        let g = Grammar::parse(INPUT).unwrap();
+        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(
             g.statements,
             vec![
@@ -1819,7 +1855,8 @@ ls <FILE>;
     #[test]
     fn distributes_descriptions() {
         const INPUT: &str = r#"mygrep (--color=<WHEN> | --color <WHEN>) "use markers to highlight the matching strings""#;
-        let ("", e) = expr(INPUT).unwrap() else { unreachable!() };
+        let (s, e) = expr(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty());
         let distributed = distribute_descriptions(Rc::new(e));
         assert_eq!(distributed, Rc::new(Sequence(vec![Rc::new(Terminal(ustr("mygrep"), None)), Rc::new(Alternative(vec![Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="), Some(ustr("use markers to highlight the matching strings")))), Rc::new(Nonterminal(ustr("WHEN")))]))))), Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color"), Some(ustr("use markers to highlight the matching strings")))), Rc::new(Nonterminal(ustr("WHEN")))]))]))])));
     }
@@ -1827,7 +1864,8 @@ ls <FILE>;
     #[test]
     fn spends_distributed_description() {
         const INPUT: &str = r#"mygrep --help | (--color=<WHEN> | --color <WHEN>) "use markers to highlight the matching strings""#;
-        let ("", e) = expr(INPUT).unwrap() else { unreachable!() };
+        let (s, e) = expr(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty());
         let distributed = distribute_descriptions(Rc::new(e));
         assert_eq!(distributed, Rc::new(Alternative(vec![Rc::new(Sequence(vec![Rc::new(Terminal(ustr("mygrep"), None)), Rc::new(Terminal(ustr("--help"), None))])), Rc::new(Alternative(vec![Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="), Some(ustr("use markers to highlight the matching strings")))), Rc::new(Nonterminal(ustr("WHEN")))]))))), Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color"), Some(ustr("use markers to highlight the matching strings")))), Rc::new(Nonterminal(ustr("WHEN")))]))]))])));
     }
@@ -1835,7 +1873,8 @@ ls <FILE>;
     #[test]
     fn spends_distributed_description2() {
         const INPUT: &str = r#"mygrep (--help | (--color=<WHEN> | --color <WHEN>) "use markers to highlight the matching strings")"#;
-        let ("", e) = expr(INPUT).unwrap() else { unreachable!() };
+        let (s, e) = expr(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty());
         let distributed = distribute_descriptions(Rc::new(e));
         assert_eq!(distributed, Rc::new(Sequence(vec![Rc::new(Terminal(ustr("mygrep"), None)), Rc::new(Alternative(vec![Rc::new(Terminal(ustr("--help"), None)), Rc::new(Alternative(vec![Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="), Some(ustr("use markers to highlight the matching strings")))), Rc::new(Nonterminal(ustr("WHEN")))]))))), Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color"), Some(ustr("use markers to highlight the matching strings")))), Rc::new(Nonterminal(ustr("WHEN")))]))]))]))])));
     }
