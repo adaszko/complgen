@@ -53,3 +53,11 @@ def fish_completions_from_stdout(stdout: str) -> list[tuple[str, str]]:
         else:
             result.append((fields[0], fields[1]))
     return result
+
+
+def get_sorted_fish_completions(completions_script_path: Path, input: str) -> list[tuple[str, str]]:
+    completed_process = subprocess.run(['fish', '--private', '--no-config', '--init-command', 'source {}'.format(completions_script_path), '--command', input], stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
+    completions = completed_process.stdout.decode()
+    parsed = fish_completions_from_stdout(completions)
+    parsed.sort(key=lambda pair: pair[0])
+    return parsed
