@@ -153,11 +153,9 @@ further, e.g.:
 
 ```
 $ grep --help | complgen scrape
-[...]
-ggrep [<OPTION>] ... <PATTERNS> [<FILE>] ...
--E "are extended regular expressions" | --extended-regexp "are extended regular expressions" <PATTERNS>
--F "are strings" | --fixed-strings "are strings" <PATTERNS>
--G "are basic regular expressions" | --basic-regexp "are basic regular expressions" <PATTERNS>
+ | (-E | --extended-regexp) "PATTERNS are extended regular expressions"
+ | (-F | --fixed-strings) "PATTERNS are strings"
+ | (-G | --basic-regexp) "PATTERNS are basic regular expressions"
 [...]
 ```
 
