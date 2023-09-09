@@ -35,3 +35,10 @@ def set_working_dir(path: Path):
         yield
     finally:
         os.chdir(origin)
+
+
+def get_sorted_bash_completions(completions_file_path: Path, input: str) -> list[str]:
+    bash_process = subprocess.run(['bash', '--noprofile', '--rcfile', completions_file_path, '-i'], input=input.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
+    lines = bash_process.stdout.decode().splitlines()
+    lines.sort()
+    return lines
