@@ -238,6 +238,12 @@ def test_jit_completes_lsof_filter(complgen_binary_path: Path):
     assert expr == '''local -a completions=("-sTCP:CLOSED" "-sTCP:LISTEN" "-sTCP:^")\nlocal -a descriptions=("CLOSED" "LISTEN" "^")\ncompadd -Q -S '' -d descriptions -a completions\n'''
 
 
+def test_subword_completes_only_not_entered_yet(complgen_binary_path: Path):
+    GRAMMAR = r'''mygrep --color=(always | never | auto);'''
+    with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
+        assert get_sorted_completions(capture_zsh_path, 'mygrep --color=') == sorted(['--color=always always', '--color=never never', '--color=auto auto'])
+
+
 def test_subword_descriptions(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option=(arg1 "descr1" | arg2 "descr2");'''
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
