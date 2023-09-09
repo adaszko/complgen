@@ -283,8 +283,8 @@ fn scrape() -> anyhow::Result<()> {
         input
     };
 
-    let exprs = complgen::scrape::scrape(&input)?;
-    complgen::scrape::pretty_print(&exprs);
+    let mut writer = BufWriter::new(std::io::stdout());
+    complgen::scrape::scrape(&input, &mut writer)?;
     Ok(())
 }
 
