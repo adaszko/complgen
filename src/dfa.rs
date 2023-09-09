@@ -561,6 +561,16 @@ impl DFA {
         do_minimize(self)
     }
 
+    pub fn get_any_ambiguous_state(&self) -> Option<Vec<Input>> {
+        for (_, tos) in &self.transitions {
+            let matching_anything: Vec<Input> = tos.iter().filter(|(input, _)| input.matches_anything()).map(|(input, _)| input.clone()).collect();
+            if matching_anything.len() >= 2 {
+                return Some(matching_anything);
+            }
+        }
+        None
+    }
+
     pub fn iter_inputs(&self) -> impl Iterator<Item=(StateId, Input)> + '_ {
         self.transitions.iter().flat_map(|(from, tos)| tos.iter().map(|(input, _)| (*from, input.clone())))
     }
