@@ -1,8 +1,10 @@
 import os
 import sys
+import tempfile
 import subprocess
 import contextlib
 from pathlib import Path
+from typing import Generator
 
 import pytest
 
@@ -61,3 +63,18 @@ def get_sorted_fish_completions(completions_script_path: Path, input: str) -> li
     parsed = fish_completions_from_stdout(completions)
     parsed.sort(key=lambda pair: pair[0])
     return parsed
+
+
+@contextlib.contextmanager
+def capture_script_path(completion_script: str) -> Generator[Path, None, None]:
+    this_file = Path(__file__)
+    capture_preamble_path = this_file.parent.parent / 'capture_preamble.zsh'
+    capture_postamble_path = this_file.parent.parent / 'capture_postamble.zsh'
+    with tempfile.NamedTemporaryFile(mode='w') as f:
+        f.write(capture_preamble_path.read_text())
+        f.write("\n")
+        f.write(completion_script.replace("'", "''"))
+        f.write("\n")
+        f.write(capture_postamble_path.read_text())
+        f.flush()
+        yield Path(f.name)
