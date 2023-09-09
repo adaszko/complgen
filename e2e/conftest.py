@@ -42,3 +42,14 @@ def get_sorted_bash_completions(completions_file_path: Path, input: str) -> list
     lines = bash_process.stdout.decode().splitlines()
     lines.sort()
     return lines
+
+
+def fish_completions_from_stdout(stdout: str) -> list[tuple[str, str]]:
+    result = []
+    for line in stdout.splitlines():
+        fields = line.split('\t', maxsplit=2)
+        if len(fields) == 1:
+            result.append((fields[0], ''))
+        else:
+            result.append((fields[0], fields[1]))
+    return result
