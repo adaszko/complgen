@@ -54,7 +54,7 @@ def test_jit_completes_subdirectory_files(complgen_binary_path: Path):
 
 
 def test_jit_specializes_for_zsh(complgen_binary_path: Path):
-    expr = get_jit_zsh_completions_expr(complgen_binary_path, '''cmd <FOO>; <FOO> ::= { echo foo }; <FOO@zsh> ::= { compadd zsh };''', 0, [])
+    expr = get_jit_zsh_completions_expr(complgen_binary_path, '''cmd <FOO>; <FOO> ::= {{{ echo foo }}}; <FOO@zsh> ::= {{{ compadd zsh }}};''', 0, [])
     assert expr == '''local -a completions=("zsh")\ncompadd -Q -S '' -a completions\n'''
 
 
@@ -93,7 +93,7 @@ def test_jit_subword_descriptions(complgen_binary_path: Path):
 
 
 def test_jit_completes_subword_external_command(complgen_binary_path: Path):
-    GRAMMAR = r'''cmd --option={ echo -e "argument\tdescription" };'''
+    GRAMMAR = r'''cmd --option={{{ echo -e "argument\tdescription" }}};'''
     expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, 0, ['--option='])
     assert expr == '''local -a completions=("--option=argument")\nlocal -a descriptions=("argument -- description")\ncompadd -l -Q -d descriptions -a completions\n'''
 
@@ -101,8 +101,8 @@ def test_jit_completes_subword_external_command(complgen_binary_path: Path):
 def test_jit_subword_specialization(complgen_binary_path: Path):
     GRAMMAR = r'''
 cmd --option=<FOO>;
-<FOO> ::= { echo generic };
-<FOO@zsh> ::= { echo zsh };
+<FOO> ::= {{{ echo generic }}};
+<FOO@zsh> ::= {{{ echo zsh }}};
 '''
     expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, 0, ['--option='])
     assert expr == '''local -a completions=("zsh")\ncompadd -Q -S '' -a completions\n'''

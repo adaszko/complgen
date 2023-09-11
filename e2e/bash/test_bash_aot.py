@@ -70,7 +70,7 @@ cmd <COMMAND> [--help];
 
 def test_bash_external_command_produces_description(complgen_binary_path: Path):
     GRAMMAR = r'''
-cmd { echo -e "completion\tdescription" };
+cmd {{{ echo -e "completion\tdescription" }}};
 '''
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
         input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
@@ -78,7 +78,7 @@ cmd { echo -e "completion\tdescription" };
 
 
 def test_specializes_for_bash(complgen_binary_path: Path):
-    GRAMMAR = '''cmd <FOO>; <FOO> ::= { echo foo }; <FOO@bash> ::= { echo bash };'''
+    GRAMMAR = '''cmd <FOO>; <FOO> ::= {{{ echo foo }}}; <FOO@bash> ::= {{{ echo bash }}};'''
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
         input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_bash_completions(path, input) == sorted(['bash'])
@@ -87,7 +87,7 @@ def test_specializes_for_bash(complgen_binary_path: Path):
 def test_mycargo(complgen_binary_path: Path):
     GRAMMAR = r'''
 mycargo test <TESTNAME>;
-<TESTNAME> ::= { echo foo; echo bar };
+<TESTNAME> ::= {{{ echo foo; echo bar }}};
 '''
     with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
         assert get_sorted_bash_completions(completions_file_path, r'''COMP_WORDS=(mycargo test); COMP_CWORD=2; _mycargo; if [[ ${#COMPREPLY[@]} -gt 0 ]]; then printf '%s\n' "${COMPREPLY[@]}"; fi''') == sorted(['foo', 'bar'])
@@ -134,7 +134,7 @@ def test_subword_descriptions(complgen_binary_path: Path):
 
 
 def test_completes_subword_external_command(complgen_binary_path: Path):
-    GRAMMAR = r'''cmd --option={ echo -e "argument\tdescription" };'''
+    GRAMMAR = r'''cmd --option={{{ echo -e "argument\tdescription" }}};'''
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
         input = r'''COMP_WORDS=(cmd --option=); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_bash_completions(path, input) == sorted(['argument'])
@@ -143,8 +143,8 @@ def test_completes_subword_external_command(complgen_binary_path: Path):
 def test_subword_specialization(complgen_binary_path: Path):
     GRAMMAR = r'''
 cmd --option=<FOO>;
-<FOO> ::= { echo generic };
-<FOO@bash> ::= { echo bash };
+<FOO> ::= {{{ echo generic }}};
+<FOO@bash> ::= {{{ echo bash }}};
 '''
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
         input = r'''COMP_WORDS=(cmd --option=); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''

@@ -64,7 +64,7 @@ def test_jit_completes_directories_bash(complgen_binary_path: Path):
 
 
 def test_jit_specializes_for_bash(complgen_binary_path: Path):
-    GRAMMAR = '''cmd <FOO>; <FOO> ::= { echo foo }; <FOO@bash> ::= { echo bash };'''
+    GRAMMAR = '''cmd <FOO>; <FOO> ::= {{{ echo foo }}}; <FOO@bash> ::= {{{ echo bash }}};'''
     assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, 0, []) == sorted(['bash'])
 
 
@@ -91,7 +91,7 @@ def test_jit_subword_descriptions(complgen_binary_path: Path):
 
 
 def test_jit_completes_subword_external_command(complgen_binary_path: Path):
-    GRAMMAR = r'''cmd --option={ echo -e "argument\tdescription" };'''
+    GRAMMAR = r'''cmd --option={{{ echo -e "argument\tdescription" }}};'''
     process = subprocess.run([complgen_binary_path, 'complete', '-', 'bash', '--', '0', '--option='], input=GRAMMAR.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
     assert sorted(process.stdout.decode().splitlines()) == sorted(['--option=argument'])
 
@@ -99,8 +99,8 @@ def test_jit_completes_subword_external_command(complgen_binary_path: Path):
 def test_jit_specialization(complgen_binary_path: Path):
     GRAMMAR = r'''
 cmd --option=<FOO>;
-<FOO> ::= { echo generic };
-<FOO@bash> ::= { echo bash };
+<FOO> ::= {{{ echo generic }}};
+<FOO@bash> ::= {{{ echo bash }}};
 '''
     process = subprocess.run([complgen_binary_path, 'complete', '-', 'bash', '--', '0', '--option='], input=GRAMMAR.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
     assert sorted(process.stdout.decode().splitlines()) == sorted(['bash'])

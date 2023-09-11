@@ -4,7 +4,7 @@ use bumpalo::Bump;
 use itertools::Itertools;
 use nom::{
     branch::alt,
-    bytes::complete::{is_not, tag, take_while1, escaped, take_till, take_while, take_until, escaped_transform},
+    bytes::complete::{is_not, tag, take_while1, take_till, take_until, escaped_transform},
     character::complete::{char, multispace1, one_of},
     multi::{many0, fold_many0},
     IResult, combinator::{fail, opt, verify, value, map}, error::context, sequence::preceded, Finish, Parser,
@@ -350,17 +350,6 @@ fn nonterminal_expr(input: Span) -> IResult<Span, Expr> {
     Ok((input, Expr::Nonterminal(ustr(nonterm.into_fragment()))))
 }
 
-fn single_bracket_command(input: Span) -> IResult<Span, Span> {
-    fn is_command_char(c: char) -> bool {
-        c != '}'
-    }
-
-    let (input, _) = char('{')(input)?;
-    let (input, cmd) = escaped(take_while(is_command_char), ESCAPE_CHARACTER, one_of("{}"))(input)?;
-    let (input, _) = char('}')(input)?;
-    Ok((input, Span::new(cmd.into_fragment().trim())))
-}
-
 fn triple_bracket_command(input: Span) -> IResult<Span, Span> {
     let (input, _) = tag("{{{")(input)?;
     let (input, cmd) = take_until("}}}")(input)?;
@@ -369,7 +358,7 @@ fn triple_bracket_command(input: Span) -> IResult<Span, Span> {
 }
 
 fn command(input: Span) -> IResult<Span, Span> {
-    alt((triple_bracket_command, single_bracket_command))(input)
+    triple_bracket_command(input)
 }
 
 fn command_expr(input: Span) -> IResult<Span, Expr> {
@@ -1414,7 +1403,7 @@ pub mod tests {
 
     #[test]
     fn parses_command() {
-        const INPUT: &str = "{ rustup toolchain list | cut -d' ' -f1 }";
+        const INPUT: &str = "{{{ rustup toolchain list | cut -d' ' -f1 }}}";
         let (s, e) = command_expr(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
         assert_eq!(e, Command(u("rustup toolchain list | cut -d' ' -f1")));
@@ -1670,7 +1659,7 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
     #[test]
     fn parses_inline_shell_command() {
         const INPUT: &str = r#"
-cargo [+{ rustup toolchain list | cut -d' ' -f1 }] [<OPTIONS>] [<COMMAND>];
+cargo [+{{{ rustup toolchain list | cut -d' ' -f1 }}}] [<OPTIONS>] [<COMMAND>];
 "#;
         let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements.len(), 1);
@@ -1794,7 +1783,7 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
     fn parses_shell_command_nonterminal_definition() {
         const INPUT: &str = r#"
 cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
-<toolchain> ::= { rustup toolchain list | cut -d' ' -f1 };
+<toolchain> ::= {{{ rustup toolchain list | cut -d' ' -f1 }}};
 "#;
         let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(
@@ -1896,8 +1885,8 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
         use Statement::*;
         const INPUT: &str = r#"
 ls <FILE>;
-<FILE@bash> ::= { compgen -A file "$1" };
-<FILE@fish> ::= { __fish_complete_path "$1" };
+<FILE@bash> ::= {{{ compgen -A file "$1" }}};
+<FILE@fish> ::= {{{ __fish_complete_path "$1" }}};
 "#;
         let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(

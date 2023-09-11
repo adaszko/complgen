@@ -46,7 +46,7 @@ def temp_usage_file_path(complgen_binary_path: Path, grammar: str, command: str)
 def test_shell_integration(complgen_binary_path: Path):
     GRAMMAR = '''
 mycargo +<toolchain>;
-<toolchain> ::= { echo foo; echo bar };
+<toolchain> ::= {{{ echo foo; echo bar }}};
 '''
     with temp_usage_file_path(complgen_binary_path, GRAMMAR, 'mycargo') as usage_file_path:
         input = r'''COMP_WORDS=(mycargo +); COMP_CWORD=1; _complgen_jit_mycargo; printf '%s\n' "${COMPREPLY[@]}"'''

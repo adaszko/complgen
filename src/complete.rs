@@ -388,7 +388,7 @@ grep [<OPTION>]...;
     fn completes_after_command() {
         const GRAMMAR: &str = r#"
 cargo [<toolchain>] (--version | --help);
-<toolchain> ::= { rustup toolchain list | cut -d' ' -f1 | sed 's/^/+/' };
+<toolchain> ::= {{{ rustup toolchain list | cut -d' ' -f1 | sed 's/^/+/' }}};
 "#;
         let input = vec!["foo"];
         let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 1).into_iter().map(|completion| completion.get_completion()));

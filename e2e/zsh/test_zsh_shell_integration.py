@@ -9,7 +9,7 @@ from conftest import capture_script_path
 def test_shell_integration(complgen_binary_path: Path):
     GRAMMAR = '''
 mycargo +<toolchain>;
-<toolchain> ::= { echo foo; echo bar };
+<toolchain> ::= {{{ echo foo; echo bar }}};
 '''
     with tempfile.TemporaryDirectory() as usage_files_dir:
         (Path(usage_files_dir) / 'mycargo.usage').write_text(GRAMMAR)

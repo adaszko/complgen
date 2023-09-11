@@ -61,7 +61,7 @@ mygrep [<OPTION>]...;
 
 def test_zsh_external_command_produces_description(complgen_binary_path: Path):
     GRAMMAR = r'''
-cmd { echo -e "completion\tdescription" };
+cmd {{{ echo -e "completion\tdescription" }}};
 '''
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
         assert get_sorted_completions(capture_zsh_path, 'cmd ') == sorted(['completion completion -- description'])
@@ -103,16 +103,16 @@ def test_completes_file_with_spaces(complgen_binary_path: Path):
 
 
 def test_specializes_for_zsh(complgen_binary_path: Path):
-    with capture_grammar_completions(complgen_binary_path, '''cmd <FOO>; <FOO> ::= { echo foo }; <FOO@zsh> ::= { compadd zsh };''') as capture_zsh_path:
+    with capture_grammar_completions(complgen_binary_path, '''cmd <FOO>; <FOO> ::= {{{ echo foo }}}; <FOO@zsh> ::= {{{ compadd zsh }}};''') as capture_zsh_path:
         assert get_sorted_completions(capture_zsh_path, 'cmd ') == sorted(['zsh'])
 
 
 def test_mycargo(complgen_binary_path: Path):
     GRAMMAR = r'''
 cargo [<toolchain>] [<COMMAND>];
-<toolchain> ::= { echo toolchain };
+<toolchain> ::= {{{ echo toolchain }}};
 <COMMAND> ::= t "Run the tests" <TESTNAME>;
-<TESTNAME> ::= { echo testname };
+<TESTNAME> ::= {{{ echo testname }}};
 '''
 
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
@@ -161,7 +161,7 @@ def test_subword_descriptions(complgen_binary_path: Path):
         assert get_sorted_completions(capture_zsh_path, 'cmd --option=') == sorted(['--option=arg1 --option=arg1 -- descr1', '--option=arg2 --option=arg2 -- descr2'])
 
 def test_completes_subword_external_command(complgen_binary_path: Path):
-    GRAMMAR = r'''cmd --option={ echo -e "argument\tdescription" };'''
+    GRAMMAR = r'''cmd --option={{{ echo -e "argument\tdescription" }}};'''
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
         assert get_sorted_completions(capture_zsh_path, 'cmd --option=') == sorted(['--option=argument --option=argument -- description'])
 
@@ -169,8 +169,8 @@ def test_completes_subword_external_command(complgen_binary_path: Path):
 def test_subword_specialization(complgen_binary_path: Path):
     GRAMMAR = r'''
 cmd --option=<FOO>;
-<FOO> ::= { echo generic };
-<FOO@zsh> ::= { echo zsh };
+<FOO> ::= {{{ echo generic }}};
+<FOO@zsh> ::= {{{ echo zsh }}};
 '''
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
         assert get_sorted_completions(capture_zsh_path, 'cmd --option=') == sorted(['--option=zsh --option=zsh'])

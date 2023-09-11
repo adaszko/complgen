@@ -51,7 +51,7 @@ cmd [<OPTION>]...;
 
 def test_fish_external_command_produces_description(complgen_binary_path: Path):
     GRAMMAR = r'''
-cmd { echo -e "completion\tdescription" };
+cmd {{{ echo -e "completion\tdescription" }}};
 '''
 
     with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
@@ -87,7 +87,7 @@ def test_completes_directories(complgen_binary_path: Path):
 
 
 def test_specializes_for_fish(complgen_binary_path: Path):
-    GRAMMAR = '''cmd <FOO>; <FOO> ::= { echo foo }; <FOO@fish> ::= { echo fish };'''
+    GRAMMAR = '''cmd <FOO>; <FOO> ::= {{{ echo foo }}}; <FOO@fish> ::= {{{ echo fish }}};'''
     with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
         input = 'complete --command cmd --do-complete "cmd "'
         assert get_sorted_fish_completions(completions_file_path, input) == [('fish', '')]
@@ -137,7 +137,7 @@ def test_subword_descriptions(complgen_binary_path: Path):
         assert get_sorted_fish_completions(completions_file_path, input) == [('--option=arg1', 'descr1'), ('--option=arg2', 'descr2')]
 
 def test_completes_subword_external_command(complgen_binary_path: Path):
-    GRAMMAR = r'''cmd --option={ echo -e "argument\tdescription" };'''
+    GRAMMAR = r'''cmd --option={{{ echo -e "argument\tdescription" }}};'''
     with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
         input = 'complete --command cmd --do-complete "cmd --option="'
         assert get_sorted_fish_completions(completions_file_path, input) == [('--option=argument', 'description')]
@@ -146,8 +146,8 @@ def test_completes_subword_external_command(complgen_binary_path: Path):
 def test_subword_specialization(complgen_binary_path: Path):
     GRAMMAR = r'''
 cmd --option=<FOO>;
-<FOO> ::= { echo generic };
-<FOO@fish> ::= { echo fish };
+<FOO> ::= {{{ echo generic }}};
+<FOO@fish> ::= {{{ echo fish }}};
 '''
     with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
         input = 'complete --command cmd --do-complete "cmd --option="'

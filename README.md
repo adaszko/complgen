@@ -218,7 +218,7 @@ Note that `bash` does not support showing descriptions.
 It is possible to use entire shell commands as a source of completions:
 
 ```
-cargo { rustup toolchain list | cut -d' ' -f1 | sed 's/^/+/' };
+cargo {{{ rustup toolchain list | cut -d' ' -f1 | sed 's/^/+/' }}};
 ```
 
 The stdout of the pipeline above will be automatically filtered by the shell based on the prefix entered so
@@ -230,21 +230,11 @@ Sometimes, it's more efficient to take into account the entered prefix in the sh
 three shells (bash, fish, zsh), it's available in the `$1` variable:
 
 ```
-cargo { rustup toolchain list | cut -d' ' -f1 | grep "^$1" | sed 's/^/+/' };
+cargo {{{ rustup toolchain list | cut -d' ' -f1 | grep "^$1" | sed 's/^/+/' }}};
 ```
 
 Note that in general, it's best to leave the filtering up to the executing shell since it may be configured to
 perform some non-standard filtering.  zsh for example is capable of expanding `/u/l/b` to `/usr/local/bin`.
-
-##### Triple brackets
-
-To avoid cumbersome escaping, additional triple brackets syntax is also supported:
-
-```
-cargo {{{ rustup toolchain list | awk '{ print $1 }' | grep "^$1" | sed 's/^/+/' }}};
-```
-
-Its semantics are exactly like the ones of single brackets.
 
 ##### Descriptions
 
@@ -268,9 +258,9 @@ the nonterminal `<USER>` using few `nonterminal@shell` definitions:
 
 ```
 cmd <USER>;
-<USER@bash> ::= { compgen -A user "$1" | sort | uniq }; # bash produces duplicates for some reason
-<USER@fish> ::= { __fish_complete_users "$1" };
-<USER@zsh> ::= { _users };
+<USER@bash> ::= {{{ compgen -A user "$1" | sort | uniq }}}; # bash produces duplicates for some reason
+<USER@fish> ::= {{{ __fish_complete_users "$1" }}};
+<USER@zsh> ::= {{{ _users }}};
 ```
 
 ### `--option=ARGUMENT` and subwords

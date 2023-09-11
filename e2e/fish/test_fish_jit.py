@@ -44,7 +44,7 @@ def test_jit_completes_directories_fish(complgen_binary_path: Path):
 
 
 def test_jit_specializes_for_fish(complgen_binary_path: Path):
-    GRAMMAR = '''cmd <FOO>; <FOO> ::= { echo foo }; <FOO@fish> ::= { echo fish };'''
+    GRAMMAR = '''cmd <FOO>; <FOO> ::= {{{ echo foo }}}; <FOO@fish> ::= {{{ echo fish }}};'''
     assert get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR, 0, []) == sorted([('fish', '')])
 
 
@@ -78,14 +78,14 @@ def test_jit_subword_descriptions(complgen_binary_path: Path):
 
 
 def test_jit_completes_subword_external_command(complgen_binary_path: Path):
-    GRAMMAR = r'''cmd --option={ echo -e "argument\tdescription" };'''
+    GRAMMAR = r'''cmd --option={{{ echo -e "argument\tdescription" }}};'''
     assert get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR, 0, ['--option=']) == sorted([('--option=argument', 'description')])
 
 
 def test_jit_subword_specialization(complgen_binary_path: Path):
     GRAMMAR = r'''
 cmd --option=<FOO>;
-<FOO> ::= { echo generic };
-<FOO@fish> ::= { echo fish };
+<FOO> ::= {{{ echo generic }}};
+<FOO@fish> ::= {{{ echo fish }}};
 '''
     assert get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR, 0, ['--option=']) == sorted([('fish', '')])
