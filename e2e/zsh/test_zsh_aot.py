@@ -174,3 +174,10 @@ cmd --option=<FOO>;
 '''
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
         assert get_sorted_completions(capture_zsh_path, 'cmd --option=') == sorted(['--option=zsh --option=zsh'])
+
+def test_description_special_characters(complgen_binary_path: Path):
+    GRAMMAR = r'''
+cmd --option "$f\"\\";
+'''
+    with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
+        assert get_sorted_completions(capture_zsh_path, 'cmd --') == sorted(['--option --option -- $f\"\\'])

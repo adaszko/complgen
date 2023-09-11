@@ -22,7 +22,7 @@ def test_jit_completes_paths_zsh(complgen_binary_path: Path):
             os.mkdir('dir with spaces')
             expr = get_jit_zsh_completions_expr(complgen_binary_path, '''cmd <PATH> [--help];''', 0, [])
             assert expr.splitlines() == [
-                r'local -a completions=("\?\[\^a\]\*\{foo,\*bar\}" "dir\ with\ spaces" "filename\ with\ spaces")',
+                r'local -a completions=("\\?\\[\\^a\\]\\*\\{foo,\\*bar\\}" "dir\\ with\\ spaces" "filename\\ with\\ spaces")',
                 '''compadd -Q -S '' -a completions'''
             ]
 
@@ -35,7 +35,7 @@ def test_jit_completes_directories_zsh(complgen_binary_path: Path):
             Path('filename with spaces').write_text('dummy')
             expr = get_jit_zsh_completions_expr(complgen_binary_path, '''cmd <DIRECTORY> [--help];''', 0, [])
             assert expr.splitlines() == [
-                r'local -a completions=("\?\[\^a\]\*\{foo,\*bar\}" "dir\ with\ spaces")',
+                r'local -a completions=("\\?\\[\\^a\\]\\*\\{foo,\\*bar\\}" "dir\\ with\\ spaces")',
                 '''compadd -Q -S '' -a completions'''
             ]
 

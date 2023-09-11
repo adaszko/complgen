@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Descriptions can now contain escaped characters, e.g. a quote character or a backslash.
 - More readable parsing errors using the chic Rust crate
 - Scraper is now based on a bunch of regexes instead of a complicated parser.  This simplifies the code a lot.
 

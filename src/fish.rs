@@ -10,7 +10,7 @@ use crate::dfa::DFA;
 // variables are block-scoped, so set --local sets a variable local to even a single if statement (!)
 
 pub fn make_string_constant(s: &str) -> String {
-    format!(r#""{}""#, s.replace('\"', "\\\"").replace('$', "\\$"))
+    format!(r#""{}""#, s.replace('\\', "\\\\").replace('\"', "\\\"").replace('$', "\\$"))
 }
 
 

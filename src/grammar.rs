@@ -6,8 +6,8 @@ use nom::{
     branch::alt,
     bytes::complete::{is_not, tag, take_while1, escaped, take_till, take_while, take_until, escaped_transform},
     character::complete::{char, multispace1, one_of},
-    multi::many0,
-    IResult, combinator::{fail, opt}, error::context, sequence::preceded, Finish,
+    multi::{many0, fold_many0},
+    IResult, combinator::{fail, opt, verify, value, map}, error::context, sequence::preceded, Finish, Parser,
 };
 
 use crate::{Error, Result};
@@ -265,9 +265,68 @@ fn terminal(input: Span) -> IResult<Span, String> {
     Ok((input, term))
 }
 
-fn description(input: Span) -> IResult<Span, Span> {
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum StringFragment<'a> {
+    Literal(Span<'a>),
+    EscapedChar(char),
+    EscapedWS,
+}
+
+
+fn parse_literal(input: Span) -> IResult<Span, Span> {
+    verify(is_not("\"\\"), |s: &Span| !s.is_empty()).parse(input)
+}
+
+
+fn parse_escaped_char(input: Span) -> IResult<Span, char> {
+    preceded(
+        char('\\'),
+        alt((
+            value('\\', char('\\')),
+            value('"', char('"')),
+        )),
+    )
+    .parse(input)
+}
+
+fn parse_escaped_whitespace(
+    input: Span,
+) -> IResult<Span, Span> {
+    preceded(char('\\'), multispace1).parse(input)
+}
+
+
+fn parse_fragment(input: Span) -> IResult<Span, StringFragment> {
+    alt((
+        map(parse_literal, StringFragment::Literal),
+        map(parse_escaped_char, StringFragment::EscapedChar),
+        value(StringFragment::EscapedWS, parse_escaped_whitespace),
+    ))
+    .parse(input)
+}
+
+
+fn description_inner(input: Span) -> IResult<Span, String> {
+    let (input, inner) = fold_many0(
+        parse_fragment,
+        String::new,
+        |mut string, fragment| {
+            match fragment {
+                StringFragment::Literal(s) => string.push_str(&String::from_utf8_lossy(s.as_bytes())),
+                StringFragment::EscapedChar(c) => string.push(c),
+                StringFragment::EscapedWS => {}
+            }
+            Span::new(&string).to_string()
+        },
+    )(input)?;
+    Ok((input, inner))
+}
+
+
+fn description(input: Span) -> IResult<Span, String> {
     let (input, _) = char('"')(input)?;
-    let (input, descr) = escaped(take_till(|c| c == '"'), ESCAPE_CHARACTER, char('"'))(input)?;
+    let (input, descr) = description_inner(input)?;
     let (input, _) = char('"')(input)?;
     Ok((input, descr))
 }
@@ -275,7 +334,7 @@ fn description(input: Span) -> IResult<Span, Span> {
 fn terminal_opt_description_expr(input: Span) -> IResult<Span, Expr> {
     let (input, term) = terminal(input)?;
     let (input, descr) = opt(preceded(multiblanks0, description))(input)?;
-    let expr = Expr::Terminal(ustr(&term), descr.map(|span| ustr(span.into_fragment())));
+    let expr = Expr::Terminal(ustr(&term), descr.map(|span| ustr(&span)));
     Ok((input, expr))
 }
 
@@ -379,7 +438,7 @@ fn subword_sequence_expr_opt_description(input: Span) -> IResult<Span, Expr> {
     let (input, expr) = subword_sequence_expr(input)?;
     let (input, description) = opt(preceded(multiblanks0, description))(input)?;
     let result = match description {
-        Some(descr) => Expr::DistributiveDescription(Rc::new(expr), ustr(descr.into_fragment())),
+        Some(descr) => Expr::DistributiveDescription(Rc::new(expr), ustr(&descr)),
         None => expr,
     };
     Ok((input, result))
@@ -1759,7 +1818,15 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
         const INPUT: &str = r#""PATTERNS are extended regular expressions""#;
         let (s, e) = description(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
-        assert_eq!(e.into_fragment(), "PATTERNS are extended regular expressions");
+        assert_eq!(e, "PATTERNS are extended regular expressions");
+    }
+
+    #[test]
+    fn parses_special_characters_descr() {
+        const INPUT: &str = r#""$f\"\\""#;
+        let (s, e) = description(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty());
+        assert_eq!(e, r#"$f"\"#);
     }
 
     #[test]

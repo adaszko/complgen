@@ -152,3 +152,12 @@ cmd --option=<FOO>;
     with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
         input = 'complete --command cmd --do-complete "cmd --option="'
         assert get_sorted_fish_completions(completions_file_path, input) == [('--option=fish', '')]
+
+
+def test_description_special_characters(complgen_binary_path: Path):
+    GRAMMAR = r'''
+cmd --option "$f\"\\";
+'''
+    with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
+        input = 'complete --command cmd --do-complete "cmd --option"'
+        assert get_sorted_fish_completions(completions_file_path, input) == [('--option', '$f\"\\')]

@@ -10,7 +10,7 @@ use crate::dfa::DFA;
 
 
 pub fn make_string_constant(s: &str) -> String {
-    format!(r#""{}""#, s.replace('\"', "\\\"").replace('`', "\\`").replace('$', "\\$"))
+    format!(r#""{}""#, s.replace('\\', "\\\\").replace('\"', "\\\"").replace('`', "\\`").replace('$', "\\$"))
 }
 
 
