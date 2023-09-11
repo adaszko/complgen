@@ -21,10 +21,32 @@ pub enum Shell {
 
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Origin {
+    Literal,
+    ExternalCommand,
+    SpecializedCommand,
+    Subword,
+}
+
+
+impl Origin {
+    pub fn has_zsh_trailing_space(&self) -> bool {
+        match self {
+            Origin::Literal => true,
+            Origin::ExternalCommand => false,
+            Origin::SpecializedCommand => false,
+            Origin::Subword => false,
+        }
+    }
+}
+
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Completion {
     pub matched_subword_prefix: String,
     pub completed_subword_suffix: String,
     pub description: String,
+    pub origin: Origin,
 }
 
 
@@ -43,6 +65,10 @@ impl Completion {
 
     pub fn is_zsh_separate_line_completion(&self) -> bool {
         !self.description.is_empty()
+    }
+
+    pub fn has_zsh_trailing_space(&self) -> bool {
+        self.origin.has_zsh_trailing_space()
     }
 }
 
@@ -193,6 +219,7 @@ fn capture_specialized_completions(shell: Shell, specialization: &Specialization
             matched_subword_prefix: "".to_string(),
             completed_subword_suffix: completion,
             description,
+            origin: Origin::SpecializedCommand,
         });
     }
     Ok(())
@@ -244,10 +271,16 @@ fn get_completions_for_input(input: &Input, entered_prefix: &str, matched_subwor
 
         Input::Literal(literal, description) if literal.starts_with(entered_prefix) => {
             let description = description.unwrap_or(ustr("")).as_str().to_string();
+            let origin = if matched_subword_prefix.is_empty() {
+                Origin::Literal
+            } else {
+                Origin::Subword
+            };
             output.push(Completion {
                 matched_subword_prefix: matched_subword_prefix.to_string(),
                 completed_subword_suffix: literal.to_string(),
                 description,
+                origin,
             })
         },
         Input::Literal(_, _) => {},
@@ -266,6 +299,7 @@ fn get_completions_for_input(input: &Input, entered_prefix: &str, matched_subwor
                     matched_subword_prefix: matched_subword_prefix.to_string(),
                     completed_subword_suffix: completion,
                     description,
+                    origin: Origin::ExternalCommand,
                 });
             }
         },
@@ -355,7 +389,7 @@ mod tests {
     #[test]
     fn completes_darcs_add() {
         const GRAMMAR: &str = r#"darcs add ( --boring | ( --case-ok | --reserved-ok ) | ( ( -r | --recursive ) | --not-recursive ) | ( --date-trick | --no-date-trick ) | --repodir <DIRECTORY> | --dry-run | --umask <UMASK> | ( --debug | --debug-verbose | --debug-http | ( -v | --verbose ) | ( -q | --quiet ) | --standard-verbosity ) | --timings | ( --posthook <COMMAND> | --no-posthook ) | ( --prompt-posthook | --run-posthook ) | ( --prehook <COMMAND> | --no-prehook ) | ( --prompt-prehook | --run-prehook ) ) ... ( <FILE> | <DIRECTORY> )...;"#;
-        assert_eq!(get_grammar_completions(GRAMMAR, &[], 0), vec![Completion {matched_subword_prefix: "".to_string(), completed_subword_suffix: "add".to_string(), description: "".to_string()}]);
+        assert_eq!(get_grammar_completions(GRAMMAR, &[], 0), vec![Completion {matched_subword_prefix: "".to_string(), completed_subword_suffix: "add".to_string(), description: "".to_string(), origin: Origin::Literal}]);
 
         let input = vec!["add"];
         let generated: HashSet<_> = HashSet::from_iter(get_grammar_completions(GRAMMAR, &input, 1).into_iter().map(|completion| completion.get_completion()));
