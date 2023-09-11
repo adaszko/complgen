@@ -164,14 +164,21 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
 
                 if !same_line.is_empty() {
                     let completions_array_initializer = itertools::join(same_line.iter().map(|completion| make_string_constant(&completion.get_completion())), " ");
+                    let add_trailing_space = same_line.len() == 1;
                     println!(r#"local -a completions=({completions_array_initializer})"#);
                     let descriptions_array_initializer = itertools::join(same_line.into_iter().map(|completion| make_string_constant(&completion.completed_subword_suffix)), " ");
                     println!(r#"local -a descriptions=({descriptions_array_initializer})"#);
-                    println!(r#"compadd -Q -S '' -d descriptions -a completions"#);
+                    if add_trailing_space {
+                        println!(r#"compadd -Q -d descriptions -a completions"#);
+                    }
+                    else {
+                        println!(r#"compadd -Q -S '' -d descriptions -a completions"#);
+                    }
                 }
 
                 if !separate_line.is_empty() {
                     let completions_array_initializer = itertools::join(separate_line.iter().map(|completion| make_string_constant(&completion.get_completion())), " ");
+                    let add_trailing_space = separate_line.len() == 1;
                     println!(r#"local -a completions=({completions_array_initializer})"#);
 
                     let maxlen = separate_line.iter().map(|compl| compl.completed_subword_suffix.len()).max().unwrap_or(0);
@@ -184,7 +191,12 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
 
                     let descriptions_array_initializer = itertools::join(descriptions.into_iter().map(|s| make_string_constant(&s)), " ");
                     println!(r#"local -a descriptions=({descriptions_array_initializer})"#);
-                    println!(r#"compadd -l -Q -S '' -d descriptions -a completions"#);
+                    if add_trailing_space {
+                        println!(r#"compadd -l -Q -d descriptions -a completions"#);
+                    }
+                    else {
+                        println!(r#"compadd -l -Q -S '' -d descriptions -a completions"#);
+                    }
                 }
             }
         },

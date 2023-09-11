@@ -95,7 +95,7 @@ def test_jit_subword_descriptions(complgen_binary_path: Path):
 def test_jit_completes_subword_external_command(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option={ echo -e "argument\tdescription" };'''
     expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, 0, ['--option='])
-    assert expr == '''local -a completions=("--option=argument")\nlocal -a descriptions=("argument -- description")\ncompadd -l -Q -S '' -d descriptions -a completions\n'''
+    assert expr == '''local -a completions=("--option=argument")\nlocal -a descriptions=("argument -- description")\ncompadd -l -Q -d descriptions -a completions\n'''
 
 
 def test_jit_subword_specialization(complgen_binary_path: Path):
