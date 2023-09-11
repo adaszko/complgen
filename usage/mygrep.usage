@@ -48,8 +48,6 @@ mygrep [<OPTION>]... <PATTERNS> [<PATH>]...;
            | (-U | --binary)                                                                "do not strip CR characters at EOL (MSDOS/Windows)"
            ;
 
-<NUM> ::= (0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9)... "print NUM lines of output context";
-
 <ACTION-DIRECTORIES> ::= read "read directories in the same manner as normal files"
                        | recurse "read directories recursively (same effect as -R and -r option)"
                        | skip "silently ignore the directories";
