@@ -64,7 +64,8 @@ def test_zsh_external_command_produces_description(complgen_binary_path: Path):
 cmd {{{ echo -e "completion\tdescription" }}};
 '''
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
-        assert get_sorted_completions(capture_zsh_path, 'cmd ') == sorted(['completion description   '])
+        actual = [s.split() for s in get_sorted_completions(capture_zsh_path, 'cmd ')]
+        assert actual == sorted([['completion', 'completion', 'description']])
 
 
 def test_completes_paths(complgen_binary_path: Path):
@@ -126,7 +127,7 @@ cargo test --test testname;
 <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 '''
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
-        assert get_sorted_completions(capture_zsh_path, 'cargo +stable-aarch64-apple-darwin ') == sorted(['foo foo   '])
+        assert get_sorted_completions(capture_zsh_path, 'cargo +stable-aarch64-apple-darwin ') == sorted(['foo'])
 
 
 def test_completes_prefix(complgen_binary_path: Path):
@@ -135,21 +136,25 @@ cargo +<toolchain>;
 <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 '''
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
-        assert get_sorted_completions(capture_zsh_path, 'cargo +') == sorted(['+stable-aarch64-apple-darwin +stable-aarch64-apple-darwin   +stable-aarch64-apple-darwin', '+stable-x86_64-apple-darwin +stable-x86_64-apple-darwin    +stable-x86_64-apple-darwin'])
+        actual = [s.split() for s in get_sorted_completions(capture_zsh_path, 'cargo +')]
+        assert actual == sorted([
+            ['+stable-aarch64-apple-darwin'],
+            ['+stable-x86_64-apple-darwin'],
+        ])
 
 
 def test_completes_strace_expr(complgen_binary_path: Path):
     with capture_grammar_completions(complgen_binary_path, STRACE_EXPR_GRAMMAR) as capture_zsh_path:
         actual = [s.split() for s in get_sorted_completions(capture_zsh_path, 'strace -e ')]
         assert actual == sorted([
-            ['%file', '%file', '%file'],
-            ['!', '!', '!'],
-            ['all', 'all', 'all'],
-            ['fault', 'fault', 'fault'],
-            ['file', 'file', 'file'],
-            ['read', 'read', 'read'],
-            ['trace', 'trace', 'trace'],
-            ['write', 'write', 'write'],
+            ['%file'],
+            ['!'],
+            ['all'],
+            ['fault'],
+            ['file'],
+            ['read'],
+            ['trace'],
+            ['write'],
         ])
 
 
@@ -157,9 +162,9 @@ def test_completes_lsof_filter(complgen_binary_path: Path):
     with capture_grammar_completions(complgen_binary_path, LSOF_FILTER_GRAMMAR) as capture_zsh_path:
         actual = [s.split() for s in get_sorted_completions(capture_zsh_path, 'lsf -sTCP:')]
         assert actual == sorted([
-            ['-sTCP:LISTEN', '-sTCP:LISTEN', '-sTCP:LISTEN'],
-            ['-sTCP:CLOSED', '-sTCP:CLOSED', '-sTCP:CLOSED'],
-            ['-sTCP:^', '-sTCP:^', '-sTCP:^'],
+            ['-sTCP:LISTEN'],
+            ['-sTCP:CLOSED'],
+            ['-sTCP:^'],
         ])
 
 
@@ -196,7 +201,7 @@ cmd --option=<FOO>;
 '''
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
         actual = [s.split() for s in get_sorted_completions(capture_zsh_path, 'cmd --option=')]
-        assert actual == sorted([['--option=zsh', '--option=zsh', '--option=zsh']])
+        assert actual == sorted([['--option=zsh']])
 
 def test_description_special_characters(complgen_binary_path: Path):
     GRAMMAR = r'''

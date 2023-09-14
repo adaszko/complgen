@@ -312,6 +312,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
     write!(buffer, r#"
     local -a args=()
+    local -a no_descr_args=()
     local -a descrs=()
 
     if [[ -v "literal_transitions[$state]" ]]; then
@@ -324,8 +325,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                 args+=("${{literals[$literal_id]}}")
                 descrs+=("${{literals[$literal_id]//:/\\:}}:${{descriptions[$literal_id]}}")
             else
-                args+=("${{literals[$literal_id]}}")
-                descrs+=("${{literals[$literal_id]//:/\\:}}:")
+                no_descr_args+=("${{literals[$literal_id]}}")
             fi
         done
     fi
@@ -342,13 +342,12 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             local output=$(_{command}_subword_${{subword_id}} complete "${{words[$CURRENT]}}")
             local -a subword_completions=("${{(@f)output}}")
             for line in ${{subword_completions[@]}}; do
-                local a=$(echo "$line" | cut -f1)
-                args+=($a)
-                local d=$(echo "$line" | cut -f2-)
-                if [[ -n $d ]]; then
-                    descrs+=("${{a//:/\\:}}:$d")
+                local parts=(${{(@s:	:)line}})
+                if [[ -v "parts[2]" ]]; then
+                    args+=(${{parts[1]}})
+                    descrs+=("${{parts[1]//:/\\:}}:${{parts[2]}}")
                 else
-                    descrs+=("${{a//:/\\:}}:")
+                    no_descr_args+=(${{parts[1]}})
                 fi
             done
         done
@@ -366,13 +365,12 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         local output=$(_{command}_cmd_${{command_id}} "${{words[$CURRENT]}}")
         local -a command_completions=("${{(@f)output}}")
         for line in ${{command_completions[@]}}; do
-            local a=$(echo "$line" | cut -f1)
-            args+=($a)
-            local d=$(echo "$line" | cut -f2-)
-            if [[ -n $d ]]; then
-                descrs+=("${{d//:\\:}}:")
+            local parts=(${{(@s:	:)line}})
+            if [[ -n "parts[2]" ]]; then
+                args+=(${{parts[1]}})
+                descrs+=("${{parts[1]//:/\\:}}:${{parts[2]}}")
             else
-                descrs+=("${{a//:\\:}}:")
+                no_descr_args+=(${{parts[1]}})
             fi
         done
     fi
@@ -394,7 +392,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
 
     write!(buffer, r#"
-    _describe '' descrs args -Q
+    compadd -a -Q -S '' no_descr_args
+    _describe '' descrs args -Q -S ''
     return 0
 }}
 "#)?;
