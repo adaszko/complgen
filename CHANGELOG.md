@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- zsh,jit: If multiple literals have the same decription, they're now grouped into a single line (this can be
+- If multiple literals have the same decription, they're now grouped into a single line (this can be
   controlled with `zstyle ':completion:*' list-grouped true/false`)
 
 ### Removed

@@ -311,35 +311,23 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 "#)?;
 
     write!(buffer, r#"
+    local -a args=()
+    local -a descrs=()
+
     if [[ -v "literal_transitions[$state]" ]]; then
         local state_transitions_initializer=${{literal_transitions[$state]}}
         local -A state_transitions
         eval "state_transitions=$state_transitions_initializer"
 
-        local -a args=()
-        local -a descrs=()
         for literal_id in ${{(k)state_transitions}}; do
             if [[ -v "descriptions[$literal_id]" ]]; then
                 args+=("${{literals[$literal_id]}}")
-                descrs+=("${{descriptions[$literal_id]}}")
+                descrs+=("${{literals[$literal_id]//:/\\:}}:${{descriptions[$literal_id]}}")
             else
                 args+=("${{literals[$literal_id]}}")
-                descrs+=("${{literals[$literal_id]}}")
+                descrs+=("${{literals[$literal_id]//:/\\:}}:")
             fi
         done
-        local maxlen=${{#args[1]}}
-        for a in $args; do
-            if [[ ${{#a}} -gt $maxlen ]]; then
-                maxlen=${{#a}}
-            fi
-        done
-        for i in {{1..$#args}}; do
-            if [[ ${{args[$i]}} = ${{descrs[$i]}} ]]; then
-                continue
-            fi
-            descrs[$i]="${{(r($maxlen)( ))${{args[$i]}}}} -- ${{descrs[$i]}}"
-        done
-        compadd -l -d descrs -a args
     fi
 "#)?;
 
@@ -351,8 +339,6 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         eval "state_transitions=$state_transitions_initializer"
 
         for subword_id in ${{(k)state_transitions}}; do
-            local -a args=()
-            local -a descrs=()
             local output=$(_{command}_subword_${{subword_id}} complete "${{words[$CURRENT]}}")
             local -a subword_completions=("${{(@f)output}}")
             for line in ${{subword_completions[@]}}; do
@@ -360,24 +346,11 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                 args+=($a)
                 local d=$(echo "$line" | cut -f2-)
                 if [[ -n $d ]]; then
-                    descrs+=($d)
+                    descrs+=("${{a//:/\\:}}:$d")
                 else
-                    descrs+=($a)
+                    descrs+=("${{a//:/\\:}}:")
                 fi
             done
-            local maxlen=${{#args[1]}}
-            for a in $args; do
-                if [[ ${{#a}} -gt $maxlen ]]; then
-                    maxlen=${{#a}}
-                fi
-            done
-            for i in {{1..$#args}}; do
-                if [[ ${{args[$i]}} = ${{descrs[$i]}} ]]; then
-                    continue
-                fi
-                descrs[$i]="${{(r($maxlen)( ))${{args[$i]}}}} -- ${{descrs[$i]}}"
-            done
-            compadd -l -Q -S '' -d descrs -a args
         done
     fi
 "#)?;
@@ -390,8 +363,6 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         write!(buffer, r#"
     if [[ -v "commands[$state]" ]]; then
         local command_id=${{commands[$state]}}
-        local -a args=()
-        local -a descrs=()
         local output=$(_{command}_cmd_${{command_id}} "${{words[$CURRENT]}}")
         local -a command_completions=("${{(@f)output}}")
         for line in ${{command_completions[@]}}; do
@@ -399,24 +370,11 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             args+=($a)
             local d=$(echo "$line" | cut -f2-)
             if [[ -n $d ]]; then
-                descrs+=($d)
+                descrs+=("${{d//:\\:}}:")
             else
-                descrs+=($a)
+                descrs+=("${{a//:\\:}}:")
             fi
         done
-        local maxlen=${{#args[1]}}
-        for a in $args; do
-            if [[ ${{#a}} -gt $maxlen ]]; then
-                maxlen=${{#a}}
-            fi
-        done
-        for i in {{1..$#args}}; do
-            if [[ ${{args[$i]}} = ${{descrs[$i]}} ]]; then
-                continue
-            fi
-            descrs[$i]="${{(r($maxlen)( ))${{args[$i]}}}} -- ${{descrs[$i]}}"
-        done
-        compadd -l -d descrs -a args
     fi
 "#)?;
     }
@@ -436,6 +394,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
 
     write!(buffer, r#"
+    _describe '' descrs args -Q
     return 0
 }}
 "#)?;
