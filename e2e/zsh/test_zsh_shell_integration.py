@@ -32,4 +32,4 @@ done
             stdout = zsh_process.stdout.decode()
             completions = stdout.splitlines()
             completions.sort()
-            assert completions == ['+bar bar', '+foo foo']
+            assert completions == ['+bar bar   ', '+foo foo   ']

@@ -42,10 +42,6 @@ impl Completion {
         self.is_subword_completion() || !self.description.is_empty()
     }
 
-    pub fn is_zsh_separate_line_completion(&self) -> bool {
-        !self.description.is_empty()
-    }
-
     pub fn has_zsh_trailing_space(&self) -> bool {
         self.is_shell_word_ending
     }
