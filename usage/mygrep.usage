@@ -1,4 +1,4 @@
-mygrep [<OPTION>]... <PATTERNS> [<PATH>]...;
+mygrep [<OPTION>]... [--] <PATTERNS> [<PATH>]...;
 
 <OPTION> ::= (-E | --extended-regexp)                                                       "PATTERNS are extended regular expressions"
            | (-F | --fixed-strings)                                                         "PATTERNS are strings"

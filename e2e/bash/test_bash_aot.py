@@ -155,7 +155,7 @@ def test_mygrep_example(complgen_binary_path: Path, usage_directory_path: Path):
     GRAMMAR = (usage_directory_path / "mygrep.usage").read_text()
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
         input = r'''COMP_WORDS=(mygrep); COMP_CWORD=1; _mygrep; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_bash_completions(path, input) == sorted(['-E', '--extended-regexp', '-F', '--fixed-strings', '-G', '--basic-regexp',
+        assert get_sorted_bash_completions(path, input) == sorted(['--', '-E', '--extended-regexp', '-F', '--fixed-strings', '-G', '--basic-regexp',
 '-P', '--perl-regexp', '-e', '--regexp', '-f', '--file', '-i',
 '--ignore-case', '--no-ignore-case', '-w', '--word-regexp', '-x',
 '--line-regexp', '-z', '--null-data', '-s', '--no-messages', '-v',
