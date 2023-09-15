@@ -45,6 +45,14 @@ impl Completion {
     pub fn has_zsh_trailing_space(&self) -> bool {
         self.is_shell_word_ending
     }
+
+    pub fn is_zsh_compadd(&self) -> bool {
+        self.is_subword_completion() && self.description.is_empty()
+    }
+
+    pub fn get_zsh_compadd_description(&self) -> &str {
+        &self.completed_subword_suffix
+    }
 }
 
 

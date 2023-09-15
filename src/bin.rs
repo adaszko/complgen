@@ -112,7 +112,7 @@ fn check(args: &CheckArgs) -> anyhow::Result<()> {
 }
 
 
-fn print_zsh_completions_without_description(completions: &[&Completion], trailing_space: bool) {
+fn zsh_compadd(completions: &[&Completion], trailing_space: bool) {
     if completions.is_empty() {
         return;
     }
@@ -128,7 +128,27 @@ fn print_zsh_completions_without_description(completions: &[&Completion], traili
 }
 
 
-fn print_zsh_completions_with_description(completions: &[&Completion], trailing_space: bool) {
+fn zsh_compadd_with_description(completions: &[&Completion], trailing_space: bool) {
+    if completions.is_empty() {
+        return;
+    }
+
+    let completions_array_initializer = itertools::join(completions.iter().map(|completion| make_string_constant(&completion.get_completion())), " ");
+    println!(r#"local -a completions=({completions_array_initializer})"#);
+
+    let descriptions_array_initializer = itertools::join(completions.iter().map(|completion| make_string_constant(&completion.get_zsh_compadd_description())), " ");
+    println!(r#"local -a descriptions=({descriptions_array_initializer})"#);
+
+    if trailing_space {
+        println!(r#"compadd -Q -a -d descriptions completions"#);
+    }
+    else {
+        println!(r#"compadd -Q -S '' -a -d descriptions completions"#);
+    }
+}
+
+
+fn zsh_describe(completions: &[&Completion], trailing_space: bool) {
     if completions.is_empty() {
         return;
     }
@@ -194,14 +214,24 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
 
             if !without_description.is_empty() {
                 let (trailing_space, no_trailing_space): (Vec<&Completion>, Vec<&Completion>) = without_description.iter().partition(|completion| completion.has_zsh_trailing_space());
-                print_zsh_completions_without_description(&trailing_space, true);
-                print_zsh_completions_without_description(&no_trailing_space, false);
+                zsh_compadd(&trailing_space, true);
+                zsh_compadd(&no_trailing_space, false);
             }
 
             if !with_description.is_empty() {
-                let (trailing_space, no_trailing_space): (Vec<&Completion>, Vec<&Completion>) = with_description.iter().partition(|completion| completion.has_zsh_trailing_space());
-                print_zsh_completions_with_description(&trailing_space, true);
-                print_zsh_completions_with_description(&no_trailing_space, false);
+                let (compadd, describe): (Vec<&Completion>, Vec<&Completion>) = with_description.iter().partition(|completion| completion.is_zsh_compadd());
+
+                if !compadd.is_empty() {
+                    let (trailing_space, no_trailing_space): (Vec<&Completion>, Vec<&Completion>) = compadd.iter().partition(|completion| completion.has_zsh_trailing_space());
+                    zsh_compadd_with_description(&trailing_space, true);
+                    zsh_compadd_with_description(&no_trailing_space, false);
+                }
+
+                if !describe.is_empty() {
+                    let (trailing_space, no_trailing_space): (Vec<&Completion>, Vec<&Completion>) = describe.iter().partition(|completion| completion.has_zsh_trailing_space());
+                    zsh_describe(&trailing_space, true);
+                    zsh_describe(&no_trailing_space, false);
+                }
             }
         },
     }
