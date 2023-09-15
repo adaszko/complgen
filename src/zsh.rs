@@ -55,9 +55,13 @@ fn write_lookup_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
 
 fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DFA, command_id_from_state: &HashMap<StateId, usize>, spec_id_from_state: &HashMap<StateId, usize>) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{
-    [[ $# -ne 2 ]] && return 1
     local mode=$1
     local word=$2
+    local compadd_array_name=$3
+    local describe_completions_array_name=$4
+    local describe_descriptions_array_name=$5
+    local compadd_completions_array_name=$6
+    local compadd_descriptions_array_name=$7
 "#)?;
 
     write_lookup_tables(buffer, dfa)?;
@@ -122,10 +126,14 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
         for literal_id in ${{(k)state_transitions}}; do
             local literal=${{literals[$literal_id]}}
             if [[ $literal = "${{completed_prefix}}"* ]]; then
+                local completion="$matched_prefix$literal"
                 if [[ -v "descriptions[$literal_id]" ]]; then
-                    echo "$matched_prefix$literal\t${{descriptions[$literal_id]}}"
+                    local description="${{completion//:/\\:}}:${{descriptions[$literal_id]}}"
+                    eval "$describe_completions_array_name+=('${{completion}}')"
+                    eval "$describe_descriptions_array_name+=('${{description}}')"
                 else
-                    echo "$matched_prefix$literal"
+                    eval "$compadd_completions_array_name+=('${{completion}}')"
+                    eval "$compadd_descriptions_array_name+=('${{literal}}')"
                 fi
             fi
         done
@@ -142,7 +150,15 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
         local -a command_completions=("${{(@f)output}}")
         for line in ${{command_completions[@]}}; do
             if [[ $line = "${{completed_prefix}}"* ]]; then
-                echo "$matched_prefix$line"
+                local parts=(${{(@s:	:)line}})
+                if [[ -v "parts[2]" ]]; then
+                    local completion=$matched_prefix${{parts[1]}}
+                    local description="${{parts[1]//:/\\:}}:${{parts[2]}}"
+                    eval "$describe_completions_array_name+=('${{completion}}')"
+                    eval "$describe_descriptions_array_name+=('${{description}}')"
+                else
+                    eval "$compadd_array_name+=('${{line}}')"
+                fi
             fi
         done
     fi
@@ -160,7 +176,16 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
         local -a completions=("${{(@f)output}}")
         for line in ${{completions[@]}}; do
             if [[ $line = "${{completed_prefix}}"* ]]; then
-                echo "$matched_prefix$line"
+                line="$matched_prefix$line"
+                local parts=(${{(@s:	:)line}})
+                if [[ -v "parts[2]" ]]; then
+                    local completion=${{parts[1]}}
+                    local description="${{parts[1]//:/\\:}}:${{parts[2]}}"
+                    eval "$describe_completions_array_name+=('${{completion}}')"
+                    eval "$describe_descriptions_array_name+=('${{description}}')"
+                else
+                    eval "$compadd_array_name+=('${{line}}')"
+                fi
             fi
         done
     fi
@@ -311,9 +336,11 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 "#)?;
 
     write!(buffer, r#"
-    local -a args=()
-    local -a no_descr_args=()
-    local -a descrs=()
+    args=()
+    no_descr_args=()
+    descrs=()
+    compadd_completions=()
+    compadd_descriptions=()
 
     if [[ -v "literal_transitions[$state]" ]]; then
         local state_transitions_initializer=${{literal_transitions[$state]}}
@@ -339,17 +366,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         eval "state_transitions=$state_transitions_initializer"
 
         for subword_id in ${{(k)state_transitions}}; do
-            local output=$(_{command}_subword_${{subword_id}} complete "${{words[$CURRENT]}}")
-            local -a subword_completions=("${{(@f)output}}")
-            for line in ${{subword_completions[@]}}; do
-                local parts=(${{(@s:	:)line}})
-                if [[ -v "parts[2]" ]]; then
-                    args+=(${{parts[1]}})
-                    descrs+=("${{parts[1]//:/\\:}}:${{parts[2]}}")
-                else
-                    no_descr_args+=(${{parts[1]}})
-                fi
-            done
+            _{command}_subword_${{subword_id}} complete "${{words[$CURRENT]}}" no_descr_args args descrs compadd_completions compadd_descriptions
         done
     fi
 "#)?;
@@ -366,7 +383,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         local -a command_completions=("${{(@f)output}}")
         for line in ${{command_completions[@]}}; do
             local parts=(${{(@s:	:)line}})
-            if [[ -n "parts[2]" ]]; then
+            if [[ -v "parts[2]" ]]; then
                 args+=(${{parts[1]}})
                 descrs+=("${{parts[1]//:/\\:}}:${{parts[2]}}")
             else
@@ -393,6 +410,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
     write!(buffer, r#"
     compadd -a -Q -S '' no_descr_args
+    compadd -a -Q -S '' -d compadd_descriptions compadd_completions
     _describe '' descrs args -Q -S ''
     return 0
 }}

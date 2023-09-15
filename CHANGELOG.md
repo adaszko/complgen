@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Added
+
+- In zsh, for the grammar `--color=(always|never)` and input `--color=<TAB>`, you will now see `always` and
+  `never`, not `--color=always` and `--color=never`.   This generalized to all subword completions of course.
+- Descriptions can now contain escaped characters, e.g. a quote character or a backslash.
+- More readable parsing errors using the chic Rust crate
+- Scraper is now based on a bunch of regexes instead of a complicated parser.  This simplifies the code a lot.
+
 ### Changed
 
 - If multiple literals have the same decription, they're now grouped into a single line (this can be
@@ -15,12 +23,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - Single brackets external commands as they're superfluous (replaced with triple brackets ones)
-
-### Added
-
-- Descriptions can now contain escaped characters, e.g. a quote character or a backslash.
-- More readable parsing errors using the chic Rust crate
-- Scraper is now based on a bunch of regexes instead of a complicated parser.  This simplifies the code a lot.
 
 ## 0.1.3
 ### Fixed

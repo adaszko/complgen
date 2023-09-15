@@ -117,7 +117,7 @@ cargo [<toolchain>] [<COMMAND>];
 '''
 
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
-        assert get_sorted_completions(capture_zsh_path, 'cargo t ') == sorted(['testname testname   '])
+        assert get_sorted_completions(capture_zsh_path, 'cargo t ') == sorted(['testname'])
 
 
 def test_matches_prefix(complgen_binary_path: Path):
@@ -138,8 +138,8 @@ cargo +<toolchain>;
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
         actual = [s.split() for s in get_sorted_completions(capture_zsh_path, 'cargo +')]
         assert actual == sorted([
-            ['+stable-aarch64-apple-darwin'],
-            ['+stable-x86_64-apple-darwin'],
+            ['+stable-aarch64-apple-darwin', 'stable-aarch64-apple-darwin'],
+            ['+stable-x86_64-apple-darwin', 'stable-x86_64-apple-darwin'],
         ])
 
 
@@ -147,14 +147,14 @@ def test_completes_strace_expr(complgen_binary_path: Path):
     with capture_grammar_completions(complgen_binary_path, STRACE_EXPR_GRAMMAR) as capture_zsh_path:
         actual = [s.split() for s in get_sorted_completions(capture_zsh_path, 'strace -e ')]
         assert actual == sorted([
-            ['%file'],
-            ['!'],
-            ['all'],
-            ['fault'],
-            ['file'],
-            ['read'],
-            ['trace'],
-            ['write'],
+            ['%file', '%file'],
+            ['!', '!'],
+            ['all', 'all'],
+            ['fault', 'fault'],
+            ['file', 'file'],
+            ['read', 'read'],
+            ['trace', 'trace'],
+            ['write', 'write'],
         ])
 
 
@@ -162,13 +162,12 @@ def test_completes_lsof_filter(complgen_binary_path: Path):
     with capture_grammar_completions(complgen_binary_path, LSOF_FILTER_GRAMMAR) as capture_zsh_path:
         actual = [s.split() for s in get_sorted_completions(capture_zsh_path, 'lsf -sTCP:')]
         assert actual == sorted([
-            ['-sTCP:LISTEN'],
-            ['-sTCP:CLOSED'],
-            ['-sTCP:^'],
+            ['-sTCP:LISTEN', 'LISTEN'],
+            ['-sTCP:CLOSED', 'CLOSED'],
+            ['-sTCP:^', '^'],
         ])
 
 
-@pytest.mark.skip(reason="TODO")
 def test_subword_completes_only_not_entered_yet(complgen_binary_path: Path):
     GRAMMAR = r'''mygrep --color=(always | never | auto);'''
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
@@ -189,7 +188,7 @@ def test_completes_subword_external_command(complgen_binary_path: Path):
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
         actual = [s.split() for s in get_sorted_completions(capture_zsh_path, 'cmd --option=')]
         assert actual == sorted([
-            ['--option=argument', '--option=argument', 'description'],
+            ['--option=argument', 'argument', 'description'],
         ])
 
 
