@@ -2,6 +2,6 @@
 
 cmd <USER>;
 
-<USER@bash> ::= { compgen -A user "$1" | sort | uniq }; # bash produces duplicates for some reason
-<USER@fish> ::= { __fish_complete_users "$1" };
-<USER@zsh> ::= { _users };
+<USER@bash> ::= {{{ compgen -A user "$1" | sort | uniq }}}; # bash produces duplicates for some reason
+<USER@fish> ::= {{{ __fish_complete_users "$1" }}};
+<USER@zsh> ::= {{{ _users }}};
