@@ -1,0 +1,17 @@
+complgen complete <PATH> (bash | fish | zsh) <COMPLETED-WORD-INDEX> --;
+
+complgen compile <COMPILE-OPTION>... <PATH>;
+<COMPILE-OPTION> ::= (--bash-script <PATH>) "Write Bash completion script"
+                   | (--fish-script <PATH>) "Write Fish completion script"
+                   | (--zsh-script <PATH>) "Write ZSH completion script"
+                   | (--dfa-dot <PATH>) "Write computed DFA in a GraphViz format"
+                   | (--railroad-svg <PATH>) "Write parsed grammar as a railroad diagram"
+                   | (-h | --help) "Print help"
+                   ;
+
+complgen check [(-h | --help) "Print help"] <PATH>;
+
+complgen scrape [(-h | --help) "Print help"];
+complgen help <COMPLGEN_COMMAND>;
+
+<COMPLGEN_COMMAND> ::= complete | compile | check | scrape | help;
