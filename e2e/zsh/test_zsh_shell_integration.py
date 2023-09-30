@@ -22,7 +22,7 @@ _complgen_jit () {{
     return 0
 }}
 
-for f in {usage_files_dir}/*.usage; do
+for f in {usage_files_dir}/*.usage(N); do
     local stem=$f:t:r
     compdef "_complgen_jit $stem" $stem
 done

@@ -114,7 +114,7 @@ _complgen_jit () {
     return 0
 }
 
-for f in $HOME/.config/complgen/*.usage; do
+for f in $HOME/.config/complgen/*.usage(N); do
     local stem=$f:t:r
     compdef "_complgen_jit $stem" $stem
 done
