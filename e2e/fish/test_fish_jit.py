@@ -12,12 +12,10 @@ from common import LSOF_FILTER_GRAMMAR, STRACE_EXPR_GRAMMAR
 SPECIAL_CHARACTERS = '?[^a]*{foo,*bar}'
 
 
-def get_sorted_jit_fish_completions(complgen_binary_path: Path, grammar: str, words_before_cursor: list[str] = [], prefix: Optional[str] = None, suffix: Optional[str] = None) -> list[tuple[str, str]]:
+def get_sorted_jit_fish_completions(complgen_binary_path: Path, grammar: str, words_before_cursor: list[str] = [], prefix: Optional[str] = None) -> list[tuple[str, str]]:
     args = [complgen_binary_path, 'complete', '-', 'fish']
     if prefix is not None:
         args += ['--prefix={}'.format(prefix)]
-    if suffix is not None:
-        args += ['--suffix={}'.format(suffix)]
     args += ['--']
     args += words_before_cursor
     process = subprocess.run(args, input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)

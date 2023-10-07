@@ -37,9 +37,6 @@ struct CompleteShellArgs {
     #[arg(long)]
     prefix: Option<String>,
 
-    #[arg(long)]
-    suffix: Option<String>,
-
     words: Vec<String>,
 }
 

@@ -10,17 +10,14 @@ from conftest import set_working_dir
 from common import LSOF_FILTER_GRAMMAR, STRACE_EXPR_GRAMMAR
 
 
-def get_jit_zsh_completions_expr(complgen_binary_path: Path, grammar: str, words_before_cursor: list[str] = [], prefix: Optional[str] = None, suffix: Optional[str] = None) -> str:
+def get_jit_zsh_completions_expr(complgen_binary_path: Path, grammar: str, words_before_cursor: list[str] = [], prefix: Optional[str] = None) -> str:
     """
     words_before_cursor: shell words up to (but not including) the completed one
     prefix: if passed, means the completed word has this before the cursor
-    suffix: if passed, means the completed word has this after the cursor
     """
     args = [complgen_binary_path, 'complete', '-', 'zsh']
     if prefix is not None:
         args += ['--prefix={}'.format(prefix)]
-    if suffix is not None:
-        args += ['--suffix={}'.format(suffix)]
     args += ['--']
     args += words_before_cursor
     process = subprocess.run(args, input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
@@ -108,7 +105,7 @@ def test_jit_completes_in_word(complgen_binary_path: Path):
     GRAMMAR = '''
 cmd (prefix-infix-foo | prefix-infix-bar);
 '''
-    expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, prefix='prefix-', suffix='-suffix')
+    expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, prefix='prefix-')
     lines = expr.splitlines()
     assert lines == ['local -a completions=("prefix-infix-bar" "prefix-infix-foo")', 'compadd -Q -a completions']
 

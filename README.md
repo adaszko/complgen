@@ -116,7 +116,7 @@ Assumming your `.usage` files are stored in the `~/.config/complgen` directory, 
 _complgen_jit () {
     local stem=$1
     local -a w=("${(@)words[2,$CURRENT-1]}")
-    local zsh_code=$(complgen complete ~/.config/complgen/${stem}.usage zsh --prefix="$PREFIX" --suffix="$SUFFIX" -- "${w[@]}")
+    local zsh_code=$(complgen complete ~/.config/complgen/${stem}.usage zsh --prefix="$PREFIX" -- "${w[@]}")
     eval $zsh_code
     return 0
 }
