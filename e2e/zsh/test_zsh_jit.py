@@ -65,6 +65,16 @@ def test_jit_completes_subdirectory_files(complgen_binary_path: Path):
             ]
 
 
+def test_jit_tcsh_directory_completion(complgen_binary_path: Path):
+    with tempfile.TemporaryDirectory() as dir:
+        with set_working_dir(Path(dir)):
+            Path('foo/bar/baz').mkdir(parents=True)
+            expr = get_jit_zsh_completions_expr(complgen_binary_path, '''cmd <DIRECTORY>;''', prefix='f/b/b')
+            assert expr.splitlines() == [
+                r'local -a completions=("foo/bar/baz")',
+                '''compadd -Q -S '' -a completions'''
+            ]
+
 
 def test_jit_specializes_for_zsh(complgen_binary_path: Path):
     expr = get_jit_zsh_completions_expr(complgen_binary_path, '''cmd <FOO>; <FOO> ::= {{{ echo foo }}}; <FOO@zsh> ::= {{{ compadd zsh }}};''')
@@ -95,13 +105,12 @@ cargo +<toolchain>;
 
 
 def test_jit_completes_in_word(complgen_binary_path: Path):
-    # TODO setopt complete_in_word
     GRAMMAR = '''
-cmd prefix-infix-suffix;
+cmd (prefix-infix-foo | prefix-infix-bar);
 '''
     expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, prefix='prefix-', suffix='-suffix')
     lines = expr.splitlines()
-    assert lines == ['local -a completions=("prefix-infix-suffix")', 'compadd -Q -a completions']
+    assert lines == ['local -a completions=("prefix-infix-bar" "prefix-infix-foo")', 'compadd -Q -a completions']
 
 
 def test_jit_completes_strace_expr(complgen_binary_path: Path):

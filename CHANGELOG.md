@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - ZSH,JIT: Completing in the middle of a word (with `complete_in_word` option set) works now
+- ZSH,JIT: Completing paths tcsh style (f/b/b<TAB> -> foo/bar/baz) works now
 
 ## 0.1.5
 

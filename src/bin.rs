@@ -193,15 +193,15 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
     let regex = AugmentedRegex::from_expr(&validated.expr, &validated.specializations, &arena);
     let dfa = DFA::from_regex(&regex);
 
-    let (shell, prefix, suffix, words) = match &args.shell {
-        Shell::Bash(a) => (complgen::complete::Shell::Bash, &a.prefix, &a.suffix, &a.words),
-        Shell::Fish(a) => (complgen::complete::Shell::Fish, &a.prefix, &a.suffix, &a.words),
-        Shell::Zsh(a) => (complgen::complete::Shell::Zsh, &a.prefix, &a.suffix, &a.words),
+    let (shell, prefix, words) = match &args.shell {
+        Shell::Bash(a) => (complgen::complete::Shell::Bash, &a.prefix, &a.words),
+        Shell::Fish(a) => (complgen::complete::Shell::Fish, &a.prefix, &a.words),
+        Shell::Zsh(a) => (complgen::complete::Shell::Zsh, &a.prefix, &a.words),
     };
 
     let words_before_cursor: Vec<&str> = words.iter().map(|s| s.as_ref()).collect();
 
-    let completions = get_completions(&dfa, &words_before_cursor, prefix.as_deref().unwrap_or(""), suffix.as_deref().unwrap_or(""), shell)?;
+    let completions = get_completions(&dfa, &words_before_cursor, prefix.as_deref().unwrap_or(""), shell)?;
 
     match args.shell {
         Shell::Bash(_) => {
