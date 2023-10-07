@@ -14,8 +14,8 @@ for path in {usage_files_dir}/*.usage; do
 _complgen_jit_$stem () {{
     local words cword
     _get_comp_words_by_ref -n = words cword
-    local -a completions=(\$({complgen_binary_path} complete \"{usage_files_dir}/$stem.usage\" bash \$((COMP_CWORD - 1)) -- \${{COMP_WORDS[@]:1}}))
     local prefix="\${{COMP_WORDS[\$COMP_CWORD]}}"
+    local -a completions=(\$({complgen_binary_path} complete \"{usage_files_dir}/$stem.usage\" bash --prefix="\$prefix" -- \${{COMP_WORDS[@]:1:\$COMP_CWORD-1}}))
     for item in "\${{completions[@]}}"; do
         if [[ \$item = "\$prefix"* ]]; then
             COMPREPLY+=("\$item")
@@ -53,7 +53,7 @@ mycargo +<toolchain>;
         assert get_sorted_bash_completions(usage_file_path, input) == sorted(['+foo', '+bar'])
 
 
-def test_shell_integration_wordbreaks_chars(complgen_binary_path: Path):
+def test_wordbreaks_chars(complgen_binary_path: Path):
     GRAMMAR = '''
 mygrep --color "use markers to highlight the matching strings"=<WHEN>;
 <WHEN> ::= always | never | auto;

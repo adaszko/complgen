@@ -34,7 +34,12 @@ struct CheckArgs {
 
 #[derive(clap::Args)]
 struct CompleteShellArgs {
-    completed_word_index: usize,
+    #[arg(long)]
+    prefix: Option<String>,
+
+    #[arg(long)]
+    suffix: Option<String>,
+
     words: Vec<String>,
 }
 
@@ -188,15 +193,15 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
     let regex = AugmentedRegex::from_expr(&validated.expr, &validated.specializations, &arena);
     let dfa = DFA::from_regex(&regex);
 
-    let (shell, completed_word_index, words) = match &args.shell {
-        Shell::Bash(a) => (complgen::complete::Shell::Bash, a.completed_word_index, &a.words),
-        Shell::Fish(a) => (complgen::complete::Shell::Fish, a.completed_word_index, &a.words),
-        Shell::Zsh(a) => (complgen::complete::Shell::Zsh, a.completed_word_index, &a.words),
+    let (shell, prefix, suffix, words) = match &args.shell {
+        Shell::Bash(a) => (complgen::complete::Shell::Bash, &a.prefix, &a.suffix, &a.words),
+        Shell::Fish(a) => (complgen::complete::Shell::Fish, &a.prefix, &a.suffix, &a.words),
+        Shell::Zsh(a) => (complgen::complete::Shell::Zsh, &a.prefix, &a.suffix, &a.words),
     };
 
     let words_before_cursor: Vec<&str> = words.iter().map(|s| s.as_ref()).collect();
 
-    let completions = get_completions(&dfa, &words_before_cursor, completed_word_index, shell)?;
+    let completions = get_completions(&dfa, &words_before_cursor, prefix.as_deref().unwrap_or(""), suffix.as_deref().unwrap_or(""), shell)?;
 
     match args.shell {
         Shell::Bash(_) => {

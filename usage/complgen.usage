@@ -1,4 +1,7 @@
-complgen complete <PATH> (bash | fish | zsh) <COMPLETED-WORD-INDEX> --;
+complgen complete <PATH> (bash | fish | zsh) [<COMPLETE-OPTION>] --;
+<COMPLETE-OPTION> ::= --prefix=<PREFIX>
+                    | --suffix=<SUFFIX>
+                    ;
 
 complgen compile <COMPILE-OPTION>... <PATH>;
 <COMPILE-OPTION> ::= (--bash-script <PATH>) "Write Bash completion script"

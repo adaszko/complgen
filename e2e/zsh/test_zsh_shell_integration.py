@@ -16,8 +16,8 @@ mycargo +<toolchain>;
         INTEGRATION_SCRIPT = '''
 _complgen_jit () {{
     local stem=$1
-    local -a w=("${{(@)words[2,$#words]}}")
-    local zsh_code=$({complgen_binary_path} complete {usage_files_dir}/$stem.usage zsh $((CURRENT - 2)) -- "${{w[@]}}")
+    local -a w=("${{(@)words[2,$CURRENT-1]}}")
+    local zsh_code=$({complgen_binary_path} complete {usage_files_dir}/$stem.usage zsh --prefix="$PREFIX" --suffix="$SUFFIX" -- "${{w[@]}}")
     eval $zsh_code
     return 0
 }}

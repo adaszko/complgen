@@ -22,8 +22,14 @@ function _complgen_jit
         set COMP_CWORD (count $COMP_WORDS)
     end
     set --local usage_file_path $argv[1]
-    set COMP_CWORD (math $COMP_CWORD - 1)
-    {complgen_binary_path} complete $usage_file_path fish (math $COMP_CWORD - 1) -- $COMP_WORDS[2..]
+    set --local prefix $COMP_WORDS[$COMP_CWORD]
+    set --local last (math $COMP_CWORD - 1)
+    if test $last -lt 2
+        set words
+    else
+        set words $COMP_WORDS[2..$last]
+    end
+    {complgen_binary_path} complete $usage_file_path fish --prefix="$prefix" -- $words
 end
 
 for path in {usage_files_dir}/*.usage
