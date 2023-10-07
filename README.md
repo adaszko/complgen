@@ -293,6 +293,10 @@ strace -e <EXPR>;
 The above grammar was pulled straight out of [`strace` man page](https://man7.org/linux/man-pages/man1/strace.1.html#OPTIONS).
 
 Caveats:
+ * Bash requires `bash-completion` OS package to be installed because completion scripts produced by
+   `complgen` call shell functions from that package at completion time.  This manifests itself if your
+   generated completions contain any of the special characters normally present in `$COMP_WORDBREAKS`
+   environment variable.
  * Fish only allows [a limited set of
    characters](https://github.com/fish-shell/fish-shell/blob/408ab860906fbf6e08f314bea982220fdee3428e/src/complete.cpp#L183)
    within subwords.  Otherwise, it automatically inserts a space character that ends completion of the
