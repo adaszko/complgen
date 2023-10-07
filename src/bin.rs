@@ -230,9 +230,10 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
                 }
 
                 if !describe.is_empty() {
-                    let (trailing_space, no_trailing_space): (Vec<&Completion>, Vec<&Completion>) = describe.iter().partition(|completion| completion.has_zsh_trailing_space());
-                    zsh_describe(&trailing_space, true);
-                    zsh_describe(&no_trailing_space, false);
+                    // We pessimistically assume here no trailing space (i.e. -S option) because
+                    // _describe when called twice leads to garbled output (see comment in the
+                    // _describe source code).
+                    zsh_describe(&describe, false);
                 }
             }
         },

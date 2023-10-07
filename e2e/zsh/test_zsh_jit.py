@@ -133,13 +133,13 @@ def test_jit_completes_lsof_filter(complgen_binary_path: Path):
 def test_jit_subword_descriptions(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option=(arg1 "descr1" | arg2 "descr2");'''
     expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, prefix='--option=')
-    assert expr == '''local -a completions=("--option=arg1" "--option=arg2")\nlocal -a descriptions=("arg1:descr1" "arg2:descr2")\n_describe '' descriptions completions -Q\n'''
+    assert expr == '''local -a completions=("--option=arg1" "--option=arg2")\nlocal -a descriptions=("arg1:descr1" "arg2:descr2")\n_describe '' descriptions completions -Q -S ''\n'''
 
 
 def test_jit_completes_subword_external_command(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option={{{ echo -e "argument\tdescription" }}};'''
     expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, prefix='--option=')
-    assert expr == '''local -a completions=("--option=argument")\nlocal -a descriptions=("argument:description")\n_describe '' descriptions completions -Q\n'''
+    assert expr == '''local -a completions=("--option=argument")\nlocal -a descriptions=("argument:description")\n_describe '' descriptions completions -Q -S ''\n'''
 
 
 def test_jit_subword_specialization(complgen_binary_path: Path):
