@@ -26,7 +26,7 @@ always auto never
 ### 2. To generate completions on stdout by compiling the grammar "just-in-time":
 
 ```
-$ complgen complete usage/small.usage bash 1 -- --color
+$ complgen complete usage/small.usage bash -- --color
 always
 auto
 never
