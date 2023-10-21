@@ -330,3 +330,4 @@ Best way is to watch GitHub [releases](https://github.com/adaszko/complgen/relea
  * [argcomplete Python library](https://github.com/kislyuk/argcomplete)
  * [Oil's shellac protocol](https://github.com/oilshell/oil/wiki/Shell-Autocompletion)
  * [zsh's _regex_arguments and _regex_words completions](https://github.com/zsh-users/zsh-completions/blob/master/zsh-completions-howto.org#writing-completion-functions-using-_regex_arguments-and-_regex_words)
+ * [Little Language](https://wiki.c2.com/?LittleLanguage=)
