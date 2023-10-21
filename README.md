@@ -310,8 +310,7 @@ Caveats:
 
 ## Keeping abreast
 
-Subscribe to [`CHANGELOG.md` commits](https://github.com/adaszko/complgen/commits/master/CHANGELOG.md.atom)
-via your preferred feed reader.
+Best way is to watch GitHub [releases](https://github.com/adaszko/complgen/releases).
 
 ## Related Projects
 
