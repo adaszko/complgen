@@ -21,9 +21,16 @@ struct Cli {
 
 #[derive(clap::Subcommand)]
 enum Mode {
+    #[command(about = "Do not complete -- only check a grammar file for errors")]
     Check(CheckArgs),
+
+    #[command(about = "Emit completions on stdout")]
     Complete(CompleteArgs),
+
+    #[command(about = "Write autocompletions shell script file")]
     Compile(CompileArgs),
+
+    #[command(about = "Read `cmd --help` output of another command and emit a grammar")]
     Scrape,
 }
 
