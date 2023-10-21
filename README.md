@@ -187,14 +187,16 @@ Use parentheses to group patterns:
 
 There's a couple of predefined nonterminals that are handled specially by `complgen`:
 
- * `<PATH>` is completed as a file or directory path (bash, fish, zsh)
- * `<DIRECTORY>` is completed as a directory path (bash, fish, zsh)
- * `<PID>` is completed as a process id (fish, zsh)
- * `<USER>` is completed as a user name (bash, fish, zsh)
- * `<GROUP>` is completed as a group name (bash, fish, zsh)
- * `<HOST>` is completed as a hostname (bash, fish, zsh)
- * `<INTERFACE>` is completed as a network interface name (fish, zsh)
- * `<PACKAGE>` is completed as a package name (fish)
+| Name          | bash | fish | zsh | Description |
+|---------------|------|------|-----|-------------|
+|`<PATH>`       | ✅   | ✅   | ✅  | file or directory path |
+|`<DIRECTORY>`  | ✅   | ✅   | ✅  | directory path |
+|`<PID>`        | ❎   | ✅   | ✅  | process id |
+|`<USER>`       | ✅   | ✅   | ✅  | user name |
+|`<GROUP>`      | ✅   | ✅   | ✅  | group name |
+|`<HOST>`       | ✅   | ✅   | ✅  | hostname |
+|`<INTERFACE>`  | ❎   | ✅   | ✅  | network interface name |
+|`<PACKAGE>`    | ❎   | ✅   | ❎  | OS package name |
 
 The reason there's no predefined `<FILE>` nonterminal is that it would work only for files from the current
 directory which is too specific to be generally useful.
