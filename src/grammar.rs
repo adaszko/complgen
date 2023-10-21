@@ -83,7 +83,7 @@ pub enum Expr {
     /// `<PATH>`, `<DIRECTORY>`, etc.
     Nonterminal(Ustr),
 
-    /// `{ ls }`
+    /// `{{{ ls }}}`
     Command(Ustr),
 
     /// `foo bar`
