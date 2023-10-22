@@ -10,12 +10,8 @@ from pathlib import Path
 from conftest import set_working_dir
 
 
-def test_completes_in_word(complgen_binary_path: Path):
-    GRAMMAR = '''
-cmd prefix-infix-good;
-cmd prefix-infix-bad;
-'''
-    completion_script = subprocess.run([complgen_binary_path, 'compile', '--zsh-script', '-', '-'], input=GRAMMAR.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True).stdout.decode()
+def get_ansi_bracketed_pastes(complgen_binary_path: Path, grammar: str, input: bytes) -> list[str]:
+    completion_script = subprocess.run([complgen_binary_path, 'compile', '--zsh-script', '-', '-'], input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True).stdout.decode()
     (pid, fd) = pty.fork()
     if pid == 0:
         # We're in the child
@@ -36,9 +32,7 @@ cmd prefix-infix-bad;
                 pty_read = os.fdopen(os.dup(fd), mode='rb')
                 pty_write.write('autoload compinit; compinit; source {}\n'.format(completion_script_file.name).encode())
                 pty_write.flush()
-                LEFT_ARROW = '\x1b[D'
-                TAB = '	'
-                pty_write.write('cmd prefix--good{}{}'.format(LEFT_ARROW * 5, TAB).encode())
+                pty_write.write(input)
                 pty_write.flush()
                 pty_write.write('\n'.encode())
                 pty_write.write(b'')
@@ -47,12 +41,21 @@ cmd prefix-infix-bad;
                 bracketed_pastes = re.findall(rb'\x1b\[\?2004h(.*?)\x1b\[\?2004l', output, re.DOTALL)
                 bracketed_pastes = [bp for bp in bracketed_pastes if bp != b'']
                 bracketed_pastes = [bp.decode() for bp in bracketed_pastes]
-                print(bracketed_pastes)
-                assert bracketed_pastes == [
-                    'autoload compinit; compinit; source {}'.format(completion_script_file.name),
-                    'cmd prefix--goodinfix-good',
-                ]
+                bracketed_pastes = [bp for bp in bracketed_pastes if bp != 'autoload compinit; compinit; source {}'.format(completion_script_file.name)]
         finally:
             os.waitpid(pid, 0)
+        return bracketed_pastes
 
 
+
+def test_completes_in_word(complgen_binary_path: Path):
+    GRAMMAR = '''
+cmd prefix-infix-good;
+cmd prefix-infix-bad;
+'''
+    LEFT_ARROW = '\x1b[D'
+    TAB = '	'
+    bracketed_pastes = get_ansi_bracketed_pastes(complgen_binary_path, GRAMMAR, 'cmd prefix--good{}{}'.format(LEFT_ARROW * 5, TAB).encode())
+    assert bracketed_pastes == [
+        'cmd prefix--goodinfix-good',
+    ]
