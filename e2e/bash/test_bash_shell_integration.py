@@ -3,19 +3,25 @@ import tempfile
 from pathlib import Path
 from typing import Generator
 
-from conftest import get_sorted_bash_completions
+from conftest import get_sorted_bash_completions, get_bash_completion_sh_path
 
 
 def make_integration_script(complgen_binary_path: Path, usage_files_dir: Path):
     return r'''
+if [[ -f {bash_completion_sh_path} ]]; then
+    source {bash_completion_sh_path}
+else
+    exit 1
+fi
+
 for path in {usage_files_dir}/*.usage; do
     stem=$(basename "$path" .usage)
     eval "
 _complgen_jit_$stem () {{
     local words cword
     _get_comp_words_by_ref -n = words cword
-    local prefix="\${{COMP_WORDS[\$COMP_CWORD]}}"
-    local -a completions=(\$({complgen_binary_path} complete \"{usage_files_dir}/$stem.usage\" bash --prefix="\$prefix" -- \${{COMP_WORDS[@]:1:\$COMP_CWORD-1}}))
+    local prefix="\${{words[\$cword]}}"
+    local -a completions=(\$({complgen_binary_path} complete \"{usage_files_dir}/$stem.usage\" bash --prefix="\$prefix" -- \${{words[@]:1:\$cword-1}}))
     for item in "\${{completions[@]}}"; do
         if [[ \$item = "\$prefix"* ]]; then
             COMPREPLY+=("\$item")
@@ -28,7 +34,9 @@ _complgen_jit_$stem () {{
     complete -o nospace -F _complgen_jit_$stem "$stem"
     unset stem
 done
-'''.format(complgen_binary_path=complgen_binary_path, usage_files_dir=usage_files_dir)
+'''.format(complgen_binary_path=complgen_binary_path, bash_completion_sh_path=get_bash_completion_sh_path(), usage_files_dir=usage_files_dir)
+
+
 
 
 

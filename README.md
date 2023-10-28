@@ -50,8 +50,8 @@ for path in ~/.config/complgen/*.usage; do
 _complgen_jit_$stem () {
     local words cword
     _get_comp_words_by_ref -n = words cword
-    local prefix="\${COMP_WORDS[\$COMP_CWORD]}"
-    local -a completions=(\$(complgen complete \"$HOME/.config/complgen/${stem}.usage\" bash --prefix="\$prefix" -- \${COMP_WORDS[@]:1:\$COMP_CWORD-1}))
+    local prefix="\${words[\$cword]}"
+    local -a completions=(\$(complgen complete \"$HOME/.config/complgen/${stem}.usage\" bash --prefix="\$prefix" -- \${words[@]:1:\$cword-1}))
     for item in "\${completions[@]}"; do
         if [[ \$item = "\${prefix}"* ]]; then
             COMPREPLY+=("\$item")

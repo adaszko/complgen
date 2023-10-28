@@ -8,7 +8,7 @@ from typing import Generator
 
 import pytest
 
-from conftest import set_working_dir, get_sorted_bash_completions
+from conftest import set_working_dir, get_sorted_bash_completions, get_bash_completion_sh_path
 from common import LSOF_FILTER_GRAMMAR, STRACE_EXPR_GRAMMAR
 
 
@@ -16,12 +16,7 @@ from common import LSOF_FILTER_GRAMMAR, STRACE_EXPR_GRAMMAR
 def completion_script_path(complgen_binary_path: Path, grammar: str) -> Generator[Path, None, None]:
     bash_script = subprocess.run([complgen_binary_path, 'compile', '--bash-script', '-', '-'], input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True).stdout
     with tempfile.NamedTemporaryFile() as f:
-        if os.path.exists('/opt/homebrew/etc/profile.d/bash_completion.sh'):
-            f.write('source /opt/homebrew/etc/profile.d/bash_completion.sh\n'.encode())
-        elif os.path.exists('/etc/bash_completion'):
-            f.write('source /etc/bash_completion\n'.encode())
-        else:
-            assert False, "Don't know how to initialize bash completions"
+        f.write('source {}\n'.format(get_bash_completion_sh_path()).encode())
         f.write(bash_script)
         f.flush()
         yield Path(f.name)

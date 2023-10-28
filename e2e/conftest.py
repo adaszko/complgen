@@ -78,3 +78,12 @@ def capture_script_path(completion_script: str) -> Generator[Path, None, None]:
         f.write(capture_postamble_path.read_text())
         f.flush()
         yield Path(f.name)
+
+
+def get_bash_completion_sh_path() -> str:
+    if os.path.exists('/opt/homebrew/etc/profile.d/bash_completion.sh'):
+        return '/opt/homebrew/etc/profile.d/bash_completion.sh'
+    elif os.path.exists('/etc/bash_completion'):
+        return '/etc/bash_completion'
+    else:
+        assert False, "Make sure OS package bash-completion is installed"
