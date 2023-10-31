@@ -77,25 +77,25 @@ def test_jit_completes_prefix(complgen_binary_path: Path):
 cargo +<toolchain>;
 <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 '''
-    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='+') == sorted(['+stable-aarch64-apple-darwin', '+stable-x86_64-apple-darwin'])
+    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='+') == sorted(['stable-aarch64-apple-darwin', 'stable-x86_64-apple-darwin'])
 
 
 def test_jit_completes_strace_expr(complgen_binary_path: Path):
-    assert get_sorted_jit_bash_completions(complgen_binary_path, STRACE_EXPR_GRAMMAR, ['-e'], prefix='trace=') == sorted(['trace=!', 'trace=%file', 'trace=file', 'trace=all'])
+    assert get_sorted_jit_bash_completions(complgen_binary_path, STRACE_EXPR_GRAMMAR, ['-e'], prefix='trace=') == sorted(['!', '%file', 'file', 'all'])
 
 
 def test_jit_completes_lsf_filter(complgen_binary_path: Path):
-    assert get_sorted_jit_bash_completions(complgen_binary_path, LSOF_FILTER_GRAMMAR, prefix='-sTCP:') == sorted(['-sTCP:^', '-sTCP:LISTEN', '-sTCP:CLOSED'])
+    assert get_sorted_jit_bash_completions(complgen_binary_path, LSOF_FILTER_GRAMMAR, prefix='-sTCP:') == sorted(['^', 'LISTEN', 'CLOSED'])
 
 
 def test_jit_subword_descriptions(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option=(arg1 "descr1" | arg2 "descr2");'''
-    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='--option=') == sorted(['--option=arg1', '--option=arg2'])
+    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='--option=') == sorted(['arg1', 'arg2'])
 
 
 def test_jit_completes_subword_external_command(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option={{{ echo -e "argument\tdescription" }}};'''
-    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='--option=') == sorted(['--option=argument'])
+    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='--option=') == sorted(['argument'])
 
 
 def test_jit_specialization(complgen_binary_path: Path):

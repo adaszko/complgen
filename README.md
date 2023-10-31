@@ -51,12 +51,7 @@ _complgen_jit_$stem () {
     local words cword
     _get_comp_words_by_ref -n = words cword
     local prefix="\${words[\$cword]}"
-    local -a completions=(\$(complgen complete \"$HOME/.config/complgen/${stem}.usage\" bash --prefix="\$prefix" -- \${words[@]:1:\$cword-1}))
-    for item in "\${completions[@]}"; do
-        if [[ \$item = "\${prefix}"* ]]; then
-            COMPREPLY+=("\$item")
-        fi
-    done
+    COMPREPLY+=(\$(complgen complete \"$HOME/.config/complgen/${stem}.usage\" bash --prefix="\$prefix" -- \${words[@]:1:\$cword-1}))
     __ltrim_colon_completions "\$prefix"
     return 0
 }

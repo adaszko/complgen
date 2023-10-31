@@ -210,7 +210,13 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
     match args.shell {
         Shell::Bash(_) => {
             for completion in completions {
-                println!("{}", completion.get_completion());
+                let line = if completion.is_subword_completion() {
+                    completion.completed_subword_suffix
+                }
+                else {
+                    completion.get_completion()
+                };
+                println!("{}", line);
             }
         },
         Shell::Fish(_) => {

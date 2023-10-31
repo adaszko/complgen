@@ -21,12 +21,7 @@ _complgen_jit_$stem () {{
     local words cword
     _get_comp_words_by_ref -n = words cword
     local prefix="\${{words[\$cword]}}"
-    local -a completions=(\$({complgen_binary_path} complete \"{usage_files_dir}/$stem.usage\" bash --prefix="\$prefix" -- \${{words[@]:1:\$cword-1}}))
-    for item in "\${{completions[@]}}"; do
-        if [[ \$item = "\$prefix"* ]]; then
-            COMPREPLY+=("\$item")
-        fi
-    done
+    COMPREPLY+=(\$({complgen_binary_path} complete \"{usage_files_dir}/$stem.usage\" bash --prefix="\$prefix" -- \${{words[@]:1:\$cword-1}}))
     __ltrim_colon_completions "\$prefix"
     return 0
 }}
@@ -58,7 +53,7 @@ mycargo +<toolchain>;
 '''
     with temp_usage_file_path(complgen_binary_path, GRAMMAR, 'mycargo') as usage_file_path:
         input = r'''COMP_WORDS=(mycargo +); COMP_CWORD=1; _complgen_jit_mycargo; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_bash_completions(usage_file_path, input) == sorted(['+foo', '+bar'])
+        assert get_sorted_bash_completions(usage_file_path, input) == sorted(['foo', 'bar'])
 
 
 def test_wordbreaks_chars(complgen_binary_path: Path):
@@ -68,4 +63,4 @@ mygrep --color "use markers to highlight the matching strings"=<WHEN>;
 '''
     with temp_usage_file_path(complgen_binary_path, GRAMMAR, 'mygrep') as usage_file_path:
         input = r'''COMP_WORDS=(mygrep --color=); COMP_CWORD=1; _complgen_jit_mygrep; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_bash_completions(usage_file_path, input) == sorted(['--color=always', '--color=never', '--color=auto'])
+        assert get_sorted_bash_completions(usage_file_path, input) == sorted(['always', 'never', 'auto'])
