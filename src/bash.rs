@@ -402,6 +402,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     }
 
     write!(buffer, r#"
+    __ltrim_colon_completions "$prefix"
     return 0
 }}
 
