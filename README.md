@@ -326,3 +326,4 @@ Best way is to watch GitHub [releases](https://github.com/adaszko/complgen/relea
  * [Oil's shellac protocol](https://github.com/oilshell/oil/wiki/Shell-Autocompletion)
  * [zsh's _regex_arguments and _regex_words completions](https://github.com/zsh-users/zsh-completions/blob/master/zsh-completions-howto.org#writing-completion-functions-using-_regex_arguments-and-_regex_words)
  * [Little Language](https://wiki.c2.com/?LittleLanguage=)
+ * [sh-manpage-completions: Generate bash/zsh completions from man pages](https://github.com/nevesnunes/sh-manpage-completions)
