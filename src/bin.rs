@@ -179,7 +179,6 @@ fn zsh_describe(completions: &[&Completion], trailing_space: bool) {
     }
 }
 
-
 fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
     let mut input_file = get_file_or_stdin(&args.usage_file_path).context(args.usage_file_path.to_owned())?;
     let mut input: String = Default::default();
@@ -205,17 +204,24 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
 
     let words_before_cursor: Vec<&str> = words.iter().map(|s| s.as_ref()).collect();
 
-    let completions = get_completions(&dfa, &words_before_cursor, prefix.as_deref().unwrap_or(""), shell)?;
+    let word = prefix.as_deref().unwrap_or("");
+    let completions = get_completions(&dfa, &words_before_cursor, word, shell)?;
 
     match args.shell {
         Shell::Bash(_) => {
+            // Bash behaves weirdly depending on wheter a completion contains a special character
+            // from $COMP_WORDBREAKS or not.  If it does, it is necessary to strip from a
+            // completion string a longest prefix up to and including the last such special
+            // character.
             for completion in completions {
-                let line = if completion.is_subword_completion() {
-                    completion.completed_subword_suffix
-                }
-                else {
-                    completion.get_completion()
+                // Characters below come from the default value of $COMP_WORDBREAKS.  Changing its
+                // value is strongly discouraged anyway so we simply hard-code its value here.
+                let superfluous_prefix = match word.rfind(&['"', '\'', '>', '<', '=', ';', '|', '&', '(',':']) {
+                    Some(pos) => &word[..=pos],
+                    None => "",
                 };
+                let line = completion.get_completion();
+                let line = line.strip_prefix(superfluous_prefix).unwrap_or(&line);
                 println!("{}", line);
             }
         },

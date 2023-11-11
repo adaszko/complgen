@@ -77,7 +77,7 @@ def test_jit_completes_prefix(complgen_binary_path: Path):
 cargo +<toolchain>;
 <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 '''
-    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='+') == sorted(['stable-aarch64-apple-darwin', 'stable-x86_64-apple-darwin'])
+    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='+') == sorted(['+stable-aarch64-apple-darwin', '+stable-x86_64-apple-darwin'])
 
 
 def test_jit_completes_strace_expr(complgen_binary_path: Path):
@@ -105,3 +105,11 @@ cmd --option=<FOO>;
 <FOO@bash> ::= {{{ echo bash }}};
 '''
     assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='--option=') == sorted(['bash'])
+
+
+def test_github_issue_34(complgen_binary_path: Path):
+    GRAMMAR = r'''
+mygrep --color "use markers to highlight the matching strings"=<WHEN>;
+<WHEN> ::= always | never | auto;
+'''
+    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='--color') == sorted(['--color='])

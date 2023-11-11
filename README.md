@@ -49,10 +49,9 @@ for path in ~/.config/complgen/*.usage; do
     eval "
 _complgen_jit_$stem () {
     local words cword
-    _get_comp_words_by_ref -n = words cword
+    _get_comp_words_by_ref -n =: words cword
     local prefix="\${words[\$cword]}"
     COMPREPLY+=(\$(complgen complete \"$HOME/.config/complgen/${stem}.usage\" bash --prefix="\$prefix" -- \${words[@]:1:\$cword-1}))
-    __ltrim_colon_completions "\$prefix"
     return 0
 }
 "

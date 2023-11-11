@@ -53,7 +53,7 @@ mycargo +<toolchain>;
 '''
     with temp_usage_file_path(complgen_binary_path, GRAMMAR, 'mycargo') as usage_file_path:
         input = r'''COMP_WORDS=(mycargo +); COMP_CWORD=1; _complgen_jit_mycargo; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_bash_completions(usage_file_path, input) == sorted(['foo', 'bar'])
+        assert get_sorted_bash_completions(usage_file_path, input) == sorted(['+foo', '+bar'])
 
 
 def test_wordbreaks_chars(complgen_binary_path: Path):

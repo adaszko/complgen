@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## 0.1.7
 ### Fixed
 
+ - Bash,JIT: Shell integration should now handle $COMP_WORDBREAKS characters correctly
  - Bash,JIT: Fixed Bash shell integration
 
 ## 0.1.6
