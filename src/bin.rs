@@ -213,13 +213,14 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
             // from $COMP_WORDBREAKS or not.  If it does, it is necessary to strip from a
             // completion string a longest prefix up to and including the last such special
             // character.
+
+            // Characters below come from the default value of $COMP_WORDBREAKS.  Changing its
+            // value is strongly discouraged anyway so we simply hard-code its value here.
+            let superfluous_prefix = match word.rfind(&['"', '\'', '>', '<', '=', ';', '|', '&', '(',':']) {
+                Some(pos) => &word[..=pos],
+                None => "",
+            };
             for completion in completions {
-                // Characters below come from the default value of $COMP_WORDBREAKS.  Changing its
-                // value is strongly discouraged anyway so we simply hard-code its value here.
-                let superfluous_prefix = match word.rfind(&['"', '\'', '>', '<', '=', ';', '|', '&', '(',':']) {
-                    Some(pos) => &word[..=pos],
-                    None => "",
-                };
                 let line = completion.get_completion();
                 let line = line.strip_prefix(superfluous_prefix).unwrap_or(&line);
                 println!("{}", line);
