@@ -47,9 +47,21 @@ struct CompleteShellArgs {
     words: Vec<String>,
 }
 
+
+#[derive(clap::Args)]
+struct CompleteBashArgs {
+    #[arg(long)]
+    comp_wordbreaks: Option<String>,
+
+    #[arg(long)]
+    prefix: Option<String>,
+
+    words: Vec<String>,
+}
+
 #[derive(clap::Subcommand)]
 enum Shell {
-    Bash(CompleteShellArgs),
+    Bash(CompleteBashArgs),
     Fish(CompleteShellArgs),
     Zsh(CompleteShellArgs),
 }
@@ -208,15 +220,14 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
     let completions = get_completions(&dfa, &words_before_cursor, word, shell)?;
 
     match args.shell {
-        Shell::Bash(_) => {
+        Shell::Bash(ref args) => {
             // Bash behaves weirdly depending on wheter a completion contains a special character
             // from $COMP_WORDBREAKS or not.  If it does, it is necessary to strip from a
             // completion string a longest prefix up to and including the last such special
             // character.
 
-            // Characters below come from the default value of $COMP_WORDBREAKS.  Changing its
-            // value is strongly discouraged anyway so we simply hard-code its value here.
-            let superfluous_prefix = match word.rfind(&['"', '\'', '>', '<', '=', ';', '|', '&', '(',':']) {
+            let comp_wordbreaks: Vec<char> = args.comp_wordbreaks.as_deref().unwrap_or("").chars().collect();
+            let superfluous_prefix = match word.rfind(comp_wordbreaks.as_slice()) {
                 Some(pos) => &word[..=pos],
                 None => "",
             };

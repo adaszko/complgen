@@ -13,7 +13,8 @@ SPECIAL_CHARACTERS = '?[^a]*{foo,*bar}'
 
 
 def get_sorted_jit_bash_completions(complgen_binary_path: Path, grammar: str, words_before_cursor: list[str] = [], prefix: Optional[str] = None) -> list[str]:
-    args = [complgen_binary_path, 'complete', '-', 'bash']
+    comp_wordbreaks = ''' "'><=;|&(:'''
+    args = [complgen_binary_path, 'complete', '-', 'bash', '--comp-wordbreaks', comp_wordbreaks]
     if prefix is not None:
         args += ['--prefix={}'.format(prefix)]
     args += ['--']
