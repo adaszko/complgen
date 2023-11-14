@@ -14,7 +14,7 @@ from common import LSOF_FILTER_GRAMMAR, STRACE_EXPR_GRAMMAR
 
 @contextlib.contextmanager
 def completion_script_path(complgen_binary_path: Path, grammar: str) -> Generator[Path, None, None]:
-    bash_script = subprocess.run([complgen_binary_path, 'compile', '--bash-script', '-', '-'], input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True).stdout
+    bash_script = subprocess.run([complgen_binary_path, 'aot', '--bash-script', '-', '-'], input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True).stdout
     with tempfile.NamedTemporaryFile() as f:
         f.write('source {}\n'.format(get_bash_completion_sh_path()).encode())
         f.write(bash_script)

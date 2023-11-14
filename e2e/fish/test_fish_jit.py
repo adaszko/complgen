@@ -13,7 +13,7 @@ SPECIAL_CHARACTERS = '?[^a]*{foo,*bar}'
 
 
 def get_sorted_jit_fish_completions(complgen_binary_path: Path, grammar: str, words_before_cursor: list[str] = [], prefix: Optional[str] = None) -> list[tuple[str, str]]:
-    args = [complgen_binary_path, 'complete', '-', 'fish']
+    args = [complgen_binary_path, 'jit', '-', 'fish']
     if prefix is not None:
         args += ['--prefix={}'.format(prefix)]
     args += ['--']

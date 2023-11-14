@@ -25,10 +25,10 @@ enum Mode {
     Check(CheckArgs),
 
     #[command(about = "Emit completions on stdout")]
-    Complete(CompleteArgs),
+    Jit(JitArgs),
 
     #[command(about = "Write autocompletions shell script file")]
-    Compile(CompileArgs),
+    Aot(AotArgs),
 
     #[command(about = "Read `cmd --help` output of another command and emit a grammar")]
     Scrape,
@@ -67,7 +67,7 @@ enum Shell {
 }
 
 #[derive(clap::Args)]
-struct CompleteArgs {
+struct JitArgs {
     #[clap(long)]
     railroad_svg: Option<String>,
 
@@ -79,7 +79,7 @@ struct CompleteArgs {
 
 
 #[derive(clap::Args)]
-struct CompileArgs {
+struct AotArgs {
     usage_file_path: String,
 
     #[clap(long)]
@@ -191,7 +191,7 @@ fn zsh_describe(completions: &[&Completion], trailing_space: bool) {
     }
 }
 
-fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
+fn complete(args: &JitArgs) -> anyhow::Result<()> {
     let mut input_file = get_file_or_stdin(&args.usage_file_path).context(args.usage_file_path.to_owned())?;
     let mut input: String = Default::default();
     input_file.read_to_string(&mut input)?;
@@ -284,7 +284,7 @@ fn get_file_or_stdout(path: &str) -> anyhow::Result<Box<dyn Write>> {
 }
 
 
-fn compile(args: &CompileArgs) -> anyhow::Result<()> {
+fn compile(args: &AotArgs) -> anyhow::Result<()> {
     if let (None, None, None, None, None) = (&args.railroad_svg, &args.dfa_dot, &args.bash_script, &args.fish_script, &args.zsh_script) {
         eprintln!("Please specify at least one of --railroad-svg, --dfa-dot, --bash-script, --fish-script, --zsh-script options");
         std::process::exit(1);
@@ -378,8 +378,8 @@ fn main() -> anyhow::Result<()> {
     let args = Cli::parse();
     match args.mode {
         Mode::Check(args) => check(&args)?,
-        Mode::Complete(args) => complete(&args)?,
-        Mode::Compile(args) => compile(&args)?,
+        Mode::Jit(args) => complete(&args)?,
+        Mode::Aot(args) => compile(&args)?,
         Mode::Scrape => scrape()?,
     };
     Ok(())

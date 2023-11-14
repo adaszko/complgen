@@ -29,7 +29,7 @@ function _complgen_jit
     else
         set words $COMP_WORDS[2..$last]
     end
-    {complgen_binary_path} complete $usage_file_path fish --prefix="$prefix" -- $words
+    {complgen_binary_path} jit $usage_file_path fish --prefix="$prefix" -- $words
 end
 
 for path in {usage_files_dir}/*.usage

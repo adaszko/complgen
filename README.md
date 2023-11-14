@@ -16,7 +16,7 @@ There are two ways to use complgen:
 ### 1. To generate standalone completion scripts for bash/fish/zsh:
 
 ```
-$ complgen compile --bash-script grep.bash usage/small.usage
+$ complgen aot --bash-script grep.bash usage/small.usage
 $ bash
 $$ source grep.bash
 $$ grep --color <TAB>
@@ -26,7 +26,7 @@ always auto never
 ### 2. To generate completions on stdout by compiling the grammar "just-in-time":
 
 ```
-$ complgen complete usage/small.usage bash -- --color
+$ complgen jit usage/small.usage bash -- --color
 always
 auto
 never
@@ -58,7 +58,7 @@ _complgen_jit_$stem () {
     local words cword
     _get_comp_words_by_ref -n \"\$COMP_WORDBREAKS\" words cword
     local prefix="\${words[\$cword]}"
-    COMPREPLY+=(\$(complgen complete \"$HOME/.config/complgen/${stem}.usage\" bash --comp-wordbreaks="\$COMP_WORDBREAKS" --prefix="\$prefix" -- \"\${words[@]:1:\$cword-1}\"))
+    COMPREPLY+=(\$(complgen jit \"$HOME/.config/complgen/${stem}.usage\" bash --comp-wordbreaks="\$COMP_WORDBREAKS" --prefix="\$prefix" -- \"\${words[@]:1:\$cword-1}\"))
     return 0
 }
 "
@@ -92,7 +92,7 @@ function _complgen_jit
     else
         set words $COMP_WORDS[2..$last]
     end
-    complgen complete $usage_file_path fish --prefix="$prefix" -- $words
+    complgen jit $usage_file_path fish --prefix="$prefix" -- $words
 end
 
 for path in ~/.config/complgen/*.usage
@@ -112,7 +112,7 @@ Assumming your `.usage` files are stored in the `~/.config/complgen` directory, 
 _complgen_jit () {
     local stem=$1
     local -a w=("${(@)words[2,$CURRENT-1]}")
-    local zsh_code=$(complgen complete ~/.config/complgen/${stem}.usage zsh --prefix="$PREFIX" -- "${w[@]}")
+    local zsh_code=$(complgen jit ~/.config/complgen/${stem}.usage zsh --prefix="$PREFIX" -- "${w[@]}")
     eval $zsh_code
     return 0
 }

@@ -21,7 +21,7 @@ _complgen_jit_$stem () {{
     local words cword
     _get_comp_words_by_ref -n \"\$COMP_WORDBREAKS\" words cword
     local prefix=\"\${{words[\$cword]}}\"
-    COMPREPLY+=(\$({complgen_binary_path} complete \"{usage_files_dir}/$stem.usage\" bash --comp-wordbreaks=\"\$COMP_WORDBREAKS\" --prefix="\$prefix" -- \"\${{words[@]:1:\$cword-1}}\"))
+    COMPREPLY+=(\$({complgen_binary_path} jit \"{usage_files_dir}/$stem.usage\" bash --comp-wordbreaks=\"\$COMP_WORDBREAKS\" --prefix="\$prefix" -- \"\${{words[@]:1:\$cword-1}}\"))
     return 0
 }}
 "

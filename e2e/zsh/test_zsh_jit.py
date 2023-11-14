@@ -15,7 +15,7 @@ def get_jit_zsh_completions_expr(complgen_binary_path: Path, grammar: str, words
     words_before_cursor: shell words up to (but not including) the completed one
     prefix: if passed, means the completed word has this before the cursor
     """
-    args = [complgen_binary_path, 'complete', '-', 'zsh']
+    args = [complgen_binary_path, 'jit', '-', 'zsh']
     if prefix is not None:
         args += ['--prefix={}'.format(prefix)]
     args += ['--']

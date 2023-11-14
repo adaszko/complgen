@@ -17,7 +17,7 @@ mycargo +<toolchain>;
 _complgen_jit () {{
     local stem=$1
     local -a w=("${{(@)words[2,$CURRENT-1]}}")
-    local zsh_code=$({complgen_binary_path} complete {usage_files_dir}/$stem.usage zsh --prefix="$PREFIX" -- "${{w[@]}}")
+    local zsh_code=$({complgen_binary_path} jit {usage_files_dir}/$stem.usage zsh --prefix="$PREFIX" -- "${{w[@]}}")
     eval $zsh_code
     return 0
 }}

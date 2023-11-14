@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+### Changed
+
+ - **Breaking**: `complgen complete` has been renamed to `complgen jit` to better reflect it's for just-in-time completion
+ - **Breaking**: `complgen compile` has been renamed to `complgen aot` to better reflect it's for ahead-of-time completion script generation
+
 ### Fixed
 
  - Bash,AOT: Further improve $COMP_WORDBREAKS characters handling

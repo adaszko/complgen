@@ -20,7 +20,7 @@ def get_sorted_completions(generated_script_path: Path, input: str) -> list[str]
 
 @contextlib.contextmanager
 def capture_grammar_completions(complgen_binary_path: Path, grammar: str) -> Generator[Path, None, None]:
-    completion_script = subprocess.run([complgen_binary_path, 'compile', '--zsh-script', '-', '-'], input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True).stdout.decode()
+    completion_script = subprocess.run([complgen_binary_path, 'aot', '--zsh-script', '-', '-'], input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True).stdout.decode()
     with capture_script_path(completion_script) as path:
         yield path
 

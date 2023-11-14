@@ -12,7 +12,7 @@ from common import LSOF_FILTER_GRAMMAR, STRACE_EXPR_GRAMMAR
 
 @contextlib.contextmanager
 def completion_script_path(complgen_binary_path: Path, grammar: str) -> Generator[Path, None, None]:
-    fish_script = subprocess.run([complgen_binary_path, 'compile', '--fish-script', '-', '-'], input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True).stdout
+    fish_script = subprocess.run([complgen_binary_path, 'aot', '--fish-script', '-', '-'], input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True).stdout
     with tempfile.NamedTemporaryFile() as f:
         f.write(fish_script)
         f.flush()
