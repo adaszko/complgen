@@ -5,12 +5,12 @@ use anyhow::Context;
 use bumpalo::Bump;
 use clap::Parser;
 
-use complgen::complete::{get_completions, Completion};
+use complgen::jit::{get_completions, Completion};
 use complgen::grammar::{ValidGrammar, Grammar, to_railroad_diagram, to_railroad_diagram_file};
 
 use complgen::dfa::DFA;
 use complgen::regex::AugmentedRegex;
-use complgen::zsh::make_string_constant;
+use complgen::aot::zsh::make_string_constant;
 
 #[derive(clap::Parser)]
 struct Cli {
@@ -209,9 +209,9 @@ fn complete(args: &CompleteArgs) -> anyhow::Result<()> {
     let dfa = DFA::from_regex(&regex);
 
     let (shell, prefix, words) = match &args.shell {
-        Shell::Bash(a) => (complgen::complete::Shell::Bash, &a.prefix, &a.words),
-        Shell::Fish(a) => (complgen::complete::Shell::Fish, &a.prefix, &a.words),
-        Shell::Zsh(a) => (complgen::complete::Shell::Zsh, &a.prefix, &a.words),
+        Shell::Bash(a) => (complgen::jit::Shell::Bash, &a.prefix, &a.words),
+        Shell::Fish(a) => (complgen::jit::Shell::Fish, &a.prefix, &a.words),
+        Shell::Zsh(a) => (complgen::jit::Shell::Zsh, &a.prefix, &a.words),
     };
 
     let words_before_cursor: Vec<&str> = words.iter().map(|s| s.as_ref()).collect();
@@ -339,21 +339,21 @@ fn compile(args: &CompileArgs) -> anyhow::Result<()> {
         log::debug!("Writing Bash completion script");
         let script_file = get_file_or_stdout(path)?;
         let mut writer = BufWriter::new(script_file);
-        complgen::bash::write_completion_script(&mut writer, &validated.command, &dfa)?;
+        complgen::aot::bash::write_completion_script(&mut writer, &validated.command, &dfa)?;
     }
 
     if let Some(path) = &args.fish_script {
         log::debug!("Writing Fish completion script");
         let script_file = get_file_or_stdout(path)?;
         let mut writer = BufWriter::new(script_file);
-        complgen::fish::write_completion_script(&mut writer, &validated.command, &dfa)?;
+        complgen::aot::fish::write_completion_script(&mut writer, &validated.command, &dfa)?;
     }
 
     if let Some(path) = &args.zsh_script {
         log::debug!("Writing Zsh completion script");
         let script_file = get_file_or_stdout(path)?;
         let mut writer = BufWriter::new(script_file);
-        complgen::zsh::write_completion_script(&mut writer, &validated.command, &dfa)?;
+        complgen::aot::zsh::write_completion_script(&mut writer, &validated.command, &dfa)?;
     }
 
     Ok(())

@@ -3,10 +3,8 @@ use ustr::Ustr;
 
 pub mod grammar;
 pub mod dfa;
-pub mod bash;
-pub mod zsh;
-pub mod fish;
-pub mod complete;
+pub mod jit;
+pub mod aot;
 pub mod regex;
 pub mod scrape;
 
