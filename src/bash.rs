@@ -106,12 +106,18 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
     local matched_prefix="${{word:0:$char_index}}"
     local completed_prefix="${{word:$char_index}}"
 
-    local suffix=${{word##*:}}
-    local candidate=${{word##*=}}
-    if [[ ${{#candidate}} -lt ${{#suffix}} ]]; then
-        suffix=$candidate
+    local shortest_suffix="$word"
+    for ((i=0; i < ${{#COMP_WORDBREAKS}}; i++)); do
+        local char="${{COMP_WORDBREAKS:$i:1}}"
+        local candidate=${{word##*$char}}
+        if [[ ${{#candidate}} -lt ${{#shortest_suffix}} ]]; then
+            shortest_suffix=$candidate
+        fi
+    done
+    local superfluous_prefix=""
+    if [[ "$shortest_suffix" != "$word" ]]; then
+        local superfluous_prefix=${{word%$shortest_suffix}}
     fi
-    local superfluous_prefix=${{word%$suffix}}
 
     if [[ -v "literal_transitions[$state]" ]]; then
         local state_transitions_initializer=${{literal_transitions[$state]}}
@@ -243,7 +249,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     fi
 
     local words cword
-    _get_comp_words_by_ref -n =:@ words cword
+    _get_comp_words_by_ref -n "$COMP_WORDBREAKS" words cword
 "#)?;
 
     write_lookup_tables(buffer, dfa)?;
@@ -324,12 +330,18 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     write!(buffer, r#"
     local prefix="${{words[$cword]}}"
 
-    local suffix=${{word##*:}}
-    local candidate=${{word##*=}}
-    if [[ ${{#candidate}} -lt ${{#suffix}} ]]; then
-        suffix=$candidate
+    local shortest_suffix="$word"
+    for ((i=0; i < ${{#COMP_WORDBREAKS}}; i++)); do
+        local char="${{COMP_WORDBREAKS:$i:1}}"
+        local candidate="${{word##*$char}}"
+        if [[ ${{#candidate}} -lt ${{#shortest_suffix}} ]]; then
+            shortest_suffix=$candidate
+        fi
+    done
+    local superfluous_prefix=""
+    if [[ "$shortest_suffix" != "$word" ]]; then
+        local superfluous_prefix=${{word%$shortest_suffix}}
     fi
-    local superfluous_prefix=${{word%$suffix}}
 
     if [[ -v "literal_transitions[$state]" ]]; then
         local state_transitions_initializer=${{literal_transitions[$state]}}
