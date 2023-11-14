@@ -2,8 +2,8 @@
 
 `complgen` allows you to generate completion scripts for all major shells from a *single*, concise EBNF-like
 grammar.  It compiles the grammar down to a standalone bash/fish/zsh shell script that can be distributed on
-its own.  As a separate use case, it can also produce completions from a grammar directly on stdout, which is
-meant to be used in interactive shells (see below).
+its own.  As a separate use case, it can also produce completions directly on stdout, which is meant to be
+used in interactive shells (see below).
 
 ## Demo
 
@@ -291,16 +291,17 @@ strace -e <EXPR>;
 
 The above grammar was pulled straight out of [`strace` man page](https://man7.org/linux/man-pages/man1/strace.1.html#OPTIONS).
 
-Caveats:
+## Caveats
+
  * Bash requires `bash-completion` OS package to be installed because completion scripts produced by
-   `complgen` call shell functions from that package at completion time.  This manifests itself if your
-   generated completions contain any of the special characters normally present in `$COMP_WORDBREAKS`
-   environment variable.
- * Fish only allows [a limited set of
-   characters](https://github.com/fish-shell/fish-shell/blob/408ab860906fbf6e08f314bea982220fdee3428e/src/complete.cpp#L183)
-   within subwords.  Otherwise, it automatically inserts a space character that ends completion of the
-   current word thereby taking completer out of the subword completion mode.
-    * [Not adding space after dot at completion time · Issue #6928 · fish-shell/fish-shell · GitHub](https://github.com/fish-shell/fish-shell/issues/6928)
+   `complgen` call shell functions from that package at *completion* time.  This is necessary to work around
+   Bash's default behavior of [breaking shell words on any character present in the
+   `$COMP_WORDBREAKS`](https://stackoverflow.com/a/12495480) environment variable.
+
+ * Under Fish, if your grammar tokens contain [one of the special
+   characters](https://github.com/fish-shell/fish-shell/blob/408ab860906fbf6e08f314bea982220fdee3428e/src/complete.cpp#L183),
+   the inserted completion won't end in a space indicating full completion.  See also [Not adding space after
+   dot at completion time · Issue #6928](https://github.com/fish-shell/fish-shell/issues/6928)
 
 ## Limitations
 
@@ -324,8 +325,8 @@ Best way is to watch GitHub [releases](https://github.com/adaszko/complgen/relea
       users can write their custom completion grammars suited for their own needs.
  * [zsh-capture-completion](https://github.com/Valodim/zsh-capture-completion)
     * This must have been painful to implement but is indispensable to complgen!
- * [argcomplete Python library](https://github.com/kislyuk/argcomplete)
+ * [argcomplete](https://github.com/kislyuk/argcomplete)
  * [Oil's shellac protocol](https://github.com/oilshell/oil/wiki/Shell-Autocompletion)
- * [zsh's _regex_arguments and _regex_words completions](https://github.com/zsh-users/zsh-completions/blob/master/zsh-completions-howto.org#writing-completion-functions-using-_regex_arguments-and-_regex_words)
+ * [_regex_arguments and _regex_words completions](https://github.com/zsh-users/zsh-completions/blob/master/zsh-completions-howto.org#writing-completion-functions-using-_regex_arguments-and-_regex_words)
+ * [sh-manpage-completions](https://github.com/nevesnunes/sh-manpage-completions)
  * [Little Language](https://wiki.c2.com/?LittleLanguage=)
- * [sh-manpage-completions: Generate bash/zsh completions from man pages](https://github.com/nevesnunes/sh-manpage-completions)
