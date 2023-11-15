@@ -34,6 +34,11 @@ impl Completion {
         format!("{}{}", self.matched_subword_prefix, self.completed_subword_suffix)
     }
 
+    pub fn get_completion_with_trailing_space(&self) -> String {
+        let space = if self.is_shell_word_ending { " " } else { "" };
+        format!("{}{}{space}", self.matched_subword_prefix, self.completed_subword_suffix)
+    }
+
     pub fn is_subword_completion(&self) -> bool {
         !self.matched_subword_prefix.is_empty()
     }

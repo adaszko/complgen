@@ -133,48 +133,38 @@ fn check(args: &CheckArgs) -> anyhow::Result<()> {
 }
 
 
-fn zsh_compadd(completions: &[&Completion], trailing_space: bool) {
+fn zsh_compadd(completions: &[&Completion]) {
     if completions.is_empty() {
         return;
     }
 
-    let completions_array_initializer = itertools::join(completions.iter().map(|completion| make_string_constant(&completion.get_completion())), " ");
+    let completions_array_initializer = itertools::join(completions.iter().map(|completion| make_string_constant(&completion.get_completion_with_trailing_space())), " ");
     println!(r#"local -a completions=({completions_array_initializer})"#);
-    if trailing_space {
-        println!(r#"compadd -Q -a completions"#);
-    }
-    else {
-        println!(r#"compadd -Q -S '' -a completions"#);
-    }
+    println!(r#"compadd -Q -S '' -a completions"#);
 }
 
 
-fn zsh_compadd_with_description(completions: &[&Completion], trailing_space: bool) {
+fn zsh_compadd_with_description(completions: &[&Completion]) {
     if completions.is_empty() {
         return;
     }
 
-    let completions_array_initializer = itertools::join(completions.iter().map(|completion| make_string_constant(&completion.get_completion())), " ");
+    let completions_array_initializer = itertools::join(completions.iter().map(|completion| make_string_constant(&completion.get_completion_with_trailing_space())), " ");
     println!(r#"local -a completions=({completions_array_initializer})"#);
 
     let descriptions_array_initializer = itertools::join(completions.iter().map(|completion| make_string_constant(&completion.get_zsh_compadd_description())), " ");
     println!(r#"local -a descriptions=({descriptions_array_initializer})"#);
 
-    if trailing_space {
-        println!(r#"compadd -Q -a -d descriptions completions"#);
-    }
-    else {
-        println!(r#"compadd -Q -S '' -a -d descriptions completions"#);
-    }
+    println!(r#"compadd -Q -S '' -a -d descriptions completions"#);
 }
 
 
-fn zsh_describe(completions: &[&Completion], trailing_space: bool) {
+fn zsh_describe(completions: &[&Completion]) {
     if completions.is_empty() {
         return;
     }
 
-    let completions_array_initializer = itertools::join(completions.iter().map(|completion| make_string_constant(&completion.get_completion())), " ");
+    let completions_array_initializer = itertools::join(completions.iter().map(|completion| make_string_constant(&completion.get_completion_with_trailing_space())), " ");
     println!(r#"local -a completions=({completions_array_initializer})"#);
 
     let descriptions: Vec<String> = completions.iter().map(|compl| {
@@ -183,12 +173,7 @@ fn zsh_describe(completions: &[&Completion], trailing_space: bool) {
 
     let descriptions_array_initializer = itertools::join(descriptions.into_iter().map(|s| make_string_constant(&s)), " ");
     println!(r#"local -a descriptions=({descriptions_array_initializer})"#);
-    if trailing_space {
-        println!(r#"_describe '' descriptions completions -Q"#);
-    }
-    else {
-        println!(r#"_describe '' descriptions completions -Q -S ''"#);
-    }
+    println!(r#"_describe '' descriptions completions -Q -S ''"#);
 }
 
 fn complete(args: &JitArgs) -> anyhow::Result<()> {
@@ -232,7 +217,7 @@ fn complete(args: &JitArgs) -> anyhow::Result<()> {
                 None => "",
             };
             for completion in completions {
-                let line = completion.get_completion();
+                let line = completion.get_completion_with_trailing_space();
                 let line = line.strip_prefix(superfluous_prefix).unwrap_or(&line);
                 println!("{}", line);
             }
@@ -246,25 +231,18 @@ fn complete(args: &JitArgs) -> anyhow::Result<()> {
             let (with_description, without_description): (Vec<&Completion>, Vec<&Completion>) = completions.iter().partition(|completion| completion.has_zsh_description());
 
             if !without_description.is_empty() {
-                let (trailing_space, no_trailing_space): (Vec<&Completion>, Vec<&Completion>) = without_description.iter().partition(|completion| completion.has_zsh_trailing_space());
-                zsh_compadd(&trailing_space, true);
-                zsh_compadd(&no_trailing_space, false);
+                zsh_compadd(&without_description);
             }
 
             if !with_description.is_empty() {
                 let (compadd, describe): (Vec<&Completion>, Vec<&Completion>) = with_description.iter().partition(|completion| completion.is_zsh_compadd());
 
                 if !compadd.is_empty() {
-                    let (trailing_space, no_trailing_space): (Vec<&Completion>, Vec<&Completion>) = compadd.iter().partition(|completion| completion.has_zsh_trailing_space());
-                    zsh_compadd_with_description(&trailing_space, true);
-                    zsh_compadd_with_description(&no_trailing_space, false);
+                    zsh_compadd_with_description(&compadd);
                 }
 
                 if !describe.is_empty() {
-                    // We pessimistically assume here no trailing space (i.e. -S option) because
-                    // _describe when called twice leads to garbled output (see comment in the
-                    // _describe source code).
-                    zsh_describe(&describe, false);
+                    zsh_describe(&describe);
                 }
             }
         },

@@ -26,7 +26,7 @@ def get_sorted_jit_bash_completions(complgen_binary_path: Path, grammar: str, wo
 
 def test_jit_completes(complgen_binary_path: Path):
     GRAMMAR = '''cmd (--help | --version); '''
-    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR) == sorted(['--help', '--version'])
+    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR) == sorted(['--help ', '--version '])
 
 
 def test_jit_matches_prefix(complgen_binary_path: Path):
@@ -35,12 +35,12 @@ cargo +<toolchain> foo;
 cargo test --test testname;
 <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 '''
-    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, ['+stable-aarch64-apple-darwin']) == sorted(['foo'])
+    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, ['+stable-aarch64-apple-darwin']) == sorted(['foo '])
 
 
 def test_jit_completes_literal_prefix(complgen_binary_path: Path):
     GRAMMAR = '''cmd (--help | --version);'''
-    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='--h') == sorted(['--help'])
+    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='--h') == sorted(['--help '])
 
 def test_jit_completes_paths_bash(complgen_binary_path: Path):
     with tempfile.TemporaryDirectory() as dir:
@@ -78,7 +78,7 @@ def test_jit_completes_prefix(complgen_binary_path: Path):
 cargo +<toolchain>;
 <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 '''
-    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='+') == sorted(['+stable-aarch64-apple-darwin', '+stable-x86_64-apple-darwin'])
+    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='+') == sorted(['+stable-aarch64-apple-darwin ', '+stable-x86_64-apple-darwin '])
 
 
 def test_jit_completes_strace_expr(complgen_binary_path: Path):
@@ -91,12 +91,12 @@ def test_jit_completes_lsf_filter(complgen_binary_path: Path):
 
 def test_jit_subword_descriptions(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option=(arg1 "descr1" | arg2 "descr2");'''
-    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='--option=') == sorted(['arg1', 'arg2'])
+    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='--option=') == sorted(['arg1 ', 'arg2 '])
 
 
 def test_jit_completes_subword_external_command(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option={{{ echo -e "argument\tdescription" }}};'''
-    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='--option=') == sorted(['argument'])
+    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='--option=') == sorted(['argument '])
 
 
 def test_jit_specialization(complgen_binary_path: Path):
