@@ -15,6 +15,9 @@ There are two ways to use complgen:
 
 ### 1. To generate standalone completion scripts for bash/fish/zsh:
 
+This mode is most useful if you're a CLI tool author and want to ship shell completions in your installation
+package.
+
 ```
 $ complgen aot --bash-script grep.bash usage/small.usage
 $ bash
@@ -24,6 +27,11 @@ always auto never
 ```
 
 ### 2. To generate completions on stdout by compiling the grammar "just-in-time":
+
+
+This mode is useful if you're command line user and want to improve the CLI experience on *your* machine by
+either implementing a missing autocompletion for a specific CLI tool, or override the default one with a one
+better tailored for your needs and usage patterns.
 
 ```
 $ complgen jit usage/small.usage bash -- --color
