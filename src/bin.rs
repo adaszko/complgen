@@ -229,22 +229,11 @@ fn complete(args: &JitArgs) -> anyhow::Result<()> {
         },
         Shell::Zsh(_) => {
             let (with_description, without_description): (Vec<&Completion>, Vec<&Completion>) = completions.iter().partition(|completion| completion.has_zsh_description());
+            zsh_compadd(&without_description);
 
-            if !without_description.is_empty() {
-                zsh_compadd(&without_description);
-            }
-
-            if !with_description.is_empty() {
-                let (compadd, describe): (Vec<&Completion>, Vec<&Completion>) = with_description.iter().partition(|completion| completion.is_zsh_compadd());
-
-                if !compadd.is_empty() {
-                    zsh_compadd_with_description(&compadd);
-                }
-
-                if !describe.is_empty() {
-                    zsh_describe(&describe);
-                }
-            }
+            let (compadd, describe): (Vec<&Completion>, Vec<&Completion>) = with_description.iter().partition(|completion| completion.is_zsh_compadd());
+            zsh_compadd_with_description(&compadd);
+            zsh_describe(&describe);
         },
     }
 
