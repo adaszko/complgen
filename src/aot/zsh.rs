@@ -127,11 +127,11 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
                 local completion="$matched_prefix$literal"
                 if [[ -v "descriptions[$literal_id]" ]]; then
                     local description="${{completion//:/\\:}}:${{descriptions[$literal_id]}}"
-                    eval "$describe_completions_array_name+=('${{completion}}')"
-                    eval "$describe_descriptions_array_name+=('${{description}}')"
+                    eval "$describe_completions_array_name+=(${{(qq)completion}})"
+                    eval "$describe_descriptions_array_name+=(${{(qq)description}})"
                 else
-                    eval "$compadd_completions_array_name+=('${{completion}}')"
-                    eval "$compadd_descriptions_array_name+=('${{literal}}')"
+                    eval "$compadd_completions_array_name+=(${{(qq)completion}})"
+                    eval "$compadd_descriptions_array_name+=(${{(qq)literal}})"
                 fi
             fi
         done
@@ -152,10 +152,10 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
                 if [[ -v "parts[2]" ]]; then
                     local completion=$matched_prefix${{parts[1]}}
                     local description="${{parts[1]//:/\\:}}:${{parts[2]}}"
-                    eval "$describe_completions_array_name+=('${{completion}}')"
-                    eval "$describe_descriptions_array_name+=('${{description}}')"
+                    eval "$describe_completions_array_name+=(${{(qq)completion}})"
+                    eval "$describe_descriptions_array_name+=(${{(qq)description}})"
                 else
-                    eval "$compadd_array_name+=('${{line}}')"
+                    eval "$compadd_array_name+=(${{(qq)line}})"
                 fi
             fi
         done
@@ -179,10 +179,10 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
                 if [[ -v "parts[2]" ]]; then
                     local completion=${{parts[1]}}
                     local description="${{parts[1]//:/\\:}}:${{parts[2]}}"
-                    eval "$describe_completions_array_name+=('${{completion}}')"
-                    eval "$describe_descriptions_array_name+=('${{description}}')"
+                    eval "$describe_completions_array_name+=(${{(qq)completion}})"
+                    eval "$describe_descriptions_array_name+=(${{(qq)description}})"
                 else
-                    eval "$compadd_array_name+=('${{line}}')"
+                    eval "$compadd_array_name+=(${{(qq)line}})"
                 fi
             fi
         done
