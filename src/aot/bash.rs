@@ -67,9 +67,8 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
         local subword=${{word:$char_index}}
 
         if [[ -v "literal_transitions[$state]" ]]; then
-            local state_transitions_initializer=${{literal_transitions[$state]}}
             declare -A state_transitions
-            eval "state_transitions=$state_transitions_initializer"
+            eval "state_transitions=${{literal_transitions[$state]}}"
 
             local literal_matched=0
             for literal_id in $(seq 0 $((${{#literals[@]}} - 1))); do
@@ -120,9 +119,8 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
     fi
 
     if [[ -v "literal_transitions[$state]" ]]; then
-        local state_transitions_initializer=${{literal_transitions[$state]}}
         declare -A state_transitions
-        eval "state_transitions=$state_transitions_initializer"
+        eval "state_transitions=${{literal_transitions[$state]}}"
 
         for literal_id in "${{!state_transitions[@]}}"; do
             local literal=${{literals[$literal_id]}}
@@ -271,9 +269,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         local word=${{words[$word_index]}}
 
         if [[ -v "literal_transitions[$state]" ]]; then
-            local state_transitions_initializer=${{literal_transitions[$state]}}
             declare -A state_transitions
-            eval "state_transitions=$state_transitions_initializer"
+            eval "state_transitions=${{literal_transitions[$state]}}"
 
             local word_matched=0
             for literal_id in $(seq 0 $((${{#literals[@]}} - 1))); do
@@ -295,9 +292,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     if dfa.has_subword_transitions() {
         write!(buffer, r#"
         if [[ -v "subword_transitions[$state]" ]]; then
-            local state_transitions_initializer=${{subword_transitions[$state]}}
             declare -A state_transitions
-            eval "state_transitions=$state_transitions_initializer"
+            eval "state_transitions=${{subword_transitions[$state]}}"
 
             local subword_matched=0
             for subword_id in "${{!state_transitions[@]}}"; do

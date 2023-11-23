@@ -79,9 +79,8 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
         local subword=${{word:$char_index}}
 
         if [[ -v "literal_transitions[$state]" ]]; then
-            local state_transitions_initializer=${{literal_transitions[$state]}}
             declare -A state_transitions
-            eval "state_transitions=$state_transitions_initializer"
+            eval "state_transitions=${{literal_transitions[$state]}}"
 
             local literal_matched=0
             for literal_id in {{1..$#literals}}; do
@@ -119,9 +118,8 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
     local completed_prefix="${{word:$char_index}}"
 
     if [[ -v "literal_transitions[$state]" ]]; then
-        local state_transitions_initializer=${{literal_transitions[$state]}}
         declare -A state_transitions
-        eval "state_transitions=$state_transitions_initializer"
+        eval "state_transitions=${{literal_transitions[$state]}}"
 
         for literal_id in ${{(k)state_transitions}}; do
             local literal=${{literals[$literal_id]}}
@@ -279,9 +277,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     local word_index=2
     while [[ $word_index -lt $CURRENT ]]; do
         if [[ -v "literal_transitions[$state]" ]]; then
-            local state_transitions_initializer=${{literal_transitions[$state]}}
             local -A state_transitions
-            eval "state_transitions=$state_transitions_initializer"
+            eval "state_transitions=${{literal_transitions[$state]}}"
 
             local word=${{words[$word_index]}}
             local word_matched=0
@@ -304,9 +301,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     if dfa.has_subword_transitions() {
         write!(buffer, r#"
         if [[ -v "subword_transitions[$state]" ]]; then
-            local state_transitions_initializer=${{subword_transitions[$state]}}
             declare -A state_transitions
-            eval "state_transitions=$state_transitions_initializer"
+            eval "state_transitions=${{subword_transitions[$state]}}"
 
             local subword_matched=0
             for subword_id in ${{(k)state_transitions}}; do
@@ -343,9 +339,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     compadd_descriptions=()
 
     if [[ -v "literal_transitions[$state]" ]]; then
-        local state_transitions_initializer=${{literal_transitions[$state]}}
         local -A state_transitions
-        eval "state_transitions=$state_transitions_initializer"
+        eval "state_transitions=${{literal_transitions[$state]}}"
 
         for literal_id in ${{(k)state_transitions}}; do
             if [[ -v "descriptions[$literal_id]" ]]; then
@@ -361,9 +356,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     if dfa.has_subword_transitions() {
         write!(buffer, r#"
     if [[ -v "subword_transitions[$state]" ]]; then
-        local state_transitions_initializer=${{subword_transitions[$state]}}
         declare -A state_transitions
-        eval "state_transitions=$state_transitions_initializer"
+        eval "state_transitions=${{subword_transitions[$state]}}"
 
         for subword_id in ${{(k)state_transitions}}; do
             _{command}_subword_${{subword_id}} complete "${{words[$CURRENT]}}" no_descr_args args descrs compadd_completions compadd_descriptions
