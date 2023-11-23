@@ -657,7 +657,7 @@ fn make_specializations_map(statements: &[Statement]) -> Result<UstrMap<Speciali
 
     specializations.entry(ustr("USER")).or_insert_with(||
         Specialization {
-            bash: Some(ustr(r#"compgen -A user"#)),
+            bash: Some(ustr(r#"compgen -A user | while read line; do echo "$line "; done"#)),
             fish: Some(ustr(r#"__fish_complete_users"#)),
             zsh: Some(ustr(r#"_users"#)),
             generic: None,
@@ -666,7 +666,7 @@ fn make_specializations_map(statements: &[Statement]) -> Result<UstrMap<Speciali
 
     specializations.entry(ustr("GROUP")).or_insert_with(||
         Specialization {
-            bash: Some(ustr(r#"compgen -A group"#)),
+            bash: Some(ustr(r#"compgen -A group | while read line; do echo "$line "; done"#)),
             fish: Some(ustr(r#"__fish_complete_groups"#)),
             zsh: Some(ustr(r#"_groups"#)),
             generic: None,
@@ -675,7 +675,7 @@ fn make_specializations_map(statements: &[Statement]) -> Result<UstrMap<Speciali
 
     specializations.entry(ustr("HOST")).or_insert_with(||
         Specialization {
-            bash: Some(ustr(r#"compgen -A hostname"#)),
+            bash: Some(ustr(r#"compgen -A hostname | while read line; do echo "$line "; done"#)),
             fish: Some(ustr(r#"__fish_complete_hostnames"#)),
             zsh: Some(ustr(r#"_hosts"#)),
             generic: None,

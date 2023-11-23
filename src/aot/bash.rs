@@ -127,7 +127,12 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
             if [[ $literal = "${{completed_prefix}}"* ]]; then
                 local completion="$matched_prefix$literal"
                 completion=${{completion#"$superfluous_prefix"}}
-                echo $completion
+                local to_state=${{state_transitions[$literal_id]}}
+                if [[ -v "literal_transitions[$to_state]" || -v "match_anything_transitions[$to_state]" ]]; then
+                    echo $completion
+                else
+                    echo "$completion "
+                fi
             fi
         done
     fi
@@ -348,7 +353,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             local literal="${{literals[$literal_id]}}"
             if [[ $literal = "${{prefix}}"* ]]; then
                 local completion=${{literal#"$superfluous_prefix"}}
-                COMPREPLY+=("$completion")
+                COMPREPLY+=("$completion ")
             fi
         done
     fi

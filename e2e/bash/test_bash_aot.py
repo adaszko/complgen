@@ -59,7 +59,7 @@ cmd <COMMAND> [--help];
 '''
 
     with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        assert get_sorted_bash_completions(completions_file_path, r'''COMP_WORDS=(cmd remote); COMP_CWORD=2; _cmd; if [[ ${#COMPREPLY[@]} -gt 0 ]]; then printf '%s\n' "${COMPREPLY[@]}"; fi''') == sorted(['--help', 'rm'])
+        assert get_sorted_bash_completions(completions_file_path, r'''COMP_WORDS=(cmd remote); COMP_CWORD=2; _cmd; if [[ ${#COMPREPLY[@]} -gt 0 ]]; then printf '%s\n' "${COMPREPLY[@]}"; fi''') == sorted(['--help ', 'rm '])
         assert get_sorted_bash_completions(completions_file_path, r'''COMP_WORDS=(cmd rm); COMP_CWORD=2; _cmd; if [[ ${#COMPREPLY[@]} -gt 0 ]]; then printf '%s\n' "${COMPREPLY[@]}"; fi''') == sorted([])
 
 
@@ -96,7 +96,7 @@ cargo test --test testname;
 '''
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
         input = r'''COMP_WORDS=(cargo +stable-aarch64-apple-darwin); COMP_CWORD=2; _cargo; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_bash_completions(path, input) == sorted(['foo'])
+        assert get_sorted_bash_completions(path, input) == sorted(['foo '])
 
 
 def test_completes_prefix(complgen_binary_path: Path):
@@ -106,7 +106,7 @@ cargo +<toolchain>;
 '''
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
         input = r'''COMP_WORDS=(cargo +); COMP_CWORD=1; _cargo; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_bash_completions(path, input) == sorted(['+stable-aarch64-apple-darwin', '+stable-x86_64-apple-darwin'])
+        assert get_sorted_bash_completions(path, input) == sorted(['+stable-aarch64-apple-darwin ', '+stable-x86_64-apple-darwin '])
 
 
 def test_completes_strace_expr(complgen_binary_path: Path):
@@ -125,7 +125,7 @@ def test_subword_descriptions(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option=(arg1 "descr1" | arg2 "descr2");'''
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
         input = r'''COMP_WORDS=(cmd --option=); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_bash_completions(path, input) == sorted(['arg1', 'arg2'])
+        assert get_sorted_bash_completions(path, input) == sorted(['arg1 ', 'arg2 '])
 
 
 def test_completes_subword_external_command(complgen_binary_path: Path):
@@ -150,17 +150,17 @@ def test_mygrep_example(complgen_binary_path: Path, usage_directory_path: Path):
     GRAMMAR = (usage_directory_path / "mygrep.usage").read_text()
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
         input = r'''COMP_WORDS=(mygrep); COMP_CWORD=1; _mygrep; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_bash_completions(path, input) == sorted(['--', '-E', '--extended-regexp', '-F', '--fixed-strings', '-G', '--basic-regexp',
-'-P', '--perl-regexp', '-e', '--regexp', '-f', '--file', '-i',
-'--ignore-case', '--no-ignore-case', '-w', '--word-regexp', '-x',
-'--line-regexp', '-z', '--null-data', '-s', '--no-messages', '-v',
-'--invert-match', '-V', '--version', '--help', '-m', '--max-count=',
-'--max-count', '-b', '--byte-offset', '-n', '--line-number',
-'--line-buffered', '-H', '--with-filename', '-h', '--no-filename', '--label',
-'-o', '--only-matching', '-q', '--quiet', '--silent', '--binary-files', '-a',
-'--text', '-d', '--directories', '-D', '--devices', '-r', '--recursive',
-'-R', '--dereference-recursive', '--include', '--exclude', '--exclude-from', '--exclude-dir', '-L', '--files-without-match', '-l',
-'--files-with-matches', '-c', '--count', '-T', '--initial-tab', '-Z',
-'--null', '-B', '--before-context', '-A', '--after-context', '-C',
-'--context', '-', '--group-separator=', '--no-group-separator', '--color',
-'--colour', '--color=', '--colour=', '-U', '--binary'])
+        assert get_sorted_bash_completions(path, input) == sorted(['-- ', '-E ', '--extended-regexp ', '-F ', '--fixed-strings ', '-G ', '--basic-regexp ',
+'-P ', '--perl-regexp ', '-e ', '--regexp ', '-f ', '--file ', '-i ',
+'--ignore-case ', '--no-ignore-case ', '-w ', '--word-regexp ', '-x ',
+'--line-regexp ', '-z ', '--null-data ', '-s ', '--no-messages ', '-v ',
+'--invert-match ', '-V ', '--version ', '--help ', '-m ', '--max-count=',
+'--max-count ', '-b ', '--byte-offset ', '-n ', '--line-number ',
+'--line-buffered ', '-H ', '--with-filename ', '-h ', '--no-filename ', '--label ',
+'-o ', '--only-matching ', '-q ', '--quiet ', '--silent ', '--binary-files ', '-a ',
+'--text ', '-d ', '--directories ', '-D ', '--devices ', '-r ', '--recursive ',
+'-R ', '--dereference-recursive ', '--include ', '--exclude ', '--exclude-from ', '--exclude-dir ', '-L ', '--files-without-match ', '-l ',
+'--files-with-matches ', '-c ', '--count ', '-T ', '--initial-tab ', '-Z ',
+'--null ', '-B ', '--before-context ', '-A ', '--after-context ', '-C ',
+'--context ', '-', '--group-separator=', '--no-group-separator ', '--color ',
+'--colour ', '--color=', '--colour=', '-U ', '--binary '])
