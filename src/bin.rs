@@ -5,7 +5,7 @@ use anyhow::Context;
 use bumpalo::Bump;
 use clap::Parser;
 
-use complgen::jit::{get_completions, Completion};
+use complgen::jit::{get_completions};
 use complgen::grammar::{ValidGrammar, Grammar, to_railroad_diagram, to_railroad_diagram_file};
 
 use complgen::dfa::DFA;
@@ -133,49 +133,6 @@ fn check(args: &CheckArgs) -> anyhow::Result<()> {
 }
 
 
-fn zsh_compadd(completions: &[&Completion]) {
-    if completions.is_empty() {
-        return;
-    }
-
-    let completions_array_initializer = itertools::join(completions.iter().map(|completion| make_string_constant(&completion.get_completion_with_trailing_space())), " ");
-    println!(r#"local -a completions=({completions_array_initializer})"#);
-    println!(r#"compadd -Q -S '' -a completions"#);
-}
-
-
-fn zsh_compadd_with_description(completions: &[&Completion]) {
-    if completions.is_empty() {
-        return;
-    }
-
-    let completions_array_initializer = itertools::join(completions.iter().map(|completion| make_string_constant(&completion.get_completion_with_trailing_space())), " ");
-    println!(r#"local -a completions=({completions_array_initializer})"#);
-
-    let descriptions_array_initializer = itertools::join(completions.iter().map(|completion| make_string_constant(&completion.get_zsh_compadd_description())), " ");
-    println!(r#"local -a descriptions=({descriptions_array_initializer})"#);
-
-    println!(r#"compadd -Q -S '' -a -d descriptions completions"#);
-}
-
-
-fn zsh_describe(completions: &[&Completion]) {
-    if completions.is_empty() {
-        return;
-    }
-
-    let completions_array_initializer = itertools::join(completions.iter().map(|completion| make_string_constant(&completion.get_completion_with_trailing_space())), " ");
-    println!(r#"local -a completions=({completions_array_initializer})"#);
-
-    let descriptions: Vec<String> = completions.iter().map(|compl| {
-        format!("{compl}:{descr}", compl = compl.completed_subword_suffix.replace(':', "\\:"), descr = compl.description)
-    }).collect();
-
-    let descriptions_array_initializer = itertools::join(descriptions.into_iter().map(|s| make_string_constant(&s)), " ");
-    println!(r#"local -a descriptions=({descriptions_array_initializer})"#);
-    println!(r#"_describe '' descriptions completions -Q -S ''"#);
-}
-
 fn complete(args: &JitArgs) -> anyhow::Result<()> {
     let mut input_file = get_file_or_stdin(&args.usage_file_path).context(args.usage_file_path.to_owned())?;
     let mut input: String = Default::default();
@@ -228,12 +185,103 @@ fn complete(args: &JitArgs) -> anyhow::Result<()> {
             }
         },
         Shell::Zsh(_) => {
-            let (with_description, without_description): (Vec<&Completion>, Vec<&Completion>) = completions.iter().partition(|completion| completion.has_zsh_description());
-            zsh_compadd(&without_description);
+            let mut without_description_trailing_space: Vec<String> = Default::default();
+            let mut without_description_no_trailing_space: Vec<String> = Default::default();
 
-            let (compadd, describe): (Vec<&Completion>, Vec<&Completion>) = with_description.iter().partition(|completion| completion.is_zsh_compadd());
-            zsh_compadd_with_description(&compadd);
-            zsh_describe(&describe);
+            let mut with_description_trailing_space: Vec<(String, String, &str)> = Default::default();
+            let mut with_description_no_trailing_space: Vec<(String, &str, &str)> = Default::default();
+
+            let mut without_description_subword_trailing_space: Vec<(String, &str)> = Default::default();
+            let mut without_description_subword_no_trailing_space: Vec<(String, &str)> = Default::default();
+
+            for completion in &completions {
+                if completion.has_zsh_description() {
+                    if completion.description.is_empty() {
+                        // * Subword completion without description => Use completed suffix as compadd description
+                        if completion.is_shell_word_ending {
+                            without_description_subword_trailing_space.push((completion.get_completion(), &completion.completed_subword_suffix));
+                        }
+                        else {
+                            without_description_subword_no_trailing_space.push((completion.get_completion(), &completion.completed_subword_suffix));
+                        }
+                    }
+                    else {
+                        // * Subword completion with non-empty description => Use that description
+                        if completion.is_shell_word_ending {
+                            with_description_trailing_space.push((completion.get_completion(), completion.completed_subword_suffix.to_string(), &completion.description));
+                        }
+                        else {
+                            with_description_no_trailing_space.push((completion.get_completion(), &completion.completed_subword_suffix, &completion.description));
+                        }
+                    }
+                }
+                else {
+                    if completion.is_shell_word_ending {
+                        without_description_trailing_space.push(completion.get_completion());
+                    }
+                    else {
+                        without_description_no_trailing_space.push(completion.get_completion());
+                    }
+                }
+            }
+
+            if !without_description_trailing_space.is_empty() {
+                let initializer = itertools::join(without_description_trailing_space.iter().map(|completion| make_string_constant(&completion)), " ");
+                println!(r#"local -a completions=({initializer})"#);
+                println!(r#"compadd -Q -a completions"#);
+            }
+
+            if !without_description_no_trailing_space.is_empty() {
+                let initializer = itertools::join(without_description_no_trailing_space.iter().map(|completion| make_string_constant(&completion)), " ");
+                println!(r#"local -a completions=({initializer})"#);
+                println!(r#"compadd -Q -S '' -a completions"#);
+            }
+
+            if !without_description_subword_trailing_space.is_empty() {
+                let completions_initializer = itertools::join(without_description_subword_trailing_space.iter().map(|(completion, _)| make_string_constant(&completion)), " ");
+                println!(r#"local -a completions=({completions_initializer})"#);
+
+                let descriptions_initializer = itertools::join(without_description_subword_trailing_space.iter().map(|(_, suffix)| make_string_constant(suffix)), " ");
+                println!(r#"local -a descriptions=({descriptions_initializer})"#);
+
+                println!(r#"compadd -Q -a -d descriptions completions"#);
+            }
+
+            if !without_description_subword_no_trailing_space.is_empty() {
+                let completions_initializer = itertools::join(without_description_subword_no_trailing_space.iter().map(|(completion, _)| make_string_constant(&completion)), " ");
+                println!(r#"local -a completions=({completions_initializer})"#);
+
+                let descriptions_initializer = itertools::join(without_description_subword_no_trailing_space.iter().map(|(_, suffix)| make_string_constant(suffix)), " ");
+                println!(r#"local -a descriptions=({descriptions_initializer})"#);
+
+                println!(r#"compadd -Q -S '' -a -d descriptions completions"#);
+            }
+
+            let maxlen = {
+                let trailing_space_maxlen = with_description_trailing_space.iter().map(|(_, suffix, _)| suffix.len()).max().unwrap_or(0);
+                let no_trailing_space_maxlen = with_description_no_trailing_space.iter().map(|(_, suffix, _)| suffix.len()).max().unwrap_or(0);
+                std::cmp::max(trailing_space_maxlen, no_trailing_space_maxlen)
+            };
+
+            if !with_description_trailing_space.is_empty() {
+                let completions_initializer = itertools::join(with_description_trailing_space.iter().map(|(completion, _, _)| make_string_constant(&completion)), " ");
+                println!(r#"local -a completions=({completions_initializer})"#);
+
+                let descriptions_initializer = itertools::join(with_description_trailing_space.iter().map(|(_, suffix, description)| make_string_constant(&format!("{suffix:maxlen$} -- {description}"))), " ");
+                println!(r#"local -a descriptions=({descriptions_initializer})"#);
+
+                println!(r#"compadd -l -Q -a -d descriptions completions"#);
+            }
+
+            if !with_description_no_trailing_space.is_empty() {
+                let completions_initializer = itertools::join(with_description_no_trailing_space.iter().map(|(completion, _, _)| make_string_constant(&completion)), " ");
+                println!(r#"local -a completions=({completions_initializer})"#);
+
+                let descriptions_initializer = itertools::join(with_description_no_trailing_space.iter().map(|(_, suffix, description)| make_string_constant(&format!("{suffix:maxlen$} -- {description}"))), " ");
+                println!(r#"local -a descriptions=({descriptions_initializer})"#);
+
+                println!(r#"compadd -l -Q -S '' -a -d descriptions completions"#);
+            }
         },
     }
 

@@ -13,7 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
- - Bash,JIT: Completion trailing spaces are now added precisely
+ - Bash,AOT: Completion trailing spaces are now added precisely (#35)
+ - Bash,JIT: Completion trailing spaces are now added precisely (#35)
  - Zsh,JIT: Completion trailing spaces are now added precisely (#35)
  - Bash,AOT: Further improve $COMP_WORDBREAKS characters handling
  - Bash,JIT: Further improve $COMP_WORDBREAKS characters handling

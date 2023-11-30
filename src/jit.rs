@@ -39,24 +39,11 @@ impl Completion {
         format!("{}{}{space}", self.matched_subword_prefix, self.completed_subword_suffix)
     }
 
-    pub fn is_subword_completion(&self) -> bool {
-        !self.matched_subword_prefix.is_empty()
-    }
-
+    // Subword completions may not have a description coming from a grammar but we still pass *a*
+    // description to compadd that indicates the suffix completed.  So "description" should be
+    // understood broadly here.
     pub fn has_zsh_description(&self) -> bool {
-        self.is_subword_completion() || !self.description.is_empty()
-    }
-
-    pub fn has_zsh_trailing_space(&self) -> bool {
-        self.is_shell_word_ending
-    }
-
-    pub fn is_zsh_compadd(&self) -> bool {
-        self.is_subword_completion() && self.description.is_empty()
-    }
-
-    pub fn get_zsh_compadd_description(&self) -> &str {
-        &self.completed_subword_suffix
+        !self.matched_subword_prefix.is_empty() || !self.description.is_empty()
     }
 }
 

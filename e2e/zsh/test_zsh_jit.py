@@ -84,7 +84,7 @@ cargo +<toolchain> foo;
 <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 '''
     expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, ['+stable-aarch64-apple-darwin'])
-    assert expr == '''local -a completions=("foo ")\ncompadd -Q -S '' -a completions\n'''
+    assert expr == '''local -a completions=("foo")\ncompadd -Q -a completions\n'''
 
 
 def test_jit_completes_prefix(complgen_binary_path: Path):
@@ -95,9 +95,9 @@ cargo +<toolchain>;
     expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, prefix='+')
     lines = expr.splitlines()
     assert lines == [
-        '''local -a completions=("+stable-aarch64-apple-darwin " "+stable-x86_64-apple-darwin ")''',
+        '''local -a completions=("+stable-aarch64-apple-darwin" "+stable-x86_64-apple-darwin")''',
         '''local -a descriptions=("stable-aarch64-apple-darwin" "stable-x86_64-apple-darwin")''',
-        '''compadd -Q -S '' -a -d descriptions completions''',
+        '''compadd -Q -a -d descriptions completions''',
     ]
 
 
@@ -107,7 +107,7 @@ cmd (prefix-infix-foo | prefix-infix-bar);
 '''
     expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, prefix='prefix-')
     lines = expr.splitlines()
-    assert lines == ['local -a completions=("prefix-infix-bar " "prefix-infix-foo ")', "compadd -Q -S '' -a completions"]
+    assert lines == ['local -a completions=("prefix-infix-bar" "prefix-infix-foo")', "compadd -Q -a completions"]
 
 
 def test_jit_completes_strace_expr(complgen_binary_path: Path):
@@ -133,13 +133,13 @@ def test_jit_completes_lsof_filter(complgen_binary_path: Path):
 def test_jit_subword_descriptions(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option=(arg1 "descr1" | arg2 "descr2");'''
     expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, prefix='--option=')
-    assert expr == '''local -a completions=("--option=arg1 " "--option=arg2 ")\nlocal -a descriptions=("arg1:descr1" "arg2:descr2")\n_describe '' descriptions completions -Q -S ''\n'''
+    assert expr == '''local -a completions=("--option=arg1" "--option=arg2")\nlocal -a descriptions=("arg1 -- descr1" "arg2 -- descr2")\ncompadd -l -Q -a -d descriptions completions\n'''
 
 
 def test_jit_completes_subword_external_command(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option={{{ echo -e "argument\tdescription" }}};'''
     expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, prefix='--option=')
-    assert expr == '''local -a completions=("--option=argument ")\nlocal -a descriptions=("argument:description")\n_describe '' descriptions completions -Q -S ''\n'''
+    assert expr == '''local -a completions=("--option=argument")\nlocal -a descriptions=("argument -- description")\ncompadd -l -Q -a -d descriptions completions\n'''
 
 
 def test_jit_subword_specialization(complgen_binary_path: Path):
@@ -150,3 +150,12 @@ cmd --option=<FOO>;
 '''
     expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, prefix='--option=')
     assert expr == '''local -a completions=("zsh")\ncompadd -Q -S '' -a completions\n'''
+
+
+def test_jit_sample_regression(complgen_binary_path: Path):
+    GRAMMAR = r'''
+trivial --color=<WHEN>;
+<WHEN> ::= always | never | auto;
+'''
+    expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR)
+    assert expr == '''local -a completions=("--color=")\ncompadd -Q -S '' -a completions\n'''
