@@ -37,7 +37,7 @@ cmd <COMMAND> [--help];
 '''
 
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
-        assert get_sorted_completions(capture_zsh_path, 'cmd ') == sorted(['rm rm       Remove a project', "remote remote   Manage a project's remotes"])
+        assert get_sorted_completions(capture_zsh_path, 'cmd ') == sorted(['rm Remove a project', "remote Manage a project's remotes"])
 
 
 def test_zsh_uses_correct_description_with_duplicated_descriptions(complgen_binary_path: Path):
@@ -51,8 +51,8 @@ mygrep [<OPTION>]...;
 
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
         assert get_sorted_completions(capture_zsh_path, 'mygrep ') == sorted([
-            '--color --color    use markers to highlight the matching strings',
-            '--colour --colour   use markers to highlight the matching strings',
+            '--color use markers to highlight the matching strings',
+            '--colour use markers to highlight the matching strings',
         ])
 
 
@@ -62,7 +62,7 @@ cmd {{{ echo -e "completion\tdescription" }}};
 '''
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
         actual = [s.split() for s in get_sorted_completions(capture_zsh_path, 'cmd ')]
-        assert actual == sorted([['completion', 'completion', 'description']])
+        assert actual == sorted([['completion', 'description']])
 
 
 def test_completes_paths(complgen_binary_path: Path):
@@ -176,8 +176,8 @@ def test_subword_descriptions(complgen_binary_path: Path):
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
         actual = [s.split() for s in get_sorted_completions(capture_zsh_path, 'cmd --option=')]
         assert actual == sorted([
-            ['--option=arg1', '--option=arg1', 'descr1'],
-            ['--option=arg2', '--option=arg2', 'descr2'],
+            ['--option=arg1', '--option=arg1', '--', 'descr1'],
+            ['--option=arg2', '--option=arg2', '--', 'descr2'],
         ])
 
 def test_completes_subword_external_command(complgen_binary_path: Path):
@@ -185,7 +185,7 @@ def test_completes_subword_external_command(complgen_binary_path: Path):
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
         actual = [s.split() for s in get_sorted_completions(capture_zsh_path, 'cmd --option=')]
         assert actual == sorted([
-            ['--option=argument', 'argument', 'description'],
+            ['--option=argument', 'argument', '--', 'description'],
         ])
 
 
@@ -203,6 +203,7 @@ def test_description_special_characters(complgen_binary_path: Path):
     GRAMMAR = r'''
 cmd --option "$f\"\\";
 '''
+    print(GRAMMAR)
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
         actual = [s.split() for s in get_sorted_completions(capture_zsh_path, 'cmd --')]
-        assert actual == sorted([['--option', '--option', '$f\"']])
+        assert actual == sorted([['--option', '$f\"\\']])
