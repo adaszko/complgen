@@ -63,7 +63,7 @@ cmd prefix-infix-bad;
     LEFT_ARROW = '\x1b[D'
     TAB = '	'
     bracketed_pastes = get_ansi_bracketed_pastes(complgen_binary_path, GRAMMAR, 'cmd prefix--good{}{}'.format(LEFT_ARROW * 5, TAB).encode())
-    assert bracketed_pastes == ['cmd prefix--goodinfix-good']
+    assert bracketed_pastes == ['cmd prefix--goodinfix-good  ']
 
 
 def test_tcsh_directory_completion(complgen_binary_path: Path):

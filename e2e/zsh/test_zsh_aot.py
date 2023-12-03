@@ -37,7 +37,7 @@ cmd <COMMAND> [--help];
 '''
 
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
-        assert get_sorted_completions(capture_zsh_path, 'cmd ') == sorted(['rm Remove a project', "remote Manage a project's remotes"])
+        assert get_sorted_completions(capture_zsh_path, 'cmd ') == sorted(['rm rm     -- Remove a project', "remote remote -- Manage a project's remotes"])
 
 
 def test_zsh_uses_correct_description_with_duplicated_descriptions(complgen_binary_path: Path):
@@ -51,8 +51,8 @@ mygrep [<OPTION>]...;
 
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
         assert get_sorted_completions(capture_zsh_path, 'mygrep ') == sorted([
-            '--color use markers to highlight the matching strings',
-            '--colour use markers to highlight the matching strings',
+            '--color --color  -- use markers to highlight the matching strings',
+            '--colour --colour -- use markers to highlight the matching strings',
         ])
 
 
@@ -62,7 +62,7 @@ cmd {{{ echo -e "completion\tdescription" }}};
 '''
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
         actual = [s.split() for s in get_sorted_completions(capture_zsh_path, 'cmd ')]
-        assert actual == sorted([['completion', 'description']])
+        assert actual == sorted([['completion', 'completion', '--', 'description']])
 
 
 def test_completes_paths(complgen_binary_path: Path):
@@ -168,7 +168,7 @@ def test_completes_lsof_filter(complgen_binary_path: Path):
 def test_subword_completes_only_not_entered_yet(complgen_binary_path: Path):
     GRAMMAR = r'''mygrep --color=(always | never | auto);'''
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
-        assert get_sorted_completions(capture_zsh_path, 'mygrep --color=') == sorted(['--color=always always', '--color=never never', '--color=auto auto'])
+        assert get_sorted_completions(capture_zsh_path, 'mygrep --color=') == sorted(['--color=always always', '--color=never never ', '--color=auto auto  '])
 
 
 def test_subword_descriptions(complgen_binary_path: Path):
@@ -206,4 +206,4 @@ cmd --option "$f\"\\";
     print(GRAMMAR)
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
         actual = [s.split() for s in get_sorted_completions(capture_zsh_path, 'cmd --')]
-        assert actual == sorted([['--option', '$f\"\\']])
+        assert actual == sorted([['--option', '--option', '--', '$f\"\\']])

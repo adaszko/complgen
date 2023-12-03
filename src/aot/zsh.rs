@@ -7,6 +7,7 @@ use crate::dfa::DFA;
 
 
 // Array indexes in ZSH start from 1 (!)
+// `for i in {{1..$#array}}; do ...; done` loops do not behave well if array is empty!  Prefer i++ loops instead.
 
 
 pub fn make_string_constant(s: &str) -> String {
@@ -59,10 +60,12 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
     local word=$2
     local completions_no_description_trailing_space_array_name=$3
     local completions_trailing_space_array_name=$4
-    local descriptions_trailing_space_array_name=$5
-    local completions_no_description_no_trailing_space_array_name=$6
-    local completions_no_trailing_space_array_name=$7
-    local descriptions_no_trailing_space_array_name=$8
+    local suffixes_trailing_space_array_name=$5
+    local descriptions_trailing_space_array_name=$6
+    local completions_no_description_no_trailing_space_array_name=$7
+    local completions_no_trailing_space_array_name=$8
+    local suffixes_no_trailing_space_array_name=$9
+    local descriptions_no_trailing_space_array_name=${{10}}
 "#)?;
 
     write_lookup_tables(buffer, dfa)?;
@@ -84,7 +87,7 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
             eval "state_transitions=${{literal_transitions[$state]}}"
 
             local literal_matched=0
-            for literal_id in {{1..$#literals}}; do
+            for ((literal_id = 1; literal_id <= $#literals; literal_id++)); do
                 local literal=${{literals[$literal_id]}}
                 local literal_len=${{#literal}}
                 if [[ ${{subword:0:$literal_len}} = "$literal" ]]; then
@@ -129,21 +132,23 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
                 local to_state=${{state_transitions[$literal_id]}}
                 if [[ -v "literal_transitions[$to_state]" || -v "match_anything_transitions[$to_state]" ]]; then
                     if [[ -v "descriptions[$literal_id]" ]]; then
-                        local description="${{completion}} -- ${{descriptions[$literal_id]}}"
                         eval "$completions_no_trailing_space_array_name+=(${{(qq)completion}})"
-                        eval "$descriptions_no_trailing_space_array_name+=(${{(qq)description}})"
+                        eval "$suffixes_no_trailing_space_array_name+=(${{(qq)completion}})"
+                        eval "$descriptions_no_trailing_space_array_name+=(${{(qq)descriptions[$literal_id]}})"
                     else
                         eval "$completions_no_trailing_space_array_name+=(${{(qq)completion}})"
-                        eval "$descriptions_no_trailing_space_array_name+=(${{(qq)literal}})"
+                        eval "$suffixes_no_trailing_space_array_name+=(${{(qq)literal}})"
+                        eval "$descriptions_no_trailing_space_array_name+=('')"
                     fi
                 else
                     if [[ -v "descriptions[$literal_id]" ]]; then
-                        local description="${{completion}} -- ${{descriptions[$literal_id]}}"
                         eval "$completions_trailing_space_array_name+=(${{(qq)completion}})"
-                        eval "$descriptions_trailing_space_array_name+=(${{(qq)description}})"
+                        eval "$suffixes_trailing_space_array_name+=(${{(qq)completion}})"
+                        eval "$descriptions_trailing_space_array_name+=(${{(qq)descriptions[$literal_id]}})"
                     else
                         eval "$completions_trailing_space_array_name+=(${{(qq)completion}})"
-                        eval "$descriptions_trailing_space_array_name+=(${{(qq)literal}})"
+                        eval "$suffixes_trailing_space_array_name+=(${{(qq)literal}})"
+                        eval "$descriptions_trailing_space_array_name+=('')"
                     fi
                 fi
             fi
@@ -164,9 +169,9 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
                 local parts=(${{(@s:	:)line}})
                 if [[ -v "parts[2]" ]]; then
                     local completion=$matched_prefix${{parts[1]}}
-                    local description="${{parts[1]}} -- ${{parts[2]}}"
                     eval "$completions_trailing_space_array_name+=(${{(qq)completion}})"
-                    eval "$descriptions_trailing_space_array_name+=(${{(qq)description}})"
+                    eval "$suffixes_trailing_space_array_name+=(${{(qq)parts[1]}})"
+                    eval "$descriptions_trailing_space_array_name+=(${{(qq)parts[2]}})"
                 else
                     eval "$completions_no_description_trailing_space_array_name+=(${{(qq)line}})"
                 fi
@@ -190,10 +195,9 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
                 line="$matched_prefix$line"
                 local parts=(${{(@s:	:)line}})
                 if [[ -v "parts[2]" ]]; then
-                    local completion=${{parts[1]}}
-                    local description="${{parts[1]}} -- ${{parts[2]}}"
-                    eval "$completions_trailing_space_array_name+=(${{(qq)completion}})"
-                    eval "$descriptions_trailing_space_array_name+=(${{(qq)description}})"
+                    eval "$completions_trailing_space_array_name+=(${{(qq)parts[1]}})"
+                    eval "$suffixes_trailing_space_array_name+=(${{(qq)parts[1]}})"
+                    eval "$descriptions_trailing_space_array_name+=(${{(qq)parts[2]}})"
                 else
                     eval "$completions_no_description_trailing_space_array_name+=(${{(qq)line}})"
                 fi
@@ -295,7 +299,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
             local word=${{words[$word_index]}}
             local word_matched=0
-            for literal_id in {{1..$#literals}}; do
+            for ((literal_id = 1; literal_id <= $#literals; literal_id++)); do
                 if [[ ${{literals[$literal_id]}} = "$word" ]]; then
                     if [[ -v "state_transitions[$literal_id]" ]]; then
                         state=${{state_transitions[$literal_id]}}
@@ -348,8 +352,10 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     completions_no_description_trailing_space=()
     completions_no_description_no_trailing_space=()
     completions_trailing_space=()
+    suffixes_trailing_space=()
     descriptions_trailing_space=()
     completions_no_trailing_space=()
+    suffixes_no_trailing_space=()
     descriptions_no_trailing_space=()
 
     if [[ -v "literal_transitions[$state]" ]]; then
@@ -359,6 +365,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         for literal_id in ${{(k)state_transitions}}; do
             if [[ -v "descriptions[$literal_id]" ]]; then
                 completions_trailing_space+=("${{literals[$literal_id]}}")
+                suffixes_trailing_space+=("${{literals[$literal_id]}}")
                 descriptions_trailing_space+=("${{descriptions[$literal_id]}}")
             else
                 completions_no_description_trailing_space+=("${{literals[$literal_id]}}")
@@ -374,7 +381,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         eval "state_transitions=${{subword_transitions[$state]}}"
 
         for subword_id in ${{(k)state_transitions}}; do
-            _{command}_subword_${{subword_id}} complete "${{words[$CURRENT]}}" completions_no_description_trailing_space completions_trailing_space descriptions_trailing_space completions_no_description_no_trailing_space completions_no_trailing_space descriptions_no_trailing_space
+            _{command}_subword_${{subword_id}} complete "${{words[$CURRENT]}}" completions_no_description_trailing_space completions_trailing_space suffixes_trailing_space descriptions_trailing_space completions_no_description_no_trailing_space completions_no_trailing_space suffixes_no_trailing_space descriptions_no_trailing_space
         done
     fi
 "#)?;
@@ -393,6 +400,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             local parts=(${{(@s:	:)line}})
             if [[ -v "parts[2]" ]]; then
                 completions_trailing_space+=("${{parts[1]}}")
+                suffixes_trailing_space+=("${{parts[1]}}")
                 descriptions_trailing_space+=("${{parts[2]}}")
             else
                 completions_no_description_trailing_space+=("${{parts[1]}}")
@@ -417,6 +425,34 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
 
     write!(buffer, r#"
+    local maxlen=0
+    for suffix in ${{suffixes_trailing_space[@]}}; do
+        if [[ ${{#suffix}} -gt $maxlen ]]; then
+            maxlen=${{#suffix}}
+        fi
+    done
+    for suffix in ${{suffixes_no_trailing_space[@]}}; do
+        if [[ ${{#suffix}} -gt $maxlen ]]; then
+            maxlen=${{#suffix}}
+        fi
+    done
+
+    for ((i = 1; i <= $#suffixes_trailing_space; i++)); do
+        if [[ -z ${{descriptions_trailing_space[$i]}} ]]; then
+            descriptions_trailing_space[$i]="${{(r($maxlen)( ))${{suffixes_trailing_space[$i]}}}}"
+        else
+            descriptions_trailing_space[$i]="${{(r($maxlen)( ))${{suffixes_trailing_space[$i]}}}} -- ${{descriptions_trailing_space[$i]}}"
+        fi
+    done
+
+    for ((i = 1; i <= $#suffixes_no_trailing_space; i++)); do
+        if [[ -z ${{descriptions_no_trailing_space[$i]}} ]]; then
+            descriptions_no_trailing_space[$i]="${{(r($maxlen)( ))${{suffixes_no_trailing_space[$i]}}}}"
+        else
+            descriptions_no_trailing_space[$i]="${{(r($maxlen)( ))${{suffixes_no_trailing_space[$i]}}}} -- ${{descriptions_no_trailing_space[$i]}}"
+        fi
+    done
+
     compadd -Q -a completions_no_description_trailing_space
     compadd -Q -S ' ' -a completions_no_description_no_trailing_space
     compadd -l -Q -a -d descriptions_trailing_space completions_trailing_space
