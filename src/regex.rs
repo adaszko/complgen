@@ -342,19 +342,20 @@ mod tests {
     }
 
     fn make_followpos_regex(arena: &Bump) -> AugmentedRegexNode {
+        use AugmentedRegexNode::*;
         // (a|b)*abb#
         AugmentedRegexNode::Cat(
-            arena.alloc(AugmentedRegexNode::Cat(
-                arena.alloc(AugmentedRegexNode::Cat(
-                    arena.alloc(AugmentedRegexNode::Cat(
+            arena.alloc(Cat(
+                arena.alloc(Cat(
+                    arena.alloc(Cat(
                         arena.alloc(make_sample_star_regex(&arena)),
-                        arena.alloc(AugmentedRegexNode::Terminal(ustr("a"), 3)),
+                        arena.alloc(Terminal(ustr("a"), 3)),
                     )),
-                    arena.alloc(AugmentedRegexNode::Terminal(ustr("b"), 4)),
+                    arena.alloc(Terminal(ustr("b"), 4)),
                 )),
-                arena.alloc(AugmentedRegexNode::Terminal(ustr("b"), 5)),
+                arena.alloc(Terminal(ustr("b"), 5)),
             )),
-            arena.alloc(AugmentedRegexNode::EndMarker(6)),
+            arena.alloc(EndMarker(6)),
         )
     }
 

@@ -203,7 +203,6 @@ def test_description_special_characters(complgen_binary_path: Path):
     GRAMMAR = r'''
 cmd --option "$f\"\\";
 '''
-    print(GRAMMAR)
     with capture_grammar_completions(complgen_binary_path, GRAMMAR) as capture_zsh_path:
         actual = [s.split() for s in get_sorted_completions(capture_zsh_path, 'cmd --')]
         assert actual == sorted([['--option', '--option', '--', '$f\"\\']])

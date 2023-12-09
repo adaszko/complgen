@@ -31,7 +31,8 @@ always auto never
 
 This mode is useful if you're command line user and want to improve the CLI experience on *your* machine by
 either implementing a missing autocompletion for a specific CLI tool, or override the default one with a one
-better tailored for your needs and usage patterns.
+better tailored for your needs and usage patterns.  Or you simply want to iterate quickly on a `.usage` file
+before you compile it to a shell script.
 
 ```
 $ complgen jit usage/small.usage bash -- --color
@@ -302,7 +303,7 @@ The above grammar was pulled straight out of [`strace` man page](https://man7.or
 ## Caveats
 
  * Bash requires `bash-completion` OS package to be installed because completion scripts produced by
-   `complgen` call shell functions from that package at *completion* time.  This is necessary to work around
+   `complgen`, call shell functions from that package at *completion* time.  This is necessary to work around
    Bash's default behavior of [breaking shell words on any character present in the
    `$COMP_WORDBREAKS`](https://stackoverflow.com/a/12495480) environment variable.
 
@@ -320,21 +321,3 @@ The above grammar was pulled straight out of [`strace` man page](https://man7.or
 
 Best way is to watch GitHub [releases](https://github.com/adaszko/complgen/releases).
 
-## Related Projects
-
- * [clap](https://docs.rs/clap_complete/)
-    * `complgen` is able to produce completions by executing an arbitrary shell command (e.g. `cargo -Z
-      <TAB>`, complete test name in `cargo test <TAB>`)
-    * All the grammar specification mechanisms are available for completing option parameters.  That means
-      `complgen` is able to complete DSLs of the likes of `strace -e <TAB>` or `lsof -i <TAB>`.
-    * No recompilation and reloading necessary in shell integration mode -- just modify the grammar file and completions automatically reflect that.
-    * There's a possibility of the program options and completion grammar diverging since they're maintained
-      separately.  On the plus side, `complgen` isn't tied to the implementation language and independent
-      users can write their custom completion grammars suited for their own needs.
- * [zsh-capture-completion](https://github.com/Valodim/zsh-capture-completion)
-    * This must have been painful to implement but is indispensable to complgen!
- * [argcomplete](https://github.com/kislyuk/argcomplete)
- * [Oil's shellac protocol](https://github.com/oilshell/oil/wiki/Shell-Autocompletion)
- * [_regex_arguments and _regex_words completions](https://github.com/zsh-users/zsh-completions/blob/master/zsh-completions-howto.org#writing-completion-functions-using-_regex_arguments-and-_regex_words)
- * [sh-manpage-completions](https://github.com/nevesnunes/sh-manpage-completions)
- * [Little Language](https://wiki.c2.com/?LittleLanguage=)
