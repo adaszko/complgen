@@ -26,6 +26,7 @@ pub struct Completion {
     pub completed_subword_suffix: String,
     pub description: String,
     pub is_shell_word_ending: bool,
+    pub fallback_level: usize,
 }
 
 
@@ -162,7 +163,7 @@ impl Shell {
 }
 
 
-fn capture_specialized_completions(shell: Shell, specialization: &Specialization, prefix: &str, output: &mut Vec<Completion>) -> anyhow::Result<()> {
+fn capture_specialized_completions(shell: Shell, specialization: &Specialization, prefix: &str, fallback_level: usize, output: &mut Vec<Completion>) -> anyhow::Result<()> {
     let stdout = match shell {
         Shell::Bash => {
             let Some(command) = specialization.bash.or(specialization.generic) else {
@@ -202,6 +203,7 @@ fn capture_specialized_completions(shell: Shell, specialization: &Specialization
             completed_subword_suffix: completion,
             description,
             is_shell_word_ending: false,
+            fallback_level,
         });
     }
     Ok(())
@@ -214,7 +216,7 @@ pub fn get_subword_match_final_state<'a>(dfa: &DFA, input: &'a str) -> Option<(S
     let mut current_state = dfa.starting_state;
     'outer: while !remaining_input.is_empty() {
         for (transition_input, to) in dfa.iter_transitions_from(current_state) {
-            if let Input::Literal(s, _) = transition_input {
+            if let Input::Literal(s, ..) = transition_input {
                 if remaining_input.starts_with(s.as_str()) {
                     matched_input = &input[..matched_input.len() + s.len()];
                     remaining_input = &remaining_input[s.len()..];
@@ -238,19 +240,20 @@ pub fn get_subword_match_final_state<'a>(dfa: &DFA, input: &'a str) -> Option<(S
 
 fn do_gen_completions_for_input(input: &Input, prefix: &str, shell: Shell, output: &mut Vec<Completion>) -> anyhow::Result<()> {
     match input {
-        Input::Literal(literal, description) if shell.completion_matches(literal, prefix) => {
+        Input::Literal(literal, description, fallback_level) if shell.completion_matches(literal, prefix) => {
             let description = description.unwrap_or(ustr("")).as_str().to_string();
             output.push(Completion {
                 matched_subword_prefix: "".to_string(),
                 completed_subword_suffix: literal.to_string(),
                 description,
                 is_shell_word_ending: true,
+                fallback_level: *fallback_level,
             })
         },
 
-        Input::Literal(_, _) => {},
+        Input::Literal(..) => {},
 
-        Input::Command(command) => {
+        Input::Command(command, fallback_level) => {
             let stdout = shell.shell_out(command.as_str(), prefix)?;
             for line in stdout.lines() {
                 if !shell.completion_matches(line, prefix) {
@@ -265,14 +268,15 @@ fn do_gen_completions_for_input(input: &Input, prefix: &str, shell: Shell, outpu
                     completed_subword_suffix: completion,
                     description,
                     is_shell_word_ending: true,
+                    fallback_level: *fallback_level,
                 });
             }
         },
 
-        Input::Nonterminal(_, None) => {},
+        Input::Nonterminal(_, None, ..) => {},
 
-        Input::Nonterminal(_, Some(specialization)) => {
-            capture_specialized_completions(shell, specialization, prefix, output)?
+        Input::Nonterminal(_, Some(specialization), fallback_level) => {
+            capture_specialized_completions(shell, specialization, prefix, *fallback_level, output)?
         },
 
         Input::Subword(_) => unreachable!(),
@@ -283,19 +287,20 @@ fn do_gen_completions_for_input(input: &Input, prefix: &str, shell: Shell, outpu
 
 fn do_gen_subword_completions_for_input(input: &Input, matched_subword_prefix: &str, prefix_to_match: &str, shell: Shell, is_final_subword_transition: bool, output: &mut Vec<Completion>) -> anyhow::Result<()> {
     match input {
-        Input::Literal(literal, description) if literal.starts_with(prefix_to_match) => {
+        Input::Literal(literal, description, fallback_level) if literal.starts_with(prefix_to_match) => {
             let description = description.unwrap_or(ustr("")).as_str().to_string();
             output.push(Completion {
                 matched_subword_prefix: matched_subword_prefix.to_string(),
                 completed_subword_suffix: literal.to_string(),
                 description,
                 is_shell_word_ending: is_final_subword_transition,
+                fallback_level: *fallback_level,
             })
         },
 
-        Input::Literal(_, _) => {},
+        Input::Literal(..) => {},
 
-        Input::Command(command) => {
+        Input::Command(command, fallback_level) => {
             let stdout = shell.shell_out(command.as_str(), "")?;
             for line in stdout.lines() {
                 if !line.starts_with(prefix_to_match) {
@@ -310,14 +315,15 @@ fn do_gen_subword_completions_for_input(input: &Input, matched_subword_prefix: &
                     completed_subword_suffix: completion,
                     description,
                     is_shell_word_ending: is_final_subword_transition,
+                    fallback_level: *fallback_level,
                 });
             }
         },
 
-        Input::Nonterminal(_, None) => {},
+        Input::Nonterminal(_, None, ..) => {},
 
-        Input::Nonterminal(_, Some(specialization)) => {
-            capture_specialized_completions(shell, specialization, "", output)?
+        Input::Nonterminal(_, Some(specialization), fallback_level) => {
+            capture_specialized_completions(shell, specialization, "", *fallback_level, output)?
         },
 
         Input::Subword(_) => unreachable!(),
@@ -352,7 +358,7 @@ pub fn get_completions(dfa: &DFA, words: &[&str], prefix: &str, shell: Shell) ->
     let mut state = dfa.starting_state;
     'outer: while word_index < words.len() {
         for (transition_input, to) in dfa.iter_transitions_from(state) {
-            if let Input::Literal(s, _) = transition_input {
+            if let Input::Literal(s, ..) = transition_input {
                 if words[word_index] == s.as_str() {
                     word_index += 1;
                     state = to;
@@ -414,7 +420,7 @@ mod tests {
     #[test]
     fn completes_darcs_add() {
         const GRAMMAR: &str = r#"darcs add ( --boring | ( --case-ok | --reserved-ok ) | ( ( -r | --recursive ) | --not-recursive ) | ( --date-trick | --no-date-trick ) | --repodir <DIRECTORY> | --dry-run | --umask <UMASK> | ( --debug | --debug-verbose | --debug-http | ( -v | --verbose ) | ( -q | --quiet ) | --standard-verbosity ) | --timings | ( --posthook <COMMAND> | --no-posthook ) | ( --prompt-posthook | --run-posthook ) | ( --prehook <COMMAND> | --no-prehook ) | ( --prompt-prehook | --run-prehook ) ) ... ( <FILE> | <DIRECTORY> )...;"#;
-        assert_eq!(get_bash_grammar_completions(GRAMMAR, &[], ""), vec![Completion {matched_subword_prefix: "".to_string(), completed_subword_suffix: "add".to_string(), description: "".to_string(), is_shell_word_ending: true}]);
+        assert_eq!(get_bash_grammar_completions(GRAMMAR, &[], ""), vec![Completion {matched_subword_prefix: "".to_string(), completed_subword_suffix: "add".to_string(), description: "".to_string(), is_shell_word_ending: true, fallback_level: 0}]);
 
         let input = vec!["add"];
         let generated: HashSet<_> = HashSet::from_iter(get_bash_grammar_completions(GRAMMAR, &input, "").into_iter().map(|completion| completion.get_completion()));

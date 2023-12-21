@@ -15,7 +15,7 @@ mygrep [<OPTION>]... [--] <PATTERNS> [<PATH>]...;
            | (-v | --invert-match)                                                          "select non-matching lines"
            | (-V | --version)                                                               "display version information and exit"
            | --help                                                                         "display this help text and exit"
-           | (-m <NUM> | --max-count=<NUM> | --max-count <NUM>)                             "stop after NUM selected lines"
+           | (--max-count=<NUM> || --max-count <NUM> | -m <NUM>)                            "stop after NUM selected lines"
            | (-b | --byte-offset)                                                           "print the byte offset with output lines"
            | (-n | --line-number)                                                           "print line number with output lines"
            | --line-buffered                                                                "flush output on every line"
@@ -44,7 +44,7 @@ mygrep [<OPTION>]... [--] <PATTERNS> [<PATH>]...;
            | (-C <NUM> | --context <NUM> | -<NUM>)                                          "print NUM lines of output context"
            | --group-separator=<SEP>                                                        "print SEP on line between matches with context"
            | --no-group-separator                                                           "do not print separator for matches with context"
-           | (--color=[<WHEN>] | --colour=[<WHEN>] | --color [<WHEN>] | --colour [<WHEN>])  "use markers to highlight the matching strings"
+           | (--color=[<WHEN>] || --color [<WHEN>] | --colour=[<WHEN>] | --colour [<WHEN>]) "use markers to highlight the matching strings"
            | (-U | --binary)                                                                "do not strip CR characters at EOL (MSDOS/Windows)"
            ;
 

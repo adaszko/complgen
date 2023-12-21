@@ -13,10 +13,10 @@ pub type Position = u32;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Input {
-    Literal(Ustr, Option<Ustr>),
+    Literal(Ustr, Option<Ustr>, usize), // literal, optional description, fallback level
     Subword(DFARef),
-    Nonterminal(Ustr, Option<Specialization>),
-    Command(Ustr),
+    Nonterminal(Ustr, Option<Specialization>, usize), // name, specialization, fallback level
+    Command(Ustr, usize), // command, fallback level
 }
 
 
@@ -36,9 +36,9 @@ impl std::fmt::Display for Input {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Subword(subword) => write!(f, r#"{subword:?}"#),
-            Self::Literal(literal, _) => write!(f, r#"{literal}"#),
-            Self::Nonterminal(nonterminal, _) => write!(f, r#"{nonterminal}"#),
-            Self::Command(command) => write!(f, r#"{command}"#),
+            Self::Literal(literal, _, fallback_level) => write!(f, r#"{literal}:{fallback_level}"#),
+            Self::Nonterminal(nonterminal, ..) => write!(f, r#"{nonterminal}"#),
+            Self::Command(command, _) => write!(f, r#"{command}"#),
         }
     }
 }
@@ -48,11 +48,11 @@ impl std::fmt::Display for Input {
 pub enum AugmentedRegexNode<'a> {
     Epsilon,
     Subword(Position),
-    Terminal(Ustr, Position),
+    Terminal(Ustr, usize, Position), // terminal, fallback level, position
     Nonterminal(Position),
     Command(Ustr, Position),
     Cat(&'a AugmentedRegexNode<'a>, &'a AugmentedRegexNode<'a>),
-    Or(Vec<AugmentedRegexNode<'a>>),
+    Or(Vec<AugmentedRegexNode<'a>>, bool), // is fallback
     Star(&'a AugmentedRegexNode<'a>),
     EndMarker(Position),
 }
@@ -62,11 +62,11 @@ impl<'a> std::fmt::Debug for AugmentedRegexNode<'a> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Subword(position) => f.write_fmt(format_args!(r#"Subword({position})"#)),
-            Self::Terminal(term, position) => f.write_fmt(format_args!(r#"Terminal({:?}.to_string(), {position})"#, term)),
+            Self::Terminal(term, level, position) => f.write_fmt(format_args!(r#"Terminal({:?}.to_string(), {level}, {position})"#, term)),
             Self::Nonterminal(position) => f.write_fmt(format_args!(r#"Nonterminal({})"#, position)),
             Self::Command(code, position) => f.write_fmt(format_args!(r#"Command({:?}.to_string(), {})"#, code, position)),
             Self::Cat(left, right) => f.write_fmt(format_args!(r#"Cat({:?}, {:?})"#, left, right)),
-            Self::Or(arg0) => f.write_fmt(format_args!(r#"Or(vec!{:?})"#, arg0)),
+            Self::Or(arg0, is_fallback) => f.write_fmt(format_args!(r#"Or(vec!{:?}, {is_fallback})"#, arg0)),
             Self::Star(arg0) => f.write_fmt(format_args!(r#"Star({:?})"#, arg0)),
             Self::EndMarker(position) => f.write_fmt(format_args!(r#"EndMarker({})"#, position)),
             Self::Epsilon => f.write_fmt(format_args!(r#"Epsilon"#)),
@@ -79,10 +79,10 @@ fn do_firstpos(re: &AugmentedRegexNode, result: &mut BTreeSet<Position>) {
     match re {
         AugmentedRegexNode::Epsilon => {},
         AugmentedRegexNode::Subword(position) => { result.insert(*position); },
-        AugmentedRegexNode::Terminal(_, position) => { result.insert(*position); },
+        AugmentedRegexNode::Terminal(_, _, position) => { result.insert(*position); },
         AugmentedRegexNode::Nonterminal(position) => { result.insert(*position); },
         AugmentedRegexNode::Command(_, position) => { result.insert(*position); },
-        AugmentedRegexNode::Or(subregexes) => {
+        AugmentedRegexNode::Or(subregexes, _) => {
             for subre in subregexes {
                 do_firstpos(subre, result);
             }
@@ -106,10 +106,10 @@ fn do_lastpos(re: &AugmentedRegexNode, result: &mut HashSet<Position>) {
     match re {
         AugmentedRegexNode::Epsilon => {},
         AugmentedRegexNode::Subword(position) => { result.insert(*position); },
-        AugmentedRegexNode::Terminal(_, position) => { result.insert(*position); },
+        AugmentedRegexNode::Terminal(_, _, position) => { result.insert(*position); },
         AugmentedRegexNode::Nonterminal(position) => { result.insert(*position); },
         AugmentedRegexNode::Command(_, position) => { result.insert(*position); },
-        AugmentedRegexNode::Or(subregexes) => {
+        AugmentedRegexNode::Or(subregexes, _) => {
             for subre in subregexes {
                 do_lastpos(subre, result);
             }
@@ -136,7 +136,7 @@ fn do_followpos(re: &AugmentedRegexNode, result: &mut BTreeMap<Position, Roaring
         AugmentedRegexNode::Terminal(..) => {},
         AugmentedRegexNode::Nonterminal(..) => {},
         AugmentedRegexNode::Command(..) => {},
-        AugmentedRegexNode::Or(subregexes) => {
+        AugmentedRegexNode::Or(subregexes, _) => {
             for subre in subregexes {
                 do_followpos(subre, result);
             }
@@ -173,7 +173,7 @@ impl<'a> AugmentedRegexNode<'a> {
             AugmentedRegexNode::Terminal(..) => false,
             AugmentedRegexNode::Nonterminal(..) => false,
             AugmentedRegexNode::Command(..) => false,
-            AugmentedRegexNode::Or(children) => children.iter().any(|child| child.nullable()),
+            AugmentedRegexNode::Or(children, _) => children.iter().any(|child| child.nullable()),
             AugmentedRegexNode::Cat(left, right) => left.nullable() && right.nullable(),
             AugmentedRegexNode::Star(_) => true,
             AugmentedRegexNode::EndMarker(_) => true,
@@ -202,9 +202,9 @@ impl<'a> AugmentedRegexNode<'a> {
 
 fn do_from_expr<'a>(e: &Expr, specs: &UstrMap<Specialization>, arena: &'a Bump, symbols: &mut HashSet<Input>, input_from_position: &mut Vec<Input>) -> AugmentedRegexNode<'a> {
     match e {
-        Expr::Terminal(term, description) => {
-            let result = AugmentedRegexNode::Terminal(*term, Position::try_from(input_from_position.len()).unwrap());
-            let input = Input::Literal(*term, *description);
+        Expr::Terminal(term, description, level) => {
+            let result = AugmentedRegexNode::Terminal(*term, *level, Position::try_from(input_from_position.len()).unwrap());
+            let input = Input::Literal(*term, *description, *level);
             input_from_position.push(input.clone());
             symbols.insert(input);
             result
@@ -220,17 +220,17 @@ fn do_from_expr<'a>(e: &Expr, specs: &UstrMap<Specialization>, arena: &'a Bump, 
             symbols.insert(input);
             result
         },
-        Expr::Nonterminal(name) => {
+        Expr::Nonterminal(name, fallback_level) => {
             let result = AugmentedRegexNode::Nonterminal(Position::try_from(input_from_position.len()).unwrap());
             let specialization = specs.get(name);
-            let input = Input::Nonterminal(*name, specialization.copied());
+            let input = Input::Nonterminal(*name, specialization.copied(), *fallback_level);
             input_from_position.push(input.clone());
             symbols.insert(input);
             result
         },
-        Expr::Command(code) => {
+        Expr::Command(code, fallback_level) => {
             let result = AugmentedRegexNode::Command(*code, Position::try_from(input_from_position.len()).unwrap());
-            let input = Input::Command(*code);
+            let input = Input::Command(*code, *fallback_level);
             input_from_position.push(input.clone());
             symbols.insert(input);
             result
@@ -249,11 +249,11 @@ fn do_from_expr<'a>(e: &Expr, specs: &UstrMap<Specialization>, arena: &'a Bump, 
                 let subregex = do_from_expr(e, specs, arena, symbols, input_from_position);
                 subregexes.push(subregex);
             }
-            AugmentedRegexNode::Or(subregexes)
+            AugmentedRegexNode::Or(subregexes, false)
         },
         Expr::Optional(subexpr) => {
             let subregex = do_from_expr(subexpr, specs, arena, symbols, input_from_position);
-            AugmentedRegexNode::Or(vec![subregex, AugmentedRegexNode::Epsilon])
+            AugmentedRegexNode::Or(vec![subregex, AugmentedRegexNode::Epsilon], false)
         }
         Expr::Many1(subexpr) => {
             let subregex = arena.alloc(do_from_expr(subexpr, specs, arena, symbols, input_from_position));
@@ -261,6 +261,14 @@ fn do_from_expr<'a>(e: &Expr, specs: &UstrMap<Specialization>, arena: &'a Bump, 
             AugmentedRegexNode::Cat(subregex, star)
         },
         Expr::DistributiveDescription(_, _) => unreachable!("DistributiveDescription Expr type should have been erased before compilation to regex"),
+        Expr::Fallback(subexprs) => {
+            let mut subregexes: Vec<AugmentedRegexNode> = Default::default();
+            for e in subexprs {
+                let subregex = do_from_expr(e, specs, arena, symbols, input_from_position);
+                subregexes.push(subregex);
+            }
+            AugmentedRegexNode::Or(subregexes, true)
+        },
     }
 }
 
@@ -306,14 +314,14 @@ mod tests {
     use ustr::ustr;
 
     fn make_sample_star_regex(arena: &Bump) -> AugmentedRegexNode {
-        AugmentedRegexNode::Star(arena.alloc(AugmentedRegexNode::Or(vec![AugmentedRegexNode::Terminal(ustr("a"), 1), AugmentedRegexNode::Terminal(ustr("b"), 2),])))
+        AugmentedRegexNode::Star(arena.alloc(AugmentedRegexNode::Or(vec![AugmentedRegexNode::Terminal(ustr("a"), 0, 1), AugmentedRegexNode::Terminal(ustr("b"), 0, 2),], false)))
     }
 
     fn make_sample_regex(arena: &Bump) -> AugmentedRegexNode {
         // (a|b)*a
         AugmentedRegexNode::Cat(
             arena.alloc(make_sample_star_regex(arena)),
-            arena.alloc(AugmentedRegexNode::Terminal(ustr("a"), 3)),
+            arena.alloc(AugmentedRegexNode::Terminal(ustr("a"), 0, 3)),
         )
     }
 
@@ -349,11 +357,11 @@ mod tests {
                 arena.alloc(Cat(
                     arena.alloc(Cat(
                         arena.alloc(make_sample_star_regex(&arena)),
-                        arena.alloc(Terminal(ustr("a"), 3)),
+                        arena.alloc(Terminal(ustr("a"), 0, 3)),
                     )),
-                    arena.alloc(Terminal(ustr("b"), 4)),
+                    arena.alloc(Terminal(ustr("b"), 0, 4)),
                 )),
-                arena.alloc(Terminal(ustr("b"), 5)),
+                arena.alloc(Terminal(ustr("b"), 0, 5)),
             )),
             arena.alloc(EndMarker(6)),
         )

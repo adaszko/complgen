@@ -114,3 +114,19 @@ mygrep --color "use markers to highlight the matching strings"=<WHEN>;
 <WHEN> ::= always | never | auto;
 '''
     assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='--color') == sorted(['--color='])
+
+
+def test_fallback_completes_default(complgen_binary_path: Path):
+    GRAMMAR = r'''
+mygrep (--color=<WHEN> || --colour=<WHEN>);
+<WHEN> ::= always | never | auto;
+'''
+    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='') == sorted(['--color='])
+
+
+def test_falls_back_on_no_matches(complgen_binary_path: Path):
+    GRAMMAR = r'''
+mygrep (--color=<WHEN> || --colour=<WHEN>);
+<WHEN> ::= always | never | auto;
+'''
+    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='--colou') == sorted(['--colour='])

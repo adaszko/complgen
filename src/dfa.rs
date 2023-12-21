@@ -480,7 +480,7 @@ fn do_to_dot<W: Write>(output: &mut W, dfa: &DFA, identifiers_prefix: &str, recu
     for (from, tos) in &dfa.transitions {
         for (input, to) in tos {
             match input {
-                Input::Literal(_, _) | Input::Nonterminal(_, _) | Input::Command(_) => {
+                Input::Literal(..) | Input::Nonterminal(..) | Input::Command(..) => {
                     let label = format!("{}", input).replace('\"', "\\\"");
                     writeln!(output, "{indentation}_{identifiers_prefix}{} -> _{identifiers_prefix}{} [label=\"{}\"];", from, to, label)?;
                 }
@@ -503,7 +503,7 @@ fn do_get_subdfa_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)
     for (from, tos) in &dfa.transitions {
         for (input, _) in tos {
             let cmd = match input {
-                Input::Command(cmd) => *cmd,
+                Input::Command(cmd, ..) => *cmd,
                 Input::Subword(..) => unreachable!(),
                 Input::Nonterminal(..) => continue,
                 Input::Literal(..) => continue,
@@ -517,7 +517,7 @@ fn do_get_subdfa_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)
 fn do_get_subdfa_bash_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)>) {
     for (from, input) in dfa.iter_inputs() {
         match input {
-            Input::Nonterminal(_, Some(Specialization { bash: Some(cmd), .. })) => result.push((from, cmd)),
+            Input::Nonterminal(_, Some(Specialization { bash: Some(cmd), .. }), ..) => result.push((from, cmd)),
             Input::Nonterminal(..) => continue,
             Input::Subword(..) => unreachable!(),
             Input::Command(..) => continue,
@@ -530,7 +530,7 @@ fn do_get_subdfa_bash_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, 
 fn do_get_subdfa_fish_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)>) {
     for (from, input) in dfa.iter_inputs() {
         match input {
-            Input::Nonterminal(_, Some(Specialization { fish: Some(cmd), .. })) => result.push((from, cmd)),
+            Input::Nonterminal(_, Some(Specialization { fish: Some(cmd), .. }), ..) => result.push((from, cmd)),
             Input::Nonterminal(..) => continue,
             Input::Subword(..) => unreachable!(),
             Input::Command(..) => continue,
@@ -542,7 +542,7 @@ fn do_get_subdfa_fish_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, 
 fn do_get_subdfa_zsh_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)>) {
     for (from, input) in dfa.iter_inputs() {
         match input {
-            Input::Nonterminal(_, Some(Specialization { zsh: Some(cmd), .. })) => result.push((from, cmd)),
+            Input::Nonterminal(_, Some(Specialization { zsh: Some(cmd), .. }), ..) => result.push((from, cmd)),
             Input::Nonterminal(..) => continue,
             Input::Subword(..) => unreachable!(),
             Input::Command(..) => continue,
@@ -586,7 +586,7 @@ impl DFA {
         let mut current_state = self.starting_state;
         'outer: while !input.is_empty() {
             for (transition_input, to) in self.iter_transitions_from(current_state) {
-                if let Input::Literal(ustr, _) = transition_input {
+                if let Input::Literal(ustr, ..) = transition_input {
                     let s = ustr.as_str();
                     if input.starts_with(s) {
                         input = &input[s.len()..];
@@ -610,7 +610,7 @@ impl DFA {
 
     pub fn get_all_literals(&self) -> Vec<(Ustr, Option<Ustr>)> {
         self.input_symbols.iter().filter_map(|input| match input {
-            Input::Literal(input, description) => Some((*input, *description)),
+            Input::Literal(input, description, ..) => Some((*input, *description)),
             Input::Subword(..) => None,
             Input::Nonterminal(..) => None,
             Input::Command(..) => None,
@@ -623,7 +623,7 @@ impl DFA {
         for (from, tos) in &self.transitions {
             for (input, _) in tos {
                 let cmd = match input {
-                    Input::Command(cmd) => *cmd,
+                    Input::Command(cmd, ..) => *cmd,
                     Input::Subword(subdfa) => {
                         if subdfas.contains_key(subdfa) {
                             continue;
@@ -646,7 +646,7 @@ impl DFA {
         let mut subdfas: HashMap<DFARef, Vec<(StateId, Ustr)>> = Default::default();
         for (from, input) in self.iter_inputs() {
             match input {
-                Input::Nonterminal(_, Some(Specialization { bash: Some(cmd), .. })) => top_level.push((from, cmd)),
+                Input::Nonterminal(_, Some(Specialization { bash: Some(cmd), .. }), ..) => top_level.push((from, cmd)),
                 Input::Subword(subdfa) => {
                     if subdfas.contains_key(&subdfa) {
                         continue;
@@ -666,7 +666,7 @@ impl DFA {
         let mut subdfas: HashMap<DFARef, Vec<(StateId, Ustr)>> = Default::default();
         for (from, input) in self.iter_inputs() {
             match input {
-                Input::Nonterminal(_, Some(Specialization { fish: Some(cmd), .. })) => top_level.push((from, cmd)),
+                Input::Nonterminal(_, Some(Specialization { fish: Some(cmd), .. }), ..) => top_level.push((from, cmd)),
                 Input::Subword(subdfa) => {
                     if subdfas.contains_key(&subdfa) {
                         continue;
@@ -687,7 +687,7 @@ impl DFA {
         for (from, tos) in &self.transitions {
             for (input, _) in tos {
                 match input {
-                    Input::Nonterminal(_, Some(Specialization { zsh: Some(cmd), .. })) => top_level.push((*from, *cmd)),
+                    Input::Nonterminal(_, Some(Specialization { zsh: Some(cmd), .. }), ..) => top_level.push((*from, *cmd)),
                     Input::Subword(subdfa) => {
                         if subdfas.contains_key(subdfa) {
                             continue;
@@ -709,7 +709,7 @@ impl DFA {
             None => return vec![],
         };
         let transitions: Vec<(Ustr, Ustr, StateId)> = map.iter().filter_map(|(input, to)| match input {
-            Input::Literal(input, description) => Some((*input, description.unwrap_or(ustr("")), *to)),
+            Input::Literal(input, description, ..) => Some((*input, description.unwrap_or(ustr("")), *to)),
             Input::Subword(..) => None,
             Input::Nonterminal(..) => None,
             Input::Command(..) => None,
@@ -825,7 +825,7 @@ mod tests {
     impl Transition {
         fn new(from: StateId, input: &str, to: StateId) -> Self {
             Self {
-                from, input: Input::Literal(ustr::ustr(input), None), to
+                from, input: Input::Literal(ustr::ustr(input), None, 0), to
             }
         }
     }
@@ -840,7 +840,7 @@ mod tests {
                 }
 
                 for (transition_input, to) in self.iter_transitions_from(current_state) {
-                    if let Input::Literal(s, _) = transition_input {
+                    if let Input::Literal(s, ..) = transition_input {
                         if inputs[input_index] == s.as_str() {
                             input_index += 1;
                             current_state = to;
@@ -899,7 +899,7 @@ mod tests {
     #[test]
     fn minimal_example() {
         use ustr::ustr;
-        let expr = Terminal(ustr("foo"), None);
+        let expr = Terminal(ustr("foo"), None, 0);
         let arena = Bump::new();
         let specs = UstrMap::default();
         let regex = AugmentedRegex::from_expr(&expr, &specs, &arena);
@@ -953,27 +953,27 @@ mod tests {
         let dfa = {
             let starting_state = 0;
             let mut transitions: HashMap<StateId, HashMap<Input, StateId>> = Default::default();
-            transitions.entry(0).or_default().insert(Input::Literal(ustr("f"), None), 1);
-            transitions.entry(1).or_default().insert(Input::Literal(ustr("e"), None), 2);
-            transitions.entry(1).or_default().insert(Input::Literal(ustr("i"), None), 4);
-            transitions.entry(2).or_default().insert(Input::Literal(ustr("e"), None), 3);
-            transitions.entry(4).or_default().insert(Input::Literal(ustr("e"), None), 5);
+            transitions.entry(0).or_default().insert(Input::Literal(ustr("f"), None, 0), 1);
+            transitions.entry(1).or_default().insert(Input::Literal(ustr("e"), None, 0), 2);
+            transitions.entry(1).or_default().insert(Input::Literal(ustr("i"), None, 0), 4);
+            transitions.entry(2).or_default().insert(Input::Literal(ustr("e"), None, 0), 3);
+            transitions.entry(4).or_default().insert(Input::Literal(ustr("e"), None, 0), 5);
             let accepting_states = RoaringBitmap::from_iter([3,5]);
-            let input_symbols = Rc::new(HashSet::from_iter([Input::Literal(ustr("f"), None), Input::Literal(ustr("e"), None), Input::Literal(ustr("i"), None)]));
+            let input_symbols = Rc::new(HashSet::from_iter([Input::Literal(ustr("f"), None, 0), Input::Literal(ustr("e"), None, 0), Input::Literal(ustr("i"), None, 0)]));
             DFA { starting_state, transitions, accepting_states, input_symbols }
         };
         let minimized = dfa.minimize();
         assert_eq!(minimized.starting_state, 0);
         assert_eq!(minimized.accepting_states, RoaringBitmap::from_iter([3]));
-        assert!(minimized.has_transition(0, Input::Literal(ustr("f"), None), 1));
-        assert!(minimized.has_transition(1, Input::Literal(ustr("e"), None), 2));
-        assert!(minimized.has_transition(1, Input::Literal(ustr("i"), None), 2));
-        assert!(minimized.has_transition(2, Input::Literal(ustr("e"), None), 3));
+        assert!(minimized.has_transition(0, Input::Literal(ustr("f"), None, 0), 1));
+        assert!(minimized.has_transition(1, Input::Literal(ustr("e"), None, 0), 2));
+        assert!(minimized.has_transition(1, Input::Literal(ustr("i"), None, 0), 2));
+        assert!(minimized.has_transition(2, Input::Literal(ustr("e"), None, 0), 3));
     }
 
     #[test]
     fn minimization_fails() {
-        let (expr, input) = (Alternative(vec![Rc::new(Many1(Rc::new(Alternative(vec![Rc::new(Terminal(u("--quux"), None)), Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Many1(Rc::new(Many1(Rc::new(Alternative(vec![Rc::new(Terminal(u("--baz"), None)), Rc::new(Nonterminal(u("FILE")))])))))), Rc::new(Nonterminal(u("FILE")))])))), Rc::new(Sequence(vec![Rc::new(Nonterminal(u("FILE"))), Rc::new(Terminal(u("foo"), None))]))]))])))), Rc::new(Nonterminal(u("FILE")))]), [u("--quux"), u("--baz"), u("anything"), u("anything"), u("foo")]);
+        let (expr, input) = (Alternative(vec![Rc::new(Many1(Rc::new(Alternative(vec![Rc::new(Terminal(u("--quux"), None, 0)), Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Many1(Rc::new(Many1(Rc::new(Alternative(vec![Rc::new(Terminal(u("--baz"), None, 0)), Rc::new(Nonterminal(u("FILE"), 0))])))))), Rc::new(Nonterminal(u("FILE"), 0))])))), Rc::new(Sequence(vec![Rc::new(Nonterminal(u("FILE"), 0)), Rc::new(Terminal(u("foo"), None, 0))]))]))])))), Rc::new(Nonterminal(u("FILE"), 0))]), [u("--quux"), u("--baz"), u("anything"), u("anything"), u("foo")]);
         let arena = Bump::new();
         let specs = UstrMap::default();
         let regex = AugmentedRegex::from_expr(&expr, &specs, &arena);
@@ -989,7 +989,7 @@ mod tests {
 
     #[test]
     fn minimization_counterexample1() {
-        let (expr, input) = (Alternative(vec![Rc::new(Many1(Rc::new(Sequence(vec![Rc::new(Nonterminal(u("FILE"))), Rc::new(Nonterminal(u("FILE")))])))), Rc::new(Nonterminal(u("FILE")))]), [u("anything"), u("anything"), u("anything"), u("anything"), u("anything"), u("anything")]);
+        let (expr, input) = (Alternative(vec![Rc::new(Many1(Rc::new(Sequence(vec![Rc::new(Nonterminal(u("FILE"), 0)), Rc::new(Nonterminal(u("FILE"), 0))])))), Rc::new(Nonterminal(u("FILE"), 0))]), [u("anything"), u("anything"), u("anything"), u("anything"), u("anything"), u("anything")]);
         let arena = Bump::new();
         let specs = UstrMap::default();
         let regex = AugmentedRegex::from_expr(&expr, &specs, &arena);
@@ -1005,7 +1005,7 @@ mod tests {
 
     #[test]
     fn minimization_counterexample2() {
-        let (expr, input) = (Sequence(vec![Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Many1(Rc::new(Many1(Rc::new(Terminal(u("--baz"), None)))))), Rc::new(Nonterminal(u("FILE")))])), Rc::new(Terminal(u("--baz"), None))])), Rc::new(Many1(Rc::new(Alternative(vec![Rc::new(Nonterminal(u("FILE"))), Rc::new(Nonterminal(u("FILE")))]))))]), [u("anything"), u("--baz"), u("anything"), u("anything")]);
+        let (expr, input) = (Sequence(vec![Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Many1(Rc::new(Many1(Rc::new(Terminal(u("--baz"), None, 0)))))), Rc::new(Nonterminal(u("FILE"), 0))])), Rc::new(Terminal(u("--baz"), None, 0))])), Rc::new(Many1(Rc::new(Alternative(vec![Rc::new(Nonterminal(u("FILE"), 0)), Rc::new(Nonterminal(u("FILE"), 0))]))))]), [u("anything"), u("--baz"), u("anything"), u("anything")]);
         let arena = Bump::new();
         let specs = UstrMap::default();
         let regex = AugmentedRegex::from_expr(&expr, &specs, &arena);

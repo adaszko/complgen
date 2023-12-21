@@ -45,7 +45,7 @@ The just-in-time mode is intended to be further integrated with shells so that i
 directly from grammars, bypassing compilation and `source`ing completion shell script files.
 
 Note that it is assummed the `.usage` file stem is the same as the completed command name, so to complete
-`grep` command, its grammar needs to land in `grep.usage` file.
+`grep` command, its grammar needs to land in `grep.usage`.
 
 ### Bash Integration
 
@@ -299,6 +299,25 @@ strace -e <EXPR>;
 ```
 
 The above grammar was pulled straight out of [`strace` man page](https://man7.org/linux/man-pages/man1/strace.1.html#OPTIONS).
+
+### Fallback Completions
+
+If you do `git <TAB>` in most shells, what you're presented with, is a list of supported git subcommands.  So
+even though git accepts a bunch of global options (`--help`, `--version`, etc.), they don't show up there.
+That's a special mechanism intended for reducing clutter.  Under complgen, the same effect is achieved via
+fallbacks, which are represented in a grammar with the double bar operator (`||`):
+
+```
+mygit (<SUBCOMMAND> || <OPTION>);
+<SUBCOMMAND> ::= fetch | add | commit | push;
+<OPTION> ::= (--help | --version);
+```
+
+With the grammar above, `git <TAB>` will offer to complete *only* subcommands.  For `git --<TAB>` OTOH,
+`complgen` will offert to complete options.
+
+`||` has the lowest priority of all operators, so the grammar above might have been written without any use of
+`<NONTERMINALS>`.  They're there only for readability sake.
 
 ## Caveats
 
