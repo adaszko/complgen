@@ -241,8 +241,9 @@ cmd --option=<FOO>;
     assert expr.splitlines() == [
         '__complgen_jit () {',
         '    local -a matches=()',
-        '    local -a completions=("zsh")',
-        "    compadd -Q -S '' -a completions",
+        '    local -a completions=("--option=zsh")',
+        '    local -a descriptions=("zsh")',
+        "    compadd -Q -a -d descriptions completions",
         '    compadd -O matches -a completions',
         '    [[ ${#matches} -gt 0 ]] && return',
         '}',

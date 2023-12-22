@@ -94,7 +94,7 @@ cmd --option=<FOO>;
 <FOO> ::= {{{ echo generic }}};
 <FOO@fish> ::= {{{ echo fish }}};
 '''
-    assert get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR, prefix='--option=') == sorted([('fish', '')])
+    assert get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR, prefix='--option=') == sorted([('--option=fish', '')])
 
 def test_fallback_completes_default(complgen_binary_path: Path):
     GRAMMAR = r'''

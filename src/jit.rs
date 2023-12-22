@@ -163,26 +163,26 @@ impl Shell {
 }
 
 
-fn capture_specialized_completions(shell: Shell, specialization: &Specialization, prefix: &str, fallback_level: usize, output: &mut Vec<Completion>) -> anyhow::Result<()> {
+fn capture_specialized_completions(shell: Shell, specialization: &Specialization, matched_subword_prefix: &str, filtering_prefix: &str, fallback_level: usize, is_final_subword_transition: bool, output: &mut Vec<Completion>) -> anyhow::Result<()> {
     let stdout = match shell {
         Shell::Bash => {
             let Some(command) = specialization.bash.or(specialization.generic) else {
                 return Ok(());
             };
-            get_bash_command_stdout(&command, prefix)?
+            get_bash_command_stdout(&command, filtering_prefix)?
         },
         Shell::Fish => {
             let Some(command) = specialization.fish.or(specialization.generic) else {
                 return Ok(());
             };
-            get_fish_command_stdout(&command, prefix)?
+            get_fish_command_stdout(&command, filtering_prefix)?
         },
         Shell::Zsh => {
             if let Some(command) = specialization.zsh {
-                capture_zsh_completions(&command, "dummy", &format!("dummy {}", prefix))?
+                capture_zsh_completions(&command, "dummy", &format!("dummy {}", filtering_prefix))?
             }
             else if let Some(command) = specialization.generic {
-                get_zsh_command_stdout(&command, prefix)?
+                get_zsh_command_stdout(&command, filtering_prefix)?
             }
             else {
                 return Ok(());
@@ -191,7 +191,7 @@ fn capture_specialized_completions(shell: Shell, specialization: &Specialization
     };
 
     for line in stdout.lines() {
-        if !shell.completion_matches(line, prefix) {
+        if !shell.completion_matches(line, filtering_prefix) {
             continue;
         }
         let (completion, description) = match line.split_once('\t') {
@@ -199,10 +199,10 @@ fn capture_specialized_completions(shell: Shell, specialization: &Specialization
             None => (line.to_string(), "".to_string()),
         };
         output.push(Completion {
-            matched_subword_prefix: "".to_string(),
+            matched_subword_prefix: matched_subword_prefix.to_string(),
             completed_subword_suffix: completion,
             description,
-            is_shell_word_ending: false,
+            is_shell_word_ending: is_final_subword_transition,
             fallback_level,
         });
     }
@@ -276,7 +276,11 @@ fn do_gen_completions_for_input(input: &Input, prefix: &str, shell: Shell, outpu
         Input::Nonterminal(_, None, ..) => {},
 
         Input::Nonterminal(_, Some(specialization), fallback_level) => {
-            capture_specialized_completions(shell, specialization, prefix, *fallback_level, output)?
+            // We pass false here as is_final_subword_transition, because the nonterminal could be
+            // a <PATH> and adding trailing spaces to a path goes against completing complex paths.
+            // If this were true, the user would need to hit <BS> after completing every path
+            // directory component.
+            capture_specialized_completions(shell, specialization, "", prefix, *fallback_level, false, output)?
         },
 
         Input::Subword(_) => unreachable!(),
@@ -323,7 +327,7 @@ fn do_gen_subword_completions_for_input(input: &Input, matched_subword_prefix: &
         Input::Nonterminal(_, None, ..) => {},
 
         Input::Nonterminal(_, Some(specialization), fallback_level) => {
-            capture_specialized_completions(shell, specialization, "", *fallback_level, output)?
+            capture_specialized_completions(shell, specialization, matched_subword_prefix, "", *fallback_level, is_final_subword_transition, output)?
         },
 
         Input::Subword(_) => unreachable!(),

@@ -105,7 +105,7 @@ cmd --option=<FOO>;
 <FOO> ::= {{{ echo generic }}};
 <FOO@bash> ::= {{{ echo bash }}};
 '''
-    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='--option=') == sorted(['bash'])
+    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='--option=') == sorted(['bash '])
 
 
 def test_github_issue_34(complgen_binary_path: Path):
