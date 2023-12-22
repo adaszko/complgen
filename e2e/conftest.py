@@ -85,5 +85,7 @@ def get_bash_completion_sh_path() -> str:
         return '/opt/homebrew/etc/profile.d/bash_completion.sh'
     elif os.path.exists('/etc/bash_completion'):
         return '/etc/bash_completion'
+    elif os.path.exists('/usr/share/bash-completion/bash_completion'):
+        return '/usr/share/bash-completion/bash_completion'
     else:
         assert False, "Make sure OS package bash-completion is installed"

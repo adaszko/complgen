@@ -4,8 +4,11 @@ import sys
 import pty
 import termios
 import tempfile
+import platform
 import subprocess
 from pathlib import Path
+
+import pytest
 
 from conftest import set_working_dir
 
@@ -55,6 +58,7 @@ def get_ansi_bracketed_pastes(complgen_binary_path: Path, grammar: str, input: b
 
 
 
+@pytest.mark.skipif(platform.system() != 'Darwin', reason='Not running on macOS')
 def test_completes_in_word(complgen_binary_path: Path):
     GRAMMAR = '''
 cmd prefix-infix-good;
@@ -66,6 +70,7 @@ cmd prefix-infix-bad;
     assert bracketed_pastes == ['cmd prefix--goodinfix-good  ']
 
 
+@pytest.mark.skipif(platform.system() != 'Darwin', reason='Not running on macOS')
 def test_tcsh_directory_completion(complgen_binary_path: Path):
     GRAMMAR = '''cmd <DIRECTORY>;'''
     with tempfile.TemporaryDirectory() as dir:
