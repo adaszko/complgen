@@ -215,6 +215,9 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
 
 
 pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
+    writeln!(buffer, r#"#compdef {command}
+"#)?;
+
     let (top_level_command_transitions, subword_command_transitions) = dfa.get_command_transitions();
 
     let id_from_top_level_command: UstrMap<usize> = top_level_command_transitions.iter().enumerate().map(|(id, (_, cmd))| (*cmd, id)).collect();
@@ -461,9 +464,12 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 }}
 "#)?;
 
-
     write!(buffer, r#"
-compdef _{command} {command}
+if [[ $ZSH_EVAL_CONTEXT =~ :file$ ]]; then
+    compdef _{command} {command}
+else
+    _{command}
+fi
 "#)?;
 
     Ok(())

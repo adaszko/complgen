@@ -26,6 +26,10 @@ $$ grep --color <TAB>
 always auto never
 ```
 
+Note: ZSH also supports automatic loading of completion scripts.  It is enough to place the generated script
+at one of directories listed in the `$fpath` variable.
+
+
 ### 2. To generate completions on stdout by compiling the grammar "just-in-time":
 
 
