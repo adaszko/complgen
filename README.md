@@ -203,12 +203,12 @@ There's a couple of predefined nonterminals that are handled specially by `compl
 |---------------|------|------|-----|-------------|
 |`<PATH>`       | ✅   | ✅   | ✅  | file or directory path |
 |`<DIRECTORY>`  | ✅   | ✅   | ✅  | directory path |
-|`<PID>`        | ❎   | ✅   | ✅  | process id |
+|`<PID>`        | ❌   | ✅   | ✅  | process id |
 |`<USER>`       | ✅   | ✅   | ✅  | user name |
 |`<GROUP>`      | ✅   | ✅   | ✅  | group name |
 |`<HOST>`       | ✅   | ✅   | ✅  | hostname |
-|`<INTERFACE>`  | ❎   | ✅   | ✅  | network interface name |
-|`<PACKAGE>`    | ❎   | ✅   | ❎  | OS package name |
+|`<INTERFACE>`  | ❌   | ✅   | ✅  | network interface name |
+|`<PACKAGE>`    | ❌   | ✅   | ❌  | OS package name |
 
 The reason there's no predefined `<FILE>` nonterminal is that it would work only for files from the current
 directory which is too specific to be generally useful.
