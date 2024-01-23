@@ -316,11 +316,11 @@ fallbacks, which are represented in a grammar with the double bar operator (`||`
 ```
 mygit (<SUBCOMMAND> || <OPTION>);
 <SUBCOMMAND> ::= fetch | add | commit | push;
-<OPTION> ::= (--help | --version);
+<OPTION> ::= --help | --version;
 ```
 
 With the grammar above, `git <TAB>` will offer to complete *only* subcommands.  For `git --<TAB>` OTOH,
-`complgen` will offert to complete options.
+`complgen` will offer to complete options.
 
 `||` has the lowest priority of all operators, so the grammar above might have been written without any use of
 `<NONTERMINALS>`.  They're there only for readability sake.
