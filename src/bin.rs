@@ -1,4 +1,6 @@
+use std::ffi::OsStr;
 use std::io::{BufWriter, Write, Read};
+use std::path::Path;
 use std::process::exit;
 
 use anyhow::Context;
@@ -421,6 +423,10 @@ fn compile(args: &AotArgs) -> anyhow::Result<()> {
 
     if let Some(path) = &args.zsh_script {
         log::debug!("Writing Zsh completion script");
+        let expected_name = format!("_{}", validated.command);
+        if path != "-" && Path::new(path).file_name().unwrap_or_default() != OsStr::new(&expected_name) {
+            eprintln!("Warning: ZSH requires the output script to be named {expected_name:?} for autoloading to work");
+        }
         let script_file = get_file_or_stdout(path)?;
         let mut writer = BufWriter::new(script_file);
         complgen::aot::zsh::write_completion_script(&mut writer, &validated.command, &dfa)?;
