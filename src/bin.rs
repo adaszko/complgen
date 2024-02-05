@@ -10,6 +10,7 @@ use clap::Parser;
 use complgen::jit::{get_completions, Completion};
 use complgen::grammar::{ValidGrammar, Grammar, to_railroad_diagram, to_railroad_diagram_file};
 
+use complgen::Error;
 use complgen::dfa::DFA;
 use complgen::regex::AugmentedRegex;
 use complgen::aot::zsh::make_string_constant;
@@ -123,12 +124,30 @@ fn handle_parse_error(input: &str) -> anyhow::Result<Grammar> {
 }
 
 
+fn handle_validation_error(g: Grammar, input: &str) -> anyhow::Result<ValidGrammar> {
+    match ValidGrammar::from_grammar(g) {
+        Ok(g) => Ok(g),
+        Err(Error::CommandAtNonTailPosition(_, span)) => {
+            let error = chic::Error::new("commands are only allowed at a tail position to avoid ambiguities in matching")
+                .error(span.line_start, span.start, span.end, input, "here")
+                .help("try moving the command to the tail position");
+            eprintln!("{}:{}:{}", span.line_start, span.start, error.to_string());
+            exit(1);
+        },
+        Err(e) => {
+            eprintln!("{}", e.to_string());
+            exit(1);
+        },
+    }
+}
+
+
 fn check(args: &CheckArgs) -> anyhow::Result<()> {
     let mut input_file = get_file_or_stdin(&args.usage_file_path).context(args.usage_file_path.to_owned())?;
     let mut input: String = Default::default();
     input_file.read_to_string(&mut input)?;
     let grammar = handle_parse_error(&input)?;
-    let validated = ValidGrammar::from_grammar(grammar)?;
+    let validated = handle_validation_error(grammar, &input)?;
     let arena = Bump::new();
     let regex = AugmentedRegex::from_expr(&validated.expr, &validated.specializations, &arena);
     let _ = DFA::from_regex(&regex);
@@ -268,7 +287,7 @@ fn complete(args: &JitArgs) -> anyhow::Result<()> {
         to_railroad_diagram(&grammar, &mut railroad_svg)?;
     }
 
-    let validated = ValidGrammar::from_grammar(grammar)?;
+    let validated = handle_validation_error(grammar, &input)?;
 
     let arena = Bump::new();
     let regex = AugmentedRegex::from_expr(&validated.expr, &validated.specializations, &arena);
@@ -375,7 +394,7 @@ fn compile(args: &AotArgs) -> anyhow::Result<()> {
         to_railroad_diagram_file(&grammar, railroad_svg_path).context(railroad_svg_path.clone())?;
     }
 
-    let validated = ValidGrammar::from_grammar(grammar)?;
+    let validated = handle_validation_error(grammar, &input)?;
 
     if !validated.undefined_nonterminals.is_empty() {
         let joined = itertools::join(validated.undefined_nonterminals, " ");
@@ -399,7 +418,8 @@ fn compile(args: &AotArgs) -> anyhow::Result<()> {
     let dfa = dfa.minimize();
 
     if let Some(inputs) = dfa.get_any_ambiguous_state() {
-        eprintln!("Warning: Final DFA contains ambiguous transitions; inputs: {:?}", inputs);
+        eprintln!("Error: Final DFA contains ambiguous transitions; inputs: {:?}", inputs);
+        exit(1);
     }
 
     if let Some(dot_file_path) = &args.dfa_dot {

@@ -107,7 +107,7 @@ def test_specializes_for_zsh(complgen_binary_path: Path):
 
 def test_mycargo(complgen_binary_path: Path):
     GRAMMAR = r'''
-cargo [<toolchain>] [<COMMAND>];
+cargo [+<toolchain>] [<COMMAND>];
 <toolchain> ::= {{{ echo toolchain }}};
 <COMMAND> ::= t "Run the tests" <TESTNAME>;
 <TESTNAME> ::= {{{ echo testname }}};

@@ -216,6 +216,8 @@ directory which is too specific to be generally useful.
 These nonterminals can still be defined in the grammar in the usual way (`<PATH> ::= ...`), in which case
 their predefined meaning gets overriden.
 
+Limitations apply.  See the [Limitations section](#Limitations).
+
 ### Descriptions
 
 If a literal is immediately followed with a quoted string, it's going to appear as a hint to the user at
@@ -244,6 +246,8 @@ cargo {{{ rustup toolchain list | cut -d' ' -f1 | sed 's/^/+/' }}};
 
 The stdout of the pipeline above will be automatically filtered by the shell based on the prefix entered so
 far.
+
+Limitations apply.  See the [Limitations section](#Limitations).
 
 ##### The `$1` parameter
 
@@ -287,8 +291,9 @@ cmd <USER>;
 ### `--option=ARGUMENT` and subwords
 
 It's possible to match not only entire words, but also *within* words themselves, using the same grammar
-syntax as for matching entire words.  In that sense, it all fractally works on subwords too.  The most common
-application of that general mechanism is to handle equal sign arguments (`--option=ARGUMENT`):
+syntax as for matching entire words.  In that sense, it all fractally works on subwords too (there are
+limitations on `{{{ ... }}}` usage though).  The most common application of that general mechanism is to
+handle equal sign arguments (`--option=ARGUMENT`):
 
 ```
 grep --color=(always | never | auto);
@@ -338,6 +343,23 @@ With the grammar above, `git <TAB>` will offer to complete *only* subcommands.  
    dot at completion time · Issue #6928](https://github.com/fish-shell/fish-shell/issues/6928)
 
 ## Limitations
+
+* `{{{ ... }}}` is only allowed at the tail position within each shell word to avoid ambiguities:
+    * OK: `cmd {{{ echo foo }}} {{{ echo bar }}};`
+    * ERROR: `cmd ({{{ echo foo }}} | {{{ echo bar }}});`
+    * OK: `cmd (foo | {{{ echo bar }}});`
+    * ERROR: `cmd ({{{ echo foo }}} || {{{ echo bar }}});`
+    * OK: `cmd (foo || {{{ echo bar }}});`
+    * ERROR: `cmd [{{{ echo foo }}}] foo`;
+    * ERROR: `cmd {{{ echo foo }}}... foo baz`;
+
+* `{{{ ... }}}` is only allowed at the tail position within subwords to avoid ambiguities:
+    * ERROR: `{{{ git tag }}}..{{{ git tag }}}`
+    * OK: `--option={{{ echo foo }}}`
+    * ERROR: `{{{ echo foo }}}{{{ echo bar }}}`
+
+* The limitations above also apply to predefined nonterminals (`<PATH>`, `<DIRECTORY>`, etc.) since they're
+  internally implemented as external commands.
 
 * Non-regular grammars aren't completed 100% *precisely*. For instance, in case of `find(1)`, `complgen` will
   still suggest `)` even in cases when all `(` have already been properly closed before the cursor.

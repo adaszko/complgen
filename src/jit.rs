@@ -456,10 +456,10 @@ grep [<OPTION>]...;
     #[test]
     fn completes_after_command() {
         const GRAMMAR: &str = r#"
-cargo [<toolchain>] (--version | --help);
+cargo [+<toolchain>] (--version | --help);
 <toolchain> ::= {{{ rustup toolchain list | cut -d' ' -f1 | sed 's/^/+/' }}};
 "#;
-        let input = vec!["foo"];
+        let input = vec!["+foo"];
         let generated: HashSet<_> = HashSet::from_iter(get_bash_grammar_completions(GRAMMAR, &input, "").into_iter().map(|completion| completion.get_completion()));
         let expected = HashSet::from_iter(["--version", "--help"].map(|s| s.to_string()));
         assert_eq!(generated, expected);

@@ -228,7 +228,7 @@ fn do_from_expr<'a>(e: &Expr, specs: &UstrMap<Specialization>, arena: &'a Bump, 
             symbols.insert(input);
             result
         },
-        Expr::Command(code, fallback_level) => {
+        Expr::Command(code, fallback_level, ..) => {
             let result = AugmentedRegexNode::Command(*code, Position::try_from(input_from_position.len()).unwrap());
             let input = Input::Command(*code, *fallback_level);
             input_from_position.push(input.clone());

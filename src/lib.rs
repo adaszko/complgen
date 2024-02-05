@@ -1,4 +1,5 @@
 use std::string::FromUtf8Error;
+use grammar::ChicSpan;
 use ustr::Ustr;
 
 pub mod grammar;
@@ -10,9 +11,6 @@ pub mod scrape;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    #[error("Parsing error: {:?}", .0)]
-    ParsingError(String),
-
     #[error("Grammar needs to contain at least one call variant, e.g. grep;")]
     MissingCallVariants,
 
@@ -30,6 +28,9 @@ pub enum Error {
 
     #[error("Can only specialize external commands: {}@{:?}", .0, .1)]
     NonCommandSpecialization(Ustr, Option<Ustr>),
+
+    #[error("Commands are only allowed at a tail position to avoid ambiguities")]
+    CommandAtNonTailPosition(Ustr, ChicSpan),
 
     #[error("UTF-8 conversion error")]
     FromUtf8Error(#[from] FromUtf8Error),

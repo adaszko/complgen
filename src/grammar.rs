@@ -7,7 +7,7 @@ use nom::{
     bytes::complete::{is_not, tag, take_while1, take_till, take_until, escaped_transform},
     character::complete::{char, multispace1, one_of},
     multi::{many0, fold_many0},
-    IResult, combinator::{fail, opt, verify, value, map}, error::context, sequence::preceded, Finish, Parser,
+    IResult, combinator::{fail, opt, verify, value, map, cut}, error::context, sequence::preceded, Finish, Parser,
 };
 
 use crate::{Error, Result};
@@ -84,7 +84,7 @@ pub enum Expr {
     Nonterminal(Ustr, usize), // name, fallback level
 
     /// `{{{ ls }}}`
-    Command(Ustr, usize), // command, fallback level
+    Command(Ustr, usize, ChicSpan), // command, fallback level
 
     /// `foo bar`
     Sequence(Vec<Rc<Expr>>),
@@ -124,7 +124,7 @@ impl std::fmt::Debug for Expr {
             Expr::Terminal(term, Some(descr), level) => f.write_fmt(format_args!(r#"Rc::new(Terminal(ustr("{term}"), Some(ustr("{}"))), {level})"#, descr)),
             Expr::Terminal(term, None, level) => f.write_fmt(format_args!(r#"Rc::new(Terminal(ustr("{term}"), None, {level}))"#)),
             Expr::Nonterminal(nonterm, level) => f.write_fmt(format_args!(r#"Rc::new(Nonterminal(ustr("{nonterm}"), {level}))"#)),
-            Self::Command(cmd, level) => f.write_fmt(format_args!(r#"Rc::new(Command(ustr({cmd:?}), {level}))"#)),
+            Self::Command(cmd, level, span) => f.write_fmt(format_args!(r#"Rc::new(Command(ustr({cmd:?}), {level}, {span:?}))"#)),
             Self::Sequence(arg0) => f.write_fmt(format_args!(r#"Rc::new(Sequence(vec!{:?}))"#, arg0)),
             Self::Alternative(arg0) => f.write_fmt(format_args!(r#"Rc::new(Alternative(vec!{:?}))"#, arg0)),
             Self::Optional(arg0) => f.write_fmt(format_args!(r#"Rc::new(Optional({:?}))"#, arg0)),
@@ -223,6 +223,25 @@ use nom_locate::LocatedSpan;
 pub type Span<'a> = LocatedSpan<&'a str>;
 
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct ChicSpan {
+    pub line_start: usize,
+    pub start: usize,
+    pub end: usize,
+}
+
+
+impl ChicSpan {
+    fn new(before: Span, after: Span) -> Self {
+        Self {
+            line_start: before.location_line() as usize - 1,
+            start: before.get_column() - 1,
+            end: after.get_column() - 1,
+        }
+    }
+}
+
+
 fn comment(input: Span) -> IResult<Span, Span> {
     let (input, _) = char('#')(input)?;
     let (input, content) = take_till(|c| c == '\n')(input)?;
@@ -249,7 +268,7 @@ fn multiblanks1(input: Span) -> IResult<Span, ()> {
 
 
 const ESCAPE_CHARACTER: char = '\\';
-const RESERVED_CHARACTERS: &str = r#"()[]{}<>.|;""#;
+const RESERVED_CHARACTERS: &str = r#"()[]{}<>|;""#;
 
 
 fn is_terminal_char(c: char) -> bool {
@@ -370,8 +389,9 @@ fn command(input: Span) -> IResult<Span, Span> {
 }
 
 fn command_expr(input: Span) -> IResult<Span, Expr> {
-    let (input, cmd) = command(input)?;
-    Ok((input, Expr::Command(ustr(cmd.into_fragment()), 0)))
+    let (after, cmd) = command(input)?;
+    let command_span = ChicSpan::new(input, after);
+    Ok((after, Expr::Command(ustr(cmd.into_fragment()), 0, command_span)))
 }
 
 fn optional_expr(input: Span) -> IResult<Span, Expr> {
@@ -460,7 +480,7 @@ fn alternative_expr(input: Span) -> IResult<Span, Expr> {
     fn do_alternative_expr(input: Span) -> IResult<Span, Expr> {
         let (input, _) = multiblanks0(input)?;
         let (input, _) = char('|')(input)?;
-        let (input, _) = multiblanks0(input)?;
+        let (input, _) = cut(multiblanks0)(input)?;
         let (input, right) = sequence_expr(input)?;
         Ok((input, right))
     }
@@ -483,7 +503,7 @@ fn fallback_expr(input: Span) -> IResult<Span, Expr> {
     fn do_fallback_expr(input: Span) -> IResult<Span, Expr> {
         let (input, _) = multiblanks0(input)?;
         let (input, _) = tag("||")(input)?;
-        let (input, _) = multiblanks0(input)?;
+        let (input, _) = cut(multiblanks0)(input)?;
         let (input, right) = alternative_expr(input)?;
         Ok((input, right))
     }
@@ -595,6 +615,7 @@ pub struct Grammar {
 }
 
 
+#[derive(Debug)]
 pub struct ValidGrammar {
     pub command: Ustr,
     pub expr: Rc<Expr>,
@@ -1031,6 +1052,67 @@ fn propagate_fallback_levels(expr: Rc<Expr>) -> Rc<Expr> {
 }
 
 
+fn do_ensure_commands_only_at_tail_position(expr: Rc<Expr>, depth: usize, tail_position: bool) -> Result<()> {
+    match expr.as_ref() {
+        Expr::Terminal(..) => {},
+        Expr::Command(..) if depth == 0 => {},
+        Expr::Command(..) if tail_position => {},
+        Expr::Command(cmd, _, span) => return Err(Error::CommandAtNonTailPosition(*cmd, span.clone())),
+
+        // Assumption: This is assumed to be an undefined nonterminal due to the order of grammar
+        // validation phases -- nonterminal expansion runs before this phase and only unexpanded
+        // nonterminals left are the undefined ones.  This is assumed to be one of those and thus
+        // safe to ignore.
+        Expr::Nonterminal(..) => {},
+
+        Expr::Fallback(children) => {
+            for (index, child) in children.iter().enumerate() {
+                let is_tail = index == children.len() - 1;
+                do_ensure_commands_only_at_tail_position(Rc::clone(&child), depth + 1, is_tail)?;
+            }
+        },
+        Expr::Sequence(children) => {
+            for (index, child) in children.iter().enumerate() {
+                let is_tail = index == children.len() - 1;
+                do_ensure_commands_only_at_tail_position(Rc::clone(&child), depth + 1, is_tail)?;
+            }
+        },
+        Expr::Alternative(children) => {
+            for (index, child) in children.iter().enumerate() {
+                let is_tail = index == children.len() - 1;
+                do_ensure_commands_only_at_tail_position(Rc::clone(&child), depth + 1, is_tail)?;
+            }
+        },
+        Expr::Optional(child) => {
+            do_ensure_commands_only_at_tail_position(Rc::clone(&child), depth + 1, false)?;
+        },
+        Expr::Many1(child) => {
+            do_ensure_commands_only_at_tail_position(Rc::clone(&child), depth + 1, false)?;
+        },
+        Expr::Subword(SubwordCompilationPhase::Expr(expr)) => {
+            do_ensure_commands_only_at_tail_position(Rc::clone(&expr), 0, false)?;
+        },
+        Expr::Subword(SubwordCompilationPhase::DFA(..)) => unreachable!(),
+        Expr::DistributiveDescription(..) => unreachable!(),
+    }
+    Ok(())
+}
+
+
+fn ensure_commands_only_at_tail_position(expr: Rc<Expr>) -> Result<()> {
+    match expr.as_ref() {
+        Expr::Sequence(children) => {
+            for child in children {
+                do_ensure_commands_only_at_tail_position(Rc::clone(&child), 0, true)?;
+            }
+        },
+        _ => {
+            do_ensure_commands_only_at_tail_position(expr, 0, false)?;
+        },
+    }
+    Ok(())
+}
+
 
 impl ValidGrammar {
     pub fn from_grammar(grammar: Grammar) -> Result<Self> {
@@ -1102,6 +1184,8 @@ impl ValidGrammar {
         let expr = resolve_nonterminals(expr, &nonterminal_definitions, &specializations, &mut unused_nonterminals);
 
         let expr = propagate_fallback_levels(expr);
+
+        ensure_commands_only_at_tail_position(Rc::clone(&expr))?;
 
         let undefined_nonterminals = {
             let mut nonterms = get_expression_nonterminals(Rc::clone(&expr));
@@ -1528,7 +1612,7 @@ pub mod tests {
 
     #[test]
     fn parses_word_terminal() {
-        const INPUT: &str = r#"foo\.bar"#;
+        const INPUT: &str = r#"foo.bar"#;
         let (s, e) = terminal_opt_description_expr(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
         assert_eq!(e, Terminal(u("foo.bar"), None, 0));
@@ -1563,7 +1647,7 @@ pub mod tests {
         const INPUT: &str = "{{{ rustup toolchain list | cut -d' ' -f1 }}}";
         let (s, e) = command_expr(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
-        assert_eq!(e, Command(u("rustup toolchain list | cut -d' ' -f1"), 0));
+        assert!(matches!(e, Command(s, 0, ..) if s == "rustup toolchain list | cut -d' ' -f1"));
     }
 
     #[test]
@@ -1571,7 +1655,7 @@ pub mod tests {
         const INPUT: &str = "{{{ rad patch list | awk '{print $3}' | grep . | grep -vw ID }}}";
         let (s, e) = command_expr(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
-        assert_eq!(e, Command(u("rad patch list | awk '{print $3}' | grep . | grep -vw ID"), 0));
+        assert!(matches!(dbg!(e), Command(s, 0, ..) if s == "rad patch list | awk '{print $3}' | grep . | grep -vw ID"));
     }
 
     #[test]
@@ -1825,7 +1909,7 @@ cargo [+{{{ rustup toolchain list | cut -d' ' -f1 }}}] [<OPTIONS>] [<COMMAND>];
             Statement::CallVariant {
                 head: ustr("cargo"),
                 expr: Rc::new(Sequence(vec![
-                    Rc::new(Optional(Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("+"), None, 0)), Rc::new(Command(ustr("rustup toolchain list | cut -d' ' -f1"), 0))]))))))),
+                    Rc::new(Optional(Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("+"), None, 0)), Rc::new(Command(ustr("rustup toolchain list | cut -d' ' -f1"), 0, ChicSpan { line_start: 1, start: 8, end: 53 }))]))))))),
                     Rc::new(Optional(Rc::new(Nonterminal(ustr("OPTIONS"), 0)))),
                     Rc::new(Optional(Rc::new(Nonterminal(ustr("COMMAND"), 0)))),
                 ])),
@@ -1953,7 +2037,7 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
                 Statement::NonterminalDefinition {
                     symbol: u("toolchain"),
                     shell: None,
-                    expr: Rc::new(Command(u("rustup toolchain list | cut -d' ' -f1"), 0)),
+                    expr: Rc::new(Command(u("rustup toolchain list | cut -d' ' -f1"), 0, ChicSpan { line_start: 2, start: 16, end: 61 })),
                 },
             ],
         );
@@ -2018,7 +2102,7 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
 
     #[test]
     fn issue_15() {
-        const INPUT: &str = r#"foo\.sh [-h] ;"#;
+        const INPUT: &str = r#"foo.sh [-h] ;"#;
         let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements, vec![
             Statement::CallVariant {
@@ -2053,8 +2137,8 @@ ls <FILE>;
                     head: u("ls"),
                     expr: Rc::new(Nonterminal(ustr("FILE"), 0)), // should not get expanded because it's specialized
                 },
-                NonterminalDefinition { symbol: ustr("FILE"), shell: Some(ustr("bash")), expr: Rc::new(Command(ustr(r#"compgen -A file "$1""#), 0)) },
-                NonterminalDefinition { symbol: ustr("FILE"), shell: Some(ustr("fish")), expr: Rc::new(Command(ustr(r#"__fish_complete_path "$1""#), 0)) },
+                NonterminalDefinition { symbol: ustr("FILE"), shell: Some(ustr("bash")), expr: Rc::new(Command(ustr(r#"compgen -A file "$1""#), 0, ChicSpan { line_start: 2, start: 16, end: 44 })) },
+                NonterminalDefinition { symbol: ustr("FILE"), shell: Some(ustr("fish")), expr: Rc::new(Command(ustr(r#"__fish_complete_path "$1""#), 0, ChicSpan { line_start: 3, start: 16, end: 49 })) },
             ],
         );
         let v = ValidGrammar::from_grammar(g).unwrap();
@@ -2098,5 +2182,34 @@ ls <FILE>;
         let (s, e) = expr(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
         assert_eq!(e, Sequence(vec![Rc::new(Terminal(ustr("cmd"), None, 0)), Rc::new(Fallback(vec![Rc::new(Terminal(ustr("foo"), None, 0)), Rc::new(Terminal(ustr("bar"), None, 0))]))]));
+    }
+
+    #[test]
+    fn parses_git_commit_range_subword() {
+        const INPUT: &str = r#"{{{ git tag }}}..{{{ git tag }}}"#;
+        let (s, e) = expr(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty());
+        assert_eq!(e, Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Command(ustr("git tag"), 0, ChicSpan { line_start: 0, start: 0, end: 15 })), Rc::new(Terminal(ustr(".."), None, 0)), Rc::new(Command(ustr("git tag"), 0, ChicSpan { line_start: 0, start: 17, end: 32 }))])))));
+    }
+
+    fn get_validated_grammar(input: &str) -> Result<ValidGrammar> {
+        let g = Grammar::parse(input).map_err(|e| e.to_string()).unwrap();
+        ValidGrammar::from_grammar(g)
+    }
+
+    #[test]
+    fn detects_commands_at_nontail_position() {
+        assert!(matches!(get_validated_grammar(r#"cmd {{{ echo foo }}} {{{ echo bar }}};"#), Ok(_)));
+        assert!(matches!(get_validated_grammar(r#"cmd {{{ echo foo }}} | {{{ echo bar }}};"#), Err(Error::CommandAtNonTailPosition(..))));
+        assert!(matches!(get_validated_grammar(r#"cmd (foo | {{{ echo bar }}});"#), Ok(_)));
+        assert!(matches!(get_validated_grammar(r#"cmd {{{ echo foo }}} || {{{ echo bar }}};"#), Err(Error::CommandAtNonTailPosition(..))));
+        assert!(matches!(get_validated_grammar(r#"cmd foo || {{{ echo bar }}};"#), Ok(_)));
+        assert!(matches!(get_validated_grammar(r#"cmd [{{{ echo foo }}}] foo;"#), Err(Error::CommandAtNonTailPosition(..))));
+        assert!(matches!(get_validated_grammar(r#"cmd {{{ echo foo }}}... foo baz;"#), Err(Error::CommandAtNonTailPosition(..))));
+
+        // Subwords
+        assert!(matches!(get_validated_grammar(r#"cmd {{{ git tag }}}..{{{ git tag }}};"#), Err(Error::CommandAtNonTailPosition(..))));
+        assert!(matches!(get_validated_grammar(r#"cmd --option={{{ echo foo }}};"#), Ok(_)));
+        assert!(matches!(get_validated_grammar(r#"cmd {{{ echo foo }}}{{{ echo bar }}};"#), Err(Error::CommandAtNonTailPosition(..))));
     }
 }
