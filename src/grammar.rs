@@ -7,7 +7,7 @@ use nom::{
     bytes::complete::{is_not, tag, take_while1, take_till, take_until, escaped_transform},
     character::complete::{char, multispace1, one_of},
     multi::{many0, fold_many0},
-    IResult, combinator::{fail, opt, verify, value, map, cut}, error::context, sequence::preceded, Finish, Parser,
+    IResult, combinator::{fail, opt, verify, value, map}, error::context, sequence::preceded, Finish, Parser,
 };
 
 use crate::{Error, Result};
@@ -480,7 +480,7 @@ fn alternative_expr(input: Span) -> IResult<Span, Expr> {
     fn do_alternative_expr(input: Span) -> IResult<Span, Expr> {
         let (input, _) = multiblanks0(input)?;
         let (input, _) = char('|')(input)?;
-        let (input, _) = cut(multiblanks0)(input)?;
+        let (input, _) = multiblanks0(input)?;
         let (input, right) = sequence_expr(input)?;
         Ok((input, right))
     }
@@ -503,7 +503,7 @@ fn fallback_expr(input: Span) -> IResult<Span, Expr> {
     fn do_fallback_expr(input: Span) -> IResult<Span, Expr> {
         let (input, _) = multiblanks0(input)?;
         let (input, _) = tag("||")(input)?;
-        let (input, _) = cut(multiblanks0)(input)?;
+        let (input, _) = multiblanks0(input)?;
         let (input, right) = alternative_expr(input)?;
         Ok((input, right))
     }
@@ -1433,23 +1433,25 @@ fn get_nonterminals_resolution_order(nonterminal_definitions: &UstrMap<Rc<Expr>>
 
 
 impl Grammar {
-    pub fn parse(input: &str) -> std::result::Result<Self, chic::Error> {
-        let (input, statements) = match grammar(Span::new(input)).finish() {
+    pub fn parse(input_before: &str) -> std::result::Result<Self, chic::Error> {
+        let (input_after, statements) = match grammar(Span::new(input_before)).finish() {
             Ok((input, statements)) => (input, statements),
             Err(e) => {
-                let line = String::from_utf8(e.input.get_line_beginning().to_vec()).unwrap();
-                let code = e.input.lines().take(10).join("\n");
-                let error = chic::Error::new("Parsing failed")
-                    .error(e.input.location_line() as usize, 0, line.len(), code, "");
+                let line_start = e.input.location_line() as usize - 1;
+                let start = e.input.get_column() - 1;
+                let end = start + 1;
+                let error = chic::Error::new(e.to_string())
+                    .error(line_start, start, end, input_before, "");
                 return Err(error);
             },
         };
 
-        if !input.is_empty() {
-            let line = String::from_utf8(input.get_line_beginning().to_vec()).unwrap();
-            let code = input.lines().take(10).join("\n");
+        if !input_after.is_empty() {
+            let line_start = input_after.location_line() as usize - 1;
+            let start = input_after.get_column() - 1;
+            let end = start + 1;
             let error = chic::Error::new("Parsing failed")
-                .error(input.location_line() as usize, 0, line.len(), code, "");
+                .error(line_start, start, end, input_before, "");
             return Err(error);
         }
 
