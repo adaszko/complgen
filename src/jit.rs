@@ -283,7 +283,7 @@ fn do_gen_completions_for_input(input: &Input, prefix: &str, shell: Shell, outpu
             capture_specialized_completions(shell, specialization, "", prefix, *fallback_level, false, output)?
         },
 
-        Input::Subword(_) => unreachable!(),
+        Input::Subword(..) => unreachable!(),
     }
     Ok(())
 }
@@ -330,7 +330,7 @@ fn do_gen_subword_completions_for_input(input: &Input, matched_subword_prefix: &
             capture_specialized_completions(shell, specialization, matched_subword_prefix, "", *fallback_level, is_final_subword_transition, output)?
         },
 
-        Input::Subword(_) => unreachable!(),
+        Input::Subword(..) => unreachable!(),
     }
     Ok(())
 }
@@ -338,7 +338,7 @@ fn do_gen_subword_completions_for_input(input: &Input, matched_subword_prefix: &
 
 fn get_completions_for_input(input: &Input, prefix: &str, shell: Shell, output: &mut Vec<Completion>) -> anyhow::Result<()> {
     match input {
-        Input::Subword(subword_dfa) => {
+        Input::Subword(subword_dfa, ..) => {
             let (state, matched_input, remaining_input) = match get_subword_match_final_state(subword_dfa.as_ref(), prefix) {
                 Some(state) => state,
                 None => return Ok(()),
@@ -356,7 +356,7 @@ fn get_completions_for_input(input: &Input, prefix: &str, shell: Shell, output: 
 }
 
 
-pub fn get_completions(dfa: &DFA, words: &[&str], prefix: &str, shell: Shell) -> anyhow::Result<Vec<Completion>> {
+pub fn get_match_final_state(dfa: &DFA, words: &[&str]) -> Option<StateId> {
     // Match words up to `completed_word_index`
     let mut word_index = 0;
     let mut state = dfa.starting_state;
@@ -372,7 +372,7 @@ pub fn get_completions(dfa: &DFA, words: &[&str], prefix: &str, shell: Shell) ->
         }
 
         for (transition_input, to) in dfa.iter_transitions_from(state) {
-            if let Input::Subword(dfa) = transition_input {
+            if let Input::Subword(dfa, ..) = transition_input {
                 if dfa.as_ref().accepts_str(words[word_index]) {
                     word_index += 1;
                     state = to;
@@ -389,15 +389,27 @@ pub fn get_completions(dfa: &DFA, words: &[&str], prefix: &str, shell: Shell) ->
             }
         }
 
-        return Ok(vec![]);
+        return None;
     }
+
+    Some(state)
+}
+
+
+pub fn get_completions(dfa: &DFA, words: &[&str], prefix: &str, shell: Shell) -> anyhow::Result<Vec<Completion>> {
+    let Some(state) = get_match_final_state(dfa, words) else {
+        return Ok(vec![]);
+    };
+
+    let mut inputs: Vec<Input> = dfa.iter_transitions_from(state).map(|(input, _)| input).collect();
+    inputs.sort_by_key(|input| input.get_fallback_level());
 
     // Complete `prefix` based on `state`.
     let mut output: Vec<Completion> = Default::default();
     for (input, _) in dfa.iter_transitions_from(state) {
         get_completions_for_input(&input, prefix, shell, &mut output)?;
     }
-    output.sort_unstable_by(|left, right| left.get_completion().cmp(&right.get_completion()));
+    output.sort_unstable_by_key(|completion| (completion.fallback_level, completion.get_completion()));
     Ok(output)
 }
 

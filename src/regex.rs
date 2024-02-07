@@ -14,7 +14,7 @@ pub type Position = u32;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Input {
     Literal(Ustr, Option<Ustr>, usize), // literal, optional description, fallback level
-    Subword(DFARef),
+    Subword(DFARef, usize),
     Nonterminal(Ustr, Option<Specialization>, usize), // name, specialization, fallback level
     Command(Ustr, usize), // command, fallback level
 }
@@ -29,13 +29,22 @@ impl Input {
             Self::Command(..) => true,
         }
     }
+
+    pub fn get_fallback_level(&self) -> usize {
+        match self {
+            Self::Literal(_, _, level) => *level,
+            Self::Subword(_, level) => *level,
+            Self::Nonterminal(_, _, level) => *level,
+            Self::Command(_, level) => *level,
+        }
+    }
 }
 
 
 impl std::fmt::Display for Input {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Subword(subword) => write!(f, r#"{subword:?}"#),
+            Self::Subword(subword, fallback_level) => write!(f, r#"{subword:?}:{fallback_level}"#),
             Self::Literal(literal, _, fallback_level) => write!(f, r#"{literal}:{fallback_level}"#),
             Self::Nonterminal(nonterminal, ..) => write!(f, r#"{nonterminal}"#),
             Self::Command(command, _) => write!(f, r#"{command}"#),
@@ -209,13 +218,13 @@ fn do_from_expr<'a>(e: &Expr, specs: &UstrMap<Specialization>, arena: &'a Bump, 
             symbols.insert(input);
             result
         },
-        Expr::Subword(subword) => {
+        Expr::Subword(subword, fallback_level) => {
             let result = AugmentedRegexNode::Subword(Position::try_from(input_from_position.len()).unwrap());
             let dfa = match subword {
                 SubwordCompilationPhase::DFA(dfa) => dfa,
                 SubwordCompilationPhase::Expr(_) => unreachable!(),
             };
-            let input = Input::Subword(dfa.clone());
+            let input = Input::Subword(dfa.clone(), *fallback_level);
             input_from_position.push(input.clone());
             symbols.insert(input);
             result
