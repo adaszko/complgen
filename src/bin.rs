@@ -36,6 +36,9 @@ enum Mode {
 
     #[command(about = "Read `cmd --help` output of another command and emit a grammar")]
     Scrape,
+
+    #[command(about = "Show version and exit")]
+    Version,
 }
 
 #[derive(clap::Args)]
@@ -477,6 +480,9 @@ fn main() -> anyhow::Result<()> {
         Mode::Jit(args) => complete(&args)?,
         Mode::Aot(args) => compile(&args)?,
         Mode::Scrape => scrape()?,
+        Mode::Version => {
+            println!("{}", env!("COMPLGEN_VERSION"));
+        },
     };
     Ok(())
 }
