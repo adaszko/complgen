@@ -1441,7 +1441,7 @@ impl Grammar {
                 let start = e.input.get_column() - 1;
                 let end = start + 1;
                 let error = chic::Error::new(e.to_string())
-                    .error(line_start, start, end, input_before, "");
+                    .error(line_start, start, end, input_before.lines().nth(line_start).unwrap(), "");
                 return Err(error);
             },
         };
@@ -1451,7 +1451,7 @@ impl Grammar {
             let start = input_after.get_column() - 1;
             let end = start + 1;
             let error = chic::Error::new("Parsing failed")
-                .error(line_start, start, end, input_before, "");
+                .error(line_start, start, end, input_before.lines().nth(line_start).unwrap(), "");
             return Err(error);
         }
 

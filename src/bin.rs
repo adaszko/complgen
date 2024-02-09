@@ -132,7 +132,7 @@ fn handle_validation_error(g: Grammar, input: &str) -> anyhow::Result<ValidGramm
         Ok(g) => Ok(g),
         Err(Error::CommandAtNonTailPosition(_, span)) => {
             let error = chic::Error::new("Commands are only allowed at a tail position to avoid ambiguities in matching")
-                .error(span.line_start, span.start, span.end, input, "")
+                .error(span.line_start, span.start, span.end, input.lines().nth(span.line_start).unwrap(), "")
                 .help("try moving the command to the tail position");
             eprintln!("{}:{}:{}", span.line_start, span.start, error.to_string());
             exit(1);
