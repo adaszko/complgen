@@ -344,14 +344,15 @@ With the grammar above, `git <TAB>` will offer to complete *only* subcommands.  
 
 ## Limitations
 
-* `{{{ ... }}}` is only allowed at the tail position within each shell word to avoid ambiguities:
+* `{{{ ... }}}` is only allowed at positions where it doesn't lead to the necessity to a shell word against an
+  external command output (which is arbitrary and therefore can't be matched against):
     * OK: `cmd {{{ echo foo }}} {{{ echo bar }}};`
     * ERROR: `cmd ({{{ echo foo }}} | {{{ echo bar }}});`
     * OK: `cmd (foo | {{{ echo bar }}});`
     * ERROR: `cmd ({{{ echo foo }}} || {{{ echo bar }}});`
     * OK: `cmd (foo || {{{ echo bar }}});`
-    * ERROR: `cmd [{{{ echo foo }}}] foo`;
-    * ERROR: `cmd {{{ echo foo }}}... foo baz`;
+    * OK: `cmd [{{{ echo foo }}}] foo`;
+    * OK: `cmd {{{ echo foo }}}... foo baz`;
 
 * `{{{ ... }}}` is only allowed at the tail position within subwords to avoid ambiguities:
     * ERROR: `{{{ git tag }}}..{{{ git tag }}}`

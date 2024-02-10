@@ -153,7 +153,14 @@ fn check(args: &CheckArgs) -> anyhow::Result<()> {
     let validated = handle_validation_error(grammar, &input)?;
     let arena = Bump::new();
     let regex = AugmentedRegex::from_expr(&validated.expr, &validated.specializations, &arena);
-    let _ = DFA::from_regex(&regex);
+    let dfa = DFA::from_regex(&regex);
+    if let Some(inputs) = dfa.get_any_ambiguous_state() {
+        eprintln!("Error: Final DFA contains ambiguous transitions.");
+        eprintln!("A sequence of shell words leading to the ambiguity: {:?}", inputs);
+        eprintln!("They arise when there's a need to match a shell word against the output of more than one external shell command.");
+        eprintln!("The grammar needs to be modified to match against at most one external command output to avoid ambiguities.");
+        exit(1);
+    }
     Ok(())
 }
 
@@ -421,7 +428,10 @@ fn compile(args: &AotArgs) -> anyhow::Result<()> {
     let dfa = dfa.minimize();
 
     if let Some(inputs) = dfa.get_any_ambiguous_state() {
-        eprintln!("Error: Final DFA contains ambiguous transitions; inputs: {:?}", inputs);
+        eprintln!("Error: Final DFA contains ambiguous transitions.");
+        eprintln!("A sequence of shell words leading to the ambiguity: {:?}", inputs);
+        eprintln!("They arise when there's a need to match a shell word against the output of more than one external shell command.");
+        eprintln!("The grammar needs to be modified to match against at most one external command output to avoid ambiguities.");
         exit(1);
     }
 
