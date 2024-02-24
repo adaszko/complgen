@@ -1,16 +1,16 @@
 use std::ffi::OsStr;
-use std::{io::Write, process::Output};
 use std::process::Command;
+use std::{io::Write, process::Output};
 
 use crate::StateId;
 
-use ustr::ustr;
 use anyhow::{anyhow, Context};
+use ustr::ustr;
 
 use crate::grammar::Specialization;
 use crate::{dfa::DFA, regex::Input};
 
-
+pub mod zsh;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Shell {
@@ -411,6 +411,15 @@ pub fn get_completions(dfa: &DFA, words: &[&str], prefix: &str, shell: Shell) ->
     }
     output.sort_unstable_by_key(|completion| (completion.fallback_level, completion.get_completion()));
     Ok(output)
+}
+
+
+pub fn get_transitions(dfa: &DFA, words_before_cursor: &[&str]) -> Vec<Input> {
+    let Some(state) = get_match_final_state(dfa, words_before_cursor) else {
+        return vec![];
+    };
+    let inputs = dfa.iter_transitions_from(state).map(|(input, _)| input).collect();
+    inputs
 }
 
 

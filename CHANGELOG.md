@@ -5,23 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## 1.0.0
+## 0.2.0
 ### Fixed
 
  - Autoloading of ZSH completion scripts works now (#38)
 
 ### Added
 
- - JIT: Fallback completions (see README).  Note it's only implemented in the JIT mode for now.  AOT mode is
-   coming.
+ - JIT: Fallback completions (see README).  Note it's only implemented in the JIT mode for now.
 
 ### Changed
 
- - **Breaking**: `{{{ ... }}}` commands and many predefined nonterminals (e.g. `<PATH>`, etc) are now only
-   allowed on a tail position.  A tail position is either at depth 0 in the parse tree (so an entire word `cmd
-   {{{ echo foo }}}`), or at a non-zero depth but as the rightmost expression in an alternative (`|`) or a
-   fallback (`||`) expression, roughly speaking.  This restriction is necessary to avoid matching ambiguities.
-   See README for more examples.
+ - **Breaking**: `{{{ ... }}}` commands and many predefined nonterminals (e.g. `<PATH>`, etc) are now allowed
+   in fewer places to keep the grammars unambiguous.  See the Limitations section in README for details.
 
 ## 0.1.8
 ### Changed
