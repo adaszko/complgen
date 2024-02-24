@@ -16,4 +16,6 @@ complgen check "Do not complete -- only check a grammar file for errors" [(-h | 
 complgen scrape "Read `cmd --help` output of another command and emit a grammar" [(-h | --help) "Print help"];
 complgen help <COMPLGEN_COMMAND>;
 
+complgen version "Show version and exit";
+
 <COMPLGEN_COMMAND> ::= complete | aot | check | scrape | help;

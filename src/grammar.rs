@@ -1203,9 +1203,9 @@ impl ValidGrammar {
             nonterminal_definitions
         };
 
-        ensure_subword_commands_only_at_tail_position(Rc::clone(&expr), &nonterminal_definitions)?;
-
         let expr = distribute_descriptions(expr);
+
+        ensure_subword_commands_only_at_tail_position(Rc::clone(&expr), &nonterminal_definitions)?;
 
         let specializations = make_specializations_map(&grammar.statements)?;
 
