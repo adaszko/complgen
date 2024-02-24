@@ -212,8 +212,14 @@ pub fn write_zsh_completion_shell_code<W: Write>(
     writeln!(output, r#"    declare -a matches=()"#)?;
     writeln!(output)?;
 
-    for group in transitions.linear_group_by_key(|t| t.get_fallback_level()) {
-        if group[0].get_fallback_level() != 0 {
+    let groups: Vec<&[Input]> = transitions.linear_group_by_key(|t| t.get_fallback_level()).collect();
+    for (index, group) in groups.iter().enumerate() {
+        let mut completions_trailing_space: Vec<Ustr> = Default::default();
+        let mut suffixes_trailing_space: Vec<Ustr> = Default::default();
+        let mut descriptions_trailing_space: Vec<String> = Default::default();
+        let mut completions_no_description_trailing_space: Vec<Ustr> = Default::default();
+
+        if index != 0 {
             writeln!(output, r#"    completions_no_description_trailing_space=()"#)?;
             writeln!(output, r#"    completions_no_description_no_trailing_space=()"#)?;
             writeln!(output, r#"    completions_trailing_space=()"#)?;
@@ -226,18 +232,18 @@ pub fn write_zsh_completion_shell_code<W: Write>(
             writeln!(output)?;
         }
 
-        for t in group {
-            match t {
-                Input::Literal(literal, description, _) => {
-                    let description = description.unwrap_or(ustr("")).as_str().to_string();
-                    if !description.is_empty() {
-                        writeln!(output, r#"    completions_trailing_space+=({})"#, make_string_constant(literal))?;
-                        writeln!(output, r#"    suffixes_trailing_space+=({})"#, make_string_constant(literal))?;
-                        writeln!(output, r#"    descriptions_trailing_space+=({})"#, make_string_constant(&description))?;
-                    } else {
-                        writeln!(output, r#"    completions_no_description_trailing_space+=({})"#, make_string_constant(literal))?;
-                    }
-                }
+        for (literal, description) in group.iter().filter_map(|t| match t {
+            Input::Literal(literal, description, ..) => Some((literal, description.unwrap_or(ustr("")).as_str().to_string())),
+            _ => None,
+        }) {
+            if !description.is_empty() {
+                completions_trailing_space.push(*literal);
+                suffixes_trailing_space.push(*literal);
+                descriptions_trailing_space.push(description);
+            } else {
+                completions_no_description_trailing_space.push(*literal);
+            }
+        }
 
         // An external command -- execute it and collect stdout lines as completions
         for cmd in group.iter().filter_map(|t| match t {
@@ -289,6 +295,18 @@ pub fn write_zsh_completion_shell_code<W: Write>(
             writeln!(output, r#"    [[ $? -eq 0 ]] && matches+=(fallback_level_matched)"#)?;
         }
 
+        if !completions_trailing_space.is_empty() {
+            writeln!(output, r#"    completions_trailing_space+=({})"#, itertools::join(completions_trailing_space.iter().map(|s| make_string_constant(s)), " "))?;
+        }
+        if !suffixes_trailing_space.is_empty() {
+            writeln!(output, r#"    suffixes_trailing_space+=({})"#, itertools::join(suffixes_trailing_space.iter().map(|s| make_string_constant(s)), " "))?;
+        }
+        if !descriptions_trailing_space.is_empty() {
+            writeln!(output, r#"    descriptions_trailing_space+=({})"#, itertools::join(descriptions_trailing_space.iter().map(|s| make_string_constant(s)), " "))?;
+        }
+        if !completions_no_description_trailing_space.is_empty() {
+            writeln!(output, r#"    completions_no_description_trailing_space+=({})"#, itertools::join(completions_no_description_trailing_space.iter().map(|s| make_string_constant(s)), " "))?;
+        }
 
         write!(output, r#"    local maxlen=0
     for suffix in ${{suffixes_trailing_space[@]}}; do
