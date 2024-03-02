@@ -66,7 +66,7 @@ def get_sorted_fish_completions(completions_script_path: Path, input: str) -> li
 
 
 @contextlib.contextmanager
-def capture_script_path(completion_script: str) -> Generator[Path, None, None]:
+def gen_zsh_capture_script_path(completion_script: str) -> Generator[Path, None, None]:
     this_file = Path(__file__)
     capture_preamble_path = this_file.parent.parent / 'capture_preamble.zsh'
     capture_postamble_path = this_file.parent.parent / 'capture_postamble.zsh'
@@ -78,6 +78,21 @@ def capture_script_path(completion_script: str) -> Generator[Path, None, None]:
         f.write(capture_postamble_path.read_text())
         f.flush()
         yield Path(f.name)
+
+
+@contextlib.contextmanager
+def gen_grammar_zsh_capture_script_path(complgen_binary_path: Path, grammar: str) -> Generator[Path, None, None]:
+    completion_script = subprocess.run([complgen_binary_path, 'aot', '--zsh-script', '-', '-'], input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True).stdout.decode()
+    with gen_zsh_capture_script_path(completion_script) as path:
+        yield path
+
+
+def get_zsh_capture_script_sorted_lines(generated_script_path: Path, input: str) -> list[str]:
+    zsh_process = subprocess.run(['zsh', generated_script_path, input], stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
+    stdout = zsh_process.stdout.decode()
+    completions = stdout.splitlines()
+    completions.sort()
+    return completions
 
 
 def get_bash_completion_sh_path() -> str:

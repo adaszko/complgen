@@ -10,6 +10,7 @@ use crate::dfa::DFA;
 // `for i in {{1..$#array}}; do ...; done` loops do not behave well if array is empty!  Prefer i++ loops instead.
 
 
+// TODO DO not produce quotes if not necessary to save space
 pub fn make_string_constant(s: &str) -> String {
     format!(r#""{}""#, s.replace('\\', "\\\\").replace('\"', "\\\"").replace('`', "\\`").replace('$', "\\$"))
 }
@@ -156,6 +157,8 @@ pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa:
     fi
 "#)?;
 
+    // We're prepending $matched_prefix to resulting completion because otherwise zsh's compadd
+    // will filter that result out if it doesn't start with the right prefix.
     if !command_id_from_state.is_empty() {
         let commands_array_initializer = itertools::join(command_id_from_state.into_iter().map(|(state, id)| format!("[{}]={id}", state + 1)), " ");
         writeln!(buffer, r#"    local -A commands=({commands_array_initializer})"#)?;
@@ -173,6 +176,7 @@ pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa:
                     eval "$suffixes_trailing_space_array_name+=(${{(qq)parts[1]}})"
                     eval "$descriptions_trailing_space_array_name+=(${{(qq)parts[2]}})"
                 else
+                    line="$matched_prefix$line"
                     eval "$completions_no_description_trailing_space_array_name+=(${{(qq)line}})"
                 fi
             fi

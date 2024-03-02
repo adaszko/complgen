@@ -141,13 +141,21 @@ fn make_external_command_function_name(command: &str, id: usize) -> String {
 }
 
 
-fn make_specialized_external_command_function_name(command: &str, id: usize) -> String {
+fn make_specialized_external_command_fn_name(command: &str, id: usize) -> String {
     format!("_{command}_spec_{id}")
 }
 
 
 fn make_subword_function_name(command: &str, id: usize) -> String {
     format!("_{command}_subword_{id}")
+}
+
+fn make_subword_external_command_fn_name(command: &str, id: usize) -> String {
+    format!("_{command}_subword_cmd_{id}")
+}
+
+fn make_subword_specialized_external_command_fn_name(command: &str, id: usize) -> String {
+    format!("_{command}_subword_spec_{id}")
 }
 
 
@@ -157,6 +165,7 @@ pub fn write_zsh_completion_shell_code<W: Write>(
     words_before_cursor: &[&str],
     entered_prefix: &str,
     output: &mut W,
+    test_cmd: &Option<String>,
 ) -> anyhow::Result<()> {
     let mut transitions = get_transitions(&dfa, &words_before_cursor);
     transitions.sort_unstable_by_key(|input| input.get_fallback_level());
@@ -179,6 +188,14 @@ pub fn write_zsh_completion_shell_code<W: Write>(
             transitions.iter().map(move |(_, cmd)| (*cmd, id))
         })
         .collect();
+    for (cmd, id) in &id_from_subword_command {
+        write!(output, r#"{} () {{
+    {cmd}
+}}
+
+"#, make_subword_external_command_fn_name(completed_command, *id))?;
+    }
+
     let subword_spec_transitions = get_subword_specialized_commands(&transitions);
     let id_from_subword_spec: UstrMap<usize> = subword_spec_transitions
         .iter()
@@ -187,6 +204,14 @@ pub fn write_zsh_completion_shell_code<W: Write>(
             transitions.iter().map(move |(_, cmd)| (*cmd, id))
         })
         .collect();
+    for (cmd, id) in &id_from_subword_spec {
+        write!(output, r#"{} () {{
+    {cmd}
+}}
+
+"#, make_subword_specialized_external_command_fn_name(completed_command, *id))?;
+    }
+
     for (dfa, id) in &id_from_dfa {
         let subword_command_id_from_state: HashMap<StateId, usize> = subword_command_transitions.get(dfa).unwrap().iter().map(|(state, cmd)| (*state, *id_from_subword_command.get(cmd).unwrap())).collect();
         let subword_spec_id_from_state: HashMap<StateId, usize> = subword_spec_transitions.get(dfa).unwrap().iter().map(|(state, cmd)| (*state, *id_from_subword_spec.get(cmd).unwrap())).collect();
@@ -200,7 +225,7 @@ pub fn write_zsh_completion_shell_code<W: Write>(
     {cmd}
 }}
 
-"#, make_specialized_external_command_function_name(completed_command, *id))?;
+"#, make_specialized_external_command_fn_name(completed_command, *id))?;
     }
 
     // Generate shell code for fallback levels in order, optionally calling shell functions defined
@@ -309,7 +334,7 @@ pub fn write_zsh_completion_shell_code<W: Write>(
             _ => None,
         }) {
             let command_id = id_from_specialized_command.get(&cmd).unwrap();
-            let fn_name = make_specialized_external_command_function_name(completed_command, *command_id);
+            let fn_name = make_specialized_external_command_fn_name(completed_command, *command_id);
             writeln!(output, r#"    {}"#, fn_name)?;
             writeln!(output, r#"    [[ $? -eq 0 ]] && matches+=(fallback_level_matched)"#)?;
         }
@@ -356,10 +381,16 @@ pub fn write_zsh_completion_shell_code<W: Write>(
             writeln!(output, r#"    [[ ${{#matches}} -gt 0 ]] && return"#)?;
             writeln!(output)?;
         }
+        writeln!(output, r#"    return 0"#)?;
     }
     writeln!(output, r#"}}"#)?;
 
-    // Call the generated shell function.
-    writeln!(output, r#"__complgen_jit"#)?;
+    if let Some(test_cmd) = test_cmd {
+        writeln!(output, r#"compdef __complgen_jit {test_cmd}"#)?;
+    }
+    else {
+        // Call the generated shell function.
+        writeln!(output, r#"__complgen_jit"#)?;
+    }
     Ok(())
 }

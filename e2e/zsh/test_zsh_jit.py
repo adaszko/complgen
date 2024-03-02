@@ -6,16 +6,16 @@ from pathlib import Path
 from typing import Optional
 
 
-from conftest import set_working_dir
+from conftest import complgen_binary_path, get_zsh_capture_script_sorted_lines, set_working_dir, gen_zsh_capture_script_path
 from common import LSOF_FILTER_GRAMMAR, STRACE_EXPR_GRAMMAR
 
 
-def get_jit_zsh_completions_expr(complgen_binary_path: Path, grammar: str, words_before_cursor: list[str] = [], prefix: Optional[str] = None) -> str:
+def get_complgen_jit_output(complgen_binary_path: Path, grammar: str, cmd: str, words_before_cursor: list[str] = [], prefix: Optional[str] = None) -> str:
     """
     words_before_cursor: shell words up to (but not including) the completed one
     prefix: if passed, means the completed word has this before the cursor
     """
-    args = [complgen_binary_path, 'jit', '-', 'zsh']
+    args = [complgen_binary_path, 'jit', '--test', cmd, '-', 'zsh']
     if prefix is not None:
         args += ['--prefix={}'.format(prefix)]
     args += ['--']
@@ -24,211 +24,142 @@ def get_jit_zsh_completions_expr(complgen_binary_path: Path, grammar: str, words
     return process.stdout.decode()
 
 
+def get_sorted_jit_completions(complgen_binary_path: Path, grammar: str, cmd: str, words_before_cursor: list[str] = [], prefix: Optional[str] = None) -> list[str]:
+    completion_script = get_complgen_jit_output(complgen_binary_path, grammar, cmd, words_before_cursor, prefix)
+    with gen_zsh_capture_script_path(completion_script) as script_path:
+        if words_before_cursor and prefix:
+            input = '{} {} {}'.format(cmd, ' '.join(words_before_cursor), prefix)
+        elif words_before_cursor:
+            input = '{} {} '.format(cmd, ' '.join(words_before_cursor))
+        elif prefix:
+            input = '{} {}'.format(cmd, prefix)
+        else:
+            input = '{} '.format(cmd)
+        sorted_completions = get_zsh_capture_script_sorted_lines(script_path, input)
+        return sorted_completions
+
+
 def test_jit_completes_paths_zsh(complgen_binary_path: Path):
+    GRAMMAR = '''cmd <PATH> [--help];'''
     with tempfile.TemporaryDirectory() as dir:
         with set_working_dir(Path(dir)):
             Path('filename with spaces').write_text('dummy')
             Path('?[^a]*{foo,*bar}').write_text('dummy')
             os.mkdir('dir with spaces')
-            expr = get_jit_zsh_completions_expr(complgen_binary_path, '''cmd <PATH> [--help];''')
-            assert expr.splitlines() == [
-                '__complgen_jit () {',
-                '    local -a matches=()',
-                r'    local -a completions=("\\?\\[\\^a\\]\\*\\{foo,\\*bar\\}" "dir\\ with\\ spaces" "filename\\ with\\ spaces")',
-                "    compadd -Q -S '' -a completions",
-                '    compadd -O matches -a completions',
-                '    [[ ${#matches} -gt 0 ]] && return',
-                '}',
-                '__complgen_jit',
-            ]
+            assert get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'cmd') == sorted([
+                "filename\\ with\\ spaces",
+                "\\?\\[\\^a\\]\\*\\{foo,\\*bar\\}",
+                "dir\\ with\\ spaces",
+            ])
 
 
 def test_jit_completes_directories_zsh(complgen_binary_path: Path):
+    GRAMMAR = '''cmd <DIRECTORY> [--help];'''
     with tempfile.TemporaryDirectory() as dir:
         with set_working_dir(Path(dir)):
             os.mkdir('dir with spaces')
             os.mkdir('?[^a]*{foo,*bar}')
             Path('filename with spaces').write_text('dummy')
-            expr = get_jit_zsh_completions_expr(complgen_binary_path, '''cmd <DIRECTORY> [--help];''')
-            assert expr.splitlines() == [
-                '__complgen_jit () {',
-                '    local -a matches=()',
-                r'    local -a completions=("\\?\\[\\^a\\]\\*\\{foo,\\*bar\\}" "dir\\ with\\ spaces")',
-                "    compadd -Q -S '' -a completions",
-                '    compadd -O matches -a completions',
-                '    [[ ${#matches} -gt 0 ]] && return',
-                '}',
-                '__complgen_jit',
-            ]
+            assert get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'cmd ') == sorted([
+                "\\?\\[\\^a\\]\\*\\{foo,\\*bar\\}",
+                "dir\\ with\\ spaces",
+            ])
 
 
 def test_jit_completes_subdirectory_files(complgen_binary_path: Path):
+    GRAMMAR = '''cmd <PATH>;'''
     with tempfile.TemporaryDirectory() as dir:
         with set_working_dir(Path(dir)):
             os.mkdir('subdir')
             (Path('subdir') / 'file.txt').write_text('dummy')
-            expr = get_jit_zsh_completions_expr(complgen_binary_path, '''cmd <PATH>;''', prefix='subdir/')
-            assert expr.splitlines() == [
-                '__complgen_jit () {',
-                '    local -a matches=()',
-                '    local -a completions=("subdir/file.txt")',
-                "    compadd -Q -S '' -a completions",
-                '    compadd -O matches -a completions',
-                '    [[ ${#matches} -gt 0 ]] && return',
-                '}',
-                '__complgen_jit',
-            ]
+            assert get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'cmd', prefix='subdir/') == sorted([
+                "subdir/file.txt",
+            ])
 
 
 def test_jit_tcsh_directory_completion(complgen_binary_path: Path):
+    GRAMMAR = '''cmd <DIRECTORY>;'''
     with tempfile.TemporaryDirectory() as dir:
         with set_working_dir(Path(dir)):
             Path('foo/bar/baz').mkdir(parents=True)
-            expr = get_jit_zsh_completions_expr(complgen_binary_path, '''cmd <DIRECTORY>;''', prefix='f/b/b')
-            assert expr.splitlines() == [
-                '__complgen_jit () {',
-                '    local -a matches=()',
-                '    local -a completions=("foo/bar/baz")',
-                "    compadd -Q -S '' -a completions",
-                '    compadd -O matches -a completions',
-                '    [[ ${#matches} -gt 0 ]] && return',
-                '}',
-                '__complgen_jit',
-            ]
+            assert get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'cmd', prefix='f/b/b') == sorted([
+                "foo/bar/baz",
+            ])
 
 
 def test_jit_specializes_for_zsh(complgen_binary_path: Path):
-    expr = get_jit_zsh_completions_expr(complgen_binary_path, '''cmd <FOO>; <FOO> ::= {{{ echo foo }}}; <FOO@zsh> ::= {{{ compadd zsh }}};''')
-    assert expr.splitlines() == [
-        '__complgen_jit () {',
-        '    local -a matches=()',
-        '    local -a completions=("zsh")',
-        "    compadd -Q -S '' -a completions",
-        '    compadd -O matches -a completions',
-        '    [[ ${#matches} -gt 0 ]] && return',
-        '}',
-        '__complgen_jit',
-    ]
+    GRAMMAR = '''cmd <FOO>; <FOO> ::= {{{ echo foo }}}; <FOO@zsh> ::= {{{ compadd zsh }}};'''
+    assert get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'cmd ') == sorted([
+        "zsh",
+    ])
 
 
 def test_jit_matches_prefix(complgen_binary_path: Path):
     GRAMMAR = '''
-cargo +<toolchain> foo;
+cmd +<toolchain> foo;
 <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 '''
-    expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, ['+stable-aarch64-apple-darwin'])
-    assert expr.splitlines() == [
-        '__complgen_jit () {',
-        '    local -a matches=()',
-        '    local -a completions=("foo")',
-        '    compadd -Q -a completions',
-        '    compadd -O matches -a completions',
-        '    [[ ${#matches} -gt 0 ]] && return',
-        '}',
-        '__complgen_jit',
-    ]
+    assert get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'cmd', words_before_cursor=['+stable-aarch64-apple-darwin']) == sorted([
+        "foo",
+    ])
 
 
 def test_jit_completes_prefix(complgen_binary_path: Path):
     GRAMMAR = '''
-cargo +<toolchain>;
+cmd +<toolchain>;
 <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 '''
-    expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, prefix='+')
-    lines = expr.splitlines()
-    assert lines == [
-        '__complgen_jit () {',
-        '    local -a matches=()',
-        '    local -a completions=("+stable-aarch64-apple-darwin" "+stable-x86_64-apple-darwin")',
-        '    local -a descriptions=("stable-aarch64-apple-darwin" "stable-x86_64-apple-darwin")',
-        '    compadd -Q -a -d descriptions completions',
-        '    compadd -O matches -a completions',
-        '    [[ ${#matches} -gt 0 ]] && return',
-        '}',
-        '__complgen_jit',
-    ]
+    actual = [s.split() for s in get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'cmd', prefix='+')]
+    assert actual == sorted([
+        ["+stable-aarch64-apple-darwin", 'stable-aarch64-apple-darwin'],
+        ["+stable-x86_64-apple-darwin", 'stable-x86_64-apple-darwin'],
+    ])
 
 
 def test_jit_completes_in_word(complgen_binary_path: Path):
     GRAMMAR = '''
 cmd (prefix-infix-foo | prefix-infix-bar);
 '''
-    expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, prefix='prefix-')
-    lines = expr.splitlines()
-    assert lines == [
-        '__complgen_jit () {',
-        '    local -a matches=()',
-        '    local -a completions=("prefix-infix-bar" "prefix-infix-foo")',
-        '    compadd -Q -a completions',
-        '    compadd -O matches -a completions',
-        '    [[ ${#matches} -gt 0 ]] && return',
-        '}',
-        '__complgen_jit',
-    ]
+    assert get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'cmd prefix-') == sorted([
+        "prefix-infix-bar",
+        "prefix-infix-foo",
+    ])
 
 
 def test_jit_completes_strace_expr(complgen_binary_path: Path):
-    expr = get_jit_zsh_completions_expr(complgen_binary_path, STRACE_EXPR_GRAMMAR, ['-e'], prefix='trace=')
-    lines = expr.splitlines()
-    assert lines == [
-        '__complgen_jit () {',
-        '    local -a matches=()',
-        '    local -a completions=("trace=!" "trace=%file" "trace=all" "trace=file")',
-        '    local -a descriptions=("!" "%file" "all" "file")',
-        "    compadd -Q -S '' -a -d descriptions completions",
-        '    compadd -O matches -a completions',
-        '    [[ ${#matches} -gt 0 ]] && return',
-        '}',
-        '__complgen_jit',
-    ]
+    actual = [s.split() for s in get_sorted_jit_completions(complgen_binary_path, STRACE_EXPR_GRAMMAR, 'strace', words_before_cursor=['-e'], prefix='trace=')]
+    assert actual == sorted([
+        ["trace=!", '!'],
+        ["trace=%file", '%file'],
+        ["trace=all", 'all'],
+        ["trace=file", 'file'],
+    ])
 
 
 def test_jit_completes_lsof_filter(complgen_binary_path: Path):
-    expr = get_jit_zsh_completions_expr(complgen_binary_path, LSOF_FILTER_GRAMMAR, prefix='-sTCP:')
-    lines = expr.splitlines()
-    assert lines == [
-        '__complgen_jit () {',
-        '    local -a matches=()',
-        '    local -a completions=("-sTCP:CLOSED" "-sTCP:LISTEN" "-sTCP:^")',
-        '    local -a descriptions=("CLOSED" "LISTEN" "^")',
-        "    compadd -Q -S '' -a -d descriptions completions",
-        '    compadd -O matches -a completions',
-        '    [[ ${#matches} -gt 0 ]] && return',
-        '}',
-        '__complgen_jit',
-    ]
+    actual = [s.split() for s in get_sorted_jit_completions(complgen_binary_path, LSOF_FILTER_GRAMMAR, 'lsof', prefix='-sTCP:')]
+    assert actual == sorted([
+        ["-sTCP:CLOSED", 'CLOSED'],
+        ["-sTCP:LISTEN", 'LISTEN'],
+        ["-sTCP:^", '^'],
+    ])
 
 
 def test_jit_subword_descriptions(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option=(arg1 "descr1" | arg2 "descr2");'''
-    expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, prefix='--option=')
-    assert expr.splitlines() == [
-        '__complgen_jit () {',
-        '    local -a matches=()',
-        '    local -a completions=("--option=arg1" "--option=arg2")',
-        '    local -a descriptions=("arg1 -- descr1" "arg2 -- descr2")',
-        '    compadd -l -Q -a -d descriptions completions',
-        '    compadd -O matches -a completions',
-        '    [[ ${#matches} -gt 0 ]] && return',
-        '}',
-        '__complgen_jit',
-    ]
+    actual = [s.split() for s in get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'cmd', prefix='--option=')]
+    assert actual == sorted([
+        ["--option=arg1", "--option=arg1", '--', 'descr1'],
+        ["--option=arg2", "--option=arg2", '--', 'descr2'],
+    ])
 
 
 def test_jit_completes_subword_external_command(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option={{{ echo -e "argument\tdescription" }}};'''
-    expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, prefix='--option=')
-    assert expr.splitlines() == [
-        '__complgen_jit () {',
-        '    local -a matches=()',
-        '    local -a completions=("--option=argument")',
-        '    local -a descriptions=("argument -- description")',
-        '    compadd -l -Q -a -d descriptions completions',
-        '    compadd -O matches -a completions',
-        '    [[ ${#matches} -gt 0 ]] && return',
-        '}',
-        '__complgen_jit',
-    ]
+    actual = [s.split() for s in get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'cmd', prefix='--option=')]
+    assert actual == sorted([
+        ["--option=argument", "argument", '--', 'description'],
+    ])
 
 
 def test_jit_subword_specialization(complgen_binary_path: Path):
@@ -237,18 +168,10 @@ cmd --option=<FOO>;
 <FOO> ::= {{{ echo generic }}};
 <FOO@zsh> ::= {{{ echo zsh }}};
 '''
-    expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR, prefix='--option=')
-    assert expr.splitlines() == [
-        '__complgen_jit () {',
-        '    local -a matches=()',
-        '    local -a completions=("--option=zsh")',
-        '    local -a descriptions=("zsh")',
-        "    compadd -Q -a -d descriptions completions",
-        '    compadd -O matches -a completions',
-        '    [[ ${#matches} -gt 0 ]] && return',
-        '}',
-        '__complgen_jit',
-    ]
+    actual = [s.split() for s in get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'cmd', prefix='--option=')]
+    assert actual == sorted([
+        ["--option=zsh"], # TODO This should probably say just "zsh"
+    ])
 
 
 def test_jit_sample_regression(complgen_binary_path: Path):
@@ -256,17 +179,10 @@ def test_jit_sample_regression(complgen_binary_path: Path):
 trivial --color=<WHEN>;
 <WHEN> ::= always | never | auto;
 '''
-    expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR)
-    assert expr.splitlines() == [
-        '__complgen_jit () {',
-        '    local -a matches=()',
-        '    local -a completions=("--color=")',
-        "    compadd -Q -S '' -a completions",
-        '    compadd -O matches -a completions',
-        '    [[ ${#matches} -gt 0 ]] && return',
-        '}',
-        '__complgen_jit',
-    ]
+    actual = [s.split() for s in get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'trivial')]
+    assert actual == sorted([
+        ['--color=', '--color='], # TODO This should probably say just ['--color=']
+    ])
 
 
 def test_fallback_completion(complgen_binary_path: Path):
@@ -274,19 +190,7 @@ def test_fallback_completion(complgen_binary_path: Path):
 mygrep (--color=<WHEN> || --colour=<WHEN>);
 <WHEN> ::= always | never | auto;
 '''
-    expr = get_jit_zsh_completions_expr(complgen_binary_path, GRAMMAR)
-    assert expr.splitlines() == [
-        '__complgen_jit () {',
-        '    local -a matches=()',
-        '    local -a completions=("--color=")',
-        "    compadd -Q -S '' -a completions",
-        '    compadd -O matches -a completions',
-        '    [[ ${#matches} -gt 0 ]] && return',
-        '    local -a matches=()',
-        '    local -a completions=("--colour=")',
-        "    compadd -Q -S '' -a completions",
-        '    compadd -O matches -a completions',
-        '    [[ ${#matches} -gt 0 ]] && return',
-        '}',
-        '__complgen_jit',
-    ]
+    actual = [s.split() for s in get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'mygrep')]
+    assert actual == sorted([
+        ['--color=', '--color='], # TODO This should probably say just ['--color=']
+    ])

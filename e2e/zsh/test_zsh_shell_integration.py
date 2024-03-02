@@ -3,7 +3,7 @@ import tempfile
 import subprocess
 from pathlib import Path
 
-from conftest import capture_script_path
+from conftest import gen_zsh_capture_script_path
 
 
 def test_shell_integration(complgen_binary_path: Path):
@@ -27,9 +27,9 @@ for f in {usage_files_dir}/*.usage(N); do
     compdef "_complgen_jit $stem" $stem
 done
 '''.format(complgen_binary_path=complgen_binary_path, usage_files_dir=usage_files_dir)
-        with capture_script_path(INTEGRATION_SCRIPT) as capture_path:
-            zsh_process = subprocess.run(['zsh', capture_path, 'mycargo +'], stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
+        with gen_zsh_capture_script_path(INTEGRATION_SCRIPT) as script_path:
+            zsh_process = subprocess.run(['zsh', script_path, 'mycargo +'], stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
             stdout = zsh_process.stdout.decode()
             completions = stdout.splitlines()
             completions.sort()
-            assert completions == ['+bar bar', '+foo foo']
+            assert completions == ['+bar', '+foo']

@@ -78,6 +78,9 @@ struct JitArgs {
     #[clap(long)]
     railroad_svg: Option<String>,
 
+    #[clap(long)]
+    test: Option<String>,
+
     usage_file_path: String,
 
     #[clap(subcommand)]
@@ -249,7 +252,7 @@ fn complete(args: &JitArgs) -> anyhow::Result<()> {
         },
         Shell::Zsh(_) => {
             let mut stdout = std::io::stdout();
-            write_zsh_completion_shell_code(&validated.command, &dfa, &words_before_cursor, word, &mut stdout)?;
+            write_zsh_completion_shell_code(&validated.command, &dfa, &words_before_cursor, word, &mut stdout, &args.test)?;
         },
     }
 
