@@ -214,7 +214,8 @@ end
 "#)?;
     }
 
-    let (top_level_spec_transitions, subword_spec_transitions) = dfa.get_fish_command_transitions();
+    let top_level_spec_transitions = dfa.get_fish_command_transitions();
+    let subword_spec_transitions = dfa.get_fish_subword_command_transitions();
 
     let id_from_specialized_command: UstrMap<usize> = top_level_spec_transitions.iter().enumerate().map(|(id, (_, cmd))| (*cmd, id + 1)).collect();
     for (cmd, id) in &id_from_specialized_command {

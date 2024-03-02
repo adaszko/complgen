@@ -249,7 +249,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 "#)?;
     }
 
-    let (top_level_spec_transitions, subword_spec_transitions) = dfa.get_zsh_command_transitions();
+    let top_level_spec_transitions = dfa.get_zsh_command_transitions();
+    let subword_spec_transitions = dfa.get_zsh_subword_command_transitions();
     let id_from_specialized_command: UstrMap<usize> = top_level_spec_transitions.iter().enumerate().map(|(id, (_, cmd))| (*cmd, id)).collect();
     for (cmd, id) in &id_from_specialized_command {
         write!(buffer, r#"_{command}_spec_{id} () {{
