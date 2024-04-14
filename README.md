@@ -5,6 +5,11 @@ grammar.  It compiles the grammar down to a standalone bash/fish/zsh shell scrip
 its own.  As a separate use case, it can also produce completions directly on stdout, which is meant to be
 used in interactive shells (see below).
 
+`complgen` takes flags to complete from grammar files.  Ideally, the grammar files are meant to be developed
+and versioned along with the completed command line tool to avoid version mismatches.  There's nothing
+stopping you however from writing the grammar file yourself, optionally tailoring it for your most-frequent
+use cases, sort of like shell aliases on steroids.
+
 ## Demo
 
 [![asciicast](https://asciinema.org/a/SAH1uGqgwBEhyRV7G6Zasu45y.svg)](https://asciinema.org/a/SAH1uGqgwBEhyRV7G6Zasu45y)
@@ -107,7 +112,8 @@ function _complgen_jit
     else
         set words $COMP_WORDS[2..$last]
     end
-    complgen jit $usage_file_path fish --prefix="$prefix" -- $words
+    set --local code (complgen jit $usage_file_path fish --prefix="$prefix" -- $words)
+    eval $code
 end
 
 for path in ~/.config/complgen/*.usage

@@ -60,7 +60,7 @@ fn write_lookup_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
 }
 
 
-fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DFA, command_id_from_state: &HashMap<StateId, usize>, subword_spec_id_from_state: &HashMap<StateId, usize>) -> Result<()> {
+pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DFA, command_id_from_state: &HashMap<StateId, usize>, subword_spec_id_from_state: &HashMap<StateId, usize>) -> Result<()> {
     writeln!(buffer, r#"function _{command}_subword_{id}
     set mode $argv[1]
     set word $argv[2]

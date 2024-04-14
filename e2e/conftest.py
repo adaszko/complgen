@@ -66,6 +66,24 @@ def get_sorted_fish_completions(completions_script_path: Path, input: str) -> li
 
 
 @contextlib.contextmanager
+def gen_fish_jit_completion_script_path(complgen_binary_path: Path, grammar: str) -> Generator[Path, None, None]:
+    fish_script = subprocess.run([complgen_binary_path, 'jit', '--test', 'dummy', '-', 'fish'], input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True).stdout
+    with tempfile.NamedTemporaryFile() as f:
+        f.write(fish_script)
+        f.flush()
+        yield Path(f.name)
+
+
+@contextlib.contextmanager
+def gen_fish_aot_completion_script_path(complgen_binary_path: Path, grammar: str) -> Generator[Path, None, None]:
+    fish_script = subprocess.run([complgen_binary_path, 'aot', '--fish-script', '-', '-'], input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True).stdout
+    with tempfile.NamedTemporaryFile() as f:
+        f.write(fish_script)
+        f.flush()
+        yield Path(f.name)
+
+
+@contextlib.contextmanager
 def gen_zsh_capture_script_path(completion_script: str) -> Generator[Path, None, None]:
     this_file = Path(__file__)
     capture_preamble_path = this_file.parent.parent / 'capture_preamble.zsh'

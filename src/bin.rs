@@ -7,6 +7,7 @@ use anyhow::Context;
 use bumpalo::Bump;
 use clap::Parser;
 
+use complgen::jit::fish::write_fish_completion_shell_code;
 use complgen::jit::zsh::write_zsh_completion_shell_code;
 use complgen::jit::get_completions;
 use complgen::grammar::{ValidGrammar, Grammar, to_railroad_diagram, to_railroad_diagram_file};
@@ -231,24 +232,8 @@ fn complete(args: &JitArgs) -> anyhow::Result<()> {
             }
         },
         Shell::Fish(_) => {
-            let matches = {
-                let mut matches: Vec<String> = Default::default();
-                for group in completions.linear_group_by(|left, right| left.fallback_level == right.fallback_level) {
-                    for completion in group {
-                        let comp = completion.get_completion();
-                        if comp.starts_with(word) {
-                            matches.push(format!("{}\t{}", comp, completion.description));
-                        }
-                    }
-                    if !matches.is_empty() {
-                        break;
-                    }
-                }
-                matches
-            };
-            for m in matches {
-                println!("{}", m);
-            }
+            let mut stdout = std::io::stdout();
+            write_fish_completion_shell_code(&validated.command, &dfa, &words_before_cursor, word, &mut stdout, &args.test)?;
         },
         Shell::Zsh(_) => {
             let mut stdout = std::io::stdout();
