@@ -1,4 +1,3 @@
-use std::ffi::OsStr;
 use std::process::Command;
 use std::{io::Write, process::Output};
 
@@ -41,13 +40,6 @@ impl Completion {
         let space = if self.is_shell_word_ending { " " } else { "" };
         format!("{}{}{space}", self.matched_subword_prefix, self.completed_subword_suffix)
     }
-
-    // Subword completions may not have a description coming from a grammar but we still pass *a*
-    // description to compadd that indicates the suffix completed.  So "description" should be
-    // understood broadly here.
-    pub fn has_zsh_description(&self) -> bool {
-        !self.matched_subword_prefix.is_empty() || !self.description.is_empty()
-    }
 }
 
 
@@ -59,29 +51,6 @@ fn shell_out_bash(command: &str, prefix: &str) -> anyhow::Result<Output> {
     writeln!(script_file, r#"_complgen_complete_function "{}""#, prefix)?;
     script_file.flush()?;
     Command::new("bash").arg("--noprofile").arg(script_file.path()).output().map_err(Into::into)
-}
-
-
-fn shell_out_fish(command: &str, prefix: &str) -> anyhow::Result<Output> {
-    let mut script_file = tempfile::NamedTempFile::new()?;
-    writeln!(script_file, r#"function _complgen_complete_function"#)?;
-    writeln!(script_file, r#"set 1 $argv[1]"#)?;
-    writeln!(script_file, "{}", command)?;
-    writeln!(script_file, r#"end"#)?;
-    writeln!(script_file, r#"_complgen_complete_function "{}""#, prefix)?;
-    script_file.flush()?;
-    Command::new("fish").arg("--private").arg("--no-config").arg(script_file.path()).output().map_err(Into::into)
-}
-
-
-fn shell_out_zsh(command: &str, prefix: &str) -> anyhow::Result<Output> {
-    let mut script_file = tempfile::NamedTempFile::new()?;
-    writeln!(script_file, r#"_complgen_complete_function () {{"#)?;
-    writeln!(script_file, "{}", command)?;
-    writeln!(script_file, r#"}}"#)?;
-    writeln!(script_file, r#"_complgen_complete_function "{}""#, prefix)?;
-    script_file.flush()?;
-    Command::new("zsh").arg(script_file.path()).output().map_err(Into::into)
 }
 
 
@@ -105,52 +74,12 @@ fn get_bash_command_stdout(command: &str, prefix: &str) -> anyhow::Result<String
     stdout_from_output(output)
 }
 
-fn get_fish_command_stdout(command: &str, prefix: &str) -> anyhow::Result<String> {
-    let output = shell_out_fish(command, prefix).with_context(|| command.to_string())?;
-    stdout_from_output(output)
-}
-
-fn get_zsh_command_stdout(command: &str, prefix: &str) -> anyhow::Result<String> {
-    let output = shell_out_zsh(command, prefix).with_context(|| command.to_string())?;
-    stdout_from_output(output)
-}
-
-fn get_zsh_script_stdout<P: AsRef<OsStr>>(script_path: P, arg: &str) -> anyhow::Result<String> {
-    let output = Command::new("zsh").arg(script_path).arg(arg).output()?;
-    stdout_from_output(output)
-}
-
-
-fn capture_zsh_completions(completion_code: &str, command: &str, prefix: &str) -> anyhow::Result<String> {
-    let preamble = include_str!("../capture_preamble.zsh");
-    let postamble = include_str!("../capture_postamble.zsh");
-
-    let mut capture_script = tempfile::NamedTempFile::new()?;
-    write!(capture_script, "{}", preamble)?;
-
-    writeln!(capture_script, r#"_{command} () {{"#)?;
-    writeln!(capture_script, "{}", completion_code.replace('\'', "''"))?;
-    writeln!(capture_script, r#"}}"#)?;
-    writeln!(capture_script)?;
-    writeln!(capture_script, "compdef _{command} {command}")?;
-
-    write!(capture_script, "{}", postamble)?;
-
-    capture_script.as_file().flush()?;
-
-    get_zsh_script_stdout(capture_script.path(), prefix)
-        .with_context(|| completion_code.to_string())
-        .with_context(|| command.to_string())
-        .with_context(|| prefix.to_string())
-}
-
-
 impl Shell {
     fn shell_out(&self, command: &str, prefix: &str) -> anyhow::Result<String> {
         let output = match self {
             Shell::Bash => shell_out_bash(command, prefix)?,
-            Shell::Fish => shell_out_fish(command, prefix)?,
-            Shell::Zsh => shell_out_zsh(command, prefix)?,
+            Shell::Fish => unreachable!(),
+            Shell::Zsh => unreachable!(),
         };
 
         stdout_from_output(output)
@@ -173,23 +102,8 @@ fn capture_specialized_completions(shell: Shell, specialization: &Specialization
             };
             get_bash_command_stdout(&command, filtering_prefix)?
         },
-        Shell::Fish => {
-            let Some(command) = specialization.fish.or(specialization.generic) else {
-                return Ok(());
-            };
-            get_fish_command_stdout(&command, filtering_prefix)?
-        },
-        Shell::Zsh => {
-            if let Some(command) = specialization.zsh {
-                capture_zsh_completions(&command, "dummy", &format!("dummy {}", filtering_prefix))?
-            }
-            else if let Some(command) = specialization.generic {
-                get_zsh_command_stdout(&command, filtering_prefix)?
-            }
-            else {
-                return Ok(());
-            }
-        },
+        Shell::Fish => unreachable!(),
+        Shell::Zsh => unreachable!(),
     };
 
     for line in stdout.lines() {

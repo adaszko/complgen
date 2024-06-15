@@ -196,9 +196,6 @@ fn complete(args: &JitArgs) -> anyhow::Result<()> {
     let words_before_cursor: Vec<&str> = words.iter().map(|s| s.as_ref()).collect();
 
     let word = prefix.as_deref().unwrap_or("");
-    let mut completions = get_completions(&dfa, &words_before_cursor, word, shell)?;
-    completions.sort_by_key(|c| c.fallback_level);
-
     match args.shell {
         Shell::Bash(ref args) => {
             // Bash behaves weirdly depending on wheter a completion contains a special character
@@ -214,6 +211,8 @@ fn complete(args: &JitArgs) -> anyhow::Result<()> {
 
             let matches = {
                 let mut matches: Vec<String> = Default::default();
+                let mut completions = get_completions(&dfa, &words_before_cursor, word, shell)?;
+                completions.sort_by_key(|c| c.fallback_level);
                 for group in completions.linear_group_by(|left, right| left.fallback_level == right.fallback_level) {
                     for completion in group {
                         let comp = completion.get_completion_with_trailing_space();
