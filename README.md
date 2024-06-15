@@ -331,6 +331,23 @@ With the grammar above, `git <TAB>` will offer to complete *only* subcommands.  
 `||` has the lowest priority of all operators, so the grammar above might have been written without any use of
 `<NONTERMINALS>`.  They're there only for readability sake.
 
+## Completions trailing spaces handling
+
+There are few general rules governing whether to append a space to a completion:
+
+ * A space is appended if the completion corresponds to an entire literal from the `.usage` file, e.g.
+   for the grammar `cmd --help;` and the command line `cmd <TAB>`, it completes to `cmd --help<SPACE>`.
+
+ * A trailing space isn't appended if the literal is a part of a subword and the entire subword hasn't been
+   completed yet, e.g. for the grammar `cmd --color=(auto|always);` and the command line `cmd --col<TAB>`, it
+ completes to `cmd --color=` (no trailing space).
+
+There are exceptions:
+
+ * Under Fish, if your completion contains [one of the special
+   characters](https://github.com/fish-shell/fish-shell/blob/408ab860906fbf6e08f314bea982220fdee3428e/src/complete.cpp#L183),
+ fish won't insert the trailing space.  See also [Not adding space after dot at completion time · Issue #6928](https://github.com/fish-shell/fish-shell/issues/6928).
+
 ## Caveats
 
 * `{{{ ... }}}` is only allowed at tail positions, where it doesn't lead to matching against an arbitrary
@@ -376,11 +393,6 @@ With the grammar above, `git <TAB>` will offer to complete *only* subcommands.  
    `complgen`, call shell functions from that package at *completion* time.  This is necessary to work around
    Bash's default behavior of [breaking shell words on any character present in the
    `$COMP_WORDBREAKS`](https://stackoverflow.com/a/12495480) environment variable.
-
- * Under Fish, if your grammar tokens contain [one of the special
-   characters](https://github.com/fish-shell/fish-shell/blob/408ab860906fbf6e08f314bea982220fdee3428e/src/complete.cpp#L183),
-   the inserted completion won't end in a space indicating full completion.  See also [Not adding space after
-   dot at completion time · Issue #6928](https://github.com/fish-shell/fish-shell/issues/6928)
 
 * Non-regular grammars aren't completed 100% *precisely*. For instance, in case of `find(1)`, `complgen` will
   still suggest `)` even in cases when all `(` have already been properly closed before the cursor.
