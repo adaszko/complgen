@@ -173,7 +173,7 @@ fn check(args: &CheckArgs) -> anyhow::Result<()> {
 }
 
 
-fn complete(args: &JitArgs) -> anyhow::Result<()> {
+fn jit(args: &JitArgs) -> anyhow::Result<()> {
     let mut input_file = get_file_or_stdin(&args.usage_file_path).context(args.usage_file_path.to_owned())?;
     let mut input: String = Default::default();
     input_file.read_to_string(&mut input)?;
@@ -258,7 +258,7 @@ fn get_file_or_stdout(path: &str) -> anyhow::Result<Box<dyn Write>> {
 }
 
 
-fn compile(args: &AotArgs) -> anyhow::Result<()> {
+fn aot(args: &AotArgs) -> anyhow::Result<()> {
     if let (None, None, None, None, None) = (&args.railroad_svg, &args.dfa_dot, &args.bash_script, &args.fish_script, &args.zsh_script) {
         eprintln!("Please specify at least one of --railroad-svg, --dfa-dot, --bash-script, --fish-script, --zsh-script options");
         std::process::exit(1);
@@ -360,8 +360,8 @@ fn main() -> anyhow::Result<()> {
     let args = Cli::parse();
     match args.mode {
         Mode::Check(args) => check(&args)?,
-        Mode::Jit(args) => complete(&args)?,
-        Mode::Aot(args) => compile(&args)?,
+        Mode::Jit(args) => jit(&args)?,
+        Mode::Aot(args) => aot(&args)?,
         Mode::Scrape => scrape()?,
         Mode::Version => {
             println!("{}", env!("COMPLGEN_VERSION"));
