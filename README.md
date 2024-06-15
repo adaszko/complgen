@@ -145,14 +145,14 @@ done
 ### From source (all OSes)
 
 ```sh
-$ cargo install --git https://github.com/adaszko/complgen complgen
+cargo install --git https://github.com/adaszko/complgen complgen
 ```
 
 ### From Homebrew (macOS)
 
 ```
-$ brew tap adaszko/complgen https://github.com/adaszko/complgen-homebrew-tap.git
-$ brew install adaszko/complgen/complgen
+brew tap adaszko/complgen https://github.com/adaszko/complgen-homebrew-tap.git
+brew install adaszko/complgen/complgen
 ```
 
 ### Downloading binaries (Linux, macOS)
