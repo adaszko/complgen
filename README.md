@@ -211,7 +211,7 @@ their predefined meaning gets overriden.
 
 Limitations apply.  See the [Limitations section](#Limitations).
 
-### Descriptions
+### Completions descriptions (fish/zsh only)
 
 If a literal is immediately followed with a quoted string, it's going to appear as a hint to the user at
 completion time.  E.g. the grammar:
@@ -229,7 +229,7 @@ fish> grep --ex<TAB>
 
 Note that `bash` does not support showing descriptions.
 
-### External commands
+### Sourcing completions from external commands output
 
 It is possible to use entire shell commands as a source of completions:
 
@@ -242,7 +242,7 @@ far.
 
 Limitations apply.  See the [Limitations section](#Limitations).
 
-##### The `$1` parameter
+##### The prefix entered so far
 
 Sometimes, it's more efficient to take into account the entered prefix in the shell command itself.  For all
 three shells (bash, fish, zsh), it's available in the `$1` variable:
@@ -254,7 +254,7 @@ cargo {{{ rustup toolchain list | cut -d' ' -f1 | grep "^$1" | sed 's/^/+/' }}};
 Note that in general, it's best to leave the filtering up to the executing shell since it may be configured to
 perform some non-standard filtering.  zsh for example is capable of expanding `/u/l/b` to `/usr/local/bin`.
 
-##### Descriptions
+##### Completion descriptions
 
 Externals commands are also assumed to produce descriptions similar to those described in the [section
 above](#descriptions-aka-completion-hints).  Their expected stdout format is a sequence of lines of the form
@@ -267,7 +267,7 @@ For fish and zsh, the `DESCRIPTION` part will be presented to the user.  Under b
 part will be visible.  All external commands nonetheless need to take care as to *not* produce superfluous
 `\t` characters that may confuse the resulting shell scripts.
 
-### Specialization
+### Target shell specific behavior
 
 In order to make use of shell-specific completion functions, `complgen` supports a mechanism that allows for
 picking a specific nonterminal expansion based on the target shell.  To use an example, all shells are able to
@@ -281,7 +281,7 @@ cmd <USER>;
 <USER@zsh> ::= {{{ _users }}};
 ```
 
-### `--option=ARGUMENT` and subwords
+### Completing option arguments
 
 It's possible to match not only entire words, but also *within* words themselves, using the same grammar
 syntax as for matching entire words.  In that sense, it all fractally works on subwords too (there are
