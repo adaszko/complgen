@@ -209,8 +209,6 @@ directory which is too specific to be generally useful.
 These nonterminals can still be defined in the grammar in the usual way (`<PATH> ::= ...`), in which case
 their predefined meaning gets overriden.
 
-Limitations apply.  See the [Limitations section](#Limitations).
-
 ### Completions descriptions (fish/zsh only)
 
 If a literal is immediately followed with a quoted string, it's going to appear as a hint to the user at
@@ -239,8 +237,6 @@ cargo {{{ rustup toolchain list | cut -d' ' -f1 | sed 's/^/+/' }}};
 
 The stdout of the pipeline above will be automatically filtered by the shell based on the prefix entered so
 far.
-
-Limitations apply.  See the [Limitations section](#Limitations).
 
 ##### The prefix entered so far
 
