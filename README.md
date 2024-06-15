@@ -336,17 +336,37 @@ With the grammar above, `git <TAB>` will offer to complete *only* subcommands.  
   output of an external command:
     * OK: `cmd {{{ echo foo }}} {{{ echo bar }}};`
     * ERROR: `cmd ({{{ echo foo }}} | {{{ echo bar }}});`
+
+        We'd have to match against the output of `{{{ echo foo }}}` at *compilation* time to determine which
+        branch to take, which is impossible to do in general as `echo foo` might as well have been an
+        arbitrary shell command.
+
     * OK: `cmd (foo | {{{ echo bar }}});`
     * ERROR: `cmd ({{{ echo foo }}} || {{{ echo bar }}});`
+
+        Reason: Same as for `|` above.
+
     * OK: `cmd (foo || {{{ echo bar }}});`
     * OK: `cmd [{{{ echo foo }}}] foo`;
+
+        The entire commands always gets tokenized into shell words as a first step, so it's possible to tell
+        where the output of `{{{ echo foo }}}` ends.  Note that two `foo` completions are produced here, then
+        they're deduplicated, and finally, only one `foo` is offered to the user.
+
     * OK: `cmd {{{ echo foo }}}... foo baz`;
 
 * Within subwords, `{{{ ... }}}` is only allowed at tail position, where it doesn't lead to matching against
   an arbitrary output of an external command:
     * ERROR: `{{{ git tag }}}..{{{ git tag }}}`
+
+        Impossible to guess at compilation time where the output of the first `{{{ git tag }}` ends and *our*
+        `..` begins.
+
     * OK: `--option={{{ echo foo }}}`
     * ERROR: `{{{ echo foo }}}{{{ echo bar }}}`
+
+        Impossible to guess at compilation time where the output of the first `{{{ echo foo }}` ends the
+        second `{{{ echo bar }}}` begins.
 
 * The limitations above also apply to predefined nonterminals (`<PATH>`, `<DIRECTORY>`, etc.) since they're
   internally implemented as external commands.
