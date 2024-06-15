@@ -5,16 +5,20 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
-from conftest import set_working_dir
+import pytest
+
+from conftest import complgen_binary_path, set_working_dir
 from common import LSOF_FILTER_GRAMMAR, STRACE_EXPR_GRAMMAR
 
 
 SPECIAL_CHARACTERS = '?[^a]*{foo,*bar}'
 
 
-def get_sorted_jit_bash_completions(complgen_binary_path: Path, grammar: str, words_before_cursor: list[str] = [], prefix: Optional[str] = None) -> list[str]:
+def get_sorted_jit_bash_completions(complgen_binary_path: Path, grammar: str, words_before_cursor: list[str] = [], prefix: Optional[str] = None, ignore_case=False) -> list[str]:
     comp_wordbreaks = ''' "'><=;|&(:'''
     args = [complgen_binary_path, 'jit', '-', 'bash', '--comp-wordbreaks', comp_wordbreaks]
+    if ignore_case:
+        args += ['--ignore-case']
     if prefix is not None:
         args += ['--prefix={}'.format(prefix)]
     args += ['--']
@@ -130,3 +134,11 @@ mygrep (--color=<WHEN> || --colour=<WHEN>);
 <WHEN> ::= always | never | auto;
 '''
     assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='--colou') == sorted(['--colour='])
+
+
+# https://github.com/adaszko/complgen/issues/41
+@pytest.mark.xfail(reason="Not implemented yet")
+def test_respects_ignore_case_option(complgen_binary_path: Path):
+    GRAMMAR = r'''cmd --case-lower | --CASE-UPPER;'''
+    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='--case-', ignore_case=False) == sorted(['--case-lower ', '--case-UPPER '])
+    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='--case-', ignore_case=True) == sorted(['--case-lower '])

@@ -64,6 +64,9 @@ struct CompleteBashArgs {
     #[arg(long)]
     prefix: Option<String>,
 
+    #[arg(long)]
+    ignore_case: bool,
+
     words: Vec<String>,
 }
 

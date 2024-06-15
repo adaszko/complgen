@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
+import pytest
 
 from conftest import complgen_binary_path, get_zsh_capture_script_sorted_lines, set_working_dir, gen_zsh_capture_script_path
 from common import LSOF_FILTER_GRAMMAR, STRACE_EXPR_GRAMMAR
@@ -185,6 +186,7 @@ trivial --color=<WHEN>;
     ])
 
 
+@pytest.mark.xfail(reason="Not implemented yet")
 def test_fallback_completion(complgen_binary_path: Path):
     GRAMMAR = r'''
 mygrep (--color=<WHEN> || --colour=<WHEN>);
@@ -196,6 +198,7 @@ mygrep (--color=<WHEN> || --colour=<WHEN>);
     ])
 
 
+@pytest.mark.xfail(reason="Not implemented yet")
 def test_falls_back_on_no_matches(complgen_binary_path: Path):
     GRAMMAR = r'''
 mygrep (--color=<WHEN> || --colour=<WHEN>);

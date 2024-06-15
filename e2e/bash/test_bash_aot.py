@@ -164,3 +164,15 @@ def test_mygrep_example(complgen_binary_path: Path, usage_directory_path: Path):
 '--null ', '-B ', '--before-context ', '-A ', '--after-context ', '-C ',
 '--context ', '-', '--group-separator=', '--no-group-separator ', '--color ',
 '--colour ', '--color=', '--colour=', '-U ', '--binary '])
+
+
+# https://github.com/adaszko/complgen/issues/41
+@pytest.mark.xfail(reason="Not implemented yet")
+def test_respects_ignore_case_option(complgen_binary_path: Path):
+    GRAMMAR = r'''cmd --case-lower | --CASE-UPPER;'''
+    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
+        input = r'''COMP_WORDS=(cmd --case-); COMP_CWORD=1; bind "set completion-ignore-case on"; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(['--case-lower ', '--case-UPPER '])
+
+        input = r'''COMP_WORDS=(cmd --case-); COMP_CWORD=1; bind "set completion-ignore-case off"; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(['--case-lower '])
