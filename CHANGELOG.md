@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## 0.2.0
 ### Fixed
 
+ - https://github.com/adaszko/complgen/issues/49
  - Autoloading of ZSH completion scripts works now (#38)
 
 ### Added

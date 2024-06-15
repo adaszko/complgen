@@ -332,6 +332,25 @@ With the grammar above, `git <TAB>` will offer to complete *only* subcommands.  
 
 ## Caveats
 
+* `{{{ ... }}}` is only allowed at tail positions, where it doesn't lead to matching against an arbitrary
+  output of an external command:
+    * OK: `cmd {{{ echo foo }}} {{{ echo bar }}};`
+    * ERROR: `cmd ({{{ echo foo }}} | {{{ echo bar }}});`
+    * OK: `cmd (foo | {{{ echo bar }}});`
+    * ERROR: `cmd ({{{ echo foo }}} || {{{ echo bar }}});`
+    * OK: `cmd (foo || {{{ echo bar }}});`
+    * OK: `cmd [{{{ echo foo }}}] foo`;
+    * OK: `cmd {{{ echo foo }}}... foo baz`;
+
+* Within subwords, `{{{ ... }}}` is only allowed at tail position, where it doesn't lead to matching against
+  an arbitrary output of an external command:
+    * ERROR: `{{{ git tag }}}..{{{ git tag }}}`
+    * OK: `--option={{{ echo foo }}}`
+    * ERROR: `{{{ echo foo }}}{{{ echo bar }}}`
+
+* The limitations above also apply to predefined nonterminals (`<PATH>`, `<DIRECTORY>`, etc.) since they're
+  internally implemented as external commands.
+
  * Bash requires `bash-completion` OS package to be installed because completion scripts produced by
    `complgen`, call shell functions from that package at *completion* time.  This is necessary to work around
    Bash's default behavior of [breaking shell words on any character present in the
@@ -341,26 +360,6 @@ With the grammar above, `git <TAB>` will offer to complete *only* subcommands.  
    characters](https://github.com/fish-shell/fish-shell/blob/408ab860906fbf6e08f314bea982220fdee3428e/src/complete.cpp#L183),
    the inserted completion won't end in a space indicating full completion.  See also [Not adding space after
    dot at completion time · Issue #6928](https://github.com/fish-shell/fish-shell/issues/6928)
-
-## Limitations
-
-* `{{{ ... }}}` is only allowed at positions where it doesn't lead to the necessity to match a shell word against an
-  external command output (which is arbitrary and therefore can't be matched against):
-    * OK: `cmd {{{ echo foo }}} {{{ echo bar }}};`
-    * ERROR: `cmd ({{{ echo foo }}} | {{{ echo bar }}});`
-    * OK: `cmd (foo | {{{ echo bar }}});`
-    * ERROR: `cmd ({{{ echo foo }}} || {{{ echo bar }}});`
-    * OK: `cmd (foo || {{{ echo bar }}});`
-    * OK: `cmd [{{{ echo foo }}}] foo`;
-    * OK: `cmd {{{ echo foo }}}... foo baz`;
-
-* `{{{ ... }}}` is only allowed at the tail position within subwords to avoid ambiguities:
-    * ERROR: `{{{ git tag }}}..{{{ git tag }}}`
-    * OK: `--option={{{ echo foo }}}`
-    * ERROR: `{{{ echo foo }}}{{{ echo bar }}}`
-
-* The limitations above also apply to predefined nonterminals (`<PATH>`, `<DIRECTORY>`, etc.) since they're
-  internally implemented as external commands.
 
 * Non-regular grammars aren't completed 100% *precisely*. For instance, in case of `find(1)`, `complgen` will
   still suggest `)` even in cases when all `(` have already been properly closed before the cursor.

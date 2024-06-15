@@ -133,13 +133,14 @@ fn handle_parse_error(input: &str) -> anyhow::Result<Grammar> {
 fn handle_validation_error(g: Grammar, input: &str) -> anyhow::Result<ValidGrammar> {
     match ValidGrammar::from_grammar(g) {
         Ok(g) => Ok(g),
-        Err(Error::CommandAtNonTailPosition(_, span)) => {
-            let error = chic::Error::new("Commands are only allowed at a tail position to avoid ambiguities in matching")
-                .error(span.line_start, span.start, span.end, input.lines().nth(span.line_start).unwrap(), "")
-                .help("try moving the command to the tail position");
-            eprintln!("{}:{}:{}", span.line_start, span.start, error.to_string());
+        Err(Error::CommandAtNonTailPosition(_, complgen::grammar::ChicSpan::Significant { line_start, start, end })) => {
+            let error = chic::Error::new("External commands within subwords are only allowed at tail position to prevent ambiguities in matching")
+                .error(line_start, start, end, input.lines().nth(line_start).unwrap(), "")
+                .help("try to include the suffix in the external command output itself");
+            eprintln!("{}:{}:{}", line_start, start, error.to_string());
             exit(1);
         },
+        Err(Error::CommandAtNonTailPosition(_, complgen::grammar::ChicSpan::Dummy)) => unreachable!(),
         Err(e) => {
             eprintln!("{}", e.to_string());
             exit(1);

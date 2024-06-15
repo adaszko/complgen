@@ -229,7 +229,7 @@ fn do_from_expr<'a>(e: &Expr, specs: &UstrMap<Specialization>, arena: &'a Bump, 
             symbols.insert(input);
             result
         },
-        Expr::Nonterminal(name, fallback_level) => {
+        Expr::Nonterminal(name, fallback_level, _) => {
             let result = AugmentedRegexNode::Nonterminal(Position::try_from(input_from_position.len()).unwrap());
             let specialization = specs.get(name);
             let input = Input::Nonterminal(*name, specialization.copied(), *fallback_level);

@@ -1021,7 +1021,7 @@ mod tests {
 
     #[test]
     fn minimization_fails() {
-        let (expr, input) = (Alternative(vec![Rc::new(Many1(Rc::new(Alternative(vec![Rc::new(Terminal(u("--quux"), None, 0)), Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Many1(Rc::new(Many1(Rc::new(Alternative(vec![Rc::new(Terminal(u("--baz"), None, 0)), Rc::new(Nonterminal(u("FILE"), 0))])))))), Rc::new(Nonterminal(u("FILE"), 0))])))), Rc::new(Sequence(vec![Rc::new(Nonterminal(u("FILE"), 0)), Rc::new(Terminal(u("foo"), None, 0))]))]))])))), Rc::new(Nonterminal(u("FILE"), 0))]), [u("--quux"), u("--baz"), u("anything"), u("anything"), u("foo")]);
+        let (expr, input) = (Alternative(vec![Rc::new(Many1(Rc::new(Alternative(vec![Rc::new(Terminal(u("--quux"), None, 0)), Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Many1(Rc::new(Many1(Rc::new(Alternative(vec![Rc::new(Terminal(u("--baz"), None, 0)), Rc::new(Nonterminal(u("FILE"), 0, crate::grammar::ChicSpan::dummy()))])))))), Rc::new(Nonterminal(u("FILE"), 0, crate::grammar::ChicSpan::dummy()))])))), Rc::new(Sequence(vec![Rc::new(Nonterminal(u("FILE"), 0, crate::grammar::ChicSpan::dummy())), Rc::new(Terminal(u("foo"), None, 0))]))]))])))), Rc::new(Nonterminal(u("FILE"), 0, crate::grammar::ChicSpan::dummy()))]), [u("--quux"), u("--baz"), u("anything"), u("anything"), u("foo")]);
         let arena = Bump::new();
         let specs = UstrMap::default();
         let regex = AugmentedRegex::from_expr(&expr, &specs, &arena);
@@ -1037,7 +1037,7 @@ mod tests {
 
     #[test]
     fn minimization_counterexample1() {
-        let (expr, input) = (Alternative(vec![Rc::new(Many1(Rc::new(Sequence(vec![Rc::new(Nonterminal(u("FILE"), 0)), Rc::new(Nonterminal(u("FILE"), 0))])))), Rc::new(Nonterminal(u("FILE"), 0))]), [u("anything"), u("anything"), u("anything"), u("anything"), u("anything"), u("anything")]);
+        let (expr, input) = (Alternative(vec![Rc::new(Many1(Rc::new(Sequence(vec![Rc::new(Nonterminal(u("FILE"), 0, crate::grammar::ChicSpan::dummy())), Rc::new(Nonterminal(u("FILE"), 0, crate::grammar::ChicSpan::dummy()))])))), Rc::new(Nonterminal(u("FILE"), 0, crate::grammar::ChicSpan::dummy()))]), [u("anything"), u("anything"), u("anything"), u("anything"), u("anything"), u("anything")]);
         let arena = Bump::new();
         let specs = UstrMap::default();
         let regex = AugmentedRegex::from_expr(&expr, &specs, &arena);
@@ -1053,7 +1053,7 @@ mod tests {
 
     #[test]
     fn minimization_counterexample2() {
-        let (expr, input) = (Sequence(vec![Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Many1(Rc::new(Many1(Rc::new(Terminal(u("--baz"), None, 0)))))), Rc::new(Nonterminal(u("FILE"), 0))])), Rc::new(Terminal(u("--baz"), None, 0))])), Rc::new(Many1(Rc::new(Alternative(vec![Rc::new(Nonterminal(u("FILE"), 0)), Rc::new(Nonterminal(u("FILE"), 0))]))))]), [u("anything"), u("--baz"), u("anything"), u("anything")]);
+        let (expr, input) = (Sequence(vec![Rc::new(Sequence(vec![Rc::new(Alternative(vec![Rc::new(Many1(Rc::new(Many1(Rc::new(Terminal(u("--baz"), None, 0)))))), Rc::new(Nonterminal(u("FILE"), 0, crate::grammar::ChicSpan::dummy()))])), Rc::new(Terminal(u("--baz"), None, 0))])), Rc::new(Many1(Rc::new(Alternative(vec![Rc::new(Nonterminal(u("FILE"), 0, crate::grammar::ChicSpan::dummy())), Rc::new(Nonterminal(u("FILE"), 0, crate::grammar::ChicSpan::dummy()))]))))]), [u("anything"), u("--baz"), u("anything"), u("anything")]);
         let arena = Bump::new();
         let specs = UstrMap::default();
         let regex = AugmentedRegex::from_expr(&expr, &specs, &arena);
