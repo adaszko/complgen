@@ -6,19 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## 0.2.0
+### Changed
+
+ - **Breaking**: `{{{ ... }}}` commands and many predefined nonterminals (e.g. `<PATH>`, etc) are now allowed
+   in fewer places to keep grammars unambiguous.  It statically safeguards against some bugs in completion
+   scripts.
+
 ### Fixed
 
- - https://github.com/adaszko/complgen/issues/49
  - Autoloading of ZSH completion scripts works now (#38)
 
 ### Added
 
- - JIT: Fallback completions (see README).  Note it's only implemented in the JIT mode for now.
-
-### Changed
-
- - **Breaking**: `{{{ ... }}}` commands and many predefined nonterminals (e.g. `<PATH>`, etc) are now allowed
-   in fewer places to keep the grammars unambiguous.  See the Limitations section in README for details.
+ - Fallback completions.  It's not implemented across the board yet.  See README for details.
 
 ## 0.1.8
 ### Changed
