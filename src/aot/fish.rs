@@ -60,7 +60,7 @@ fn write_lookup_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
 }
 
 
-fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DFA, command_id_from_state: &HashMap<StateId, usize>, subword_spec_id_from_state: &HashMap<StateId, usize>) -> Result<()> {
+pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DFA, command_id_from_state: &HashMap<StateId, usize>, subword_spec_id_from_state: &HashMap<StateId, usize>) -> Result<()> {
     writeln!(buffer, r#"function _{command}_subword_{id}
     set mode $argv[1]
     set word $argv[2]
@@ -91,7 +91,7 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
                 set --local literal_len (string length -- "$literal")
                 set --local subword_slice (string sub --end=$literal_len -- "$subword")
                 if test $subword_slice = $literal
-                    set --local index (contains --index -- "$literal_id" "$inputs")
+                    set --local index (contains --index -- $literal_id $inputs)
                     set state $tos[$index]
                     set char_index (math $char_index + $literal_len)
                     set literal_matched 1
@@ -120,6 +120,8 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
 
 
     write!(buffer, r#"
+    set --local unmatched_suffix (string sub --start=$char_index -- $word)
+
     set --local matched_prefix
     if test $char_index -eq 1
         set matched_prefix ""
@@ -131,6 +133,14 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
         set --local --erase tos
         eval $literal_transitions[$state]
         for literal_id in $inputs
+            set --local unmatched_suffix_len (string length -- $unmatched_suffix)
+            if test $unmatched_suffix_len -gt 0
+                set --local literal $literals[$literal_id]
+                set --local slice (string sub --end=$unmatched_suffix_len -- $literal)
+                if test "$slice" != "$unmatched_suffix"
+                    continue
+                end
+            end
             if test -n $descriptions[$literal_id]
                 printf '%s%s\t%s\n' $matched_prefix $literals[$literal_id] $descriptions[$literal_id]
             else
@@ -153,7 +163,7 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
         set --local --erase inputs
         set --local --erase tos
         $function_name "$matched_prefix" | while read --local line
-            printf '%s%s' $matched_prefix $line
+            printf '%s%s\n' $matched_prefix $line
         end
     end
 "#)?;
@@ -170,7 +180,7 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
         set --local --erase inputs
         set --local --erase tos
         $function_name "$matched_prefix" | while read --local line
-            printf '%s%s' $matched_prefix $line
+            printf '%s%s\n' $matched_prefix $line
         end
     end
 "#)?;

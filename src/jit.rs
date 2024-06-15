@@ -5,12 +5,14 @@ use std::{io::Write, process::Output};
 use crate::StateId;
 
 use anyhow::{anyhow, Context};
-use ustr::ustr;
+use hashbrown::HashMap;
+use ustr::{ustr, UstrMap, Ustr};
 
-use crate::grammar::Specialization;
+use crate::grammar::{Specialization, DFARef};
 use crate::{dfa::DFA, regex::Input};
 
 pub mod zsh;
+pub mod fish;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Shell {
@@ -420,6 +422,100 @@ pub fn get_transitions(dfa: &DFA, words_before_cursor: &[&str]) -> Vec<Input> {
     };
     let inputs = dfa.iter_transitions_from(state).map(|(input, _)| input).collect();
     inputs
+}
+
+
+// Returns a map: command -> command id
+pub fn get_command_transitions(transitions: &[Input]) -> UstrMap<usize> {
+    let mut id = 0;
+    let mut top_level: UstrMap<usize> = Default::default();
+    for input in transitions {
+        let cmd = match input {
+            Input::Command(cmd, ..) => *cmd,
+            Input::Subword(..) => continue,
+            Input::Nonterminal(..) => continue,
+            Input::Literal(..) => continue,
+        };
+        top_level.entry(cmd).or_insert_with(|| {
+            let sav = id;
+            id += 1;
+            sav
+        });
+    }
+    top_level
+}
+
+
+pub fn get_subword_transitions(transitions: &[Input]) -> HashMap<DFARef, usize> {
+    let mut id = 1;
+    let mut id_from_dfa: HashMap<DFARef, usize> = Default::default();
+    for input in transitions {
+        let subdfa = match input {
+            Input::Subword(subdfa, ..) => subdfa,
+            Input::Command(..) => continue,
+            Input::Nonterminal(..) => continue,
+            Input::Literal(..) => continue,
+        };
+        id_from_dfa.entry(subdfa.clone()).or_insert_with(|| {
+            let save = id;
+            id += 1;
+            save
+        });
+    }
+    id_from_dfa
+}
+
+
+pub fn get_subword_commands(transitions: &[Input]) -> HashMap<DFARef, Vec<(StateId, Ustr)>> {
+    let mut subdfas: HashMap<DFARef, Vec<(StateId, Ustr)>> = Default::default();
+    for input in transitions {
+        match input {
+            Input::Subword(subdfa, ..) => {
+                if subdfas.contains_key(subdfa) {
+                    continue;
+                }
+                let transitions = subdfas.entry(subdfa.clone()).or_default();
+                for (from, tos) in &subdfa.as_ref().transitions {
+                    for (input, _) in tos {
+                        let cmd = match input {
+                            Input::Command(cmd, ..) => *cmd,
+                            Input::Subword(..) => unreachable!(),
+                            Input::Nonterminal(..) => continue,
+                            Input::Literal(..) => continue,
+                        };
+                        transitions.push((*from, cmd));
+                    }
+                }
+            },
+            Input::Command(..) => continue,
+            Input::Nonterminal(..) => continue,
+            Input::Literal(..) => continue,
+        }
+    }
+    subdfas
+}
+
+
+fn make_external_command_function_name(command: &str, id: usize) -> String {
+    format!("_{command}_cmd_{id}")
+}
+
+
+fn make_specialized_external_command_fn_name(command: &str, id: usize) -> String {
+    format!("_{command}_spec_{id}")
+}
+
+
+fn make_subword_function_name(command: &str, id: usize) -> String {
+    format!("_{command}_subword_{id}")
+}
+
+fn make_subword_external_command_fn_name(command: &str, id: usize) -> String {
+    format!("_{command}_subword_cmd_{id}")
+}
+
+fn make_subword_specialized_external_command_fn_name(command: &str, id: usize) -> String {
+    format!("_{command}_subword_spec_{id}")
 }
 
 

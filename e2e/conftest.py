@@ -4,7 +4,7 @@ import tempfile
 import subprocess
 import contextlib
 from pathlib import Path
-from typing import Generator
+from typing import Generator, Optional
 
 import pytest
 
@@ -39,6 +39,15 @@ def set_working_dir(path: Path):
         os.chdir(origin)
 
 
+
+@contextlib.contextmanager
+def temp_file_with_contents(contents: str) -> Generator[Path, None, None]:
+    with tempfile.NamedTemporaryFile() as f:
+        f.write(contents.encode())
+        f.flush()
+        yield Path(f.name)
+
+
 def get_sorted_bash_completions(completions_file_path: Path, input: str) -> list[str]:
     bash_process = subprocess.run(['bash', '--noprofile', '--rcfile', completions_file_path, '-i'], input=input.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
     lines = bash_process.stdout.decode().splitlines()
@@ -63,6 +72,30 @@ def get_sorted_fish_completions(completions_script_path: Path, input: str) -> li
     parsed = fish_completions_from_stdout(completions)
     parsed.sort(key=lambda pair: pair[0])
     return parsed
+
+
+def get_sorted_jit_fish_completions(complgen_binary_path: Path, grammar: str, words_before_cursor: list[str] = [], prefix: Optional[str] = None) -> list[tuple[str, str]]:
+    with gen_fish_jit_completion_script_path(complgen_binary_path, grammar, words_before_cursor, prefix) as completions_file_path:
+        input = f'__complgen_jit {prefix}' if prefix else '__complgen_jit'
+        return get_sorted_fish_completions(completions_file_path, input)
+
+
+@contextlib.contextmanager
+def gen_fish_jit_completion_script_path(complgen_binary_path: Path, grammar: str, words_before_cursor: list[str], prefix: Optional[str]) -> Generator[Path, None, None]:
+    prefix_args = ['--prefix={}'.format(prefix)] if prefix is not None else []
+    words = ['--'] + words_before_cursor if words_before_cursor else []
+    fish_script = subprocess.run([complgen_binary_path, 'jit', '--test', 'dummy', '-', 'fish'] + prefix_args + words, input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True).stdout
+    with temp_file_with_contents(fish_script.decode()) as f:
+        yield f
+
+
+@contextlib.contextmanager
+def gen_fish_aot_completion_script_path(complgen_binary_path: Path, grammar: str) -> Generator[Path, None, None]:
+    fish_script = subprocess.run([complgen_binary_path, 'aot', '--fish-script', '-', '-'], input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True).stdout
+    with tempfile.NamedTemporaryFile() as f:
+        f.write(fish_script)
+        f.flush()
+        yield Path(f.name)
 
 
 @contextlib.contextmanager

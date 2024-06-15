@@ -1,7 +1,7 @@
 import tempfile
 from pathlib import Path
 
-from conftest import get_sorted_fish_completions
+from conftest import get_sorted_fish_completions, get_sorted_jit_fish_completions, temp_file_with_contents
 
 
 def test_shell_integration(complgen_binary_path: Path):
@@ -29,7 +29,11 @@ function _complgen_jit
     else
         set words $COMP_WORDS[2..$last]
     end
-    {complgen_binary_path} jit $usage_file_path fish --prefix="$prefix" -- $words
+    set -l fn (mktemp -q '/tmp/complgen.fish.XXXXXX')
+    {complgen_binary_path} jit --test dummy $usage_file_path fish --prefix="$prefix" -- $words >$fn
+    source $fn
+    __complgen_jit "$prefix"
+    rm -- "$fn"
 end
 
 for path in {usage_files_dir}/*.usage
@@ -37,8 +41,6 @@ for path in {usage_files_dir}/*.usage
     complete --command $stem --no-files --arguments "(_complgen_jit {usage_files_dir}/$stem.usage)"
 end
 '''.format(complgen_binary_path=complgen_binary_path, usage_files_dir=usage_files_dir)
-        with tempfile.NamedTemporaryFile() as f:
-            f.write(INTEGRATION_SCRIPT.encode())
-            f.flush()
-            input = 'complete --command mycargo --do-complete "mycargo +"'
-            assert get_sorted_fish_completions(f.name, input) == [('+bar', ''), ('+foo', '')]
+        with temp_file_with_contents(INTEGRATION_SCRIPT) as p:
+            command = 'complete --command mycargo --do-complete "mycargo +"'
+            assert get_sorted_fish_completions(p, command) == [('+bar', ''), ('+foo', '')]

@@ -1,52 +1,44 @@
 import os
-import sys
 import tempfile
-import subprocess
 from pathlib import Path
 from typing import Optional
 
-from conftest import set_working_dir, fish_completions_from_stdout
+from conftest import set_working_dir, gen_fish_jit_completion_script_path, get_sorted_fish_completions, get_sorted_jit_fish_completions
 from common import LSOF_FILTER_GRAMMAR, STRACE_EXPR_GRAMMAR
 
 
 SPECIAL_CHARACTERS = '?[^a]*{foo,*bar}'
 
 
-def get_sorted_jit_fish_completions(complgen_binary_path: Path, grammar: str, words_before_cursor: list[str] = [], prefix: Optional[str] = None) -> list[tuple[str, str]]:
-    args = [complgen_binary_path, 'jit', '-', 'fish']
-    if prefix is not None:
-        args += ['--prefix={}'.format(prefix)]
-    args += ['--']
-    args += words_before_cursor
-    process = subprocess.run(args, input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
-    parsed = fish_completions_from_stdout(process.stdout.decode())
-    return sorted(parsed, key=lambda pair: pair[0])
-
-
 def test_jit_completes_paths_fish(complgen_binary_path: Path):
+    GRAMMAR = '''cmd <PATH> [--help];'''
     with tempfile.TemporaryDirectory() as dir:
         with set_working_dir(Path(dir)):
             Path('filename with spaces').write_text('dummy')
             Path(SPECIAL_CHARACTERS).write_text('dummy')
             os.mkdir('dir with spaces')
-            assert get_sorted_jit_fish_completions(complgen_binary_path, '''cmd <PATH> [--help];''') == sorted([(SPECIAL_CHARACTERS, ''), ('filename with spaces', ''), ('dir with spaces/', '')])
+            expected = sorted([(SPECIAL_CHARACTERS, ''), ('filename with spaces', ''), ('dir with spaces/', '')])
+            actual = get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR)
+            assert actual == expected
 
 
 def test_jit_completes_subdirectory_files(complgen_binary_path: Path):
+    GRAMMAR = '''cmd <PATH>;'''
     with tempfile.TemporaryDirectory() as dir:
         with set_working_dir(Path(dir)):
             os.mkdir('subdir')
             (Path('subdir') / 'file.txt').write_text('dummy')
-            assert get_sorted_jit_fish_completions(complgen_binary_path, '''cmd <PATH>;''', prefix='subdir/') == sorted([('subdir/file.txt', '')])
+            assert get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR, prefix='subdir/') == sorted([('subdir/file.txt', '')])
 
 
 def test_jit_completes_directories_fish(complgen_binary_path: Path):
+    GRAMMAR = '''cmd <DIRECTORY> [--help];'''
     with tempfile.TemporaryDirectory() as dir:
         with set_working_dir(Path(dir)):
             os.mkdir('dir with spaces')
             os.mkdir(SPECIAL_CHARACTERS)
             Path('filename with spaces').write_text('dummy')
-            assert get_sorted_jit_fish_completions(complgen_binary_path, '''cmd <DIRECTORY> [--help];''') == sorted([(SPECIAL_CHARACTERS + '/', 'Directory'), ('dir with spaces/', 'Directory')])
+            assert get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR) == sorted([(SPECIAL_CHARACTERS + '/', 'Directory'), ('dir with spaces/', 'Directory')])
 
 
 def test_jit_specializes_for_fish(complgen_binary_path: Path):

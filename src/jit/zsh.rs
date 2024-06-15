@@ -6,32 +6,11 @@ use ustr::{ustr, UstrMap, Ustr};
 
 use crate::{grammar::{Specialization, DFARef}, regex::Input, dfa::DFA, StateId, aot::{zsh::write_subword_fn, zsh::make_string_constant}};
 
-use super::get_transitions;
+use super::{get_transitions, get_command_transitions, make_external_command_function_name, get_subword_transitions, get_subword_commands, make_subword_external_command_fn_name, make_subword_specialized_external_command_fn_name, make_specialized_external_command_fn_name, make_subword_function_name};
 
 
 // ASSUMPTION: compadd -d ... -a ... is the only allowed form to pass completion descriptions to
 // compadd.  This requirement dictates the to use shell arrays, not invidual calls to compadd.
-
-
-// Returns a map: command -> command id
-pub fn get_command_transitions(transitions: &[Input]) -> UstrMap<usize> {
-    let mut id = 0;
-    let mut top_level: UstrMap<usize> = Default::default();
-    for input in transitions {
-        let cmd = match input {
-            Input::Command(cmd, ..) => *cmd,
-            Input::Subword(..) => continue,
-            Input::Nonterminal(..) => continue,
-            Input::Literal(..) => continue,
-        };
-        top_level.entry(cmd).or_insert_with(|| {
-            let sav = id;
-            id += 1;
-            sav
-        });
-    }
-    top_level
-}
 
 
 // Returns a map: command -> spec command id
@@ -56,57 +35,7 @@ fn get_zsh_specialized_command_transitions(transitions: &[Input]) -> UstrMap<usi
 }
 
 
-fn get_subword_transitions(transitions: &[Input]) -> HashMap<DFARef, usize> {
-    let mut id = 1;
-    let mut id_from_dfa: HashMap<DFARef, usize> = Default::default();
-    for input in transitions {
-        let subdfa = match input {
-            Input::Subword(subdfa, ..) => subdfa,
-            Input::Command(..) => continue,
-            Input::Nonterminal(..) => continue,
-            Input::Literal(..) => continue,
-        };
-        id_from_dfa.entry(subdfa.clone()).or_insert_with(|| {
-            let save = id;
-            id += 1;
-            save
-        });
-    }
-    id_from_dfa
-}
-
-
-fn get_subword_commands(transitions: &[Input]) -> HashMap<DFARef, Vec<(StateId, Ustr)>> {
-    let mut subdfas: HashMap<DFARef, Vec<(StateId, Ustr)>> = Default::default();
-    for input in transitions {
-        match input {
-            Input::Subword(subdfa, ..) => {
-                if subdfas.contains_key(subdfa) {
-                    continue;
-                }
-                let transitions = subdfas.entry(subdfa.clone()).or_default();
-                for (from, tos) in &subdfa.as_ref().transitions {
-                    for (input, _) in tos {
-                        let cmd = match input {
-                            Input::Command(cmd, ..) => *cmd,
-                            Input::Subword(..) => unreachable!(),
-                            Input::Nonterminal(..) => continue,
-                            Input::Literal(..) => continue,
-                        };
-                        transitions.push((*from, cmd));
-                    }
-                }
-            },
-            Input::Command(..) => continue,
-            Input::Nonterminal(..) => continue,
-            Input::Literal(..) => continue,
-        }
-    }
-    subdfas
-}
-
-
-fn get_subword_specialized_commands(transitions: &[Input]) -> HashMap<DFARef, Vec<(StateId, Ustr)>> {
+fn get_zsh_subword_specialized_commands(transitions: &[Input]) -> HashMap<DFARef, Vec<(StateId, Ustr)>> {
     let mut subdfas: HashMap<DFARef, Vec<(StateId, Ustr)>> = Default::default();
     for input in transitions {
         match input {
@@ -133,29 +62,6 @@ fn get_subword_specialized_commands(transitions: &[Input]) -> HashMap<DFARef, Ve
         }
     }
     subdfas
-}
-
-
-fn make_external_command_function_name(command: &str, id: usize) -> String {
-    format!("_{command}_cmd_{id}")
-}
-
-
-fn make_specialized_external_command_fn_name(command: &str, id: usize) -> String {
-    format!("_{command}_spec_{id}")
-}
-
-
-fn make_subword_function_name(command: &str, id: usize) -> String {
-    format!("_{command}_subword_{id}")
-}
-
-fn make_subword_external_command_fn_name(command: &str, id: usize) -> String {
-    format!("_{command}_subword_cmd_{id}")
-}
-
-fn make_subword_specialized_external_command_fn_name(command: &str, id: usize) -> String {
-    format!("_{command}_subword_spec_{id}")
 }
 
 
@@ -196,7 +102,7 @@ pub fn write_zsh_completion_shell_code<W: Write>(
 "#, make_subword_external_command_fn_name(completed_command, *id))?;
     }
 
-    let subword_spec_transitions = get_subword_specialized_commands(&transitions);
+    let subword_spec_transitions = get_zsh_subword_specialized_commands(&transitions);
     let id_from_subword_spec: UstrMap<usize> = subword_spec_transitions
         .iter()
         .enumerate()
@@ -298,7 +204,9 @@ pub fn write_zsh_completion_shell_code<W: Write>(
         }) {
             let command_id = id_from_top_level_command.get(&cmd).unwrap();
             let fn_name = make_external_command_function_name(completed_command, *command_id);
-            // TODO entered_prefix == $WORDS[$CURRENT].  Zdecydowac się na jedno z dwoch wszedzie
+            // TODO entered_prefix == $WORDS[$CURRENT].  Decide on one and use across the board for
+            // consistency.  entered_prefix is less dynamic, which is useful in debugging tests.
+            // TODO Commit to it.
             if entered_prefix.is_empty() {
                 writeln!(output, r#"    local lines=("${{(@f)$({fn_name})}}")"#)?;
             }
@@ -325,7 +233,6 @@ pub fn write_zsh_completion_shell_code<W: Write>(
             let subdfa_id = id_from_dfa.get(subdfa).unwrap();
             writeln!(output, r#"    {} complete "${{words[$CURRENT]}}" completions_no_description_trailing_space completions_trailing_space suffixes_trailing_space descriptions_trailing_space completions_no_description_no_trailing_space completions_no_trailing_space suffixes_no_trailing_space descriptions_no_trailing_space"#, make_subword_function_name(completed_command, *subdfa_id))?;
         }
-                // level complete, so it's important.
         // An external command that calls compadd itself and return 0 exit code if there
         // were some completions produced.  The exit code is used to declare a fallback
         // level complete, so it's important.

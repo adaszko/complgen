@@ -192,5 +192,13 @@ mygrep (--color=<WHEN> || --colour=<WHEN>);
 '''
     actual = [s.split() for s in get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'mygrep')]
     assert actual == sorted([
-        ['--color=', '--color='], # TODO This should probably say just ['--color=']
+        ['--color='],
     ])
+
+
+def test_falls_back_on_no_matches(complgen_binary_path: Path):
+    GRAMMAR = r'''
+mygrep (--color=<WHEN> || --colour=<WHEN>);
+<WHEN> ::= always | never | auto;
+'''
+    assert get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'mygrep', prefix='--colou') == sorted([('--colour=', '')])
