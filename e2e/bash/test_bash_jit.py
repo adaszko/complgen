@@ -1,11 +1,14 @@
 import os
 import sys
+import string
 import tempfile
 import subprocess
 from pathlib import Path
 from typing import Optional
 
 import pytest
+from hypothesis import given, settings
+from hypothesis.strategies import text
 
 from conftest import complgen_binary_path, set_working_dir
 from common import LSOF_FILTER_GRAMMAR, STRACE_EXPR_GRAMMAR
@@ -142,3 +145,11 @@ def test_respects_ignore_case_option(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --case-lower | --CASE-UPPER;'''
     assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='--case-', ignore_case=False) == sorted(['--case-lower ', '--case-UPPER '])
     assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR, prefix='--case-', ignore_case=True) == sorted(['--case-lower '])
+
+
+LITERALS_ALPHABET = string.ascii_letters + ':='
+@given(text(LITERALS_ALPHABET, min_size=1))
+@settings(max_examples=10)
+def test_handles_special_characters(complgen_binary_path: Path, literal: str):
+    GRAMMAR = '''cmd {};'''.format(literal)
+    assert get_sorted_jit_bash_completions(complgen_binary_path, GRAMMAR) == [literal + ' ']

@@ -1,7 +1,10 @@
 import os
+import string
 import tempfile
 from pathlib import Path
-from typing import Optional
+
+from hypothesis import given, settings
+from hypothesis.strategies import text
 
 from conftest import set_working_dir, gen_fish_jit_completion_script_path, get_sorted_fish_completions, get_sorted_jit_fish_completions
 from common import LSOF_FILTER_GRAMMAR, STRACE_EXPR_GRAMMAR
@@ -102,3 +105,11 @@ mygrep (--color=<WHEN> || --colour=<WHEN>);
 <WHEN> ::= always | never | auto;
 '''
     assert get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR, prefix='--colou') == sorted([('--colour=', '')])
+
+
+LITERALS_ALPHABET = string.ascii_letters + ':='
+@given(text(LITERALS_ALPHABET, min_size=1))
+@settings(max_examples=10, deadline=None)
+def test_handles_special_characters(complgen_binary_path: Path, literal: str):
+    GRAMMAR = '''cmd {};'''.format(literal)
+    assert get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR) == sorted([(literal, '')])

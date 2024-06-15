@@ -1,5 +1,6 @@
 import os
 import sys
+import string
 import tempfile
 import contextlib
 import subprocess
@@ -7,6 +8,8 @@ from pathlib import Path
 from typing import Generator
 
 import pytest
+from hypothesis import given, settings
+from hypothesis.strategies import text
 
 from conftest import set_working_dir, get_sorted_bash_completions, get_bash_completion_sh_path
 from common import LSOF_FILTER_GRAMMAR, STRACE_EXPR_GRAMMAR
@@ -176,3 +179,13 @@ def test_respects_ignore_case_option(complgen_binary_path: Path):
 
         input = r'''COMP_WORDS=(cmd --case-); COMP_CWORD=1; bind "set completion-ignore-case off"; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_bash_completions(path, input) == sorted(['--case-lower '])
+
+
+LITERALS_ALPHABET = string.ascii_letters + ':='
+@given(text(LITERALS_ALPHABET, min_size=1))
+@settings(max_examples=10, deadline=None)
+def test_handles_special_characters(complgen_binary_path: Path, literal: str):
+    GRAMMAR = '''cmd {};'''.format(literal)
+    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
+        input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted([literal + ' '])

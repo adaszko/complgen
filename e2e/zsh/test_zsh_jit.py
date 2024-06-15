@@ -1,11 +1,14 @@
 import os
 import sys
+import string
 import tempfile
 import subprocess
 from pathlib import Path
 from typing import Optional
 
 import pytest
+from hypothesis import given, settings
+from hypothesis.strategies import text
 
 from conftest import complgen_binary_path, get_zsh_capture_script_sorted_lines, set_working_dir, gen_zsh_capture_script_path
 from common import LSOF_FILTER_GRAMMAR, STRACE_EXPR_GRAMMAR
@@ -205,3 +208,11 @@ mygrep (--color=<WHEN> || --colour=<WHEN>);
 <WHEN> ::= always | never | auto;
 '''
     assert get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'mygrep', prefix='--colou') == sorted([('--colour=', '')])
+
+
+LITERALS_ALPHABET = string.ascii_letters + ':='
+@given(text(LITERALS_ALPHABET, min_size=1))
+@settings(max_examples=10, deadline=None)
+def test_handles_special_characters(complgen_binary_path: Path, literal: str):
+    GRAMMAR = '''cmd {};'''.format(literal)
+    assert get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'cmd') == [literal]

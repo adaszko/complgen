@@ -1,6 +1,10 @@
 import os
+import string
 import tempfile
 from pathlib import Path
+
+from hypothesis import given, settings
+from hypothesis.strategies import text
 
 from conftest import get_sorted_fish_completions, set_working_dir, gen_fish_aot_completion_script_path
 from common import LSOF_FILTER_GRAMMAR, STRACE_EXPR_GRAMMAR
@@ -148,3 +152,13 @@ cmd --option "$f\"\\";
     with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
         input = 'complete --command cmd --do-complete "cmd --option"'
         assert get_sorted_fish_completions(completions_file_path, input) == [('--option', '$f\"\\')]
+
+
+LITERALS_ALPHABET = string.ascii_letters + ':='
+@given(text(LITERALS_ALPHABET, min_size=1))
+@settings(max_examples=10, deadline=None)
+def test_handles_special_characters(complgen_binary_path: Path, literal: str):
+    GRAMMAR = '''cmd {};'''.format(literal)
+    with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
+        input = 'complete --command cmd --do-complete "cmd "'
+        assert get_sorted_fish_completions(completions_file_path, input) == sorted([(literal, '')])

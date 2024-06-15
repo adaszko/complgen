@@ -1,6 +1,10 @@
 import os
+import string
 import tempfile
 from pathlib import Path
+
+from hypothesis import given, settings
+from hypothesis.strategies import text
 
 from conftest import set_working_dir, gen_grammar_zsh_capture_script_path, get_zsh_capture_script_sorted_lines
 from common import LSOF_FILTER_GRAMMAR, STRACE_EXPR_GRAMMAR
@@ -179,3 +183,11 @@ cmd --option "$f\"\\";
 '''
     actual = [s.split() for s in get_sorted_aot_completions(complgen_binary_path, GRAMMAR, 'cmd --')]
     assert actual == sorted([['--option', '--option', '--', '$f\"\\']])
+
+
+LITERALS_ALPHABET = string.ascii_letters + ':='
+@given(text(LITERALS_ALPHABET, min_size=1))
+@settings(max_examples=10, deadline=None)
+def test_handles_special_characters(complgen_binary_path: Path, literal: str):
+    GRAMMAR = '''cmd {};'''.format(literal)
+    assert get_sorted_aot_completions(complgen_binary_path, GRAMMAR, 'cmd ') == [literal]
