@@ -73,6 +73,8 @@ pub fn write_zsh_completion_shell_code<W: Write>(
     output: &mut W,
     test_cmd: &Option<String>,
 ) -> anyhow::Result<()> {
+    let prefix_constant = make_string_constant(entered_prefix);
+
     let mut transitions = get_transitions(&dfa, &words_before_cursor);
     transitions.sort_unstable_by_key(|input| input.get_fallback_level());
 
@@ -204,9 +206,6 @@ pub fn write_zsh_completion_shell_code<W: Write>(
         }) {
             let command_id = id_from_top_level_command.get(&cmd).unwrap();
             let fn_name = make_external_command_function_name(completed_command, *command_id);
-            // TODO entered_prefix == $WORDS[$CURRENT].  Decide on one and use across the board for
-            // consistency.  entered_prefix is less dynamic, which is useful in debugging tests.
-            // TODO Commit to it.
             if entered_prefix.is_empty() {
                 writeln!(output, r#"    local lines=("${{(@f)$({fn_name})}}")"#)?;
             }
@@ -231,7 +230,7 @@ pub fn write_zsh_completion_shell_code<W: Write>(
             _ => None,
         }) {
             let subdfa_id = id_from_dfa.get(subdfa).unwrap();
-            writeln!(output, r#"    {} complete "${{words[$CURRENT]}}" completions_no_description_trailing_space completions_trailing_space suffixes_trailing_space descriptions_trailing_space completions_no_description_no_trailing_space completions_no_trailing_space suffixes_no_trailing_space descriptions_no_trailing_space"#, make_subword_function_name(completed_command, *subdfa_id))?;
+            writeln!(output, r#"    {} complete {prefix_constant} completions_no_description_trailing_space completions_trailing_space suffixes_trailing_space descriptions_trailing_space completions_no_description_no_trailing_space completions_no_trailing_space suffixes_no_trailing_space descriptions_no_trailing_space"#, make_subword_function_name(completed_command, *subdfa_id))?;
         }
         // An external command that calls compadd itself and return 0 exit code if there
         // were some completions produced.  The exit code is used to declare a fallback
