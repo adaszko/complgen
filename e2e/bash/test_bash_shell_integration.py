@@ -21,7 +21,8 @@ _complgen_jit_$stem () {{
     local words cword
     _get_comp_words_by_ref -n \"\$COMP_WORDBREAKS\" words cword
     local prefix=\"\${{words[\$cword]}}\"
-    mapfile -t COMPREPLY < <(complgen jit \"{usage_files_dir}/${{stem}}.usage\" bash --comp-wordbreaks=\"\$COMP_WORDBREAKS\" --prefix=\"\$prefix\" -- \"\${{words[@]:1:\$cword-1}}\")
+    local bash_code=\"\$(complgen jit \"{usage_files_dir}/${{stem}}.usage\" bash --comp-wordbreaks=\"\$COMP_WORDBREAKS\" --prefix=\"\$prefix\" -- \"\${{words[@]:1:\$cword-1}}\")\"
+    eval \"\$bash_code\"
     return 0
 }}
 "
@@ -52,7 +53,7 @@ mycargo +<toolchain>;
 '''
     with temp_usage_file_path(complgen_binary_path, GRAMMAR, 'mycargo') as usage_file_path:
         input = r'''COMP_WORDS=(mycargo +); COMP_CWORD=1; _complgen_jit_mycargo; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_bash_completions(usage_file_path, input) == sorted(['+foo ', '+bar '])
+        assert get_sorted_bash_completions(usage_file_path, input) == sorted(['+foo', '+bar'])
 
 
 def test_comp_wordbreaks_chars(complgen_binary_path: Path):

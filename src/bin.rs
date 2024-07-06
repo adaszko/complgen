@@ -7,15 +7,14 @@ use anyhow::Context;
 use bumpalo::Bump;
 use clap::Parser;
 
+use complgen::jit::bash::write_bash_completion_shell_code;
 use complgen::jit::fish::write_fish_completion_shell_code;
 use complgen::jit::zsh::write_zsh_completion_shell_code;
-use complgen::jit::get_completions;
 use complgen::grammar::{ValidGrammar, Grammar, to_railroad_diagram, to_railroad_diagram_file};
 
 use complgen::Error;
 use complgen::dfa::DFA;
 use complgen::regex::AugmentedRegex;
-use slice_group_by::GroupBy;
 
 #[derive(clap::Parser)]
 struct Cli {
@@ -190,56 +189,35 @@ fn jit(args: &JitArgs) -> anyhow::Result<()> {
     let regex = AugmentedRegex::from_expr(&validated.expr, &validated.specializations, &arena);
     let dfa = DFA::from_regex(&regex);
 
-    let (shell, prefix, words) = match &args.shell {
-        Shell::Bash(a) => (complgen::jit::Shell::Bash, &a.prefix, &a.words),
-        Shell::Fish(a) => (complgen::jit::Shell::Fish, &a.prefix, &a.words),
-        Shell::Zsh(a) => (complgen::jit::Shell::Zsh, &a.prefix, &a.words),
+    let (prefix, words) = match &args.shell {
+        Shell::Bash(a) => (&a.prefix, &a.words),
+        Shell::Fish(a) => (&a.prefix, &a.words),
+        Shell::Zsh(a) => (&a.prefix, &a.words),
     };
 
     let words_before_cursor: Vec<&str> = words.iter().map(|s| s.as_ref()).collect();
 
     let word = prefix.as_deref().unwrap_or("");
+    let mut stdout = std::io::stdout();
     match args.shell {
-        Shell::Bash(ref args) => {
+        Shell::Bash(ref bash_args) => {
             // Bash behaves weirdly depending on wheter a completion contains a special character
             // from $COMP_WORDBREAKS or not.  If it does, it is necessary to strip from a
             // completion string a longest prefix up to and including the last such special
             // character.
 
-            let comp_wordbreaks: Vec<char> = args.comp_wordbreaks.as_deref().unwrap_or("").chars().collect();
+            let comp_wordbreaks: Vec<char> = bash_args.comp_wordbreaks.as_deref().unwrap_or("").chars().collect();
             let superfluous_prefix = match word.rfind(comp_wordbreaks.as_slice()) {
                 Some(pos) => &word[..=pos],
                 None => "",
             };
 
-            let matches = {
-                let mut matches: Vec<String> = Default::default();
-                let mut completions = get_completions(&dfa, &words_before_cursor, word, shell)?;
-                completions.sort_by_key(|c| c.fallback_level);
-                for group in completions.linear_group_by(|left, right| left.fallback_level == right.fallback_level) {
-                    for completion in group {
-                        let comp = completion.get_completion_with_trailing_space();
-                        if comp.starts_with(word) {
-                            matches.push(comp.strip_prefix(superfluous_prefix).unwrap_or(&comp).to_owned());
-                        }
-                    }
-                    if !matches.is_empty() {
-                        break;
-                    }
-                }
-                matches
-            };
-
-            for m in matches {
-                println!("{}", m);
-            }
+            write_bash_completion_shell_code(&validated.command, &dfa, bash_args.ignore_case, &words_before_cursor, word, superfluous_prefix, &mut stdout, args.test.is_some())?;
         },
         Shell::Fish(_) => {
-            let mut stdout = std::io::stdout();
-            write_fish_completion_shell_code(&validated.command, &dfa, &words_before_cursor, word, &mut stdout, &args.test)?;
+            write_fish_completion_shell_code(&validated.command, &dfa, &words_before_cursor, word, &mut stdout, args.test.is_some())?;
         },
         Shell::Zsh(_) => {
-            let mut stdout = std::io::stdout();
             write_zsh_completion_shell_code(&validated.command, &dfa, &words_before_cursor, word, &mut stdout, &args.test)?;
         },
     }

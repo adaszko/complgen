@@ -12,7 +12,14 @@ use crate::dfa::DFA;
 
 
 pub fn make_string_constant(s: &str) -> String {
-    format!(r#""{}""#, s.replace('\"', "\\\"").replace('`', "\\`").replace('$', "\\$"))
+    if s.is_empty() {
+        return r#""""#.to_string();
+    }
+    if s.contains(&[' ', '\t', '\n']) {
+        format!(r#""{}""#, s.replace('\"', "\\\"").replace('`', "\\`").replace('$', "\\$"))
+    } else {
+        format!("{}", s.replace('\"', "\\\"").replace('`', "\\`").replace('$', "\\$"))
+    }
 }
 
 
@@ -45,7 +52,7 @@ fn write_lookup_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
 }
 
 
-fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DFA, command_id_from_state: &HashMap<StateId, usize>, subword_spec_id_from_state: &HashMap<StateId, usize>) -> Result<()> {
+pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DFA, command_id_from_state: &HashMap<StateId, usize>, subword_spec_id_from_state: &HashMap<StateId, usize>) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{
     [[ $# -ne 2 ]] && return 1
     local mode=$1
@@ -105,19 +112,6 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
     local matched_prefix="${{word:0:$char_index}}"
     local completed_prefix="${{word:$char_index}}"
 
-    local shortest_suffix="$word"
-    for ((i=0; i < ${{#COMP_WORDBREAKS}}; i++)); do
-        local char="${{COMP_WORDBREAKS:$i:1}}"
-        local candidate=${{word##*$char}}
-        if [[ ${{#candidate}} -lt ${{#shortest_suffix}} ]]; then
-            shortest_suffix=$candidate
-        fi
-    done
-    local superfluous_prefix=""
-    if [[ "$shortest_suffix" != "$word" ]]; then
-        local superfluous_prefix=${{word%$shortest_suffix}}
-    fi
-
     if [[ -v "literal_transitions[$state]" ]]; then
         declare -A state_transitions
         eval "state_transitions=${{literal_transitions[$state]}}"
@@ -126,7 +120,6 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
             local literal=${{literals[$literal_id]}}
             if [[ $literal = "${{completed_prefix}}"* ]]; then
                 local completion="$matched_prefix$literal"
-                completion=${{completion#"$superfluous_prefix"}}
                 local to_state=${{state_transitions[$literal_id]}}
                 if [[ -v "literal_transitions[$to_state]" || -v "match_anything_transitions[$to_state]" ]]; then
                     echo $completion
@@ -149,7 +142,7 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
         local completions=()
         mapfile -t completions < <(_{command}_subword_cmd_${{command_id}} "$matched_prefix" | cut -f1)
         for item in "${{completions[@]}}"; do
-            echo "$item"
+            echo "$matched_prefix$item"
         done
     fi
 
@@ -167,7 +160,7 @@ fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DF
         local completions=()
         mapfile -t completions < <(_{command}_subword_spec_"${{command_id}}" "$prefix" | cut -f1)
         for item in "${{completions[@]}}"; do
-            echo "$item"
+            echo "$matched_prefix$item"
         done
     fi
 
@@ -331,21 +324,9 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 "#)?;
 
     write!(buffer, r#"
+    local -a matches=()
+
     local prefix="${{words[$cword]}}"
-
-    local shortest_suffix="$word"
-    for ((i=0; i < ${{#COMP_WORDBREAKS}}; i++)); do
-        local char="${{COMP_WORDBREAKS:$i:1}}"
-        local candidate="${{word##*$char}}"
-        if [[ ${{#candidate}} -lt ${{#shortest_suffix}} ]]; then
-            shortest_suffix=$candidate
-        fi
-    done
-    local superfluous_prefix=""
-    if [[ "$shortest_suffix" != "$word" ]]; then
-        local superfluous_prefix=${{word%$shortest_suffix}}
-    fi
-
     if [[ -v "literal_transitions[$state]" ]]; then
         local state_transitions_initializer=${{literal_transitions[$state]}}
         declare -A state_transitions
@@ -354,8 +335,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         for literal_id in "${{!state_transitions[@]}}"; do
             local literal="${{literals[$literal_id]}}"
             if [[ $literal = "${{prefix}}"* ]]; then
-                local completion=${{literal#"$superfluous_prefix"}}
-                COMPREPLY+=("$completion ")
+                matches+=("$literal ")
             fi
         done
     fi
@@ -369,7 +349,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         eval "state_transitions=$state_transitions_initializer"
 
         for subword_id in "${{!state_transitions[@]}}"; do
-            mapfile -t -O "${{#COMPREPLY[@]}}" COMPREPLY < <(_{command}_subword_"${{subword_id}}" complete "${{words[$cword]}}")
+            mapfile -t -O "${{#matches[@]}}" matches < <(_{command}_subword_"${{subword_id}}" complete "${{words[$cword]}}")
         done
     fi
 "#)?;
@@ -387,7 +367,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         mapfile -t completions < <(_{command}_cmd_${{command_id}} "$prefix" | cut -f1)
         for item in "${{completions[@]}}"; do
             if [[ $item = "${{prefix}}"* ]]; then
-                COMPREPLY+=("$item")
+                matches+=("$item")
             fi
         done
     fi
@@ -408,13 +388,29 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         mapfile -t completions < <(_{command}_spec_"${{command_id}}" "$prefix" | cut -f1)
         for item in "${{completions[@]}}"; do
             if [[ $item = "${{prefix}}"* ]]; then
-                COMPREPLY+=("$item")
+                matches+=("$item")
             fi
         done
     fi
 
 "#)?;
     }
+
+    write!(buffer, r#"
+    local shortest_suffix="$prefix"
+    for ((i=0; i < ${{#COMP_WORDBREAKS}}; i++)); do
+        local char="${{COMP_WORDBREAKS:$i:1}}"
+        local candidate=${{prefix##*$char}}
+        if [[ ${{#candidate}} -lt ${{#shortest_suffix}} ]]; then
+            shortest_suffix=$candidate
+        fi
+    done
+    local superfluous_prefix=""
+    if [[ "$shortest_suffix" != "$prefix" ]]; then
+        local superfluous_prefix=${{prefix%$shortest_suffix}}
+    fi
+    COMPREPLY=("${{matches[@]#$superfluous_prefix}}")
+"#)?;
 
     write!(buffer, r#"
     return 0

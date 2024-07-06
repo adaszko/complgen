@@ -78,7 +78,8 @@ _complgen_jit_$stem () {
     local words cword
     _get_comp_words_by_ref -n \"\$COMP_WORDBREAKS\" words cword
     local prefix="\${words[\$cword]}"
-    mapfile -t COMPREPLY < <(complgen jit \"$HOME/.config/complgen/${stem}.usage\" bash --comp-wordbreaks=\"\$COMP_WORDBREAKS\" --prefix=\"\$prefix\" -- \"\${words[@]:1:\$cword-1}\")
+    local bash_code=\"\$(complgen jit \"{usage_files_dir}/${stem}.usage\" bash --comp-wordbreaks=\"\$COMP_WORDBREAKS\" --prefix=\"\$prefix\" -- \"\${words[@]:1:\$cword-1}\")\"
+    eval \"\$bash_code\"
     return 0
 }
 "

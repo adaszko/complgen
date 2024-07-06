@@ -48,6 +48,23 @@ def temp_file_with_contents(contents: str) -> Generator[Path, None, None]:
         yield Path(f.name)
 
 
+@contextlib.contextmanager
+def gen_bash_jit_completions_script_path(complgen_binary_path: Path, grammar: str, words_before_cursor: list[str] = [], prefix: Optional[str] = None, ignore_case=False) -> Generator[Path, None, None]:
+    comp_wordbreaks = ''' "'><=;|&(:'''
+    args = [complgen_binary_path, 'jit', '--test', 'dummy', '-', 'bash', '--comp-wordbreaks', comp_wordbreaks]
+    if ignore_case:
+        args += ['--ignore-case']
+    if prefix is not None:
+        args += ['--prefix={}'.format(prefix)]
+    args += ['--']
+    args += words_before_cursor
+    process = subprocess.run(args, input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
+    completion_script = process.stdout.decode()
+    contents = '''source {}\n{}'''.format(get_bash_completion_sh_path(), completion_script)
+    with temp_file_with_contents(contents) as script_path:
+        yield script_path
+
+
 def get_sorted_bash_completions(completions_file_path: Path, input: str) -> list[str]:
     bash_process = subprocess.run(['bash', '--noprofile', '--rcfile', completions_file_path, '-i'], input=input.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
     lines = bash_process.stdout.decode().splitlines()
