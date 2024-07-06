@@ -118,8 +118,8 @@ def gen_fish_aot_completion_script_path(complgen_binary_path: Path, grammar: str
 @contextlib.contextmanager
 def gen_zsh_capture_script_path(completion_script: str) -> Generator[Path, None, None]:
     this_file = Path(__file__)
-    capture_preamble_path = this_file.parent.parent / 'capture_preamble.zsh'
-    capture_postamble_path = this_file.parent.parent / 'capture_postamble.zsh'
+    capture_preamble_path = this_file.parent / 'capture_preamble.zsh'
+    capture_postamble_path = this_file.parent / 'capture_postamble.zsh'
     with tempfile.NamedTemporaryFile(mode='w') as f:
         f.write(capture_preamble_path.read_text())
         f.write("\n")
