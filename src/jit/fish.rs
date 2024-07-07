@@ -143,7 +143,7 @@ end
             _ => None,
         }) {
             if !description.is_empty() {
-                writeln!(output, r#"    set -a completions "{literal}\t{description}""#)?;
+                writeln!(output, r#"    set -a completions "{literal}	{description}""#)?;
             }
             else {
                 writeln!(output, r#"    set -a completions {literal}"#)?;

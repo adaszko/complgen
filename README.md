@@ -113,11 +113,8 @@ function _complgen_jit
     else
         set words $COMP_WORDS[2..$last]
     end
-    set -l fn (mktemp -q '/tmp/complgen.fish.XXXXXX')
-    complgen jit $usage_file_path fish --prefix="$prefix" -- $words >$fn
-    source $fn
+    complgen jit $usage_file_path fish --prefix="$prefix" -- $words | source -
     __complgen_jit "$prefix"
-    rm -- "$fn"
 end
 
 for path in ~/.config/complgen/*.usage
