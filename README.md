@@ -309,7 +309,7 @@ This feature is currently work-in-progress, here's where it's supported already:
 |-------|-----|-----|
 | bash  | ✅  | ❌  |
 | fish  | ✅  | ❌  |
-| zsh   | ✅  | ❌  |
+| zsh   | ❌  | ❌  |
 
 If you do `git <TAB>` in most shells you're presented with a list of git subcommands.  Even though git accepts
 a bunch of global options (`--help`, `--version`, etc.), they don't show up there (sic!).  That's a special
