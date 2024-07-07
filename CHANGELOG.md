@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - **Breaking**: `{{{ ... }}}` commands and many predefined nonterminals (e.g. `<PATH>`, etc) are now allowed
    in fewer places to keep grammars unambiguous.  It statically safeguards against some bugs in completion
    scripts.
+ - **Breaking**: Releases aren't published via Homebrew anymore -- use `cargo install`.
+ - **Breaking**: JIT completion now emits shell scripts (as opposed to plain strings) in all shells.  Integration scripts need to be adjusted accordingly.  Details in README.md.
 
 ### Fixed
 
