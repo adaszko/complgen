@@ -69,6 +69,8 @@ pub fn write_fish_completion_shell_code<W: Write>(
     output: &mut W,
     test_mode: bool,
 ) -> anyhow::Result<()> {
+    let prefix_constant = make_string_constant(entered_prefix);
+
     let mut transitions = get_transitions(&dfa, &words_before_cursor);
     transitions.sort_unstable_by_key(|input| input.get_fallback_level());
 
@@ -133,21 +135,30 @@ end
     // Generate shell code for fallback levels in order, optionally calling shell functions defined
     // above.
     writeln!(output, r#"function __complgen_jit
-    set --local completions
+    set --local candidates
 "#)?;
 
     let groups: Vec<&[Input]> = transitions.linear_group_by_key(|t| t.get_fallback_level()).collect();
     for group in groups {
+        let mut literals: Vec<Ustr> = Default::default();
+        let mut literals_with_description: Vec<(Ustr, String)> = Default::default();
         for (literal, description) in group.iter().filter_map(|t| match t {
             Input::Literal(literal, description, ..) => Some((literal, description.unwrap_or(ustr("")).as_str().to_string())),
             _ => None,
         }) {
             if !description.is_empty() {
-                writeln!(output, r#"    set -a completions "{literal}	{description}""#)?;
+                literals_with_description.push((*literal, description));
             }
             else {
-                writeln!(output, r#"    set -a completions {literal}"#)?;
+                literals.push(*literal);
             }
+        }
+
+        if !literals.is_empty() {
+            writeln!(output, r#"    set --append candidates {}"#, itertools::join(literals.iter().map(|c| make_string_constant(c)), " "))?;
+        }
+        for (literal, description) in literals_with_description {
+            writeln!(output, r#"    set --append candidates "{literal}	{description}""#)?;
         }
 
 
@@ -159,7 +170,7 @@ end
         }) {
             let command_id = id_from_top_level_command.get(&cmd).unwrap();
             let fn_name = make_external_command_function_name(completed_command, *command_id);
-            writeln!(output, r#"    set -a completions ({fn_name} {})"#, make_string_constant(entered_prefix))?;
+            writeln!(output, r#"    set --append candidates ({fn_name} {})"#, make_string_constant(entered_prefix))?;
         }
 
         for subdfa in group.iter().filter_map(|t| match t {
@@ -168,7 +179,7 @@ end
         }) {
             let subdfa_id = id_from_dfa.get(subdfa).unwrap();
             let prefix = make_string_constant(entered_prefix);
-            writeln!(output, r#"    set -a completions ({} complete {prefix})"#, make_subword_function_name(completed_command, *subdfa_id))?;
+            writeln!(output, r#"    set --append candidates ({} complete {prefix})"#, make_subword_function_name(completed_command, *subdfa_id))?;
         }
         for cmd in group.iter().filter_map(|t| match t {
             Input::Nonterminal(_, Some(Specialization { fish: Some(cmd), .. }), ..) => Some(*cmd),
@@ -176,10 +187,76 @@ end
         }) {
             let command_id = id_from_specialized_command.get(&cmd).unwrap();
             let fn_name = make_specialized_external_command_fn_name(completed_command, *command_id);
-            writeln!(output, r#"    set -a completions ({fn_name} {})"#, make_string_constant(entered_prefix))?;
+            writeln!(output, r#"    set --append candidates ({fn_name} {})"#, make_string_constant(entered_prefix))?;
         }
 
-        writeln!(output, r#"    if set -q completions[1]; printf %s\n $completions; return; end"#)?;
+        // Split `candidates` list by tab character into completion and description lists
+        writeln!(output, "    set --local completions")?;
+        writeln!(output, "    set --local descriptions")?;
+        writeln!(output, r#"
+    for c in $candidates
+        set --local a (string split --max 1 -- "	" $c)
+        set --append completions $a[1]
+        if set --query a[2]
+            set --append descriptions $a[2]
+        else
+            set --append descriptions ""
+        end
+    end
+"#)?;
+
+        // First, filter `completions` array by `prefix` in a case-sensitive manner
+        writeln!(output, "    set --local matches_case_sensitive")?;
+        writeln!(output, "    set --local descriptions_case_sensitive")?;
+
+        if entered_prefix.is_empty() {
+            writeln!(output, r#"    set matches_case_sensitive $completions"#)?;
+            writeln!(output, r#"    set descriptions_case_sensitive $descriptions"#)?;
+        } else {
+            writeln!(output, r#"
+    for i in (seq 1 (count $completions))
+        if string match --quiet -- {prefix_constant}\* $completions[$i]
+            set --append matches_case_sensitive $completions[$i]
+            set --append descriptions_case_sensitive $descriptions[$i]
+        end
+    end
+"#)?;
+        }
+
+        writeln!(output, r#"
+    if set --query matches_case_sensitive[1]
+        for i in (seq 1 (count $matches_case_sensitive))
+            printf '%s	%s\n' $matches_case_sensitive[$i] $descriptions_case_sensitive[$i]
+        end
+        return
+    end
+"#)?;
+
+        // Second, if case-sensitive filtering yielded no results, try in a case-insensitive manner
+        writeln!(output, "    set --local matches_case_insensitive")?;
+        writeln!(output, "    set --local descriptions_case_insensitive")?;
+        if entered_prefix.is_empty() {
+            writeln!(output, r#"    set matches_case_sensitive $completions"#)?;
+            writeln!(output, r#"    set descriptions_case_sensitive $descriptions"#)?;
+        } else {
+            writeln!(output, r#"
+    for i in (seq 1 (count $completions))
+        if string match  --quiet --ignore-case -- {prefix_constant}\* $completions[$i]
+            set --append matches_case_insensitive $completions[$i]
+            set --append descriptions_case_insensitive $descriptions[$i]
+        end
+    end
+"#)?;
+        }
+
+        writeln!(output, r#"
+    if set --query matches_case_insensitive[1]
+        for i in (seq 1 (count $matches_case_insensitive))
+            printf '%s	%s\n' $matches_case_insensitive[$i] $descriptions_case_insensitive[$i]
+        end
+        return
+    end
+"#)?;
     }
     writeln!(output, r#"end"#)?;
 

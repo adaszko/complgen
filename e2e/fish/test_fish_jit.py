@@ -99,12 +99,17 @@ mygrep (--color=<WHEN> || --colour=<WHEN>);
     assert get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR, prefix='') == sorted([('--color=', '')])
 
 
-def test_falls_back_on_no_matches(complgen_binary_path: Path):
+def test_fallbacks_on_no_matches(complgen_binary_path: Path):
     GRAMMAR = r'''
 mygrep (--color=<WHEN> || --colour=<WHEN>);
 <WHEN> ::= always | never | auto;
 '''
     assert get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR, prefix='--colou') == sorted([('--colour=', '')])
+
+
+def test_fallback_bug1(complgen_binary_path: Path):
+    GRAMMAR = r'''lighthouse (account || --disable-log-timestamp);'''
+    assert get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR, prefix='--') == sorted([('--disable-log-timestamp', '')])
 
 
 LITERALS_ALPHABET = string.ascii_letters + ':='
