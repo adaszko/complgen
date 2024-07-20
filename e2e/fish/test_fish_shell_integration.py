@@ -22,7 +22,6 @@ function _complgen_jit
     else
         set words $COMP_WORDS[2..$last]
     end
-    echo {complgen_binary_path} jit --test dummy $usage_file_path fish --prefix="$prefix" -- $words >/dev/ttys003
     {complgen_binary_path} jit --test dummy $usage_file_path fish --prefix="$prefix" -- $words | source -
     __complgen_jit "$prefix"
 end
