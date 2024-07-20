@@ -181,6 +181,22 @@ def test_respects_ignore_case_option(complgen_binary_path: Path):
         assert get_sorted_bash_completions(path, input) == sorted(['--case-lower '])
 
 
+@pytest.mark.xfail(reason="Not implemented yet")
+def test_fallback_completes_default(complgen_binary_path: Path):
+    GRAMMAR = r'''cmd (foo || --bar);'''
+    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
+        input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(['foo'])
+
+
+@pytest.mark.xfail(reason="Not implemented yet")
+def test_fallbacks_on_no_matches(complgen_binary_path: Path):
+    GRAMMAR = r'''cmd (foo || --bar);'''
+    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
+        input = r'''COMP_WORDS=(cmd --); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(['--bar'])
+
+
 LITERALS_ALPHABET = string.ascii_letters + ':='
 @given(text(LITERALS_ALPHABET, min_size=1))
 @settings(max_examples=10, deadline=None)

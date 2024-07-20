@@ -143,23 +143,17 @@ mygrep --color "use markers to highlight the matching strings"=<WHEN>;
 
 
 def test_fallback_completes_default(complgen_binary_path: Path):
-    GRAMMAR = r'''
-mygrep (--color=<WHEN> || --colour=<WHEN>);
-<WHEN> ::= always | never | auto;
-'''
+    GRAMMAR = r'''cmd (foo || --bar);'''
     with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, prefix='') as completion_script:
-        input = r'''COMP_WORDS=(mygrep); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_bash_completions(completion_script, input) == sorted(['--color='])
+        input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(completion_script, input) == sorted(['foo'])
 
 
-def test_falls_back_on_no_matches(complgen_binary_path: Path):
-    GRAMMAR = r'''
-mygrep (--color=<WHEN> || --colour=<WHEN>);
-<WHEN> ::= always | never | auto;
-'''
-    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, prefix='--colou') as completion_script:
-        input = r'''COMP_WORDS=(mygrep --colou); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_bash_completions(completion_script, input) == sorted(['--colour='])
+def test_fallbacks_on_no_matches(complgen_binary_path: Path):
+    GRAMMAR = r'''cmd (foo || --bar);'''
+    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, prefix='--') as completion_script:
+        input = r'''COMP_WORDS=(cmd --); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(completion_script, input) == sorted(['--bar'])
 
 
 # https://github.com/adaszko/complgen/issues/41

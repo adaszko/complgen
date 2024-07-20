@@ -3,6 +3,7 @@ import string
 import tempfile
 from pathlib import Path
 
+import pytest
 from hypothesis import given, settings
 from hypothesis.strategies import text
 
@@ -152,6 +153,22 @@ cmd --option "$f\"\\";
     with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
         input = 'complete --command cmd --do-complete "cmd --option"'
         assert get_sorted_fish_completions(completions_file_path, input) == [('--option', '$f\"\\')]
+
+
+@pytest.mark.xfail(reason="Not implemented yet")
+def test_fallback_completes_default(complgen_binary_path: Path):
+    GRAMMAR = r'''cmd (foo || --bar);'''
+    with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
+        input = 'complete --command cmd --do-complete "cmd "'
+        assert get_sorted_fish_completions(completions_file_path, input) == sorted([('foo', '')])
+
+
+@pytest.mark.xfail(reason="Not implemented yet")
+def test_fallbacks_on_no_matches(complgen_binary_path: Path):
+    GRAMMAR = r'''cmd (foo || --bar);'''
+    with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
+        input = 'complete --command cmd --do-complete "cmd --"'
+        assert get_sorted_fish_completions(completions_file_path, input) == sorted([('--bar', '')])
 
 
 LITERALS_ALPHABET = string.ascii_letters + ':='

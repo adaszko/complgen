@@ -190,17 +190,13 @@ trivial --color=<WHEN>;
 
 
 def test_fallback_completion(complgen_binary_path: Path):
-    GRAMMAR = r'''
-mygrep (foo || --bar);
-'''
-    assert get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'mygrep') == sorted(['foo'])
+    GRAMMAR = r'''cmd (foo || --bar);'''
+    assert get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'cmd') == sorted(['foo'])
 
 
 def test_fallbacks_on_no_matches(complgen_binary_path: Path):
-    GRAMMAR = r'''
-mygrep (foo || --bar);
-'''
-    assert get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'mygrep', prefix='--') == sorted(['--bar'])
+    GRAMMAR = r'''cmd (foo || --bar);'''
+    assert get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'cmd', prefix='--') == sorted(['--bar'])
 
 
 LITERALS_ALPHABET = string.ascii_letters + ':='
