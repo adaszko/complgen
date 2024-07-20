@@ -272,23 +272,23 @@ pub fn write_zsh_completion_shell_code<W: Write>(
             descriptions_no_trailing_space[$i]="${{(r($maxlen)( ))${{suffixes_no_trailing_space[$i]}}}} -- ${{descriptions_no_trailing_space[$i]}}"
         fi
     done
-
-    compadd -Q -a completions_no_description_trailing_space
-    compadd -Q -S ' ' -a completions_no_description_no_trailing_space
-    compadd -l -Q -a -d descriptions_trailing_space completions_trailing_space
-    compadd -l -Q -S '' -a -d descriptions_no_trailing_space completions_no_trailing_space
 "#)?;
 
-        if index < groups.len()-1 {
-            writeln!(output, r#"    compadd -O matches -a completions_no_description_trailing_space"#)?;
-            writeln!(output, r#"    compadd -O matches -a completions_no_description_no_trailing_space"#)?;
-            writeln!(output, r#"    compadd -O matches -a completions_trailing_space"#)?;
-            writeln!(output, r#"    compadd -O matches -a completions_no_trailing_space"#)?;
-            writeln!(output, r#"    [[ ${{#matches}} -gt 0 ]] && return"#)?;
-            writeln!(output)?;
-        }
-        writeln!(output, r#"    return 0"#)?;
+    writeln!(output, r#"
+    compadd -O m -a completions_no_description_trailing_space; matches+=("${{m[@]}}")
+    compadd -O m -a completions_no_description_no_trailing_space; matches+=("${{m[@]}}")
+    compadd -O m -a completions_trailing_space; matches+=("${{m[@]}}")
+    compadd -O m -a completions_no_trailing_space; matches+=("${{m[@]}}")
+    if [[ ${{#matches}} -gt 0 ]]; then
+        compadd -Q -a completions_no_description_trailing_space
+        compadd -Q -S ' ' -a completions_no_description_no_trailing_space
+        compadd -l -Q -a -d descriptions_trailing_space completions_trailing_space
+        compadd -l -Q -S '' -a -d descriptions_no_trailing_space completions_no_trailing_space
+        return 0
+    fi
+"#)?;
     }
+    writeln!(output, r#"    return 0"#)?;
     writeln!(output, r#"}}"#)?;
 
     if let Some(test_cmd) = test_cmd {

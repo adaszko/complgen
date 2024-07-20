@@ -189,25 +189,18 @@ trivial --color=<WHEN>;
     ])
 
 
-@pytest.mark.xfail(reason="Not implemented yet")
 def test_fallback_completion(complgen_binary_path: Path):
     GRAMMAR = r'''
-mygrep (--color=<WHEN> || --colour=<WHEN>);
-<WHEN> ::= always | never | auto;
+mygrep (foo || --bar);
 '''
-    actual = [s.split() for s in get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'mygrep')]
-    assert actual == sorted([
-        ['--color='],
-    ])
+    assert get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'mygrep') == sorted(['foo'])
 
 
-@pytest.mark.xfail(reason="Not implemented yet")
-def test_falls_back_on_no_matches(complgen_binary_path: Path):
+def test_fallbacks_on_no_matches(complgen_binary_path: Path):
     GRAMMAR = r'''
-mygrep (--color=<WHEN> || --colour=<WHEN>);
-<WHEN> ::= always | never | auto;
+mygrep (foo || --bar);
 '''
-    assert get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'mygrep', prefix='--colou') == sorted([('--colour=', '')])
+    assert get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'mygrep', prefix='--') == sorted(['--bar'])
 
 
 LITERALS_ALPHABET = string.ascii_letters + ':='
