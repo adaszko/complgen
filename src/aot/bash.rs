@@ -9,6 +9,7 @@ use crate::dfa::DFA;
 
 // Bash array indexes start at 0.
 // Associative arrays are local by default.
+// Bash uses *dynamic* scoping for local variables (!)
 
 
 pub fn make_string_constant(s: &str) -> String {
@@ -28,8 +29,7 @@ fn write_lookup_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
 
     let literal_id_from_input_description: HashMap<(Ustr, Ustr), usize> = all_literals.iter().map(|(id, input, description)| ((*input, *description), *id)).collect();
     let literals: String = itertools::join(all_literals.iter().map(|(_, literal, _)| make_string_constant(literal)), " ");
-    writeln!(buffer, r#"    local -a literals=({literals})"#)?;
-    writeln!(buffer)?;
+    writeln!(buffer, r#"    declare -a literals=({literals})"#)?;
 
     writeln!(buffer, r#"    declare -A literal_transitions"#)?;
     for state in dfa.get_all_states() {
@@ -42,27 +42,19 @@ fn write_lookup_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
         writeln!(buffer, r#"    literal_transitions[{state}]="({state_transitions})""#)?;
     }
 
-    writeln!(buffer)?;
-
-    writeln!(buffer, r#"    declare -A match_anything_transitions"#)?;
     let match_anything_transitions = itertools::join(dfa.get_match_anything_transitions().into_iter().map(|(from, to)| format!("[{from}]={to}")), " ");
-    writeln!(buffer, r#"    match_anything_transitions=({match_anything_transitions})"#)?;
+    writeln!(buffer, r#"    declare -A match_anything_transitions=({match_anything_transitions})"#)?;
 
     Ok(())
 }
 
 
-pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DFA, command_id_from_state: &HashMap<StateId, usize>, subword_spec_id_from_state: &HashMap<StateId, usize>) -> Result<()> {
-    writeln!(buffer, r#"_{command}_subword_{id} () {{
+pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<()> {
+    writeln!(buffer, r#"_{command}_subword () {{
     [[ $# -ne 2 ]] && return 1
     local mode=$1
     local word=$2
-"#)?;
 
-    write_lookup_tables(buffer, dfa)?;
-
-    write!(buffer, r#"
-    local state={starting_state}
     local char_index=0
     local matched=0
     while true; do
@@ -106,7 +98,7 @@ pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa:
     if [[ $mode = matches ]]; then
         return $((1 - matched))
     fi
-"#, starting_state = dfa.starting_state)?;
+"#)?;
 
     write!(buffer, r#"
     local matched_prefix="${{word:0:$char_index}}"
@@ -131,12 +123,7 @@ pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa:
     fi
 "#)?;
 
-    if !command_id_from_state.is_empty() {
-        writeln!(buffer)?;
-        writeln!(buffer, r#"    declare -A commands"#)?;
-        let array_initializer = itertools::join(command_id_from_state.into_iter().map(|(state, id)| format!("[{state}]={id}")), " ");
-        write!(buffer, r#"    commands=({array_initializer})"#)?;
-        write!(buffer, r#"
+    writeln!(buffer, r#"
     if [[ -v "commands[$state]" ]]; then
         local command_id=${{commands[$state]}}
         local completions=()
@@ -145,16 +132,9 @@ pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa:
             echo "$matched_prefix$item"
         done
     fi
-
 "#)?;
-    }
 
-    if !subword_spec_id_from_state.is_empty() {
-        writeln!(buffer)?;
-        writeln!(buffer, r#"    declare -A specialized_commands"#)?;
-        let array_initializer = itertools::join(subword_spec_id_from_state.into_iter().map(|(state, id)| format!("[{state}]={id}")), " ");
-        write!(buffer, r#"    specialized_commands=({array_initializer})"#)?;
-        write!(buffer, r#"
+    writeln!(buffer, r#"
     if [[ -v "specialized_commands[$state]" ]]; then
         local command_id=${{specialized_commands[$state]}}
         local completions=()
@@ -163,12 +143,33 @@ pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa:
             echo "$matched_prefix$item"
         done
     fi
-
 "#)?;
-    }
 
     writeln!(buffer, r#"    return 0
 }}"#)?;
+    writeln!(buffer)?;
+
+    Ok(())
+}
+
+
+pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DFA, command_id_from_state: &HashMap<StateId, usize>, subword_spec_id_from_state: &HashMap<StateId, usize>) -> Result<()> {
+    writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
+
+    write_lookup_tables(buffer, dfa)?;
+
+    let commands_array_initializer = itertools::join(command_id_from_state.into_iter().map(|(state, id)| format!("[{state}]={id}")), " ");
+    writeln!(buffer, r#"    declare -A commands=({commands_array_initializer})"#)?;
+
+    let specialized_commands_array_initializer = itertools::join(subword_spec_id_from_state.into_iter().map(|(state, id)| format!("[{state}]={id}")), " ");
+    writeln!(buffer, r#"    declare -A specialized_commands=({specialized_commands_array_initializer})"#)?;
+
+    writeln!(buffer, r#"    declare state={starting_state}"#, starting_state = dfa.starting_state)?;
+
+    writeln!(buffer, r#"    _{command}_subword "$1" "$2""#)?;
+
+    writeln!(buffer, r#"}}"#)?;
+
     Ok(())
 }
 
@@ -230,6 +231,9 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
 
     let id_from_dfa = dfa.get_subwords(0);
+    if !id_from_dfa.is_empty() {
+        write_generic_subword_fn(buffer, command)?;
+    }
     for (dfa, id) in &id_from_dfa {
         let subword_command_id_from_state: HashMap<StateId, usize> = subword_command_transitions.get(dfa).unwrap().iter().map(|(state, cmd)| (*state, *id_from_subword_command.get(cmd).unwrap())).collect();
         let subword_spec_id_from_state: HashMap<StateId, usize> = subword_spec_transitions.get(dfa).unwrap().iter().map(|(state, cmd)| (*state, *id_from_subword_spec.get(cmd).unwrap())).collect();
@@ -378,9 +382,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     let specialized_command_id_from_state: HashMap<StateId, usize> = top_level_spec_transitions.into_iter().map(|(state, cmd)| (state, *id_from_specialized_command.get(&cmd).unwrap())).collect();
     if !specialized_command_id_from_state.is_empty() {
         writeln!(buffer)?;
-        writeln!(buffer, r#"    declare -A specialized_commands"#)?;
         let array_initializer = itertools::join(specialized_command_id_from_state.into_iter().map(|(state, id)| format!("[{state}]={id}")), " ");
-        write!(buffer, r#"    specialized_commands=({array_initializer})"#)?;
+        write!(buffer, r#"    declare -A specialized_commands=({array_initializer})"#)?;
         write!(buffer, r#"
     if [[ -v "specialized_commands[$state]" ]]; then
         local command_id=${{specialized_commands[$state]}}
