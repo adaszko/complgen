@@ -140,7 +140,7 @@ pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa:
     if [[ -v "commands[$state]" ]]; then
         local command_id=${{commands[$state]}}
         local completions=()
-        mapfile -t completions < <(_{command}_subword_cmd_${{command_id}} "$matched_prefix" | cut -f1)
+        readarray -t completions < <(_{command}_subword_cmd_${{command_id}} "$matched_prefix" | cut -f1)
         for item in "${{completions[@]}}"; do
             echo "$matched_prefix$item"
         done
@@ -158,7 +158,7 @@ pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa:
     if [[ -v "specialized_commands[$state]" ]]; then
         local command_id=${{specialized_commands[$state]}}
         local completions=()
-        mapfile -t completions < <(_{command}_subword_spec_"${{command_id}}" "$prefix" | cut -f1)
+        readarray -t completions < <(_{command}_subword_spec_"${{command_id}}" "$prefix" | cut -f1)
         for item in "${{completions[@]}}"; do
             echo "$matched_prefix$item"
         done
@@ -349,7 +349,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         eval "state_transitions=$state_transitions_initializer"
 
         for subword_id in "${{!state_transitions[@]}}"; do
-            mapfile -t -O "${{#matches[@]}}" matches < <(_{command}_subword_"${{subword_id}}" complete "${{words[$cword]}}")
+            readarray -t -O "${{#matches[@]}}" matches < <(_{command}_subword_"${{subword_id}}" complete "${{words[$cword]}}")
         done
     fi
 "#)?;
@@ -364,7 +364,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     if [[ -v "commands[$state]" ]]; then
         local command_id=${{commands[$state]}}
         local completions=()
-        mapfile -t completions < <(_{command}_cmd_${{command_id}} "$prefix" | cut -f1)
+        readarray -t completions < <(_{command}_cmd_${{command_id}} "$prefix" | cut -f1)
         for item in "${{completions[@]}}"; do
             if [[ $item = "${{prefix}}"* ]]; then
                 matches+=("$item")
@@ -385,7 +385,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     if [[ -v "specialized_commands[$state]" ]]; then
         local command_id=${{specialized_commands[$state]}}
         local completions=()
-        mapfile -t completions < <(_{command}_spec_"${{command_id}}" "$prefix" | cut -f1)
+        readarray -t completions < <(_{command}_spec_"${{command_id}}" "$prefix" | cut -f1)
         for item in "${{completions[@]}}"; do
             if [[ $item = "${{prefix}}"* ]]; then
                 matches+=("$item")
