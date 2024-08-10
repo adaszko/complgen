@@ -6,7 +6,7 @@ use ustr::{ustr, UstrMap, Ustr};
 
 use crate::{grammar::{Specialization, DFARef}, regex::Input, dfa::DFA, StateId, aot::{zsh::write_subword_fn, zsh::make_string_constant}};
 
-use super::{get_transitions, get_command_transitions, make_external_command_function_name, get_subword_transitions, get_subword_commands, make_subword_external_command_fn_name, make_subword_specialized_external_command_fn_name, make_specialized_external_command_fn_name, make_subword_function_name};
+use super::{get_transitions, get_command_transitions, make_external_command_fn_name, get_subword_transitions, get_subword_commands, make_subword_external_command_fn_name, make_subword_specialized_external_command_fn_name, make_specialized_external_command_fn_name, make_subword_fn_name};
 
 
 // ASSUMPTION: compadd -d ... -a ... is the only allowed form to pass completion descriptions to
@@ -84,7 +84,7 @@ pub fn write_zsh_completion_shell_code<W: Write>(
     {cmd}
 }}
 
-"#, make_external_command_function_name(completed_command, *id))?;
+"#, make_external_command_fn_name(completed_command, *id))?;
     }
 
     let id_from_dfa = get_subword_transitions(&transitions);
@@ -205,7 +205,7 @@ pub fn write_zsh_completion_shell_code<W: Write>(
             _ => None,
         }) {
             let command_id = id_from_top_level_command.get(&cmd).unwrap();
-            let fn_name = make_external_command_function_name(completed_command, *command_id);
+            let fn_name = make_external_command_fn_name(completed_command, *command_id);
             if entered_prefix.is_empty() {
                 writeln!(output, r#"    local lines=("${{(@f)$({fn_name})}}")"#)?;
             }
@@ -230,7 +230,7 @@ pub fn write_zsh_completion_shell_code<W: Write>(
             _ => None,
         }) {
             let subdfa_id = id_from_dfa.get(subdfa).unwrap();
-            writeln!(output, r#"    {} complete {prefix_constant} completions_no_description_trailing_space completions_trailing_space suffixes_trailing_space descriptions_trailing_space completions_no_description_no_trailing_space completions_no_trailing_space suffixes_no_trailing_space descriptions_no_trailing_space"#, make_subword_function_name(completed_command, *subdfa_id))?;
+            writeln!(output, r#"    {} complete {prefix_constant} completions_no_description_trailing_space completions_trailing_space suffixes_trailing_space descriptions_trailing_space completions_no_description_no_trailing_space completions_no_trailing_space suffixes_no_trailing_space descriptions_no_trailing_space"#, make_subword_fn_name(completed_command, *subdfa_id))?;
         }
         // An external command that calls compadd itself and return 0 exit code if there
         // were some completions produced.  The exit code is used to declare a fallback

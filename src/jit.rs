@@ -131,7 +131,7 @@ pub fn get_subword_commands(transitions: &[Input]) -> HashMap<DFARef, Vec<(State
 }
 
 
-fn make_external_command_function_name(command: &str, id: usize) -> String {
+fn make_external_command_fn_name(command: &str, id: usize) -> String {
     format!("_{command}_cmd_{id}")
 }
 
@@ -141,7 +141,7 @@ fn make_specialized_external_command_fn_name(command: &str, id: usize) -> String
 }
 
 
-fn make_subword_function_name(command: &str, id: usize) -> String {
+fn make_subword_fn_name(command: &str, id: usize) -> String {
     format!("_{command}_subword_{id}")
 }
 
