@@ -55,24 +55,13 @@ fn write_lookup_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
 }
 
 
-pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DFA, command_id_from_state: &HashMap<StateId, usize>, spec_id_from_state: &HashMap<StateId, usize>) -> Result<()> {
-    writeln!(buffer, r#"_{command}_subword_{id} () {{
+pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<()> {
+    writeln!(buffer, r#"_{command}_subword () {{
     local mode=$1
     local word=$2
-    local completions_no_description_trailing_space_array_name=$3
-    local completions_trailing_space_array_name=$4
-    local suffixes_trailing_space_array_name=$5
-    local descriptions_trailing_space_array_name=$6
-    local completions_no_description_no_trailing_space_array_name=$7
-    local completions_no_trailing_space_array_name=$8
-    local suffixes_no_trailing_space_array_name=$9
-    local descriptions_no_trailing_space_array_name=${{10}}
 "#)?;
 
-    write_lookup_tables(buffer, dfa)?;
-
     write!(buffer, r#"
-    local state={starting_state}
     local char_index=0
     local matched=0
     while true; do
@@ -116,7 +105,7 @@ pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa:
     if [[ $mode = matches ]]; then
         return $((1 - matched))
     fi
-"#, starting_state = dfa.starting_state + 1)?;
+"#)?;
 
     write!(buffer, r#"
     local matched_prefix="${{word:0:$char_index}}"
@@ -133,23 +122,23 @@ pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa:
                 local to_state=${{state_transitions[$literal_id]}}
                 if [[ -v "literal_transitions[$to_state]" || -v "match_anything_transitions[$to_state]" ]]; then
                     if [[ -v "descriptions[$literal_id]" ]]; then
-                        eval "$completions_no_trailing_space_array_name+=(${{(qq)completion}})"
-                        eval "$suffixes_no_trailing_space_array_name+=(${{(qq)completion}})"
-                        eval "$descriptions_no_trailing_space_array_name+=(${{(qq)descriptions[$literal_id]}})"
+                        completions_no_trailing_space+=("${{completion}}")
+                        suffixes_no_trailing_space+=("${{completion}}")
+                        descriptions_no_trailing_space+=("${{descriptions[$literal_id]}}")
                     else
-                        eval "$completions_no_trailing_space_array_name+=(${{(qq)completion}})"
-                        eval "$suffixes_no_trailing_space_array_name+=(${{(qq)literal}})"
-                        eval "$descriptions_no_trailing_space_array_name+=('')"
+                        completions_no_trailing_space+=("${{completion}}")
+                        suffixes_no_trailing_space+=("${{literal}}")
+                        descriptions_no_trailing_space+=('')
                     fi
                 else
                     if [[ -v "descriptions[$literal_id]" ]]; then
-                        eval "$completions_trailing_space_array_name+=(${{(qq)completion}})"
-                        eval "$suffixes_trailing_space_array_name+=(${{(qq)completion}})"
-                        eval "$descriptions_trailing_space_array_name+=(${{(qq)descriptions[$literal_id]}})"
+                        completions_trailing_space+=("${{completion}}")
+                        suffixes_trailing_space+=("${{completion}}")
+                        descriptions_trailing_space+=("${{descriptions[$literal_id]}}")
                     else
-                        eval "$completions_trailing_space_array_name+=(${{(qq)completion}})"
-                        eval "$suffixes_trailing_space_array_name+=(${{(qq)literal}})"
-                        eval "$descriptions_trailing_space_array_name+=('')"
+                        completions_trailing_space+=("${{completion}}")
+                        suffixes_trailing_space+=("${{literal}}")
+                        descriptions_trailing_space+=('')
                     fi
                 fi
             fi
@@ -159,10 +148,7 @@ pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa:
 
     // We're prepending $matched_prefix to resulting completion because otherwise zsh's compadd
     // will filter that result out if it doesn't start with the right prefix.
-    if !command_id_from_state.is_empty() {
-        let commands_array_initializer = itertools::join(command_id_from_state.into_iter().map(|(state, id)| format!("[{}]={id}", state + 1)), " ");
-        writeln!(buffer, r#"    local -A commands=({commands_array_initializer})"#)?;
-        write!(buffer, r#"
+    write!(buffer, r#"
     if [[ -v "commands[$state]" ]]; then
         local command_id=${{commands[$state]}}
         local output=$(_{command}_subword_cmd_${{command_id}} "$matched_prefix")
@@ -172,24 +158,19 @@ pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa:
                 local parts=(${{(@s:	:)line}})
                 if [[ -v "parts[2]" ]]; then
                     local completion=$matched_prefix${{parts[1]}}
-                    eval "$completions_trailing_space_array_name+=(${{(qq)completion}})"
-                    eval "$suffixes_trailing_space_array_name+=(${{(qq)parts[1]}})"
-                    eval "$descriptions_trailing_space_array_name+=(${{(qq)parts[2]}})"
+                    completions_trailing_space+=("${{completion}}")
+                    suffixes_trailing_space+=("${{parts[1]}}")
+                    descriptions_trailing_space+=("${{parts[2]}}")
                 else
                     line="$matched_prefix$line"
-                    eval "$completions_no_description_trailing_space_array_name+=(${{(qq)line}})"
+                    completions_no_description_trailing_space+=("$line")
                 fi
             fi
         done
     fi
 "#)?;
-    }
 
-    if !spec_id_from_state.is_empty() {
-        writeln!(buffer)?;
-        let array_initializer = itertools::join(spec_id_from_state.into_iter().map(|(state, id)| format!("[{}]={id}", state + 1)), " ");
-        write!(buffer, r#"    local -A specialized_commands=({array_initializer})"#)?;
-        write!(buffer, r#"
+    write!(buffer, r#"
     if [[ -v "specialized_commands[$state]" ]]; then
         local command_id=${{specialized_commands[$state]}}
         local output=$(_{command}_subword_spec_${{command_id}} "$matched_prefix")
@@ -199,20 +180,41 @@ pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa:
                 line="$matched_prefix$line"
                 local parts=(${{(@s:	:)line}})
                 if [[ -v "parts[2]" ]]; then
-                    eval "$completions_trailing_space_array_name+=(${{(qq)parts[1]}})"
-                    eval "$suffixes_trailing_space_array_name+=(${{(qq)parts[1]}})"
-                    eval "$descriptions_trailing_space_array_name+=(${{(qq)parts[2]}})"
+                    completions_trailing_space+=("${{parts[1]}}")
+                    suffixes_trailing_space+=("${{parts[1]}}")
+                    descriptions_trailing_space+=("${{parts[2]}}")
                 else
-                    eval "$completions_no_description_trailing_space_array_name+=(${{(qq)line}})"
+                    completions_no_description_trailing_space+=("$line")
                 fi
             fi
         done
     fi
 "#)?;
-    }
 
     writeln!(buffer, r#"    return 0
 }}"#)?;
+
+    writeln!(buffer)?;
+
+    Ok(())
+}
+
+
+pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DFA, command_id_from_state: &HashMap<StateId, usize>, spec_id_from_state: &HashMap<StateId, usize>) -> Result<()> {
+    writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
+
+    write_lookup_tables(buffer, dfa)?;
+
+    let commands_array_initializer = itertools::join(command_id_from_state.into_iter().map(|(state, id)| format!("[{}]={id}", state + 1)), " ");
+    writeln!(buffer, r#"    local -A commands=({commands_array_initializer})"#)?;
+
+    let array_initializer = itertools::join(spec_id_from_state.into_iter().map(|(state, id)| format!("[{}]={id}", state + 1)), " ");
+    writeln!(buffer, r#"    local -A specialized_commands=({array_initializer})"#)?;
+
+    writeln!(buffer, r#"    local state={}"#, dfa.starting_state + 1)?;
+
+    writeln!(buffer, r#"    _{command}_subword "$@""#)?;
+    writeln!(buffer, r#"}}"#)?;
 
     Ok(())
 }
@@ -276,6 +278,9 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     }
 
     let id_from_dfa = dfa.get_subwords(1);
+    if !id_from_dfa.is_empty() {
+        write_generic_subword_fn(buffer, command)?;
+    }
     for (dfa, id) in &id_from_dfa {
         let subword_command_id_from_state: HashMap<StateId, usize> = subword_command_transitions.get(dfa).unwrap().iter().map(|(state, cmd)| (*state, *id_from_subword_command.get(cmd).unwrap())).collect();
         let subword_spec_id_from_state: HashMap<StateId, usize> = subword_spec_transitions.get(dfa).unwrap().iter().map(|(state, cmd)| (*state, *id_from_subword_spec.get(cmd).unwrap())).collect();
@@ -390,7 +395,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         eval "state_transitions=${{subword_transitions[$state]}}"
 
         for subword_id in ${{(k)state_transitions}}; do
-            _{command}_subword_${{subword_id}} complete "${{words[$CURRENT]}}" completions_no_description_trailing_space completions_trailing_space suffixes_trailing_space descriptions_trailing_space completions_no_description_no_trailing_space completions_no_trailing_space suffixes_no_trailing_space descriptions_no_trailing_space
+            _{command}_subword_${{subword_id}} complete "${{words[$CURRENT]}}"
         done
     fi
 "#)?;

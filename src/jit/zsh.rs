@@ -4,7 +4,7 @@ use hashbrown::HashMap;
 use slice_group_by::GroupBy;
 use ustr::{ustr, UstrMap, Ustr};
 
-use crate::{grammar::{Specialization, DFARef}, regex::Input, dfa::DFA, StateId, aot::{zsh::write_subword_fn, zsh::make_string_constant}};
+use crate::{aot::zsh::{make_string_constant, write_generic_subword_fn, write_subword_fn}, dfa::DFA, grammar::{DFARef, Specialization}, regex::Input, StateId};
 
 use super::{get_transitions, get_command_transitions, make_external_command_fn_name, get_subword_transitions, get_subword_commands, make_subword_external_command_fn_name, make_subword_specialized_external_command_fn_name, make_specialized_external_command_fn_name, make_subword_fn_name};
 
@@ -120,6 +120,9 @@ pub fn write_zsh_completion_shell_code<W: Write>(
 "#, make_subword_specialized_external_command_fn_name(completed_command, *id))?;
     }
 
+    if !id_from_dfa.is_empty() {
+        write_generic_subword_fn(output, completed_command)?;
+    }
     for (dfa, id) in &id_from_dfa {
         let subword_command_id_from_state: HashMap<StateId, usize> = subword_command_transitions.get(dfa).unwrap().iter().map(|(state, cmd)| (*state, *id_from_subword_command.get(cmd).unwrap())).collect();
         let subword_spec_id_from_state: HashMap<StateId, usize> = subword_spec_transitions.get(dfa).unwrap().iter().map(|(state, cmd)| (*state, *id_from_subword_spec.get(cmd).unwrap())).collect();
@@ -223,14 +226,14 @@ pub fn write_zsh_completion_shell_code<W: Write>(
         fi
     done
 "#)?;
-                }
+        }
 
         for subdfa in group.iter().filter_map(|t| match t {
             Input::Subword(subdfa, ..) => Some(subdfa),
             _ => None,
         }) {
             let subdfa_id = id_from_dfa.get(subdfa).unwrap();
-            writeln!(output, r#"    {} complete {prefix_constant} completions_no_description_trailing_space completions_trailing_space suffixes_trailing_space descriptions_trailing_space completions_no_description_no_trailing_space completions_no_trailing_space suffixes_no_trailing_space descriptions_no_trailing_space"#, make_subword_fn_name(completed_command, *subdfa_id))?;
+            writeln!(output, r#"    {} complete {prefix_constant}"#, make_subword_fn_name(completed_command, *subdfa_id))?;
         }
         // An external command that calls compadd itself and return 0 exit code if there
         // were some completions produced.  The exit code is used to declare a fallback
