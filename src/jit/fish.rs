@@ -4,7 +4,7 @@ use hashbrown::HashMap;
 use slice_group_by::GroupBy;
 use ustr::{UstrMap, Ustr, ustr};
 
-use crate::{aot::fish::{make_string_constant, write_subword_fn}, dfa::DFA, grammar::{DFARef, Specialization}, regex::Input, StateId};
+use crate::{aot::fish::{make_string_constant, write_generic_subword_fn, write_subword_fn}, dfa::DFA, grammar::{DFARef, Specialization}, regex::Input, StateId};
 
 use super::{get_transitions, get_command_transitions, make_external_command_fn_name, get_subword_transitions, get_subword_commands, make_subword_external_command_fn_name, make_subword_specialized_external_command_fn_name, make_specialized_external_command_fn_name, make_subword_fn_name};
 
@@ -196,6 +196,9 @@ end
 "#, make_subword_specialized_external_command_fn_name(completed_command, *id))?;
     }
 
+    if !id_from_dfa.is_empty() {
+        write_generic_subword_fn(output, completed_command)?;
+    }
     for (dfa, id) in &id_from_dfa {
         let subword_command_id_from_state: HashMap<StateId, usize> = subword_command_transitions.get(dfa).unwrap().iter().map(|(state, cmd)| (*state, *id_from_subword_command.get(cmd).unwrap())).collect();
         let subword_spec_id_from_state: HashMap<StateId, usize> = subword_spec_transitions.get(dfa).unwrap().iter().map(|(state, cmd)| (*state, *id_from_subword_spec.get(cmd).unwrap())).collect();
