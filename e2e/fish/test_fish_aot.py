@@ -171,6 +171,22 @@ def test_fallbacks_on_no_matches(complgen_binary_path: Path):
         assert get_sorted_fish_completions(completions_file_path, input) == sorted([('--bar', '')])
 
 
+@pytest.mark.xfail(reason="Not implemented yet")
+def test_subword_fallback_completes_default(complgen_binary_path: Path):
+    GRAMMAR = r'''cmd --option=(primary || secondary);'''
+    with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
+        input = 'complete --command cmd --do-complete "cmd --option="'
+        assert get_sorted_fish_completions(completions_file_path, input) == sorted([('primary', '')])
+
+
+@pytest.mark.xfail(reason="Not implemented yet")
+def test_subword_fallbacks_on_no_matches(complgen_binary_path: Path):
+    GRAMMAR = r'''cmd --option=(primary || secondary);'''
+    with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
+        input = 'complete --command cmd --do-complete "cmd --option=sec"'
+        assert get_sorted_fish_completions(completions_file_path, input) == sorted([('--option=secondary', '')])
+
+
 LITERALS_ALPHABET = string.ascii_letters + ':='
 @given(text(LITERALS_ALPHABET, min_size=1))
 @settings(max_examples=10, deadline=None)

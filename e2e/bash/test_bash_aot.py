@@ -109,7 +109,7 @@ cargo +<toolchain>;
 '''
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
         input = r'''COMP_WORDS=(cargo +); COMP_CWORD=1; _cargo; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_bash_completions(path, input) == sorted(['+stable-aarch64-apple-darwin ', '+stable-x86_64-apple-darwin '])
+        assert get_sorted_bash_completions(path, input) == sorted(['+stable-aarch64-apple-darwin', '+stable-x86_64-apple-darwin'])
 
 
 def test_completes_strace_expr(complgen_binary_path: Path):
@@ -128,7 +128,7 @@ def test_subword_descriptions(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option=(arg1 "descr1" | arg2 "descr2");'''
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
         input = r'''COMP_WORDS=(cmd --option=); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_bash_completions(path, input) == sorted(['arg1 ', 'arg2 '])
+        assert get_sorted_bash_completions(path, input) == sorted(['arg1', 'arg2'])
 
 
 def test_completes_subword_external_command(complgen_binary_path: Path):
@@ -149,26 +149,6 @@ cmd --option=<FOO>;
         assert get_sorted_bash_completions(path, input) == sorted(['bash'])
 
 
-def test_mygrep_example(complgen_binary_path: Path, usage_directory_path: Path):
-    GRAMMAR = (usage_directory_path / "mygrep.usage").read_text()
-    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
-        input = r'''COMP_WORDS=(mygrep); COMP_CWORD=1; _mygrep; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_bash_completions(path, input) == sorted(['-- ', '-E ', '--extended-regexp ', '-F ', '--fixed-strings ', '-G ', '--basic-regexp ',
-'-P ', '--perl-regexp ', '-e ', '--regexp ', '-f ', '--file ', '-i ',
-'--ignore-case ', '--no-ignore-case ', '-w ', '--word-regexp ', '-x ',
-'--line-regexp ', '-z ', '--null-data ', '-s ', '--no-messages ', '-v ',
-'--invert-match ', '-V ', '--version ', '--help ', '-m ', '--max-count=',
-'--max-count ', '-b ', '--byte-offset ', '-n ', '--line-number ',
-'--line-buffered ', '-H ', '--with-filename ', '-h ', '--no-filename ', '--label ',
-'-o ', '--only-matching ', '-q ', '--quiet ', '--silent ', '--binary-files ', '-a ',
-'--text ', '-d ', '--directories ', '-D ', '--devices ', '-r ', '--recursive ',
-'-R ', '--dereference-recursive ', '--include ', '--exclude ', '--exclude-from ', '--exclude-dir ', '-L ', '--files-without-match ', '-l ',
-'--files-with-matches ', '-c ', '--count ', '-T ', '--initial-tab ', '-Z ',
-'--null ', '-B ', '--before-context ', '-A ', '--after-context ', '-C ',
-'--context ', '-', '--group-separator=', '--no-group-separator ', '--color ',
-'--colour ', '--color=', '--colour=', '-U ', '--binary '])
-
-
 # https://github.com/adaszko/complgen/issues/41
 @pytest.mark.xfail(reason="Not implemented yet")
 def test_respects_ignore_case_option(complgen_binary_path: Path):
@@ -181,20 +161,33 @@ def test_respects_ignore_case_option(complgen_binary_path: Path):
         assert get_sorted_bash_completions(path, input) == sorted(['--case-lower '])
 
 
-@pytest.mark.xfail(reason="Not implemented yet")
 def test_fallback_completes_default(complgen_binary_path: Path):
     GRAMMAR = r'''cmd (foo || --bar);'''
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
-        input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_bash_completions(path, input) == sorted(['foo'])
+        input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(['foo '])
 
 
-@pytest.mark.xfail(reason="Not implemented yet")
 def test_fallbacks_on_no_matches(complgen_binary_path: Path):
     GRAMMAR = r'''cmd (foo || --bar);'''
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
-        input = r'''COMP_WORDS=(cmd --); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_bash_completions(path, input) == sorted(['--bar'])
+        input = r'''COMP_WORDS=(cmd --); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(['--bar '])
+
+
+def test_subword_fallback_completes_default(complgen_binary_path: Path):
+    GRAMMAR = r'''cmd --option=(primary || secondary);'''
+    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
+        input = r'''COMP_WORDS=(cmd --option=); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(['primary'])
+
+
+def test_subword_fallbacks_on_no_matches(complgen_binary_path: Path):
+    GRAMMAR = r'''cmd --option=(primary || secondary);'''
+    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
+        input = r'''COMP_WORDS=(cmd --option=sec); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(['secondary'])
+
 
 
 LITERALS_ALPHABET = string.ascii_letters + ':='

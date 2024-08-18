@@ -92,7 +92,7 @@ cargo +<toolchain>;
 '''
     with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, prefix='+') as completion_script:
         input = r'''COMP_WORDS=(cmd +); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_bash_completions(completion_script, input) == sorted(['+stable-aarch64-apple-darwin ', '+stable-x86_64-apple-darwin '])
+        assert get_sorted_bash_completions(completion_script, input) == sorted(['+stable-aarch64-apple-darwin', '+stable-x86_64-apple-darwin'])
 
 
 def test_jit_completes_strace_expr(complgen_binary_path: Path):
@@ -111,7 +111,7 @@ def test_jit_subword_descriptions(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option=(arg1 "descr1" | arg2 "descr2");'''
     with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, prefix='--option=') as completion_script:
         input = r'''COMP_WORDS=(cmd --option=); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_bash_completions(completion_script, input) == sorted(['arg1 ', 'arg2 '])
+        assert get_sorted_bash_completions(completion_script, input) == sorted(['arg1', 'arg2'])
 
 
 def test_jit_completes_subword_external_command(complgen_binary_path: Path):
@@ -154,6 +154,20 @@ def test_fallbacks_on_no_matches(complgen_binary_path: Path):
     with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, prefix='--') as completion_script:
         input = r'''COMP_WORDS=(cmd --); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_bash_completions(completion_script, input) == sorted(['--bar'])
+
+
+def test_subword_fallback_completes_default(complgen_binary_path: Path):
+    GRAMMAR = r'''cmd --option=(primary || secondary);'''
+    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, prefix='--option=') as completion_script:
+        input = r'''COMP_WORDS=(cmd --option=); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(completion_script, input) == sorted(['primary'])
+
+
+def test_subword_fallbacks_on_no_matches(complgen_binary_path: Path):
+    GRAMMAR = r'''cmd --option=(primary || secondary);'''
+    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, prefix='--option=sec') as completion_script:
+        input = r'''COMP_WORDS=(cmd --option=sec); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(completion_script, input) == sorted(['secondary'])
 
 
 # https://github.com/adaszko/complgen/issues/41

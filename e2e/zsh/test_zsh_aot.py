@@ -198,6 +198,18 @@ def test_fallbacks_on_no_matches(complgen_binary_path: Path):
     assert get_sorted_aot_completions(complgen_binary_path, GRAMMAR, 'cmd --') == sorted(['--bar'])
 
 
+@pytest.mark.xfail(reason="Not implemented yet")
+def test_subword_fallback_completes_default(complgen_binary_path: Path):
+    GRAMMAR = r'''cmd --option=(primary || secondary);'''
+    assert get_sorted_aot_completions(complgen_binary_path, GRAMMAR, 'cmd --option=') == sorted(['primary'])
+
+
+@pytest.mark.xfail(reason="Not implemented yet")
+def test_subword_fallbacks_on_no_matches(complgen_binary_path: Path):
+    GRAMMAR = r'''cmd --option=(primary || secondary);'''
+    assert get_sorted_aot_completions(complgen_binary_path, GRAMMAR, 'cmd --option=sec') == sorted(['secondary'])
+
+
 LITERALS_ALPHABET = string.ascii_letters + ':='
 @given(text(LITERALS_ALPHABET, min_size=1))
 @settings(max_examples=10, deadline=None)

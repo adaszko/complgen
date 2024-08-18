@@ -304,7 +304,7 @@ This feature is currently work-in-progress, here's where it's supported already:
 
 | Shell | jit | aot |
 |-------|-----|-----|
-| bash  | ✅  | ❌  |
+| bash  | ✅  | ✅  |
 | fish  | ✅  | ❌  |
 | zsh   | ✅  | ❌  |
 

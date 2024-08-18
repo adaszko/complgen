@@ -1,10 +1,14 @@
 use std::io::Write;
 
+use crate::grammar::Specialization;
+use crate::regex::Input;
 use crate::StateId;
 use crate::Result;
 use hashbrown::HashMap;
 use ustr::{UstrMap, Ustr, ustr};
 use crate::dfa::DFA;
+
+use super::get_max_fallback_level;
 
 
 // Bash array indexes start at 0.
@@ -24,14 +28,14 @@ pub fn make_string_constant(s: &str) -> String {
 }
 
 
-fn write_lookup_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
+fn write_lookup_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<HashMap<(Ustr, Ustr), usize>> {
     let all_literals: Vec<(usize, Ustr, Ustr)> = dfa.get_all_literals().into_iter().enumerate().map(|(id, (literal, description))| (id, literal, description.unwrap_or(ustr("")))).collect();
 
     let literal_id_from_input_description: HashMap<(Ustr, Ustr), usize> = all_literals.iter().map(|(id, input, description)| ((*input, *description), *id)).collect();
     let literals: String = itertools::join(all_literals.iter().map(|(_, literal, _)| make_string_constant(literal)), " ");
     writeln!(buffer, r#"    declare -a literals=({literals})"#)?;
 
-    writeln!(buffer, r#"    declare -A literal_transitions"#)?;
+    writeln!(buffer, r#"    declare -A literal_transitions=()"#)?;
     for state in dfa.get_all_states() {
         let literal_transitions = dfa.get_literal_transitions_from(StateId::try_from(state).unwrap());
         if literal_transitions.is_empty() {
@@ -45,7 +49,7 @@ fn write_lookup_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
     let match_anything_transitions = itertools::join(dfa.get_match_anything_transitions().into_iter().map(|(from, to)| format!("[{from}]={to}")), " ");
     writeln!(buffer, r#"    declare -A match_anything_transitions=({match_anything_transitions})"#)?;
 
-    Ok(())
+    Ok(literal_id_from_input_description)
 }
 
 
@@ -100,49 +104,51 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
     fi
 "#)?;
 
+    ////////////////// Completion /////////////////////////
+
+    // TODO Implement a way to determine if a transition within a subword is a final one so that a
+    // trailing space can be added
+
     write!(buffer, r#"
     local matched_prefix="${{word:0:$char_index}}"
     local completed_prefix="${{word:$char_index}}"
 
-    if [[ -v "literal_transitions[$state]" ]]; then
-        declare -A state_transitions
-        eval "state_transitions=${{literal_transitions[$state]}}"
-
-        for literal_id in "${{!state_transitions[@]}}"; do
+    local -a matches=()
+    for (( fallback_level=0; fallback_level <= max_fallback_level; fallback_level++ )) {{
+        eval "declare -A literal_transitions_name=literal_transitions_level_${{fallback_level}}"
+        eval "declare -a transitions=(\${{$literal_transitions_name[$state]}})"
+        for literal_id in "${{transitions[@]}}"; do
             local literal=${{literals[$literal_id]}}
             if [[ $literal = "${{completed_prefix}}"* ]]; then
-                local completion="$matched_prefix$literal"
-                local to_state=${{state_transitions[$literal_id]}}
-                if [[ -v "literal_transitions[$to_state]" || -v "match_anything_transitions[$to_state]" ]]; then
-                    echo $completion
-                else
-                    echo "$completion "
-                fi
+                matches+=("$matched_prefix$literal")
             fi
         done
-    fi
-"#)?;
 
-    writeln!(buffer, r#"
-    if [[ -v "commands[$state]" ]]; then
-        local command_id=${{commands[$state]}}
-        local completions=()
-        readarray -t completions < <(_{command}_subword_cmd_${{command_id}} "$matched_prefix" | cut -f1)
-        for item in "${{completions[@]}}"; do
-            echo "$matched_prefix$item"
+        eval "declare -A commands_name=commands_level_${{fallback_level}}"
+        eval "declare -a transitions=(\${{$commands_name[$state]}})"
+        for command_id in "${{transitions[@]}}"; do
+            local completions=()
+            readarray -t completions < <(_{command}_subword_cmd_$command_id "$matched_prefix" | cut -f1)
+            for item in "${{completions[@]}}"; do
+                matches+=("$matched_prefix$item")
+            done
         done
-    fi
-"#)?;
 
-    writeln!(buffer, r#"
-    if [[ -v "specialized_commands[$state]" ]]; then
-        local command_id=${{specialized_commands[$state]}}
-        local completions=()
-        readarray -t completions < <(_{command}_subword_spec_"${{command_id}}" "$prefix" | cut -f1)
-        for item in "${{completions[@]}}"; do
-            echo "$matched_prefix$item"
+        eval "declare -A specialized_commands_name=specialized_commands_level_$fallback_level"
+        eval "declare -a transitions=(\${{$specialized_commands_name[$state]}})"
+        for command_id in "${{transitions[@]}}"; do
+            local completions=()
+            readarray -t completions < <(_{command}_subword_spec_$command_id "$prefix" | cut -f1)
+            for item in "${{completions[@]}}"; do
+                matches+=("$matched_prefix$item")
+            done
         done
-    fi
+
+        if [[ ${{#matches[@]}} -gt 0 ]]; then
+            printf '%s\n' "${{matches[@]}}"
+            break
+        fi
+    }}
 "#)?;
 
     writeln!(buffer, r#"    return 0
@@ -153,17 +159,72 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
 }
 
 
-pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DFA, command_id_from_state: &HashMap<StateId, usize>, subword_spec_id_from_state: &HashMap<StateId, usize>) -> Result<()> {
+pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DFA, id_from_subword_command: &UstrMap<usize>, id_from_subword_spec: &UstrMap<usize>) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
 
-    write_lookup_tables(buffer, dfa)?;
+    let literal_id_from_input_description = write_lookup_tables(buffer, dfa)?;
 
-    let commands_array_initializer = itertools::join(command_id_from_state.into_iter().map(|(state, id)| format!("[{state}]={id}")), " ");
-    writeln!(buffer, r#"    declare -A commands=({commands_array_initializer})"#)?;
+    let Some(max_fallback_level) = get_max_fallback_level(dfa) else {
+        todo!("empty DFA, what to emit here?");
+    };
 
-    let specialized_commands_array_initializer = itertools::join(subword_spec_id_from_state.into_iter().map(|(state, id)| format!("[{state}]={id}")), " ");
-    writeln!(buffer, r#"    declare -A specialized_commands=({specialized_commands_array_initializer})"#)?;
+    let mut fallback_literals: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
+    fallback_literals.resize_with(max_fallback_level + 1, Default::default);
 
+    let mut fallback_subwords: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
+    fallback_subwords.resize_with(max_fallback_level + 1, Default::default);
+
+    let mut fallback_commands: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
+    fallback_commands.resize_with(max_fallback_level + 1, Default::default);
+
+    let mut fallback_specialized: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
+    fallback_specialized.resize_with(max_fallback_level + 1, Default::default);
+
+    for (from, tos) in &dfa.transitions {
+        for input in tos.keys() {
+            match input {
+                Input::Literal(lit, descr, fallback_level ) => {
+                    let literal_id = *literal_id_from_input_description.get(&(*lit, (*descr).unwrap_or("".into()))).unwrap();
+                    fallback_literals[*fallback_level].entry(*from).or_default().push(literal_id);
+                },
+                Input::Command(cmd, fallback_level) => {
+                    let command_id = *id_from_subword_command.get(cmd).unwrap();
+                    fallback_commands[*fallback_level].entry(*from).or_default().push(command_id);
+                },
+                Input::Nonterminal(_, Some(Specialization { bash: Some(cmd), .. }), fallback_level) => {
+                    let specialized_id = *id_from_subword_spec.get(cmd).unwrap();
+                    fallback_specialized[*fallback_level].entry(*from).or_default().push(specialized_id);
+                },
+                _ => (),
+            }
+        }
+    }
+
+    for (level, transitions) in fallback_literals.iter().enumerate() {
+        let initializer = itertools::join(transitions.iter().map(|(from_state, literal_ids)| {
+            let joined_literal_ids = itertools::join(literal_ids, " ");
+            format!(r#"[{from_state}]="{joined_literal_ids}""#)
+        }), " ");
+        writeln!(buffer, r#"    declare -A literal_transitions_level_{level}=({initializer})"#)?;
+    }
+
+    for (level, transitions) in fallback_commands.iter().enumerate() {
+        let initializer = itertools::join(transitions.iter().map(|(from_state, command_ids)| {
+            let joined_command_ids = itertools::join(command_ids, " ");
+            format!(r#"[{from_state}]="{joined_command_ids}""#)
+        }), " ");
+        writeln!(buffer, r#"    declare -A commands_level_{level}=({initializer})"#)?;
+    }
+
+    for (level, transitions) in fallback_specialized.iter().enumerate() {
+        let initializer = itertools::join(transitions.iter().map(|(from_state, specialized_ids)| {
+            let joined_specialized_ids = itertools::join(specialized_ids, " ");
+            format!(r#"[{from_state}]="{joined_specialized_ids}""#)
+        }), " ");
+        writeln!(buffer, r#"    declare -A specialized_commands_level_{level}=({initializer})"#)?;
+    }
+
+    writeln!(buffer, r#"    declare max_fallback_level={max_fallback_level}"#)?;
     writeln!(buffer, r#"    declare state={starting_state}"#, starting_state = dfa.starting_state)?;
 
     writeln!(buffer, r#"    _{command}_subword "$1" "$2""#)?;
@@ -235,9 +296,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         write_generic_subword_fn(buffer, command)?;
     }
     for (dfa, id) in &id_from_dfa {
-        let subword_command_id_from_state: HashMap<StateId, usize> = subword_command_transitions.get(dfa).unwrap().iter().map(|(state, cmd)| (*state, *id_from_subword_command.get(cmd).unwrap())).collect();
-        let subword_spec_id_from_state: HashMap<StateId, usize> = subword_spec_transitions.get(dfa).unwrap().iter().map(|(state, cmd)| (*state, *id_from_subword_spec.get(cmd).unwrap())).collect();
-        write_subword_fn(buffer, command, *id, dfa.as_ref(), &subword_command_id_from_state, &subword_spec_id_from_state)?;
+        write_subword_fn(buffer, command, *id, dfa.as_ref(), &id_from_subword_command, &id_from_subword_spec)?;
         writeln!(buffer)?;
     }
 
@@ -254,7 +313,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     _get_comp_words_by_ref -n "$COMP_WORDBREAKS" words cword
 "#)?;
 
-    write_lookup_tables(buffer, dfa)?;
+    let literal_id_from_input_description = write_lookup_tables(buffer, dfa)?;
 
     writeln!(buffer, r#"    declare -A subword_transitions"#)?;
     for state in dfa.get_all_states() {
@@ -327,92 +386,140 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
 "#)?;
 
+    //////////////////////////////// Completion ///////////////////////////////////
+
+    let Some(max_fallback_level) = get_max_fallback_level(dfa) else {
+        todo!("empty DFA, what to emit here?");
+    };
+
+    let mut fallback_literals: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
+    fallback_literals.resize_with(max_fallback_level + 1, Default::default);
+
+    let mut fallback_subwords: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
+    fallback_subwords.resize_with(max_fallback_level + 1, Default::default);
+
+    let mut fallback_commands: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
+    fallback_commands.resize_with(max_fallback_level + 1, Default::default);
+
+    let mut fallback_specialized: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
+    fallback_specialized.resize_with(max_fallback_level + 1, Default::default);
+
+    for (from, tos) in &dfa.transitions {
+        for input in tos.keys() {
+            match input {
+                Input::Literal(lit, descr, fallback_level ) => {
+                    let literal_id = *literal_id_from_input_description.get(&(*lit, (*descr).unwrap_or("".into()))).unwrap();
+                    fallback_literals[*fallback_level].entry(*from).or_default().push(literal_id);
+                },
+                Input::Subword(dfa, fallback_level) => {
+                    let subword_id = *id_from_dfa.get(dfa).unwrap();
+                    fallback_subwords[*fallback_level].entry(*from).or_default().push(subword_id);
+                },
+                Input::Command(cmd, fallback_level) => {
+                    let command_id = *id_from_top_level_command.get(cmd).unwrap();
+                    fallback_commands[*fallback_level].entry(*from).or_default().push(command_id);
+                },
+                Input::Nonterminal(_, Some(Specialization { bash: Some(cmd), .. }), fallback_level) => {
+                    let specialized_id = *id_from_specialized_command.get(cmd).unwrap();
+                    fallback_specialized[*fallback_level].entry(*from).or_default().push(specialized_id);
+                },
+                _ => (),
+            }
+        }
+    }
+    for (level, transitions) in fallback_literals.iter().enumerate() {
+        let initializer = itertools::join(transitions.iter().map(|(from_state, literal_ids)| {
+            let joined_literal_ids = itertools::join(literal_ids, " ");
+            format!(r#"[{from_state}]="{joined_literal_ids}""#)
+        }), " ");
+        writeln!(buffer, r#"    declare -A literal_transitions_level_{level}=({initializer})"#)?;
+    }
+
+    for (level, transitions) in fallback_subwords.iter().enumerate() {
+        let initializer = itertools::join(transitions.iter().map(|(from_state, subword_ids)| {
+            let joined_subword_ids = itertools::join(subword_ids, " ");
+            format!(r#"[{from_state}]="{joined_subword_ids}""#)
+        }), " ");
+        writeln!(buffer, r#"    declare -A subword_transitions_level_{level}=({initializer})"#)?;
+    }
+
+    for (level, transitions) in fallback_commands.iter().enumerate() {
+        let initializer = itertools::join(transitions.iter().map(|(from_state, command_ids)| {
+            let joined_command_ids = itertools::join(command_ids, " ");
+            format!(r#"[{from_state}]="{joined_command_ids}""#)
+        }), " ");
+        writeln!(buffer, r#"    declare -A commands_level_{level}=({initializer})"#)?;
+    }
+
+    for (level, transitions) in fallback_specialized.iter().enumerate() {
+        let initializer = itertools::join(transitions.iter().map(|(from_state, specialized_ids)| {
+            let joined_specialized_ids = itertools::join(specialized_ids, " ");
+            format!(r#"[{from_state}]="{joined_specialized_ids}""#)
+        }), " ");
+        writeln!(buffer, r#"    declare -A specialized_commands_level_{level}=({initializer})"#)?;
+    }
+
     write!(buffer, r#"
     local -a matches=()
-
+    local max_fallback_level={max_fallback_level}
     local prefix="${{words[$cword]}}"
-    if [[ -v "literal_transitions[$state]" ]]; then
-        local state_transitions_initializer=${{literal_transitions[$state]}}
-        declare -A state_transitions
-        eval "state_transitions=$state_transitions_initializer"
+    for (( fallback_level=0; fallback_level <= max_fallback_level; fallback_level++ )) {{
+       eval "declare -A literal_transitions_name=literal_transitions_level_${{fallback_level}}"
+       eval "declare -a transitions=(\${{$literal_transitions_name[$state]}})"
+       for literal_id in "${{transitions[@]}}"; do
+           local literal="${{literals[$literal_id]}}"
+           if [[ $literal = "${{prefix}}"* ]]; then
+               matches+=("$literal ")
+           fi
+       done
 
-        for literal_id in "${{!state_transitions[@]}}"; do
-            local literal="${{literals[$literal_id]}}"
-            if [[ $literal = "${{prefix}}"* ]]; then
-                matches+=("$literal ")
-            fi
-        done
-    fi
-"#)?;
+       eval "declare -A subword_transitions_name=subword_transitions_level_${{fallback_level}}"
+       eval "declare -a transitions=(\${{$subword_transitions_name[$state]}})"
+       for subword_id in "${{transitions[@]}}"; do
+           readarray -t -O "${{#matches[@]}}" matches < <(_{command}_subword_$subword_id complete "$prefix")
+       done
 
-    if dfa.has_subword_transitions() {
-        write!(buffer, r#"
-    if [[ -v "subword_transitions[$state]" ]]; then
-        local state_transitions_initializer=${{subword_transitions[$state]}}
-        declare -A state_transitions
-        eval "state_transitions=$state_transitions_initializer"
+       eval "declare -A commands_name=commands_level_${{fallback_level}}"
+       eval "declare -a transitions=(\${{$commands_name[$state]}})"
+       for command_id in "${{transitions[@]}}"; do
+           local completions=()
+           readarray -t completions < <(_{command}_cmd_$command_id "$prefix" | cut -f1)
+           for item in "${{completions[@]}}"; do
+               if [[ $item = "${{prefix}}"* ]]; then
+                   matches+=("$item")
+               fi
+           done
+       done
 
-        for subword_id in "${{!state_transitions[@]}}"; do
-            readarray -t -O "${{#matches[@]}}" matches < <(_{command}_subword_"${{subword_id}}" complete "${{words[$cword]}}")
-        done
-    fi
-"#)?;
-    }
+       eval "declare -A specialized_commands_name=specialized_commands_level_${{fallback_level}}"
+       eval "declare -a transitions=(\${{$specialized_commands_name[$state]}})"
+       for command_id in "${{transitions[@]}}"; do
+           local completions=()
+           readarray -t completions < <(_{command}_spec_"${{command_id}}" "$prefix" | cut -f1)
+           for item in "${{completions[@]}}"; do
+               if [[ $item = "${{prefix}}"* ]]; then
+                   matches+=("$item")
+               fi
+           done
+       done
 
-    let top_level_command_id_from_state: HashMap<StateId, usize> = top_level_command_transitions.into_iter().map(|(state, cmd)| (state, *id_from_top_level_command.get(&cmd).unwrap())).collect();
-    if !top_level_command_id_from_state.is_empty() {
-        writeln!(buffer, r#"    declare -A commands"#)?;
-        let array_initializer = itertools::join(top_level_command_id_from_state.into_iter().map(|(state, id)| format!("[{state}]={id}")), " ");
-        write!(buffer, r#"    commands=({array_initializer})"#)?;
-        write!(buffer, r#"
-    if [[ -v "commands[$state]" ]]; then
-        local command_id=${{commands[$state]}}
-        local completions=()
-        readarray -t completions < <(_{command}_cmd_${{command_id}} "$prefix" | cut -f1)
-        for item in "${{completions[@]}}"; do
-            if [[ $item = "${{prefix}}"* ]]; then
-                matches+=("$item")
-            fi
-        done
-    fi
-
-"#)?;
-    }
-
-    let specialized_command_id_from_state: HashMap<StateId, usize> = top_level_spec_transitions.into_iter().map(|(state, cmd)| (state, *id_from_specialized_command.get(&cmd).unwrap())).collect();
-    if !specialized_command_id_from_state.is_empty() {
-        writeln!(buffer)?;
-        let array_initializer = itertools::join(specialized_command_id_from_state.into_iter().map(|(state, id)| format!("[{state}]={id}")), " ");
-        write!(buffer, r#"    declare -A specialized_commands=({array_initializer})"#)?;
-        write!(buffer, r#"
-    if [[ -v "specialized_commands[$state]" ]]; then
-        local command_id=${{specialized_commands[$state]}}
-        local completions=()
-        readarray -t completions < <(_{command}_spec_"${{command_id}}" "$prefix" | cut -f1)
-        for item in "${{completions[@]}}"; do
-            if [[ $item = "${{prefix}}"* ]]; then
-                matches+=("$item")
-            fi
-        done
-    fi
-
-"#)?;
-    }
-
-    write!(buffer, r#"
-    local shortest_suffix="$prefix"
-    for ((i=0; i < ${{#COMP_WORDBREAKS}}; i++)); do
-        local char="${{COMP_WORDBREAKS:$i:1}}"
-        local candidate=${{prefix##*$char}}
-        if [[ ${{#candidate}} -lt ${{#shortest_suffix}} ]]; then
-            shortest_suffix=$candidate
-        fi
-    done
-    local superfluous_prefix=""
-    if [[ "$shortest_suffix" != "$prefix" ]]; then
-        local superfluous_prefix=${{prefix%$shortest_suffix}}
-    fi
-    COMPREPLY=("${{matches[@]#$superfluous_prefix}}")
+       if [[ ${{#matches[@]}} -gt 0 ]]; then
+           local shortest_suffix="$prefix"
+           for ((i=0; i < ${{#COMP_WORDBREAKS}}; i++)); do
+               local char="${{COMP_WORDBREAKS:$i:1}}"
+               local candidate=${{prefix##*$char}}
+               if [[ ${{#candidate}} -lt ${{#shortest_suffix}} ]]; then
+                   shortest_suffix=$candidate
+               fi
+           done
+           local superfluous_prefix=""
+           if [[ "$shortest_suffix" != "$prefix" ]]; then
+               local superfluous_prefix=${{prefix%$shortest_suffix}}
+           fi
+           COMPREPLY=("${{matches[@]#$superfluous_prefix}}")
+           break
+       fi
+    }}
 "#)?;
 
     write!(buffer, r#"

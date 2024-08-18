@@ -119,9 +119,7 @@ pub fn write_bash_completion_shell_code<W: Write>(
         write_generic_subword_fn(output, completed_command)?;
     }
     for (dfa, id) in &id_from_dfa {
-        let subword_command_id_from_state: HashMap<StateId, usize> = subword_command_transitions.get(dfa).unwrap().iter().map(|(state, cmd)| (*state, *id_from_subword_command.get(cmd).unwrap())).collect();
-        let subword_spec_id_from_state: HashMap<StateId, usize> = subword_spec_transitions.get(dfa).unwrap().iter().map(|(state, cmd)| (*state, *id_from_subword_spec.get(cmd).unwrap())).collect();
-        write_subword_fn(output, completed_command, *id, dfa.as_ref(), &subword_command_id_from_state, &subword_spec_id_from_state)?;
+        write_subword_fn(output, completed_command, *id, dfa.as_ref(), &id_from_subword_command, &id_from_subword_spec)?;
         writeln!(output)?;
     }
 
