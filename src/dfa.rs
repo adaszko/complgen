@@ -6,7 +6,7 @@ use std::{
 use hashbrown::{HashMap, HashSet};
 
 use roaring::{MultiOps, RoaringBitmap};
-use ustr::{Ustr, ustr};
+use ustr::{ustr, Ustr, UstrSet};
 
 use crate::{regex::{Position, AugmentedRegex, Input}, grammar::{Specialization, DFARef}};
 use crate::StateId;
@@ -514,21 +514,19 @@ fn do_get_subdfa_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)
 }
 
 
-fn do_get_subdfa_bash_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)>) {
-    for (from, input) in dfa.iter_inputs() {
+fn do_get_subdfa_bash_command_transitions(dfa: &DFA, result: &mut UstrSet) {
+    for input in dfa.iter_inputs() {
         match input {
-            Input::Nonterminal(_, Some(Specialization { bash: Some(cmd), .. }), ..) => result.push((from, cmd)),
-            Input::Nonterminal(..) => continue,
+            Input::Nonterminal(_, Some(Specialization { bash: Some(cmd), .. }), ..) => result.insert(*cmd),
             Input::Subword(..) => unreachable!(),
-            Input::Command(..) => continue,
-            Input::Literal(..) => continue,
+            _ => continue,
         };
     }
 }
 
 
 fn do_get_subdfa_fish_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)>) {
-    for (from, input) in dfa.iter_inputs() {
+    for (from, input) in dfa.iter_froms_inputs() {
         match input {
             Input::Nonterminal(_, Some(Specialization { fish: Some(cmd), .. }), ..) => result.push((from, cmd)),
             Input::Nonterminal(..) => continue,
@@ -540,7 +538,7 @@ fn do_get_subdfa_fish_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, 
 }
 
 fn do_get_subdfa_zsh_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)>) {
-    for (from, input) in dfa.iter_inputs() {
+    for (from, input) in dfa.iter_froms_inputs() {
         match input {
             Input::Nonterminal(_, Some(Specialization { zsh: Some(cmd), .. }), ..) => result.push((from, cmd)),
             Input::Nonterminal(..) => continue,
@@ -559,27 +557,6 @@ impl DFA {
 
     pub fn minimize(&self) -> Self {
         do_minimize(self)
-    }
-
-    pub fn get_any_ambiguous_state(&self) -> Option<Vec<Input>> {
-        for (_, tos) in &self.transitions {
-            let matching_anything: Vec<Input> = tos.iter().filter(|(input, _)| input.matches_anything()).map(|(input, _)| input.clone()).collect();
-            if matching_anything.len() >= 2 {
-                return Some(matching_anything);
-            }
-        }
-        None
-    }
-
-    pub fn iter_inputs(&self) -> impl Iterator<Item=(StateId, Input)> + '_ {
-        self.transitions.iter().flat_map(|(from, tos)| tos.iter().map(|(input, _)| (*from, input.clone())))
-    }
-
-    pub fn iter_transitions_from(&self, from: StateId) -> impl Iterator<Item=(Input, StateId)> {
-        match self.transitions.get(&from) {
-            Some(transitions) => transitions.clone().into_iter(),
-            None => HashMap::<Input, StateId>::default().into_iter(),
-        }
     }
 
     pub fn accepts_str(&self, mut input: &str) -> bool {
@@ -608,6 +585,37 @@ impl DFA {
         self.accepting_states.contains(current_state.into())
     }
 
+    pub fn get_any_ambiguous_state(&self) -> Option<Vec<Input>> {
+        for (_, tos) in &self.transitions {
+            let matching_anything: Vec<Input> = tos.iter().filter(|(input, _)| input.matches_anything()).map(|(input, _)| input.clone()).collect();
+            if matching_anything.len() >= 2 {
+                return Some(matching_anything);
+            }
+        }
+        None
+    }
+
+    pub fn iter_inputs(&self) -> impl Iterator<Item=&Input> + '_ {
+        self.iter_transitions().map(|(_, input, _)| input)
+    }
+
+    pub fn iter_froms_inputs(&self) -> impl Iterator<Item=(StateId, Input)> + '_ {
+        self.transitions.iter().flat_map(|(from, tos)| tos.iter().map(|(input, _)| (*from, input.clone())))
+    }
+
+    pub fn iter_transitions_from(&self, from: StateId) -> impl Iterator<Item=(Input, StateId)> {
+        match self.transitions.get(&from) {
+            Some(transitions) => transitions.clone().into_iter(),
+            None => HashMap::<Input, StateId>::default().into_iter(),
+        }
+    }
+
+    pub fn iter_transitions(&self) -> impl Iterator<Item=(StateId, &Input, StateId)> + '_ {
+        self.transitions.iter().flat_map(|(from, tos)| {
+            tos.iter().map(|(input, to)| (*from, input, *to))
+        })
+    }
+
     pub fn get_all_literals(&self) -> Vec<(Ustr, Option<Ustr>)> {
         self.input_symbols.iter().filter_map(|input| match input {
             Input::Literal(input, description, ..) => Some((*input, *description)),
@@ -617,20 +625,29 @@ impl DFA {
         }).collect()
     }
 
-    pub fn get_command_transitions(&self) -> Vec<(StateId, Ustr)> {
-        let mut top_level: Vec<(StateId, Ustr)> = Default::default();
-        for (from, tos) in &self.transitions {
-            for (input, _) in tos {
-                let cmd = match input {
-                    Input::Command(cmd, ..) => *cmd,
-                    Input::Subword(..) => continue,
-                    Input::Nonterminal(..) => continue,
-                    Input::Literal(..) => continue,
-                };
-                top_level.push((*from, cmd));
+    pub fn iter_command_transitions(&self) -> impl Iterator<Item=(StateId, Ustr)> + '_ {
+        self.iter_transitions().filter_map(|(from, input, _)| {
+            match input {
+                Input::Command(cmd, ..) => Some((from, *cmd)),
+                _ => None,
             }
-        }
-        top_level
+        })
+    }
+
+    pub fn iter_subword_command_transitions(&self) -> impl Iterator<Item=Ustr> + '_ {
+        self.iter_inputs().filter(|input| matches!(input, Input::Subword(..))).flat_map(|input|
+            match input {
+                Input::Subword(subdfa, ..) => {
+                    subdfa.as_ref().iter_inputs().filter_map(|input| {
+                        match input {
+                            Input::Command(cmd, ..) => Some(*cmd),
+                            _ => None,
+                        }
+                    })
+                },
+                _ => unreachable!(),
+            }
+        )
     }
 
     pub fn get_subword_command_transitions(&self) -> HashMap<DFARef, Vec<(StateId, Ustr)>> {
@@ -655,39 +672,30 @@ impl DFA {
         subdfas
     }
 
-    pub fn get_bash_command_transitions(&self) -> Vec<(StateId, Ustr)> {
-        let mut top_level: Vec<(StateId, Ustr)> = Default::default();
-        for (from, input) in self.iter_inputs() {
-            match input {
-                Input::Nonterminal(_, Some(Specialization { bash: Some(cmd), .. }), ..) => top_level.push((from, cmd)),
-                Input::Subword(..) => continue,
-                Input::Nonterminal(..) | Input::Command(..) | Input::Literal(..) => {},
-            };
-        }
-        top_level
+    pub fn iter_bash_command_transitions(&self) -> impl Iterator<Item = Ustr> + '_ {
+        self.iter_inputs().filter_map(|input| match input {
+            Input::Nonterminal(_, Some(Specialization { bash: Some(cmd), .. }), ..) => Some(*cmd),
+            _ => None,
+        })
     }
 
-    pub fn get_bash_subword_command_transitions(&self) -> HashMap<DFARef, Vec<(StateId, Ustr)>> {
-        let mut subdfas: HashMap<DFARef, Vec<(StateId, Ustr)>> = Default::default();
-        for (_, input) in self.iter_inputs() {
+    pub fn get_bash_subword_command_transitions(&self) -> UstrSet {
+        let mut result: UstrSet = Default::default();
+        for input in self.iter_inputs() {
             match input {
                 Input::Subword(subdfa, ..) => {
-                    if subdfas.contains_key(&subdfa) {
-                        continue;
-                    }
-                    let transitions = subdfas.entry(subdfa.clone()).or_default();
-                    do_get_subdfa_bash_command_transitions(subdfa.as_ref(), transitions);
+                    do_get_subdfa_bash_command_transitions(subdfa.as_ref(), &mut result);
                     continue;
                 },
-                Input::Nonterminal(..) | Input::Command(..) | Input::Literal(..) => {},
+                _ => (),
             };
         }
-        subdfas
+        result
     }
 
     pub fn get_fish_command_transitions(&self) -> Vec<(StateId, Ustr)> {
         let mut top_level: Vec<(StateId, Ustr)> = Default::default();
-        for (from, input) in self.iter_inputs() {
+        for (from, input) in self.iter_froms_inputs() {
             match input {
                 Input::Nonterminal(_, Some(Specialization { fish: Some(cmd), .. }), ..) => top_level.push((from, cmd)),
                 Input::Subword(..) => continue,
@@ -700,7 +708,7 @@ impl DFA {
 
     pub fn get_fish_subword_command_transitions(&self) -> HashMap<DFARef, Vec<(StateId, Ustr)>> {
         let mut subdfas: HashMap<DFARef, Vec<(StateId, Ustr)>> = Default::default();
-        for (_, input) in self.iter_inputs() {
+        for (_, input) in self.iter_froms_inputs() {
             match input {
                 Input::Subword(subdfa, ..) => {
                     if subdfas.contains_key(&subdfa) {
@@ -792,26 +800,23 @@ impl DFA {
 
     pub fn get_all_states(&self) -> RoaringBitmap {
         let mut states: RoaringBitmap = Default::default();
-        for (from, to) in &self.transitions {
-            states.insert((*from).into());
-            to.iter().for_each(|(_, to)| {
-                states.insert((*to).into());
-            });
-        }
+        self.iter_transitions().for_each(|(from, _, to)| {
+            states.insert(from.into());
+            states.insert(to.into());
+        });
         states.insert(DEAD_STATE_ID.into());
         states
     }
 
-    pub fn get_match_anything_transitions(&self) -> Vec<(StateId, StateId)> {
-        let mut result: Vec<(StateId, StateId)> = Default::default();
-        for (from, tos) in &self.transitions {
-            for (input, to) in tos {
-                if input.matches_anything() {
-                    result.push((*from, *to));
-                }
+    pub fn iter_match_anything_transitions(&self) -> impl Iterator<Item=(StateId, StateId)> + '_ {
+        self.iter_transitions().filter_map(|(from, input, to)| {
+            if input.matches_anything() {
+                Some((from, to))
             }
-        }
-        result
+            else {
+                None
+            }
+        })
     }
 
     pub fn get_subwords(&self, first_id: usize) -> HashMap<DFARef, usize> {

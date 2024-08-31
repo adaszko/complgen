@@ -48,7 +48,7 @@ fn write_lookup_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
     writeln!(buffer)?;
 
     writeln!(buffer, r#"    local -A match_anything_transitions"#)?;
-    let match_anything_transitions = itertools::join(dfa.get_match_anything_transitions().into_iter().map(|(from, to)| format!("[{}]={}", from + 1, to + 1)), " ");
+    let match_anything_transitions = itertools::join(dfa.iter_match_anything_transitions().into_iter().map(|(from, to)| format!("[{}]={}", from + 1, to + 1)), " ");
     writeln!(buffer, r#"    match_anything_transitions=({match_anything_transitions})"#)?;
 
     Ok(())
@@ -224,7 +224,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     writeln!(buffer, r#"#compdef {command}
 "#)?;
 
-    let top_level_command_transitions = dfa.get_command_transitions();
+    let top_level_command_transitions: Vec<(StateId, Ustr)> = dfa.iter_command_transitions().collect();
     let subword_command_transitions = dfa.get_subword_command_transitions();
 
     let id_from_top_level_command: UstrMap<usize> = top_level_command_transitions.iter().enumerate().map(|(id, (_, cmd))| (*cmd, id)).collect();

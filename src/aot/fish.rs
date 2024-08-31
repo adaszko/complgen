@@ -53,7 +53,7 @@ fn write_subword_lookup_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()
 
     writeln!(buffer)?;
 
-    let match_anything_transitions = dfa.get_match_anything_transitions();
+    let match_anything_transitions: Vec<(StateId, StateId)> = dfa.iter_match_anything_transitions().collect();
     let match_anything_transitions_from = itertools::join(match_anything_transitions.iter().map(|(from, _)| format!("{}", from + 1)), " ");
     writeln!(buffer, r#"    set --global match_anything_transitions_from {match_anything_transitions_from}"#)?;
     let match_anything_transitions_to = itertools::join(match_anything_transitions.iter().map(|(_, to)| format!("{}", to + 1)), " ");
@@ -245,7 +245,7 @@ fn write_lookup_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
 
     writeln!(buffer)?;
 
-    let match_anything_transitions = dfa.get_match_anything_transitions();
+    let match_anything_transitions: Vec<(StateId, StateId)> = dfa.iter_match_anything_transitions().collect();
     let match_anything_transitions_from = itertools::join(match_anything_transitions.iter().map(|(from, _)| format!("{}", from + 1)), " ");
     writeln!(buffer, r#"    set match_anything_transitions_from {match_anything_transitions_from}"#)?;
     let match_anything_transitions_to = itertools::join(match_anything_transitions.iter().map(|(_, to)| format!("{}", to + 1)), " ");
@@ -256,7 +256,7 @@ fn write_lookup_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
 
 
 pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
-    let top_level_command_transitions = dfa.get_command_transitions();
+    let top_level_command_transitions: Vec<(StateId, Ustr)> = dfa.iter_command_transitions().collect();
     let subword_command_transitions = dfa.get_subword_command_transitions();
 
     let id_from_top_level_command: UstrMap<usize> = top_level_command_transitions.iter().enumerate().map(|(id, (_, cmd))| (*cmd, id + 1)).collect();

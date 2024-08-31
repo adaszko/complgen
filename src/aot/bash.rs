@@ -46,7 +46,7 @@ fn write_lookup_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<HashMap<(U
         writeln!(buffer, r#"    literal_transitions[{state}]="({state_transitions})""#)?;
     }
 
-    let match_anything_transitions = itertools::join(dfa.get_match_anything_transitions().into_iter().map(|(from, to)| format!("[{from}]={to}")), " ");
+    let match_anything_transitions = itertools::join(dfa.iter_match_anything_transitions().into_iter().map(|(from, to)| format!("[{from}]={to}")), " ");
     writeln!(buffer, r#"    declare -A match_anything_transitions=({match_anything_transitions})"#)?;
 
     Ok(literal_id_from_input_description)
@@ -128,7 +128,7 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
         eval "declare -a transitions=(\${{$commands_name[$state]}})"
         for command_id in "${{transitions[@]}}"; do
             local completions=()
-            readarray -t completions < <(_{command}_subword_cmd_$command_id "$matched_prefix" | cut -f1)
+            readarray -t completions < <(_{command}_cmd_$command_id "$matched_prefix" | cut -f1)
             for item in "${{completions[@]}}"; do
                 matches+=("$matched_prefix$item")
             done
@@ -138,7 +138,7 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
         eval "declare -a transitions=(\${{$specialized_commands_name[$state]}})"
         for command_id in "${{transitions[@]}}"; do
             local completions=()
-            readarray -t completions < <(_{command}_subword_spec_$command_id "$prefix" | cut -f1)
+            readarray -t completions < <(_{command}_cmd_$command_id "$prefix" | cut -f1)
             for item in "${{completions[@]}}"; do
                 matches+=("$matched_prefix$item")
             done
@@ -159,7 +159,7 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
 }
 
 
-pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DFA, id_from_subword_command: &UstrMap<usize>, id_from_subword_spec: &UstrMap<usize>) -> Result<()> {
+pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DFA, id_from_cmd: &UstrMap<usize>) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
 
     let literal_id_from_input_description = write_lookup_tables(buffer, dfa)?;
@@ -180,23 +180,21 @@ pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa:
     let mut fallback_specialized: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
     fallback_specialized.resize_with(max_fallback_level + 1, Default::default);
 
-    for (from, tos) in &dfa.transitions {
-        for input in tos.keys() {
-            match input {
-                Input::Literal(lit, descr, fallback_level ) => {
-                    let literal_id = *literal_id_from_input_description.get(&(*lit, (*descr).unwrap_or("".into()))).unwrap();
-                    fallback_literals[*fallback_level].entry(*from).or_default().push(literal_id);
-                },
-                Input::Command(cmd, fallback_level) => {
-                    let command_id = *id_from_subword_command.get(cmd).unwrap();
-                    fallback_commands[*fallback_level].entry(*from).or_default().push(command_id);
-                },
-                Input::Nonterminal(_, Some(Specialization { bash: Some(cmd), .. }), fallback_level) => {
-                    let specialized_id = *id_from_subword_spec.get(cmd).unwrap();
-                    fallback_specialized[*fallback_level].entry(*from).or_default().push(specialized_id);
-                },
-                _ => (),
-            }
+    for (from, input, _) in dfa.iter_transitions() {
+        match input {
+            Input::Literal(lit, descr, fallback_level ) => {
+                let literal_id = *literal_id_from_input_description.get(&(*lit, (*descr).unwrap_or("".into()))).unwrap();
+                fallback_literals[*fallback_level].entry(from).or_default().push(literal_id);
+            },
+            Input::Command(cmd, fallback_level) => {
+                let command_id = *id_from_cmd.get(cmd).unwrap();
+                fallback_commands[*fallback_level].entry(from).or_default().push(command_id);
+            },
+            Input::Nonterminal(_, Some(Specialization { bash: Some(cmd), .. }), fallback_level) => {
+                let specialized_id = *id_from_cmd.get(cmd).unwrap();
+                fallback_specialized[*fallback_level].entry(from).or_default().push(specialized_id);
+            },
+            _ => (),
         }
     }
 
@@ -235,12 +233,49 @@ pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa:
 }
 
 
-pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
-    let top_level_command_transitions = dfa.get_command_transitions();
-    let subword_command_transitions = dfa.get_subword_command_transitions();
+pub fn make_id_from_command_map(dfa: &DFA) -> UstrMap<usize> {
+    let mut result: UstrMap<usize> = Default::default();
 
-    let id_from_top_level_command: UstrMap<usize> = top_level_command_transitions.iter().enumerate().map(|(id, (_, cmd))| (*cmd, id)).collect();
-    for (cmd, id) in &id_from_top_level_command {
+    let mut unallocated_id = 0;
+    for cmd in dfa.iter_command_transitions().map(|(_, cmd)| cmd) {
+        result.entry(cmd).or_insert_with(|| {
+            let id = unallocated_id;
+            unallocated_id += 1;
+            id
+        });
+    }
+
+    for cmd in dfa.iter_subword_command_transitions() {
+        result.entry(cmd).or_insert_with(|| {
+            let id = unallocated_id;
+            unallocated_id += 1;
+            id
+        });
+    }
+
+    for cmd in dfa.iter_bash_command_transitions() {
+        result.entry(cmd).or_insert_with(|| {
+            let id = unallocated_id;
+            unallocated_id += 1;
+            id
+        });
+    }
+
+    for cmd in dfa.get_bash_subword_command_transitions() {
+        result.entry(cmd).or_insert_with(|| {
+            let id = unallocated_id;
+            unallocated_id += 1;
+            id
+        });
+    }
+
+    result
+}
+
+
+pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
+    let id_from_cmd = make_id_from_command_map(dfa);
+    for (cmd, id) in &id_from_cmd {
         write!(buffer, r#"_{command}_cmd_{id} () {{
     {cmd}
 }}
@@ -248,55 +283,12 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 "#)?;
     }
 
-    let id_from_subword_command: UstrMap<usize> = subword_command_transitions
-        .iter()
-        .enumerate()
-        .flat_map(|(id, (_, transitions))| {
-            transitions.iter().map(move |(_, cmd)| (*cmd, id))
-        })
-        .collect();
-    for (cmd, id) in &id_from_subword_command {
-        write!(buffer, r#"_{command}_subword_cmd_{id} () {{
-    {cmd}
-}}
-
-"#)?;
-    }
-
-    let top_level_spec_transitions = dfa.get_bash_command_transitions();
-    let subword_spec_transitions = dfa.get_bash_subword_command_transitions();
-    let id_from_specialized_command: UstrMap<usize> = top_level_spec_transitions.iter().enumerate().map(|(id, (_, cmd))| (*cmd, id)).collect();
-    for (cmd, id) in &id_from_specialized_command {
-        write!(buffer, r#"_{command}_spec_{id} () {{
-    {cmd}
-}}
-
-"#)?;
-    }
-
-
-    let id_from_subword_spec: UstrMap<usize> = subword_spec_transitions
-        .iter()
-        .enumerate()
-        .flat_map(|(id, (_, transitions))| {
-            transitions.iter().map(move |(_, cmd)| (*cmd, id))
-        })
-        .collect();
-    for (cmd, id) in &id_from_subword_spec {
-        write!(buffer, r#"_{command}_subword_spec_{id} () {{
-    {cmd}
-}}
-
-"#)?;
-    }
-
-
     let id_from_dfa = dfa.get_subwords(0);
     if !id_from_dfa.is_empty() {
         write_generic_subword_fn(buffer, command)?;
     }
     for (dfa, id) in &id_from_dfa {
-        write_subword_fn(buffer, command, *id, dfa.as_ref(), &id_from_subword_command, &id_from_subword_spec)?;
+        write_subword_fn(buffer, command, *id, dfa.as_ref(), &id_from_cmd)?;
         writeln!(buffer)?;
     }
 
@@ -404,27 +396,25 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     let mut fallback_specialized: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
     fallback_specialized.resize_with(max_fallback_level + 1, Default::default);
 
-    for (from, tos) in &dfa.transitions {
-        for input in tos.keys() {
-            match input {
-                Input::Literal(lit, descr, fallback_level ) => {
-                    let literal_id = *literal_id_from_input_description.get(&(*lit, (*descr).unwrap_or("".into()))).unwrap();
-                    fallback_literals[*fallback_level].entry(*from).or_default().push(literal_id);
-                },
-                Input::Subword(dfa, fallback_level) => {
-                    let subword_id = *id_from_dfa.get(dfa).unwrap();
-                    fallback_subwords[*fallback_level].entry(*from).or_default().push(subword_id);
-                },
-                Input::Command(cmd, fallback_level) => {
-                    let command_id = *id_from_top_level_command.get(cmd).unwrap();
-                    fallback_commands[*fallback_level].entry(*from).or_default().push(command_id);
-                },
-                Input::Nonterminal(_, Some(Specialization { bash: Some(cmd), .. }), fallback_level) => {
-                    let specialized_id = *id_from_specialized_command.get(cmd).unwrap();
-                    fallback_specialized[*fallback_level].entry(*from).or_default().push(specialized_id);
-                },
-                _ => (),
-            }
+    for (from, input, _) in dfa.iter_transitions() {
+        match input {
+            Input::Literal(lit, descr, fallback_level ) => {
+                let literal_id = *literal_id_from_input_description.get(&(*lit, (*descr).unwrap_or("".into()))).unwrap();
+                fallback_literals[*fallback_level].entry(from).or_default().push(literal_id);
+            },
+            Input::Subword(dfa, fallback_level) => {
+                let subword_id = *id_from_dfa.get(dfa).unwrap();
+                fallback_subwords[*fallback_level].entry(from).or_default().push(subword_id);
+            },
+            Input::Command(cmd, fallback_level) => {
+                let command_id = *id_from_cmd.get(cmd).unwrap();
+                fallback_commands[*fallback_level].entry(from).or_default().push(command_id);
+            },
+            Input::Nonterminal(_, Some(Specialization { bash: Some(cmd), .. }), fallback_level) => {
+                let specialized_id = *id_from_cmd.get(cmd).unwrap();
+                fallback_specialized[*fallback_level].entry(from).or_default().push(specialized_id);
+            },
+            _ => (),
         }
     }
     for (level, transitions) in fallback_literals.iter().enumerate() {
@@ -495,7 +485,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
        eval "declare -a transitions=(\${{$specialized_commands_name[$state]}})"
        for command_id in "${{transitions[@]}}"; do
            local completions=()
-           readarray -t completions < <(_{command}_spec_"${{command_id}}" "$prefix" | cut -f1)
+           readarray -t completions < <(_{command}_cmd_"${{command_id}}" "$prefix" | cut -f1)
            for item in "${{completions[@]}}"; do
                if [[ $item = "${{prefix}}"* ]]; then
                    matches+=("$item")

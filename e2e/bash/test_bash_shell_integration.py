@@ -63,4 +63,4 @@ mygrep --color "use markers to highlight the matching strings"=<WHEN>;
 '''
     with temp_usage_file_path(complgen_binary_path, GRAMMAR, 'mygrep') as usage_file_path:
         input = r'''COMP_WORDS=(mygrep --color=); COMP_CWORD=1; _complgen_jit_mygrep; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_bash_completions(usage_file_path, input) == sorted(['always ', 'never ', 'auto '])
+        assert get_sorted_bash_completions(usage_file_path, input) == sorted(['always', 'never', 'auto'])
