@@ -1,26 +1,42 @@
 use std::io::Write;
 
-use crate::{StateId, Result};
-use hashbrown::HashMap;
-use ustr::{UstrMap, Ustr, ustr};
 use crate::dfa::DFA;
-
+use crate::{Result, StateId};
+use hashbrown::HashMap;
+use ustr::{ustr, Ustr, UstrMap};
 
 // Array indexes in ZSH start from 1 (!)
 // `for i in {{1..$#array}}; do ...; done` loops do not behave well if array is empty!  Prefer i++ loops instead.
 
-
 // TODO DO not produce quotes if not necessary to save space
 pub fn make_string_constant(s: &str) -> String {
-    format!(r#""{}""#, s.replace('\\', "\\\\").replace('\"', "\\\"").replace('`', "\\`").replace('$', "\\$"))
+    format!(
+        r#""{}""#,
+        s.replace('\\', "\\\\")
+            .replace('\"', "\\\"")
+            .replace('`', "\\`")
+            .replace('$', "\\$")
+    )
 }
 
-
 fn write_lookup_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
-    let all_literals: Vec<(usize, Ustr, Ustr)> = dfa.get_all_literals().into_iter().enumerate().map(|(id, (literal, description))| (id + 1, literal, description.unwrap_or(ustr("")))).collect();
+    let all_literals: Vec<(usize, Ustr, Ustr)> = dfa
+        .get_all_literals()
+        .into_iter()
+        .enumerate()
+        .map(|(id, (literal, description))| (id + 1, literal, description.unwrap_or(ustr(""))))
+        .collect();
 
-    let literal_id_from_input_description: HashMap<(Ustr, Ustr), usize> = all_literals.iter().map(|(id, input, description)| ((*input, *description), *id)).collect();
-    let literals: String = itertools::join(all_literals.iter().map(|(_, literal, _)| make_string_constant(literal)), " ");
+    let literal_id_from_input_description: HashMap<(Ustr, Ustr), usize> = all_literals
+        .iter()
+        .map(|(id, input, description)| ((*input, *description), *id))
+        .collect();
+    let literals: String = itertools::join(
+        all_literals
+            .iter()
+            .map(|(_, literal, _)| make_string_constant(literal)),
+        " ",
+    );
     writeln!(buffer, r#"    local -a literals=({literals})"#)?;
     writeln!(buffer)?;
 
@@ -36,32 +52,64 @@ fn write_lookup_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
 
     writeln!(buffer, r#"    local -A literal_transitions"#)?;
     for state in dfa.get_all_states() {
-        let literal_transitions = dfa.get_literal_transitions_from(StateId::try_from(state).unwrap());
+        let literal_transitions =
+            dfa.get_literal_transitions_from(StateId::try_from(state).unwrap());
         if literal_transitions.is_empty() {
             continue;
         }
-        let literal_transitions: Vec<(usize, StateId)> = literal_transitions.into_iter().map(|(input, description, to)| (*literal_id_from_input_description.get(&(input, description)).unwrap(), to)).collect();
-        let state_transitions: String = itertools::join(literal_transitions.into_iter().map(|(input, to)| format!("[{}]={}", input, to + 1)), " ");
-        writeln!(buffer, r#"    literal_transitions[{}]="({state_transitions})""#, state + 1)?;
+        let literal_transitions: Vec<(usize, StateId)> = literal_transitions
+            .into_iter()
+            .map(|(input, description, to)| {
+                (
+                    *literal_id_from_input_description
+                        .get(&(input, description))
+                        .unwrap(),
+                    to,
+                )
+            })
+            .collect();
+        let state_transitions: String = itertools::join(
+            literal_transitions
+                .into_iter()
+                .map(|(input, to)| format!("[{}]={}", input, to + 1)),
+            " ",
+        );
+        writeln!(
+            buffer,
+            r#"    literal_transitions[{}]="({state_transitions})""#,
+            state + 1
+        )?;
     }
 
     writeln!(buffer)?;
 
     writeln!(buffer, r#"    local -A match_anything_transitions"#)?;
-    let match_anything_transitions = itertools::join(dfa.iter_match_anything_transitions().into_iter().map(|(from, to)| format!("[{}]={}", from + 1, to + 1)), " ");
-    writeln!(buffer, r#"    match_anything_transitions=({match_anything_transitions})"#)?;
+    let match_anything_transitions = itertools::join(
+        dfa.iter_match_anything_transitions()
+            .into_iter()
+            .map(|(from, to)| format!("[{}]={}", from + 1, to + 1)),
+        " ",
+    );
+    writeln!(
+        buffer,
+        r#"    match_anything_transitions=({match_anything_transitions})"#
+    )?;
 
     Ok(())
 }
 
-
 pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<()> {
-    writeln!(buffer, r#"_{command}_subword () {{
+    writeln!(
+        buffer,
+        r#"_{command}_subword () {{
     local mode=$1
     local word=$2
-"#)?;
+"#
+    )?;
 
-    write!(buffer, r#"
+    write!(
+        buffer,
+        r#"
     local char_index=0
     local matched=0
     while true; do
@@ -105,9 +153,12 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
     if [[ $mode = matches ]]; then
         return $((1 - matched))
     fi
-"#)?;
+"#
+    )?;
 
-    write!(buffer, r#"
+    write!(
+        buffer,
+        r#"
     local matched_prefix="${{word:0:$char_index}}"
     local completed_prefix="${{word:$char_index}}"
 
@@ -144,11 +195,14 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
             fi
         done
     fi
-"#)?;
+"#
+    )?;
 
     // We're prepending $matched_prefix to resulting completion because otherwise zsh's compadd
     // will filter that result out if it doesn't start with the right prefix.
-    write!(buffer, r#"
+    write!(
+        buffer,
+        r#"
     if [[ -v "commands[$state]" ]]; then
         local command_id=${{commands[$state]}}
         local output=$(_{command}_subword_cmd_${{command_id}} "$matched_prefix")
@@ -168,9 +222,12 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
             fi
         done
     fi
-"#)?;
+"#
+    )?;
 
-    write!(buffer, r#"
+    write!(
+        buffer,
+        r#"
     if [[ -v "specialized_commands[$state]" ]]; then
         local command_id=${{specialized_commands[$state]}}
         local output=$(_{command}_subword_spec_${{command_id}} "$matched_prefix")
@@ -189,27 +246,53 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
             fi
         done
     fi
-"#)?;
+"#
+    )?;
 
-    writeln!(buffer, r#"    return 0
-}}"#)?;
+    writeln!(
+        buffer,
+        r#"    return 0
+}}"#
+    )?;
 
     writeln!(buffer)?;
 
     Ok(())
 }
 
-
-pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa: &DFA, command_id_from_state: &HashMap<StateId, usize>, spec_id_from_state: &HashMap<StateId, usize>) -> Result<()> {
+pub fn write_subword_fn<W: Write>(
+    buffer: &mut W,
+    command: &str,
+    id: usize,
+    dfa: &DFA,
+    command_id_from_state: &HashMap<StateId, usize>,
+    spec_id_from_state: &HashMap<StateId, usize>,
+) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
 
     write_lookup_tables(buffer, dfa)?;
 
-    let commands_array_initializer = itertools::join(command_id_from_state.into_iter().map(|(state, id)| format!("[{}]={id}", state + 1)), " ");
-    writeln!(buffer, r#"    local -A commands=({commands_array_initializer})"#)?;
+    let commands_array_initializer = itertools::join(
+        command_id_from_state
+            .into_iter()
+            .map(|(state, id)| format!("[{}]={id}", state + 1)),
+        " ",
+    );
+    writeln!(
+        buffer,
+        r#"    local -A commands=({commands_array_initializer})"#
+    )?;
 
-    let array_initializer = itertools::join(spec_id_from_state.into_iter().map(|(state, id)| format!("[{}]={id}", state + 1)), " ");
-    writeln!(buffer, r#"    local -A specialized_commands=({array_initializer})"#)?;
+    let array_initializer = itertools::join(
+        spec_id_from_state
+            .into_iter()
+            .map(|(state, id)| format!("[{}]={id}", state + 1)),
+        " ",
+    );
+    writeln!(
+        buffer,
+        r#"    local -A specialized_commands=({array_initializer})"#
+    )?;
 
     writeln!(buffer, r#"    local state={}"#, dfa.starting_state + 1)?;
 
@@ -219,62 +302,81 @@ pub fn write_subword_fn<W: Write>(buffer: &mut W, command: &str, id: usize, dfa:
     Ok(())
 }
 
-
 pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
-    writeln!(buffer, r#"#compdef {command}
-"#)?;
+    writeln!(
+        buffer,
+        r#"#compdef {command}
+"#
+    )?;
 
-    let top_level_command_transitions: Vec<(StateId, Ustr)> = dfa.iter_command_transitions().collect();
+    let top_level_command_transitions: Vec<(StateId, Ustr)> =
+        dfa.iter_command_transitions().collect();
     let subword_command_transitions = dfa.get_subword_command_transitions();
 
-    let id_from_top_level_command: UstrMap<usize> = top_level_command_transitions.iter().enumerate().map(|(id, (_, cmd))| (*cmd, id)).collect();
+    let id_from_top_level_command: UstrMap<usize> = top_level_command_transitions
+        .iter()
+        .enumerate()
+        .map(|(id, (_, cmd))| (*cmd, id))
+        .collect();
     for (cmd, id) in &id_from_top_level_command {
-        write!(buffer, r#"_{command}_cmd_{id} () {{
+        write!(
+            buffer,
+            r#"_{command}_cmd_{id} () {{
     {cmd}
 }}
 
-"#)?;
+"#
+        )?;
     }
 
     let id_from_subword_command: UstrMap<usize> = subword_command_transitions
         .iter()
         .enumerate()
-        .flat_map(|(id, (_, transitions))| {
-            transitions.iter().map(move |(_, cmd)| (*cmd, id))
-        })
+        .flat_map(|(id, (_, transitions))| transitions.iter().map(move |(_, cmd)| (*cmd, id)))
         .collect();
     for (cmd, id) in &id_from_subword_command {
-        write!(buffer, r#"_{command}_subword_cmd_{id} () {{
+        write!(
+            buffer,
+            r#"_{command}_subword_cmd_{id} () {{
     {cmd}
 }}
 
-"#)?;
+"#
+        )?;
     }
 
     let top_level_spec_transitions = dfa.get_zsh_command_transitions();
     let subword_spec_transitions = dfa.get_zsh_subword_command_transitions();
-    let id_from_specialized_command: UstrMap<usize> = top_level_spec_transitions.iter().enumerate().map(|(id, (_, cmd))| (*cmd, id)).collect();
+    let id_from_specialized_command: UstrMap<usize> = top_level_spec_transitions
+        .iter()
+        .enumerate()
+        .map(|(id, (_, cmd))| (*cmd, id))
+        .collect();
     for (cmd, id) in &id_from_specialized_command {
-        write!(buffer, r#"_{command}_spec_{id} () {{
+        write!(
+            buffer,
+            r#"_{command}_spec_{id} () {{
     {cmd}
 }}
 
-"#)?;
+"#
+        )?;
     }
 
     let id_from_subword_spec: UstrMap<usize> = subword_spec_transitions
         .iter()
         .enumerate()
-        .flat_map(|(id, (_, transitions))| {
-            transitions.iter().map(move |(_, cmd)| (*cmd, id))
-        })
+        .flat_map(|(id, (_, transitions))| transitions.iter().map(move |(_, cmd)| (*cmd, id)))
         .collect();
     for (cmd, id) in &id_from_subword_spec {
-        write!(buffer, r#"_{command}_subword_spec_{id} () {{
+        write!(
+            buffer,
+            r#"_{command}_subword_spec_{id} () {{
     {cmd}
 }}
 
-"#)?;
+"#
+        )?;
     }
 
     let id_from_dfa = dfa.get_subwords(1);
@@ -282,9 +384,26 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         write_generic_subword_fn(buffer, command)?;
     }
     for (dfa, id) in &id_from_dfa {
-        let subword_command_id_from_state: HashMap<StateId, usize> = subword_command_transitions.get(dfa).unwrap().iter().map(|(state, cmd)| (*state, *id_from_subword_command.get(cmd).unwrap())).collect();
-        let subword_spec_id_from_state: HashMap<StateId, usize> = subword_spec_transitions.get(dfa).unwrap().iter().map(|(state, cmd)| (*state, *id_from_subword_spec.get(cmd).unwrap())).collect();
-        write_subword_fn(buffer, command, *id, dfa.as_ref(), &subword_command_id_from_state, &subword_spec_id_from_state)?;
+        let subword_command_id_from_state: HashMap<StateId, usize> = subword_command_transitions
+            .get(dfa)
+            .unwrap()
+            .iter()
+            .map(|(state, cmd)| (*state, *id_from_subword_command.get(cmd).unwrap()))
+            .collect();
+        let subword_spec_id_from_state: HashMap<StateId, usize> = subword_spec_transitions
+            .get(dfa)
+            .unwrap()
+            .iter()
+            .map(|(state, cmd)| (*state, *id_from_subword_spec.get(cmd).unwrap()))
+            .collect();
+        write_subword_fn(
+            buffer,
+            command,
+            *id,
+            dfa.as_ref(),
+            &subword_command_id_from_state,
+            &subword_spec_id_from_state,
+        )?;
         writeln!(buffer)?;
     }
 
@@ -299,11 +418,22 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         if subword_transitions.is_empty() {
             continue;
         }
-        let state_transitions: String = itertools::join(subword_transitions.into_iter().map(|(dfa, to)| format!("[{}]={}", id_from_dfa.get(&dfa).unwrap(), to + 1)), " ");
-        writeln!(buffer, r#"    subword_transitions[{}]="({state_transitions})""#, state + 1)?;
+        let state_transitions: String = itertools::join(
+            subword_transitions
+                .into_iter()
+                .map(|(dfa, to)| format!("[{}]={}", id_from_dfa.get(&dfa).unwrap(), to + 1)),
+            " ",
+        );
+        writeln!(
+            buffer,
+            r#"    subword_transitions[{}]="({state_transitions})""#,
+            state + 1
+        )?;
     }
 
-    write!(buffer, r#"
+    write!(
+        buffer,
+        r#"
     local state={starting_state}
     local word_index=2
     while [[ $word_index -lt $CURRENT ]]; do
@@ -327,10 +457,14 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                 continue
             fi
         fi
-"#, starting_state = dfa.starting_state + 1)?;
+"#,
+        starting_state = dfa.starting_state + 1
+    )?;
 
     if dfa.has_subword_transitions() {
-        write!(buffer, r#"
+        write!(
+            buffer,
+            r#"
         if [[ -v "subword_transitions[$state]" ]]; then
             declare -A state_transitions
             eval "state_transitions=${{subword_transitions[$state]}}"
@@ -348,10 +482,13 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                 continue
             fi
         fi
-"#)?;
+"#
+        )?;
     }
 
-    write!(buffer, r#"
+    write!(
+        buffer,
+        r#"
         if [[ -v "match_anything_transitions[$state]" ]]; then
             state=${{match_anything_transitions[$state]}}
             word_index=$((word_index + 1))
@@ -360,9 +497,12 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
         return 1
     done
-"#)?;
+"#
+    )?;
 
-    write!(buffer, r#"
+    write!(
+        buffer,
+        r#"
     completions_no_description_trailing_space=()
     completions_no_description_no_trailing_space=()
     completions_trailing_space=()
@@ -386,10 +526,13 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             fi
         done
     fi
-"#)?;
+"#
+    )?;
 
     if dfa.has_subword_transitions() {
-        write!(buffer, r#"
+        write!(
+            buffer,
+            r#"
     if [[ -v "subword_transitions[$state]" ]]; then
         declare -A state_transitions
         eval "state_transitions=${{subword_transitions[$state]}}"
@@ -398,14 +541,28 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             _{command}_subword_${{subword_id}} complete "${{words[$CURRENT]}}"
         done
     fi
-"#)?;
+"#
+        )?;
     }
 
-    let top_level_command_id_from_state: HashMap<StateId, usize> = top_level_command_transitions.into_iter().map(|(state, cmd)| (state, *id_from_top_level_command.get(&cmd).unwrap())).collect();
+    let top_level_command_id_from_state: HashMap<StateId, usize> = top_level_command_transitions
+        .into_iter()
+        .map(|(state, cmd)| (state, *id_from_top_level_command.get(&cmd).unwrap()))
+        .collect();
     if !top_level_command_id_from_state.is_empty() {
-        let commands_array_initializer = itertools::join(top_level_command_id_from_state.into_iter().map(|(state, id)| format!("[{}]={id}", state + 1)), " ");
-        writeln!(buffer, r#"    local -A commands=({commands_array_initializer})"#)?;
-        write!(buffer, r#"
+        let commands_array_initializer = itertools::join(
+            top_level_command_id_from_state
+                .into_iter()
+                .map(|(state, id)| format!("[{}]={id}", state + 1)),
+            " ",
+        );
+        writeln!(
+            buffer,
+            r#"    local -A commands=({commands_array_initializer})"#
+        )?;
+        write!(
+            buffer,
+            r#"
     if [[ -v "commands[$state]" ]]; then
         local command_id=${{commands[$state]}}
         local output=$(_{command}_cmd_${{command_id}} "${{words[$CURRENT]}}")
@@ -421,24 +578,40 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             fi
         done
     fi
-"#)?;
+"#
+        )?;
     }
 
-    let specialized_command_id_from_state: HashMap<StateId, usize> = top_level_spec_transitions.into_iter().map(|(state, cmd)| (state, *id_from_specialized_command.get(&cmd).unwrap())).collect();
+    let specialized_command_id_from_state: HashMap<StateId, usize> = top_level_spec_transitions
+        .into_iter()
+        .map(|(state, cmd)| (state, *id_from_specialized_command.get(&cmd).unwrap()))
+        .collect();
     if !specialized_command_id_from_state.is_empty() {
         writeln!(buffer)?;
-        let array_initializer = itertools::join(specialized_command_id_from_state.into_iter().map(|(state, id)| format!("[{}]={id}", state + 1)), " ");
-        write!(buffer, r#"    local -A specialized_commands=({array_initializer})"#)?;
-        write!(buffer, r#"
+        let array_initializer = itertools::join(
+            specialized_command_id_from_state
+                .into_iter()
+                .map(|(state, id)| format!("[{}]={id}", state + 1)),
+            " ",
+        );
+        write!(
+            buffer,
+            r#"    local -A specialized_commands=({array_initializer})"#
+        )?;
+        write!(
+            buffer,
+            r#"
     if [[ -v "specialized_commands[$state]" ]]; then
         local command_id=${{specialized_commands[$state]}}
         _{command}_spec_${{command_id}} ${{words[$CURRENT]}}
     fi
-"#)?;
+"#
+        )?;
     }
 
-
-    write!(buffer, r#"
+    write!(
+        buffer,
+        r#"
     local maxlen=0
     for suffix in ${{suffixes_trailing_space[@]}}; do
         if [[ ${{#suffix}} -gt $maxlen ]]; then
@@ -473,15 +646,19 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     compadd -l -Q -S '' -a -d descriptions_no_trailing_space completions_no_trailing_space
     return 0
 }}
-"#)?;
+"#
+    )?;
 
-    write!(buffer, r#"
+    write!(
+        buffer,
+        r#"
 if [[ $ZSH_EVAL_CONTEXT =~ :file$ ]]; then
     compdef _{command} {command}
 else
     _{command}
 fi
-"#)?;
+"#
+    )?;
 
     Ok(())
 }
