@@ -186,28 +186,24 @@ cmd --option "$f\"\\";
     assert actual == sorted([['--option', '--option', '--', '$f\"\\']])
 
 
-@pytest.mark.xfail(reason="Not implemented yet")
 def test_fallback_completes_default(complgen_binary_path: Path):
     GRAMMAR = r'''cmd (foo || --bar);'''
     assert get_sorted_aot_completions(complgen_binary_path, GRAMMAR, 'cmd ') == sorted(['foo'])
 
 
-@pytest.mark.xfail(reason="Not implemented yet")
 def test_fallbacks_on_no_matches(complgen_binary_path: Path):
     GRAMMAR = r'''cmd (foo || --bar);'''
     assert get_sorted_aot_completions(complgen_binary_path, GRAMMAR, 'cmd --') == sorted(['--bar'])
 
 
-@pytest.mark.xfail(reason="Not implemented yet")
 def test_subword_fallback_completes_default(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option=(primary || secondary);'''
-    assert get_sorted_aot_completions(complgen_binary_path, GRAMMAR, 'cmd --option=') == sorted(['primary'])
+    assert get_sorted_aot_completions(complgen_binary_path, GRAMMAR, 'cmd --option=') == sorted(['--option=primary primary'])
 
 
-@pytest.mark.xfail(reason="Not implemented yet")
 def test_subword_fallbacks_on_no_matches(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option=(primary || secondary);'''
-    assert get_sorted_aot_completions(complgen_binary_path, GRAMMAR, 'cmd --option=sec') == sorted(['secondary'])
+    assert get_sorted_aot_completions(complgen_binary_path, GRAMMAR, 'cmd --option=sec') == sorted(['--option=secondary secondary'])
 
 
 LITERALS_ALPHABET = string.ascii_letters + ':='

@@ -665,16 +665,14 @@ fn do_get_subdfa_fish_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, 
     }
 }
 
-fn do_get_subdfa_zsh_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)>) {
-    for (from, input) in dfa.iter_froms_inputs() {
+fn do_get_subdfa_zsh_command_transitions(dfa: &DFA, result: &mut UstrSet) {
+    for input in dfa.iter_inputs() {
         match input {
             Input::Nonterminal(_, Some(Specialization { zsh: Some(cmd), .. }), ..) => {
-                result.push((from, cmd))
+                result.insert(*cmd)
             }
-            Input::Nonterminal(..) => continue,
             Input::Subword(..) => unreachable!(),
-            Input::Command(..) => continue,
-            Input::Literal(..) => continue,
+            _ => continue,
         };
     }
 }
@@ -823,6 +821,13 @@ impl DFA {
         })
     }
 
+    pub fn iter_zsh_command_transitions(&self) -> impl Iterator<Item = Ustr> + '_ {
+        self.iter_inputs().filter_map(|input| match input {
+            Input::Nonterminal(_, Some(Specialization { zsh: Some(cmd), .. }), ..) => Some(*cmd),
+            _ => None,
+        })
+    }
+
     pub fn get_bash_subword_command_transitions(&self) -> UstrSet {
         let mut result: UstrSet = Default::default();
         for input in self.iter_inputs() {
@@ -889,24 +894,18 @@ impl DFA {
         top_level
     }
 
-    pub fn get_zsh_subword_command_transitions(&self) -> HashMap<DFARef, Vec<(StateId, Ustr)>> {
-        let mut subdfas: HashMap<DFARef, Vec<(StateId, Ustr)>> = Default::default();
-        for (_, tos) in &self.transitions {
-            for (input, _) in tos {
-                match input {
-                    Input::Subword(subdfa, ..) => {
-                        if subdfas.contains_key(subdfa) {
-                            continue;
-                        }
-                        let transitions = subdfas.entry(subdfa.clone()).or_default();
-                        do_get_subdfa_zsh_command_transitions(subdfa.as_ref(), transitions);
-                        continue;
-                    }
-                    Input::Nonterminal(..) | Input::Command(..) | Input::Literal(..) => {}
-                };
-            }
+    pub fn get_zsh_subword_command_transitions(&self) -> UstrSet {
+        let mut result: UstrSet = Default::default();
+        for input in self.iter_inputs() {
+            match input {
+                Input::Subword(subdfa, ..) => {
+                    do_get_subdfa_zsh_command_transitions(subdfa.as_ref(), &mut result);
+                    continue;
+                }
+                _ => (),
+            };
         }
-        subdfas
+        result
     }
 
     pub fn get_literal_transitions_from(&self, from: StateId) -> Vec<(Ustr, Ustr, StateId)> {
