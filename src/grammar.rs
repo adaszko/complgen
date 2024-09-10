@@ -2965,5 +2965,20 @@ ls <FILE>;
             ),
             Err(Error::CommandAtNonTailPosition(..))
         ));
+
+        // https://github.com/adaszko/complgen/issues/53
+        assert!(matches!(
+            get_validated_grammar(r#"cmd --option=<CMD>; <CMD@bash> ::= {{{ echo foo }}};"#),
+            Err(Error::CommandAtNonTailPosition(..))
+        ));
+        assert!(matches!(
+            get_validated_grammar(
+                r#"
+duf -hide-fs <FS>[,<FS>]...;
+<FS@fish> ::= {{{ string split ' ' --fields 3 </proc/mounts | sort --unique }}};
+"#
+            ),
+            Err(Error::CommandAtNonTailPosition(..))
+        ));
     }
 }
