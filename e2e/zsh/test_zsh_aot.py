@@ -206,6 +206,14 @@ def test_subword_fallbacks_on_no_matches(complgen_binary_path: Path):
     assert get_sorted_aot_completions(complgen_binary_path, GRAMMAR, 'cmd --option=sec') == sorted(['--option=secondary secondary'])
 
 
+def test_subword_fallback_bug(complgen_binary_path: Path):
+    GRAMMAR = r'''
+cmd (--color=<WHEN> || --color <WHEN> | --colour=<WHEN> | --colour <WHEN>);
+<WHEN> ::= always | never | auto;
+'''
+    assert get_sorted_aot_completions(complgen_binary_path, GRAMMAR, 'cmd --colour') == sorted(['--colour', '--colour='])
+
+
 LITERALS_ALPHABET = string.ascii_letters + ':='
 @given(text(LITERALS_ALPHABET, min_size=1))
 @settings(max_examples=10, deadline=None)
