@@ -1,26 +1,27 @@
-use std::{rc::Rc, debug_assert, borrow::Borrow};
+use std::{borrow::Borrow, debug_assert, rc::Rc};
 
 use bumpalo::Bump;
 use itertools::Itertools;
 use nom::{
     branch::alt,
-    bytes::complete::{is_not, tag, take_while1, take_till, take_until, escaped_transform},
+    bytes::complete::{escaped_transform, is_not, tag, take_till, take_until, take_while1},
     character::complete::{char, multispace1, one_of},
-    multi::{many0, fold_many0},
-    IResult, combinator::{fail, opt, verify, value, map}, error::context, sequence::preceded, Finish, Parser,
+    combinator::{fail, map, opt, value, verify},
+    error::context,
+    multi::{fold_many0, many0},
+    sequence::preceded,
+    Finish, IResult, Parser,
 };
 
 use crate::{Error, Result};
-use ustr::{Ustr, ustr, UstrMap, UstrSet};
+use ustr::{ustr, Ustr, UstrMap, UstrSet};
 
 use crate::{dfa::DFA, regex::AugmentedRegex};
-
 
 // A wrapper so that we use Rc::ptr_eq() for equality comparisons instead of comparing entire DFAs,
 // which is expensive.
 #[derive(Debug, Clone)]
 pub struct DFARef(Rc<DFA>);
-
 
 impl DFARef {
     pub fn new(dfa: DFA) -> Self {
@@ -28,13 +29,11 @@ impl DFARef {
     }
 }
 
-
 impl AsRef<DFA> for DFARef {
     fn as_ref(&self) -> &DFA {
         self.0.as_ref()
     }
 }
-
 
 impl PartialEq for DFARef {
     fn eq(&self, other: &Self) -> bool {
@@ -42,9 +41,7 @@ impl PartialEq for DFARef {
     }
 }
 
-
 impl Eq for DFARef {}
-
 
 impl std::hash::Hash for DFARef {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -53,23 +50,22 @@ impl std::hash::Hash for DFARef {
     }
 }
 
-
 #[derive(Clone, PartialEq)]
 pub enum SubwordCompilationPhase {
     Expr(Rc<Expr>),
     DFA(DFARef),
 }
 
-
 impl std::fmt::Debug for SubwordCompilationPhase {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Expr(expr) => f.write_fmt(format_args!(r#"SubwordCompilationPhase::Expr({expr:?})"#)),
+            Self::Expr(expr) => {
+                f.write_fmt(format_args!(r#"SubwordCompilationPhase::Expr({expr:?})"#))
+            }
             Self::DFA(dfa) => f.write_fmt(format_args!(r#"SubwordCompilationPhase::DFA({dfa:?})"#)),
         }
     }
 }
-
 
 // Can't use an arena here until proptest supports non-owned types: https://github.com/proptest-rs/proptest/issues/9
 #[derive(Clone, PartialEq)]
@@ -107,7 +103,6 @@ pub enum Expr {
     Fallback(Vec<Rc<Expr>>),
 }
 
-
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Specialization {
     pub bash: Option<Ustr>,
@@ -116,25 +111,42 @@ pub struct Specialization {
     pub generic: Option<Ustr>,
 }
 
-
 impl std::fmt::Debug for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Subword(subword, level) => f.write_fmt(format_args!(r#"Rc::new(Subword({subword:?}, {level}))"#)),
-            Expr::Terminal(term, Some(descr), level) => f.write_fmt(format_args!(r#"Rc::new(Terminal(ustr("{term}"), Some(ustr("{}"))), {level})"#, descr)),
-            Expr::Terminal(term, None, level) => f.write_fmt(format_args!(r#"Rc::new(Terminal(ustr("{term}"), None, {level}))"#)),
-            Expr::Nonterminal(nonterm, level, _) => f.write_fmt(format_args!(r#"Rc::new(Nonterminal(ustr("{nonterm}"), {level}))"#)),
-            Self::Command(cmd, level, span) => f.write_fmt(format_args!(r#"Rc::new(Command(ustr({cmd:?}), {level}, {span:?}))"#)),
-            Self::Sequence(arg0) => f.write_fmt(format_args!(r#"Rc::new(Sequence(vec!{:?}))"#, arg0)),
-            Self::Alternative(arg0) => f.write_fmt(format_args!(r#"Rc::new(Alternative(vec!{:?}))"#, arg0)),
+            Self::Subword(subword, level) => {
+                f.write_fmt(format_args!(r#"Rc::new(Subword({subword:?}, {level}))"#))
+            }
+            Expr::Terminal(term, Some(descr), level) => f.write_fmt(format_args!(
+                r#"Rc::new(Terminal(ustr("{term}"), Some(ustr("{}"))), {level})"#,
+                descr
+            )),
+            Expr::Terminal(term, None, level) => f.write_fmt(format_args!(
+                r#"Rc::new(Terminal(ustr("{term}"), None, {level}))"#
+            )),
+            Expr::Nonterminal(nonterm, level, _) => f.write_fmt(format_args!(
+                r#"Rc::new(Nonterminal(ustr("{nonterm}"), {level}))"#
+            )),
+            Self::Command(cmd, level, span) => f.write_fmt(format_args!(
+                r#"Rc::new(Command(ustr({cmd:?}), {level}, {span:?}))"#
+            )),
+            Self::Sequence(arg0) => {
+                f.write_fmt(format_args!(r#"Rc::new(Sequence(vec!{:?}))"#, arg0))
+            }
+            Self::Alternative(arg0) => {
+                f.write_fmt(format_args!(r#"Rc::new(Alternative(vec!{:?}))"#, arg0))
+            }
             Self::Optional(arg0) => f.write_fmt(format_args!(r#"Rc::new(Optional({:?}))"#, arg0)),
             Self::Many1(arg0) => f.write_fmt(format_args!(r#"Rc::new(Many1({:?}))"#, arg0)),
-            Self::DistributiveDescription(expr, descr) => f.write_fmt(format_args!(r#"Rc::new(DistributiveDescription({expr:?}, {descr:?}))"#)),
-            Self::Fallback(arg0) => f.write_fmt(format_args!(r#"Rc::new(Fallback(vec!{:?}))"#, arg0)),
+            Self::DistributiveDescription(expr, descr) => f.write_fmt(format_args!(
+                r#"Rc::new(DistributiveDescription({expr:?}, {descr:?}))"#
+            )),
+            Self::Fallback(arg0) => {
+                f.write_fmt(format_args!(r#"Rc::new(Fallback(vec!{:?}))"#, arg0))
+            }
         }
     }
 }
-
 
 fn railroad_node_from_expr(expr: Rc<Expr>) -> Box<dyn railroad::Node> {
     match expr.as_ref() {
@@ -148,36 +160,50 @@ fn railroad_node_from_expr(expr: Rc<Expr>) -> Box<dyn railroad::Node> {
             seq.push(railroad_node_from_expr(Rc::clone(expr)));
             seq.push(Box::new(railroad::SimpleEnd));
             seq
-        },
+        }
         Expr::Terminal(s, ..) => Box::new(railroad::Terminal::new(s.as_str().to_string())),
         Expr::Nonterminal(s, ..) => Box::new(railroad::NonTerminal::new(s.as_str().to_string())),
         Expr::Command(s, ..) => Box::new(railroad::Comment::new(s.as_str().to_string())),
         Expr::Sequence(subexprs) => {
-            let subnodes: Vec<Box<dyn railroad::Node>> = subexprs.iter().map(|e| railroad_node_from_expr(Rc::clone(e))).collect();
+            let subnodes: Vec<Box<dyn railroad::Node>> = subexprs
+                .iter()
+                .map(|e| railroad_node_from_expr(Rc::clone(e)))
+                .collect();
             Box::new(railroad::Sequence::new(subnodes))
-        },
+        }
         Expr::Alternative(subexprs) => {
-            let subnodes: Vec<Box<dyn railroad::Node>> = subexprs.iter().map(|e| railroad_node_from_expr(Rc::clone(e))).collect();
+            let subnodes: Vec<Box<dyn railroad::Node>> = subexprs
+                .iter()
+                .map(|e| railroad_node_from_expr(Rc::clone(e)))
+                .collect();
             Box::new(railroad::Choice::new(subnodes))
-        },
-        Expr::Optional(subexpr) => Box::new(railroad::Optional::new(railroad_node_from_expr(Rc::clone(subexpr)))),
+        }
+        Expr::Optional(subexpr) => Box::new(railroad::Optional::new(railroad_node_from_expr(
+            Rc::clone(subexpr),
+        ))),
         Expr::Many1(subexpr) => {
             let subnode = railroad_node_from_expr(Rc::clone(subexpr));
             Box::new(railroad::Repeat::new(subnode, Box::new(railroad::Empty)))
-        },
+        }
         Expr::DistributiveDescription(subexpr, description) => {
             let inner = railroad_node_from_expr(Rc::clone(subexpr));
             let label = railroad::Comment::new(description.to_string());
             Box::new(railroad::LabeledBox::new(inner, label))
-        },
+        }
         Expr::Fallback(subexprs) => {
-            let subnodes: Vec<Box<dyn railroad::Node>> = subexprs.iter().map(|e| railroad_node_from_expr(Rc::clone(e))).collect();
+            let subnodes: Vec<Box<dyn railroad::Node>> = subexprs
+                .iter()
+                .map(|e| railroad_node_from_expr(Rc::clone(e)))
+                .collect();
             Box::new(railroad::Choice::new(subnodes))
-        },
+        }
     }
 }
 
-pub fn to_railroad_diagram<W: std::io::Write>(grammar: &Grammar, output: &mut W) -> std::result::Result<(), std::io::Error> {
+pub fn to_railroad_diagram<W: std::io::Write>(
+    grammar: &Grammar,
+    output: &mut W,
+) -> std::result::Result<(), std::io::Error> {
     let mut vertical: railroad::VerticalGrid<Box<dyn railroad::Node>> = Default::default();
 
     for stmt in &grammar.statements {
@@ -189,8 +215,12 @@ pub fn to_railroad_diagram<W: std::io::Write>(grammar: &Grammar, output: &mut W)
                 seq.push(railroad_node_from_expr(Rc::clone(expr)));
                 seq.push(Box::new(railroad::End));
                 seq
-            },
-            Statement::NonterminalDefinition { symbol, shell, expr } => {
+            }
+            Statement::NonterminalDefinition {
+                symbol,
+                shell,
+                expr,
+            } => {
                 let inner = railroad_node_from_expr(Rc::clone(expr));
                 let label = if let Some(shell) = shell {
                     format!("{}@{}", symbol, shell)
@@ -199,13 +229,17 @@ pub fn to_railroad_diagram<W: std::io::Write>(grammar: &Grammar, output: &mut W)
                 };
                 let label = railroad::Comment::new(label);
                 Box::new(railroad::LabeledBox::new(inner, label))
-            },
+            }
         };
         vertical.push(node);
     }
 
     let mut dia = railroad::Diagram::new(vertical);
-    dia.add_element(railroad::svg::Element::new("style").set("type", "text/css").text(railroad::DEFAULT_CSS));
+    dia.add_element(
+        railroad::svg::Element::new("style")
+            .set("type", "text/css")
+            .text(railroad::DEFAULT_CSS),
+    );
     dia.write(output)
 }
 
@@ -218,10 +252,8 @@ pub fn to_railroad_diagram_file<P: AsRef<std::path::Path>>(
     Ok(())
 }
 
-
 use nom_locate::LocatedSpan;
 pub type Span<'a> = LocatedSpan<&'a str>;
-
 
 #[derive(Debug, Clone)]
 pub enum ChicSpan {
@@ -233,17 +265,26 @@ pub enum ChicSpan {
     Dummy, // For tests
 }
 
-
 impl PartialEq for ChicSpan {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (Self::Dummy {}, _) => true,
             (_, Self::Dummy {}) => true,
-            (Self::Significant { line_start: l_line_start, start: l_start, end: l_end }, Self::Significant { line_start: r_line_start, start: r_start, end: r_end }) => l_line_start == r_line_start && l_start == r_start && l_end == r_end,
+            (
+                Self::Significant {
+                    line_start: l_line_start,
+                    start: l_start,
+                    end: l_end,
+                },
+                Self::Significant {
+                    line_start: r_line_start,
+                    start: r_start,
+                    end: r_end,
+                },
+            ) => l_line_start == r_line_start && l_start == r_start && l_end == r_end,
         }
     }
 }
-
 
 impl ChicSpan {
     fn new(before: Span, after: Span) -> Self {
@@ -254,7 +295,6 @@ impl ChicSpan {
         }
     }
 }
-
 
 fn comment(input: Span) -> IResult<Span, Span> {
     let (input, _) = char('#')(input)?;
@@ -280,10 +320,8 @@ fn multiblanks1(input: Span) -> IResult<Span, ()> {
     Ok((input, ()))
 }
 
-
 const ESCAPE_CHARACTER: char = '\\';
 const RESERVED_CHARACTERS: &str = r#"()[]{}<>|;""#;
-
 
 fn is_terminal_char(c: char) -> bool {
     if c == ESCAPE_CHARACTER {
@@ -297,15 +335,17 @@ fn is_terminal_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || c.is_ascii_punctuation()
 }
 
-
 fn terminal(input: Span) -> IResult<Span, String> {
-    let (input, term) = escaped_transform(take_while1(is_terminal_char), ESCAPE_CHARACTER, one_of(RESERVED_CHARACTERS))(input)?;
+    let (input, term) = escaped_transform(
+        take_while1(is_terminal_char),
+        ESCAPE_CHARACTER,
+        one_of(RESERVED_CHARACTERS),
+    )(input)?;
     if term.is_empty() {
         return fail(input);
     }
     Ok((input, term))
 }
-
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StringFragment<'a> {
@@ -314,29 +354,21 @@ enum StringFragment<'a> {
     EscapedWS,
 }
 
-
 fn parse_literal(input: Span) -> IResult<Span, Span> {
     verify(is_not("\"\\"), |s: &Span| !s.is_empty()).parse(input)
 }
 
-
 fn parse_escaped_char(input: Span) -> IResult<Span, char> {
     preceded(
         char('\\'),
-        alt((
-            value('\\', char('\\')),
-            value('"', char('"')),
-        )),
+        alt((value('\\', char('\\')), value('"', char('"')))),
     )
     .parse(input)
 }
 
-fn parse_escaped_whitespace(
-    input: Span,
-) -> IResult<Span, Span> {
+fn parse_escaped_whitespace(input: Span) -> IResult<Span, Span> {
     preceded(char('\\'), multispace1).parse(input)
 }
-
 
 fn parse_fragment(input: Span) -> IResult<Span, StringFragment> {
     alt((
@@ -347,23 +379,17 @@ fn parse_fragment(input: Span) -> IResult<Span, StringFragment> {
     .parse(input)
 }
 
-
 fn description_inner(input: Span) -> IResult<Span, String> {
-    let (input, inner) = fold_many0(
-        parse_fragment,
-        String::new,
-        |mut string, fragment| {
-            match fragment {
-                StringFragment::Literal(s) => string.push_str(&String::from_utf8_lossy(s.as_bytes())),
-                StringFragment::EscapedChar(c) => string.push(c),
-                StringFragment::EscapedWS => {}
-            }
-            Span::new(&string).to_string()
-        },
-    )(input)?;
+    let (input, inner) = fold_many0(parse_fragment, String::new, |mut string, fragment| {
+        match fragment {
+            StringFragment::Literal(s) => string.push_str(&String::from_utf8_lossy(s.as_bytes())),
+            StringFragment::EscapedChar(c) => string.push(c),
+            StringFragment::EscapedWS => {}
+        }
+        Span::new(&string).to_string()
+    })(input)?;
     Ok((input, inner))
 }
-
 
 fn description(input: Span) -> IResult<Span, String> {
     let (input, _) = char('"')(input)?;
@@ -388,8 +414,11 @@ fn nonterminal(input: Span) -> IResult<Span, Span> {
 
 fn nonterminal_expr(input: Span) -> IResult<Span, Expr> {
     let (after, nonterm) = context("nonterminal", nonterminal)(input)?;
-    let diagnostic_span= ChicSpan::new(input, after);
-    Ok((after, Expr::Nonterminal(ustr(nonterm.into_fragment()), 0, diagnostic_span)))
+    let diagnostic_span = ChicSpan::new(input, after);
+    Ok((
+        after,
+        Expr::Nonterminal(ustr(nonterm.into_fragment()), 0, diagnostic_span),
+    ))
 }
 
 fn triple_bracket_command(input: Span) -> IResult<Span, Span> {
@@ -406,7 +435,10 @@ fn command(input: Span) -> IResult<Span, Span> {
 fn command_expr(input: Span) -> IResult<Span, Expr> {
     let (after, cmd) = command(input)?;
     let command_span = ChicSpan::new(input, after);
-    Ok((after, Expr::Command(ustr(cmd.into_fragment()), 0, command_span)))
+    Ok((
+        after,
+        Expr::Command(ustr(cmd.into_fragment()), 0, command_span),
+    ))
 }
 
 fn optional_expr(input: Span) -> IResult<Span, Expr> {
@@ -459,7 +491,10 @@ fn subword_sequence_expr(input: Span) -> IResult<Span, Expr> {
     let result = if factors.len() == 1 {
         factors.into_iter().next().unwrap()
     } else {
-        let flattened_factors: Vec<Rc<Expr>> = factors.into_iter().map(|e| flatten_expr(Rc::new(e))).collect();
+        let flattened_factors: Vec<Rc<Expr>> = factors
+            .into_iter()
+            .map(|e| flatten_expr(Rc::new(e)))
+            .collect();
         let e = Expr::Sequence(flattened_factors);
         Expr::Subword(SubwordCompilationPhase::Expr(Rc::new(e)), 0)
     };
@@ -479,7 +514,9 @@ fn subword_sequence_expr_opt_description(input: Span) -> IResult<Span, Expr> {
 fn sequence_expr(input: Span) -> IResult<Span, Expr> {
     let (mut input, left) = subword_sequence_expr_opt_description(input)?;
     let mut factors: Vec<Expr> = vec![left];
-    while let Ok((rest, right)) = preceded(multiblanks1, subword_sequence_expr_opt_description)(input) {
+    while let Ok((rest, right)) =
+        preceded(multiblanks1, subword_sequence_expr_opt_description)(input)
+    {
         factors.push(right);
         input = rest;
     }
@@ -541,7 +578,6 @@ fn expr(input: Span) -> IResult<Span, Expr> {
     fallback_expr(input)
 }
 
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     CallVariant {
@@ -554,7 +590,6 @@ pub enum Statement {
         expr: Rc<Expr>,
     },
 }
-
 
 fn call_variant(input: Span) -> IResult<Span, Statement> {
     let (input, name) = terminal(input)?;
@@ -571,7 +606,6 @@ fn call_variant(input: Span) -> IResult<Span, Statement> {
     Ok((input, production))
 }
 
-
 fn specialized_nonterminal(input: Span) -> IResult<Span, (Span, Span)> {
     let (input, _) = char('<')(input)?;
     let (input, name) = is_not(">@")(input)?;
@@ -580,7 +614,6 @@ fn specialized_nonterminal(input: Span) -> IResult<Span, (Span, Span)> {
     let (input, _) = char('>')(input)?;
     Ok((input, (name, shell)))
 }
-
 
 fn optionally_specialized_nonterminal(input: Span) -> IResult<Span, (Span, Option<Span>)> {
     if let Ok((input, (name, shell))) = specialized_nonterminal(input) {
@@ -623,12 +656,10 @@ fn grammar(input: Span) -> IResult<Span, Vec<Statement>> {
     Ok((input, statements))
 }
 
-
 #[derive(Debug, PartialEq, Clone)]
 pub struct Grammar {
     statements: Vec<Statement>,
 }
-
 
 #[derive(Debug)]
 pub struct ValidGrammar {
@@ -639,12 +670,15 @@ pub struct ValidGrammar {
     pub unused_nonterminals: UstrSet,
 }
 
-
 fn make_specializations_map(statements: &[Statement]) -> Result<UstrMap<Specialization>> {
     let mut specializations: UstrMap<Specialization> = Default::default();
     for definition in statements {
         let (name, shell, expr) = match definition {
-            Statement::NonterminalDefinition { symbol, shell: Some(shell), expr } => (*symbol, shell, expr),
+            Statement::NonterminalDefinition {
+                symbol,
+                shell: Some(shell),
+                expr,
+            } => (*symbol, shell, expr),
             Statement::NonterminalDefinition { shell: None, .. } => continue,
             Statement::CallVariant { .. } => continue,
         };
@@ -663,29 +697,35 @@ fn make_specializations_map(statements: &[Statement]) -> Result<UstrMap<Speciali
                     return Err(Error::DuplicateNonterminalDefinition(name, Some(*shell)));
                 }
                 spec.bash = Some(*command);
-            },
+            }
             "fish" => {
                 if spec.fish.is_some() {
                     return Err(Error::DuplicateNonterminalDefinition(name, Some(*shell)));
                 }
                 spec.fish = Some(*command);
-            },
+            }
             "zsh" => {
                 if spec.zsh.is_some() {
                     return Err(Error::DuplicateNonterminalDefinition(name, Some(*shell)));
                 }
                 spec.zsh = Some(*command);
-            },
+            }
             _ => unreachable!(),
         }
     }
 
     for definition in statements {
         let (name, expr) = match definition {
-            Statement::NonterminalDefinition { symbol, shell: None, expr } => (symbol, expr),
+            Statement::NonterminalDefinition {
+                symbol,
+                shell: None,
+                expr,
+            } => (symbol, expr),
             _ => continue,
         };
-        let Some(spec) = specializations.get_mut(name) else { continue };
+        let Some(spec) = specializations.get_mut(name) else {
+            continue;
+        };
         let Expr::Command(command, ..) = expr.borrow() else {
             return Err(Error::NonCommandSpecialization(*name, None));
         };
@@ -695,81 +735,86 @@ fn make_specializations_map(statements: &[Statement]) -> Result<UstrMap<Speciali
         spec.generic = Some(*command);
     }
 
-    specializations.entry(ustr("PATH")).or_insert_with(||
-        Specialization {
+    specializations
+        .entry(ustr("PATH"))
+        .or_insert_with(|| Specialization {
             bash: Some(ustr(r#"compgen -A file "$1""#)),
             fish: Some(ustr(r#"__fish_complete_path "$1""#)),
             zsh: Some(ustr("_path_files")),
             generic: None,
-        }
-    );
+        });
 
-    specializations.entry(ustr("DIRECTORY")).or_insert_with(||
-        Specialization {
+    specializations
+        .entry(ustr("DIRECTORY"))
+        .or_insert_with(|| Specialization {
             bash: Some(ustr(r#"compgen -A directory "$1""#)),
             fish: Some(ustr(r#"__fish_complete_directories "$1""#)),
             zsh: Some(ustr("_path_files -/")),
             generic: None,
-        }
-    );
+        });
 
-    specializations.entry(ustr("PID")).or_insert_with(||
-        Specialization {
+    specializations
+        .entry(ustr("PID"))
+        .or_insert_with(|| Specialization {
             bash: None,
             fish: Some(ustr(r#"__fish_complete_pids"#)),
             zsh: Some(ustr(r#"_pids"#)),
             generic: None,
-        }
-    );
+        });
 
-    specializations.entry(ustr("USER")).or_insert_with(||
-        Specialization {
-            bash: Some(ustr(r#"compgen -A user | while read line; do echo "$line "; done"#)),
+    specializations
+        .entry(ustr("USER"))
+        .or_insert_with(|| Specialization {
+            bash: Some(ustr(
+                r#"compgen -A user | while read line; do echo "$line "; done"#,
+            )),
             fish: Some(ustr(r#"__fish_complete_users"#)),
             zsh: Some(ustr(r#"_users"#)),
             generic: None,
-        }
-    );
+        });
 
-    specializations.entry(ustr("GROUP")).or_insert_with(||
-        Specialization {
-            bash: Some(ustr(r#"compgen -A group | while read line; do echo "$line "; done"#)),
+    specializations
+        .entry(ustr("GROUP"))
+        .or_insert_with(|| Specialization {
+            bash: Some(ustr(
+                r#"compgen -A group | while read line; do echo "$line "; done"#,
+            )),
             fish: Some(ustr(r#"__fish_complete_groups"#)),
             zsh: Some(ustr(r#"_groups"#)),
             generic: None,
-        }
-    );
+        });
 
-    specializations.entry(ustr("HOST")).or_insert_with(||
-        Specialization {
-            bash: Some(ustr(r#"compgen -A hostname | while read line; do echo "$line "; done"#)),
+    specializations
+        .entry(ustr("HOST"))
+        .or_insert_with(|| Specialization {
+            bash: Some(ustr(
+                r#"compgen -A hostname | while read line; do echo "$line "; done"#,
+            )),
             fish: Some(ustr(r#"__fish_complete_hostnames"#)),
             zsh: Some(ustr(r#"_hosts"#)),
             generic: None,
-        }
-    );
+        });
 
-    specializations.entry(ustr("INTERFACE")).or_insert_with(||
-        Specialization {
+    specializations
+        .entry(ustr("INTERFACE"))
+        .or_insert_with(|| Specialization {
             bash: None,
             fish: Some(ustr(r#"__fish_complete_interfaces"#)),
             zsh: Some(ustr(r#"_net_interfaces"#)),
             generic: None,
-        }
-    );
+        });
 
-    specializations.entry(ustr("PACKAGE")).or_insert_with(||
-        Specialization {
+    specializations
+        .entry(ustr("PACKAGE"))
+        .or_insert_with(|| Specialization {
             bash: None,
             fish: Some(ustr(r#"__fish_complete_packages"#)),
             zsh: None,
             generic: None,
-        }
-    );
+        });
 
     Ok(specializations)
 }
-
 
 fn flatten_expr(expr: Rc<Expr>) -> Rc<Expr> {
     match expr.as_ref() {
@@ -782,68 +827,81 @@ fn flatten_expr(expr: Rc<Expr>) -> Rc<Expr> {
             let new_child = flatten_expr(Rc::clone(&child));
             if Rc::ptr_eq(&child, &new_child) {
                 child
-            }
-            else {
+            } else {
                 new_child
             }
-        },
+        }
         Expr::Sequence(children) => {
-            let new_children: Vec<Rc<Expr>> = children.iter().map(|e| flatten_expr(Rc::clone(e))).collect();
-            if children.iter().zip_eq(new_children.iter()).all(|(left, right)| Rc::ptr_eq(left, right)) {
+            let new_children: Vec<Rc<Expr>> = children
+                .iter()
+                .map(|e| flatten_expr(Rc::clone(e)))
+                .collect();
+            if children
+                .iter()
+                .zip_eq(new_children.iter())
+                .all(|(left, right)| Rc::ptr_eq(left, right))
+            {
                 Rc::clone(&expr)
-            }
-            else {
+            } else {
                 Rc::new(Expr::Sequence(new_children))
             }
-        },
+        }
         Expr::Alternative(children) => {
-            let new_children: Vec<Rc<Expr>> = children.iter().map(|e| flatten_expr(Rc::clone(e))).collect();
-            if children.iter().zip_eq(new_children.iter()).all(|(left, right)| Rc::ptr_eq(left, right)) {
+            let new_children: Vec<Rc<Expr>> = children
+                .iter()
+                .map(|e| flatten_expr(Rc::clone(e)))
+                .collect();
+            if children
+                .iter()
+                .zip_eq(new_children.iter())
+                .all(|(left, right)| Rc::ptr_eq(left, right))
+            {
                 Rc::clone(&expr)
-            }
-            else {
+            } else {
                 Rc::new(Expr::Alternative(new_children))
             }
-        },
+        }
         Expr::Optional(child) => {
             let new_child = flatten_expr(Rc::clone(child));
             if Rc::ptr_eq(child, &new_child) {
                 Rc::clone(&expr)
-            }
-            else {
+            } else {
                 Rc::new(Expr::Optional(new_child))
             }
-        },
+        }
         Expr::Many1(child) => {
             let new_child = flatten_expr(Rc::clone(child));
             if Rc::ptr_eq(child, &new_child) {
                 Rc::clone(&expr)
-            }
-            else {
+            } else {
                 Rc::new(Expr::Many1(new_child))
             }
-        },
+        }
         Expr::DistributiveDescription(child, description) => {
             let new_child = flatten_expr(Rc::clone(child));
             if Rc::ptr_eq(child, &new_child) {
                 Rc::clone(&expr)
-            }
-            else {
+            } else {
                 Rc::new(Expr::DistributiveDescription(new_child, *description))
             }
-        },
+        }
         Expr::Fallback(children) => {
-            let new_children: Vec<Rc<Expr>> = children.iter().map(|e| flatten_expr(Rc::clone(e))).collect();
-            if children.iter().zip_eq(new_children.iter()).all(|(left, right)| Rc::ptr_eq(left, right)) {
+            let new_children: Vec<Rc<Expr>> = children
+                .iter()
+                .map(|e| flatten_expr(Rc::clone(e)))
+                .collect();
+            if children
+                .iter()
+                .zip_eq(new_children.iter())
+                .all(|(left, right)| Rc::ptr_eq(left, right))
+            {
                 Rc::clone(&expr)
-            }
-            else {
+            } else {
                 Rc::new(Expr::Fallback(new_children))
             }
-        },
+        }
     }
 }
-
 
 fn compile_subword_exprs(expr: Rc<Expr>, specs: &UstrMap<Specialization>) -> Rc<Expr> {
     match expr.as_ref() {
@@ -909,7 +967,6 @@ fn compile_subword_exprs(expr: Rc<Expr>, specs: &UstrMap<Specialization>) -> Rc<
     }
 }
 
-
 /// Move descriptions to their corresponding terminals.
 fn do_distribute_descriptions(expr: Rc<Expr>, description: &mut Option<Ustr>) -> Rc<Expr> {
     match expr.as_ref() {
@@ -917,84 +974,99 @@ fn do_distribute_descriptions(expr: Rc<Expr>, description: &mut Option<Ustr>) ->
             let new_child = do_distribute_descriptions(Rc::clone(child), &mut Some(*descr));
             if Rc::ptr_eq(child, &new_child) {
                 Rc::clone(&child)
-            }
-            else {
+            } else {
                 new_child
             }
-        },
+        }
         Expr::Terminal(term, None, level) if description.is_some() => {
             let result = Rc::new(Expr::Terminal(*term, *description, *level));
             *description = None; // spend it
             result
-        },
+        }
         Expr::Terminal(_, None, _) => Rc::clone(&expr),
         Expr::Terminal(_, Some(_), _) => Rc::clone(&expr),
         Expr::Nonterminal(..) => Rc::clone(&expr),
         Expr::Command(..) => Rc::clone(&expr),
         Expr::Sequence(children) => {
-            let new_children: Vec<Rc<Expr>> = children.iter().map(|e| do_distribute_descriptions(Rc::clone(e), description)).collect();
-            if children.iter().zip_eq(new_children.iter()).all(|(left, right)| Rc::ptr_eq(left, right)) {
+            let new_children: Vec<Rc<Expr>> = children
+                .iter()
+                .map(|e| do_distribute_descriptions(Rc::clone(e), description))
+                .collect();
+            if children
+                .iter()
+                .zip_eq(new_children.iter())
+                .all(|(left, right)| Rc::ptr_eq(left, right))
+            {
                 Rc::clone(&expr)
-            }
-            else {
+            } else {
                 Rc::new(Expr::Sequence(new_children))
             }
-        },
+        }
         Expr::Alternative(children) => {
-            let new_children: Vec<Rc<Expr>> = children.iter().map(|e| do_distribute_descriptions(Rc::clone(e), &mut description.clone())).collect();
-            if children.iter().zip_eq(new_children.iter()).all(|(left, right)| Rc::ptr_eq(left, right)) {
+            let new_children: Vec<Rc<Expr>> = children
+                .iter()
+                .map(|e| do_distribute_descriptions(Rc::clone(e), &mut description.clone()))
+                .collect();
+            if children
+                .iter()
+                .zip_eq(new_children.iter())
+                .all(|(left, right)| Rc::ptr_eq(left, right))
+            {
                 Rc::clone(&expr)
-            }
-            else {
+            } else {
                 Rc::new(Expr::Alternative(new_children))
             }
-        },
+        }
         Expr::Optional(child) => {
             let new_child = do_distribute_descriptions(Rc::clone(child), description);
             if Rc::ptr_eq(child, &new_child) {
                 Rc::clone(&expr)
-            }
-            else {
+            } else {
                 Rc::new(Expr::Optional(new_child))
             }
-        },
+        }
         Expr::Many1(child) => {
             let new_child = do_distribute_descriptions(Rc::clone(child), description);
             if Rc::ptr_eq(child, &new_child) {
                 Rc::clone(&expr)
-            }
-            else {
+            } else {
                 Rc::new(Expr::Many1(new_child))
             }
-        },
+        }
         Expr::Subword(SubwordCompilationPhase::Expr(child), fallback_level) => {
             let new_child = do_distribute_descriptions(Rc::clone(&child), description);
             if Rc::ptr_eq(&child, &new_child) {
                 Rc::clone(&expr)
+            } else {
+                Rc::new(Expr::Subword(
+                    SubwordCompilationPhase::Expr(new_child),
+                    *fallback_level,
+                ))
             }
-            else {
-                Rc::new(Expr::Subword(SubwordCompilationPhase::Expr(new_child), *fallback_level))
-            }
-        },
+        }
         Expr::Subword(SubwordCompilationPhase::DFA(_), ..) => unreachable!(),
         Expr::Fallback(children) => {
-            let new_children: Vec<Rc<Expr>> = children.iter().map(|e| do_distribute_descriptions(Rc::clone(e), description)).collect();
-            if children.iter().zip_eq(new_children.iter()).all(|(left, right)| Rc::ptr_eq(left, right)) {
+            let new_children: Vec<Rc<Expr>> = children
+                .iter()
+                .map(|e| do_distribute_descriptions(Rc::clone(e), description))
+                .collect();
+            if children
+                .iter()
+                .zip_eq(new_children.iter())
+                .all(|(left, right)| Rc::ptr_eq(left, right))
+            {
                 Rc::clone(&expr)
-            }
-            else {
+            } else {
                 Rc::new(Expr::Fallback(new_children))
             }
-        },
+        }
     }
 }
-
 
 fn distribute_descriptions(expr: Rc<Expr>) -> Rc<Expr> {
     let mut description = None;
     do_distribute_descriptions(expr, &mut description)
 }
-
 
 /// Propagate fallback levels of fallback alternatives down to literals.
 fn do_propagate_fallback_levels(expr: Rc<Expr>, fallback_level: usize) -> Rc<Expr> {
@@ -1002,61 +1074,80 @@ fn do_propagate_fallback_levels(expr: Rc<Expr>, fallback_level: usize) -> Rc<Exp
         Expr::Terminal(_, _, level) if *level == fallback_level => Rc::clone(&expr),
         Expr::Terminal(term, descr, _) => Rc::new(Expr::Terminal(*term, *descr, fallback_level)),
         Expr::Fallback(children) => {
-            let new_children: Vec<Rc<Expr>> = children.iter().enumerate().map(|(i, e)| do_propagate_fallback_levels(Rc::clone(e), i)).collect();
-            if children.iter().zip_eq(new_children.iter()).all(|(left, right)| Rc::ptr_eq(left, right)) {
+            let new_children: Vec<Rc<Expr>> = children
+                .iter()
+                .enumerate()
+                .map(|(i, e)| do_propagate_fallback_levels(Rc::clone(e), i))
+                .collect();
+            if children
+                .iter()
+                .zip_eq(new_children.iter())
+                .all(|(left, right)| Rc::ptr_eq(left, right))
+            {
                 Rc::clone(&expr)
-            }
-            else {
+            } else {
                 Rc::new(Expr::Fallback(new_children))
             }
-        },
+        }
         Expr::Command(..) => Rc::clone(&expr),
         Expr::Nonterminal(..) => Rc::clone(&expr),
         Expr::Sequence(children) => {
-            let new_children: Vec<Rc<Expr>> = children.iter().map(|e| do_propagate_fallback_levels(Rc::clone(e), fallback_level)).collect();
-            if children.iter().zip_eq(new_children.iter()).all(|(left, right)| Rc::ptr_eq(left, right)) {
+            let new_children: Vec<Rc<Expr>> = children
+                .iter()
+                .map(|e| do_propagate_fallback_levels(Rc::clone(e), fallback_level))
+                .collect();
+            if children
+                .iter()
+                .zip_eq(new_children.iter())
+                .all(|(left, right)| Rc::ptr_eq(left, right))
+            {
                 Rc::clone(&expr)
-            }
-            else {
+            } else {
                 Rc::new(Expr::Sequence(new_children))
             }
-        },
+        }
         Expr::Alternative(children) => {
-            let new_children: Vec<Rc<Expr>> = children.iter().map(|e| do_propagate_fallback_levels(Rc::clone(e), fallback_level)).collect();
-            if children.iter().zip_eq(new_children.iter()).all(|(left, right)| Rc::ptr_eq(left, right)) {
+            let new_children: Vec<Rc<Expr>> = children
+                .iter()
+                .map(|e| do_propagate_fallback_levels(Rc::clone(e), fallback_level))
+                .collect();
+            if children
+                .iter()
+                .zip_eq(new_children.iter())
+                .all(|(left, right)| Rc::ptr_eq(left, right))
+            {
                 Rc::clone(&expr)
-            }
-            else {
+            } else {
                 Rc::new(Expr::Alternative(new_children))
             }
-        },
+        }
         Expr::Optional(child) => {
             let new_child = do_propagate_fallback_levels(Rc::clone(child), fallback_level);
             if Rc::ptr_eq(child, &new_child) {
                 Rc::clone(&expr)
-            }
-            else {
+            } else {
                 Rc::new(Expr::Optional(new_child))
             }
-        },
+        }
         Expr::Many1(child) => {
             let new_child = do_propagate_fallback_levels(Rc::clone(child), fallback_level);
             if Rc::ptr_eq(child, &new_child) {
                 Rc::clone(&expr)
-            }
-            else {
+            } else {
                 Rc::new(Expr::Many1(new_child))
             }
-        },
+        }
         Expr::Subword(SubwordCompilationPhase::Expr(child), _) => {
             let new_child = do_propagate_fallback_levels(Rc::clone(&child), fallback_level);
             if Rc::ptr_eq(&child, &new_child) {
                 Rc::clone(&expr)
+            } else {
+                Rc::new(Expr::Subword(
+                    SubwordCompilationPhase::Expr(new_child),
+                    fallback_level,
+                ))
             }
-            else {
-                Rc::new(Expr::Subword(SubwordCompilationPhase::Expr(new_child), fallback_level))
-            }
-        },
+        }
         Expr::Subword(SubwordCompilationPhase::DFA(..), ..) => unreachable!(),
         Expr::DistributiveDescription(..) => unreachable!(),
     }
@@ -1066,117 +1157,184 @@ fn propagate_fallback_levels(expr: Rc<Expr>) -> Rc<Expr> {
     do_propagate_fallback_levels(expr, 0)
 }
 
-
-fn check_subword(expr: Rc<Expr>, nonterminal_definitions: &UstrMap<Rc<Expr>>, is_tail: bool, overriding_span: Option<&ChicSpan>) -> Result<()> {
+fn check_subword(
+    expr: Rc<Expr>,
+    nonterminal_definitions: &UstrMap<Rc<Expr>>,
+    is_tail: bool,
+    overriding_span: Option<&ChicSpan>,
+) -> Result<()> {
     match expr.as_ref() {
-        Expr::Terminal(..) => {},
-        Expr::Command(..) if is_tail => {},
+        Expr::Terminal(..) => {}
+        Expr::Command(..) if is_tail => {}
         Expr::Command(cmd, _, span) => {
             return if let Some(overriding_span) = overriding_span {
-                Err(Error::CommandAtNonTailPosition(*cmd, overriding_span.clone()))
-            }
-            else {
+                Err(Error::CommandAtNonTailPosition(
+                    *cmd,
+                    overriding_span.clone(),
+                ))
+            } else {
                 Err(Error::CommandAtNonTailPosition(*cmd, span.clone()))
             }
-        },
+        }
         Expr::Nonterminal(nonterm, _, diagnostic_span) => {
             if let Some(expr) = nonterminal_definitions.get(nonterm) {
-                check_subword(Rc::clone(&expr), nonterminal_definitions, is_tail, Some(diagnostic_span))?;
+                check_subword(
+                    Rc::clone(&expr),
+                    nonterminal_definitions,
+                    is_tail,
+                    Some(diagnostic_span),
+                )?;
             }
-        },
+        }
         Expr::Fallback(children) => {
             for (index, child) in children.iter().enumerate() {
                 let is_tail = index == children.len() - 1;
-                check_subword(Rc::clone(&child), nonterminal_definitions, is_tail, overriding_span)?;
+                check_subword(
+                    Rc::clone(&child),
+                    nonterminal_definitions,
+                    is_tail,
+                    overriding_span,
+                )?;
             }
-        },
+        }
         Expr::Sequence(children) => {
             for (index, child) in children.iter().enumerate() {
                 let is_tail = index == children.len() - 1;
-                check_subword(Rc::clone(&child), nonterminal_definitions, is_tail, overriding_span)?;
+                check_subword(
+                    Rc::clone(&child),
+                    nonterminal_definitions,
+                    is_tail,
+                    overriding_span,
+                )?;
             }
-        },
+        }
         Expr::Alternative(children) => {
             for (index, child) in children.iter().enumerate() {
                 let is_tail = index == children.len() - 1;
-                check_subword(Rc::clone(&child), nonterminal_definitions, is_tail, overriding_span)?;
+                check_subword(
+                    Rc::clone(&child),
+                    nonterminal_definitions,
+                    is_tail,
+                    overriding_span,
+                )?;
             }
-        },
-        Expr::Optional(child) => check_subword(Rc::clone(&child), nonterminal_definitions, false, overriding_span)?,
-        Expr::Many1(child) => check_subword(Rc::clone(&child), nonterminal_definitions, false, overriding_span)?,
-        Expr::Subword(SubwordCompilationPhase::Expr(expr), ..) => check_subword(Rc::clone(&expr), nonterminal_definitions, false, overriding_span)?,
+        }
+        Expr::Optional(child) => check_subword(
+            Rc::clone(&child),
+            nonterminal_definitions,
+            false,
+            overriding_span,
+        )?,
+        Expr::Many1(child) => check_subword(
+            Rc::clone(&child),
+            nonterminal_definitions,
+            false,
+            overriding_span,
+        )?,
+        Expr::Subword(SubwordCompilationPhase::Expr(expr), ..) => check_subword(
+            Rc::clone(&expr),
+            nonterminal_definitions,
+            false,
+            overriding_span,
+        )?,
         Expr::Subword(SubwordCompilationPhase::DFA(..), ..) => unreachable!(),
         Expr::DistributiveDescription(..) => unreachable!(),
     }
     Ok(())
 }
 
-
-fn do_ensure_subword_commands_only_at_tail_position(expr: Rc<Expr>, nonterminal_definitions: &UstrMap<Rc<Expr>>) -> Result<()> {
+fn do_ensure_subword_commands_only_at_tail_position(
+    expr: Rc<Expr>,
+    nonterminal_definitions: &UstrMap<Rc<Expr>>,
+) -> Result<()> {
     match expr.as_ref() {
-        Expr::Terminal(..) => {},
-        Expr::Command(..) => {},
+        Expr::Terminal(..) => {}
+        Expr::Command(..) => {}
         Expr::Nonterminal(nonterm, _, _) => {
             if let Some(expr) = nonterminal_definitions.get(nonterm) {
-                do_ensure_subword_commands_only_at_tail_position(Rc::clone(&expr), nonterminal_definitions)?;
+                do_ensure_subword_commands_only_at_tail_position(
+                    Rc::clone(&expr),
+                    nonterminal_definitions,
+                )?;
             }
-        },
+        }
 
         Expr::Fallback(children) => {
             for child in children {
-                do_ensure_subword_commands_only_at_tail_position(Rc::clone(&child), nonterminal_definitions)?;
+                do_ensure_subword_commands_only_at_tail_position(
+                    Rc::clone(&child),
+                    nonterminal_definitions,
+                )?;
             }
-        },
+        }
         Expr::Sequence(children) => {
             for child in children {
-                do_ensure_subword_commands_only_at_tail_position(Rc::clone(&child), nonterminal_definitions)?;
+                do_ensure_subword_commands_only_at_tail_position(
+                    Rc::clone(&child),
+                    nonterminal_definitions,
+                )?;
             }
-        },
+        }
         Expr::Alternative(children) => {
             for child in children {
-                do_ensure_subword_commands_only_at_tail_position(Rc::clone(&child), nonterminal_definitions)?;
+                do_ensure_subword_commands_only_at_tail_position(
+                    Rc::clone(&child),
+                    nonterminal_definitions,
+                )?;
             }
-        },
+        }
         Expr::Optional(child) => {
-            do_ensure_subword_commands_only_at_tail_position(Rc::clone(&child), nonterminal_definitions)?;
-        },
+            do_ensure_subword_commands_only_at_tail_position(
+                Rc::clone(&child),
+                nonterminal_definitions,
+            )?;
+        }
         Expr::Many1(child) => {
-            do_ensure_subword_commands_only_at_tail_position(Rc::clone(&child), nonterminal_definitions)?;
-        },
+            do_ensure_subword_commands_only_at_tail_position(
+                Rc::clone(&child),
+                nonterminal_definitions,
+            )?;
+        }
         Expr::Subword(SubwordCompilationPhase::Expr(expr), ..) => {
             check_subword(Rc::clone(&expr), nonterminal_definitions, true, None)?;
-        },
+        }
         Expr::Subword(SubwordCompilationPhase::DFA(..), ..) => unreachable!(),
         Expr::DistributiveDescription(..) => unreachable!(),
     }
     Ok(())
 }
 
-
-fn ensure_subword_commands_only_at_tail_position(expr: Rc<Expr>, nonterminal_definitions: &UstrMap<Rc<Expr>>) -> Result<()> {
+fn ensure_subword_commands_only_at_tail_position(
+    expr: Rc<Expr>,
+    nonterminal_definitions: &UstrMap<Rc<Expr>>,
+) -> Result<()> {
     match expr.as_ref() {
         Expr::Sequence(children) => {
             for child in children {
-                do_ensure_subword_commands_only_at_tail_position(Rc::clone(&child), nonterminal_definitions)?;
+                do_ensure_subword_commands_only_at_tail_position(
+                    Rc::clone(&child),
+                    nonterminal_definitions,
+                )?;
             }
-        },
+        }
         _ => {
             do_ensure_subword_commands_only_at_tail_position(expr, nonterminal_definitions)?;
-        },
+        }
     }
     Ok(())
 }
-
 
 impl ValidGrammar {
     pub fn from_grammar(grammar: Grammar) -> Result<Self> {
         let command = {
-            let mut commands: Vec<Ustr> = grammar.statements.iter().filter_map(|v|
-                match v {
+            let mut commands: Vec<Ustr> = grammar
+                .statements
+                .iter()
+                .filter_map(|v| match v {
                     Statement::CallVariant { head: lhs, .. } => Some(*lhs),
                     Statement::NonterminalDefinition { .. } => None,
-                }
-            ).collect();
+                })
+                .collect();
 
             if commands.is_empty() {
                 return Err(Error::MissingCallVariants);
@@ -1186,25 +1344,24 @@ impl ValidGrammar {
             commands.dedup();
 
             if commands.len() > 1 {
-                return Err(Error::VaryingCommandNames(
-                    commands.into_iter().collect(),
-                ));
+                return Err(Error::VaryingCommandNames(commands.into_iter().collect()));
             }
             commands[0]
         };
 
         let expr = {
-            let call_variants: Vec<Rc<Expr>> = grammar.statements.iter().filter_map(|v|
-                match v {
+            let call_variants: Vec<Rc<Expr>> = grammar
+                .statements
+                .iter()
+                .filter_map(|v| match v {
                     Statement::CallVariant { expr: rhs, .. } => Some(rhs.clone()),
                     Statement::NonterminalDefinition { .. } => None,
-                }
-            ).collect();
+                })
+                .collect();
 
             if call_variants.len() == 1 {
                 Rc::clone(&call_variants[0])
-            }
-            else {
+            } else {
                 Rc::new(Expr::Alternative(call_variants))
             }
         };
@@ -1213,7 +1370,11 @@ impl ValidGrammar {
             let mut nonterminal_definitions: UstrMap<Rc<Expr>> = Default::default();
             for definition in &grammar.statements {
                 let (symbol, expr) = match definition {
-                    Statement::NonterminalDefinition { symbol, expr, shell: None, } => (*symbol, expr),
+                    Statement::NonterminalDefinition {
+                        symbol,
+                        expr,
+                        shell: None,
+                    } => (*symbol, expr),
                     _ => continue,
                 };
                 if nonterminal_definitions.contains_key(&symbol) {
@@ -1235,9 +1396,19 @@ impl ValidGrammar {
 
         for nonterminal in get_nonterminals_resolution_order(&nonterminal_definitions)? {
             let e = Rc::clone(nonterminal_definitions.get(&nonterminal).unwrap());
-            *nonterminal_definitions.get_mut(&nonterminal).unwrap() = resolve_nonterminals(e, &nonterminal_definitions, &specializations, &mut unused_nonterminals);
+            *nonterminal_definitions.get_mut(&nonterminal).unwrap() = resolve_nonterminals(
+                e,
+                &nonterminal_definitions,
+                &specializations,
+                &mut unused_nonterminals,
+            );
         }
-        let expr = resolve_nonterminals(expr, &nonterminal_definitions, &specializations, &mut unused_nonterminals);
+        let expr = resolve_nonterminals(
+            expr,
+            &nonterminal_definitions,
+            &specializations,
+            &mut unused_nonterminals,
+        );
 
         let expr = propagate_fallback_levels(expr);
 
@@ -1260,8 +1431,12 @@ impl ValidGrammar {
     }
 }
 
-
-fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>, specializations: &UstrMap<Specialization>, unused_nonterminals: &mut UstrSet) -> Rc<Expr> {
+fn resolve_nonterminals(
+    expr: Rc<Expr>,
+    vars: &UstrMap<Rc<Expr>>,
+    specializations: &UstrMap<Specialization>,
+    unused_nonterminals: &mut UstrSet,
+) -> Rc<Expr> {
     match expr.as_ref() {
         Expr::Terminal(..) => Rc::clone(&expr),
         Expr::Subword(child, fallback_level) => {
@@ -1363,7 +1538,6 @@ fn resolve_nonterminals(expr: Rc<Expr>, vars: &UstrMap<Rc<Expr>>, specialization
     }
 }
 
-
 fn do_get_expression_nonterminals(expr: Rc<Expr>, deps: &mut UstrSet) {
     match expr.as_ref() {
         Expr::Terminal(..) => {},
@@ -1399,17 +1573,16 @@ fn do_get_expression_nonterminals(expr: Rc<Expr>, deps: &mut UstrSet) {
     }
 }
 
-
 fn get_expression_nonterminals(expr: Rc<Expr>) -> UstrSet {
     let mut result: UstrSet = Default::default();
     do_get_expression_nonterminals(expr, &mut result);
     result
 }
 
-
 pub fn get_not_depended_on_nonterminals(dependency_graph: &UstrMap<UstrSet>) -> UstrSet {
     let num_depending_nonterminals = {
-        let mut num_depending_nonterminals: UstrMap<usize> = dependency_graph.keys().map(|vertex| (*vertex, 0)).collect();
+        let mut num_depending_nonterminals: UstrMap<usize> =
+            dependency_graph.keys().map(|vertex| (*vertex, 0)).collect();
         for (_, nonterminal_depependencies) in dependency_graph.iter() {
             for dep in nonterminal_depependencies {
                 *num_depending_nonterminals.get_mut(dep).unwrap() += 1;
@@ -1427,8 +1600,13 @@ pub fn get_not_depended_on_nonterminals(dependency_graph: &UstrMap<UstrSet>) -> 
     vertices_without_incoming_edges
 }
 
-
-fn traverse_nonterminal_dependencies_dfs(vertex: Ustr, graph: &UstrMap<UstrSet>, path: &mut Vec<Ustr>, visited: &mut UstrSet, result: &mut Vec<Ustr>) -> Result<()> {
+fn traverse_nonterminal_dependencies_dfs(
+    vertex: Ustr,
+    graph: &UstrMap<UstrSet>,
+    path: &mut Vec<Ustr>,
+    visited: &mut UstrSet,
+    result: &mut Vec<Ustr>,
+) -> Result<()> {
     visited.insert(vertex);
     let dummy = UstrSet::default();
     for child in graph.get(&vertex).unwrap_or(&dummy) {
@@ -1448,10 +1626,11 @@ fn traverse_nonterminal_dependencies_dfs(vertex: Ustr, graph: &UstrMap<UstrSet>,
     Ok(())
 }
 
-
 // A topological order but without the initial nonterminals that don't depend on any other
 // nonterminals.
-fn get_nonterminals_resolution_order(nonterminal_definitions: &UstrMap<Rc<Expr>>) -> Result<Vec<Ustr>> {
+fn get_nonterminals_resolution_order(
+    nonterminal_definitions: &UstrMap<Rc<Expr>>,
+) -> Result<Vec<Ustr>> {
     if nonterminal_definitions.is_empty() {
         return Ok(Vec::default());
     }
@@ -1473,18 +1652,28 @@ fn get_nonterminals_resolution_order(nonterminal_definitions: &UstrMap<Rc<Expr>>
     let mut path: Vec<Ustr> = Default::default();
     for vertex in not_depended_on_vars {
         debug_assert!(!visited.contains(&vertex));
-        traverse_nonterminal_dependencies_dfs(vertex, &dependency_graph, &mut path, &mut visited, &mut result)?;
+        traverse_nonterminal_dependencies_dfs(
+            vertex,
+            &dependency_graph,
+            &mut path,
+            &mut visited,
+            &mut result,
+        )?;
         result.push(vertex);
         debug_assert!(path.is_empty());
     }
 
     // Filter out nonterminals that don't depend on any other as they are already fully resolved.
-    result.retain(|vertex| dependency_graph.get(vertex).map(|children| !children.is_empty()).unwrap_or(true));
+    result.retain(|vertex| {
+        dependency_graph
+            .get(vertex)
+            .map(|children| !children.is_empty())
+            .unwrap_or(true)
+    });
 
     log::debug!("nonterminals expansion order: {:?}", result);
     Ok(result)
 }
-
 
 impl Grammar {
     pub fn parse(input_before: &str) -> std::result::Result<Self, chic::Error> {
@@ -1494,36 +1683,43 @@ impl Grammar {
                 let line_start = e.input.location_line() as usize - 1;
                 let start = e.input.get_column() - 1;
                 let end = start + 1;
-                let error = chic::Error::new(e.to_string())
-                    .error(line_start, start, end, input_before.lines().nth(line_start).unwrap(), "");
+                let error = chic::Error::new(e.to_string()).error(
+                    line_start,
+                    start,
+                    end,
+                    input_before.lines().nth(line_start).unwrap(),
+                    "",
+                );
                 return Err(error);
-            },
+            }
         };
 
         if !input_after.is_empty() {
             let line_start = input_after.location_line() as usize - 1;
             let start = input_after.get_column() - 1;
             let end = start + 1;
-            let error = chic::Error::new("Parsing failed")
-                .error(line_start, start, end, input_before.lines().nth(line_start).unwrap(), "");
+            let error = chic::Error::new("Parsing failed").error(
+                line_start,
+                start,
+                end,
+                input_before.lines().nth(line_start).unwrap(),
+                "",
+            );
             return Err(error);
         }
 
-        let g = Grammar {
-            statements,
-        };
+        let g = Grammar { statements };
 
         Ok(g)
     }
 }
 
-
 #[cfg(test)]
 pub mod tests {
-    use std::rc::Rc;
-    use std::ops::Rem;
-    use proptest::{strategy::BoxedStrategy, test_runner::TestRng};
     use proptest::prelude::*;
+    use proptest::{strategy::BoxedStrategy, test_runner::TestRng};
+    use std::ops::Rem;
+    use std::rc::Rc;
     use ustr::ustr as u;
 
     use super::*;
@@ -1536,51 +1732,120 @@ pub mod tests {
     }
 
     fn arb_literal(inputs: Rc<Vec<Ustr>>) -> BoxedStrategy<Rc<Expr>> {
-        (0..inputs.len()).prop_map(move |index| Rc::new(Terminal(ustr(&inputs[index]), None, 0))).boxed()
+        (0..inputs.len())
+            .prop_map(move |index| Rc::new(Terminal(ustr(&inputs[index]), None, 0)))
+            .boxed()
     }
 
     fn arb_nonterminal(nonterminals: Rc<Vec<Ustr>>) -> BoxedStrategy<Rc<Expr>> {
-        (0..nonterminals.len()).prop_map(move |index| Rc::new(Nonterminal(ustr(&nonterminals[index]), 0, ChicSpan::dummy()))).boxed()
+        (0..nonterminals.len())
+            .prop_map(move |index| {
+                Rc::new(Nonterminal(
+                    ustr(&nonterminals[index]),
+                    0,
+                    ChicSpan::dummy(),
+                ))
+            })
+            .boxed()
     }
 
-    fn arb_optional(inputs: Rc<Vec<Ustr>>, nonterminals: Rc<Vec<Ustr>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Rc<Expr>> {
-        arb_expr(inputs, nonterminals, remaining_depth-1, max_width).prop_map(|e| Rc::new(Optional(e))).boxed()
+    fn arb_optional(
+        inputs: Rc<Vec<Ustr>>,
+        nonterminals: Rc<Vec<Ustr>>,
+        remaining_depth: usize,
+        max_width: usize,
+    ) -> BoxedStrategy<Rc<Expr>> {
+        arb_expr(inputs, nonterminals, remaining_depth - 1, max_width)
+            .prop_map(|e| Rc::new(Optional(e)))
+            .boxed()
     }
 
-    fn arb_many1(inputs: Rc<Vec<Ustr>>, nonterminals: Rc<Vec<Ustr>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Rc<Expr>> {
-        arb_expr(inputs, nonterminals, remaining_depth-1, max_width).prop_map(|e| Rc::new(Many1(e))).boxed()
+    fn arb_many1(
+        inputs: Rc<Vec<Ustr>>,
+        nonterminals: Rc<Vec<Ustr>>,
+        remaining_depth: usize,
+        max_width: usize,
+    ) -> BoxedStrategy<Rc<Expr>> {
+        arb_expr(inputs, nonterminals, remaining_depth - 1, max_width)
+            .prop_map(|e| Rc::new(Many1(e)))
+            .boxed()
     }
 
-    fn arb_sequence(inputs: Rc<Vec<Ustr>>, nonterminals: Rc<Vec<Ustr>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Rc<Expr>> {
-        (2..max_width).prop_flat_map(move |width| {
-            let e = arb_expr(inputs.clone(), nonterminals.clone(), remaining_depth-1, max_width);
-            prop::collection::vec(e, width).prop_map(|v| Rc::new(Sequence(v)))
-        }).boxed()
+    fn arb_sequence(
+        inputs: Rc<Vec<Ustr>>,
+        nonterminals: Rc<Vec<Ustr>>,
+        remaining_depth: usize,
+        max_width: usize,
+    ) -> BoxedStrategy<Rc<Expr>> {
+        (2..max_width)
+            .prop_flat_map(move |width| {
+                let e = arb_expr(
+                    inputs.clone(),
+                    nonterminals.clone(),
+                    remaining_depth - 1,
+                    max_width,
+                );
+                prop::collection::vec(e, width).prop_map(|v| Rc::new(Sequence(v)))
+            })
+            .boxed()
     }
 
-    fn arb_alternative(inputs: Rc<Vec<Ustr>>, nonterminals: Rc<Vec<Ustr>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Rc<Expr>> {
-        (2..max_width).prop_flat_map(move |width| {
-            let e = arb_expr(inputs.clone(), nonterminals.clone(), remaining_depth-1, max_width);
-            prop::collection::vec(e, width).prop_map(|v| Rc::new(Alternative(v)))
-        }).boxed()
+    fn arb_alternative(
+        inputs: Rc<Vec<Ustr>>,
+        nonterminals: Rc<Vec<Ustr>>,
+        remaining_depth: usize,
+        max_width: usize,
+    ) -> BoxedStrategy<Rc<Expr>> {
+        (2..max_width)
+            .prop_flat_map(move |width| {
+                let e = arb_expr(
+                    inputs.clone(),
+                    nonterminals.clone(),
+                    remaining_depth - 1,
+                    max_width,
+                );
+                prop::collection::vec(e, width).prop_map(|v| Rc::new(Alternative(v)))
+            })
+            .boxed()
     }
 
-    pub fn arb_expr(inputs: Rc<Vec<Ustr>>, nonterminals: Rc<Vec<Ustr>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<Rc<Expr>> {
+    pub fn arb_expr(
+        inputs: Rc<Vec<Ustr>>,
+        nonterminals: Rc<Vec<Ustr>>,
+        remaining_depth: usize,
+        max_width: usize,
+    ) -> BoxedStrategy<Rc<Expr>> {
         if remaining_depth <= 1 {
             prop_oneof![
                 arb_literal(Rc::clone(&inputs)),
                 arb_nonterminal(nonterminals),
-            ].boxed()
-        }
-        else {
+            ]
+            .boxed()
+        } else {
             prop_oneof![
                 arb_literal(inputs.clone()),
                 arb_nonterminal(nonterminals.clone()),
-                arb_optional(inputs.clone(), nonterminals.clone(), remaining_depth, max_width),
-                arb_many1(inputs.clone(), nonterminals.clone(), remaining_depth, max_width),
-                arb_sequence(inputs.clone(), nonterminals.clone(), remaining_depth, max_width),
+                arb_optional(
+                    inputs.clone(),
+                    nonterminals.clone(),
+                    remaining_depth,
+                    max_width
+                ),
+                arb_many1(
+                    inputs.clone(),
+                    nonterminals.clone(),
+                    remaining_depth,
+                    max_width
+                ),
+                arb_sequence(
+                    inputs.clone(),
+                    nonterminals.clone(),
+                    remaining_depth,
+                    max_width
+                ),
                 arb_alternative(inputs, nonterminals, remaining_depth, max_width),
-            ].boxed()
+            ]
+            .boxed()
         }
     }
 
@@ -1596,38 +1861,40 @@ pub mod tests {
                 do_arb_match(Rc::clone(e), rng, max_width, &mut out);
                 let joined = out.into_iter().join("");
                 output.push(ustr(&joined));
-            },
+            }
             Nonterminal(..) => output.push(ustr("anything")),
             Command(..) => output.push(ustr("anything")),
             Sequence(v) => {
                 for subexpr in v {
                     do_arb_match(Rc::clone(&subexpr), rng, max_width, output);
                 }
-            },
+            }
             Alternative(v) => {
-                let chosen_alternative = usize::try_from(rng.next_u64().rem(u64::try_from(v.len()).unwrap())).unwrap();
+                let chosen_alternative =
+                    usize::try_from(rng.next_u64().rem(u64::try_from(v.len()).unwrap())).unwrap();
                 do_arb_match(Rc::clone(&v[chosen_alternative]), rng, max_width, output);
-            },
+            }
             Optional(subexpr) => {
                 if rng.next_u64() % 2 == 0 {
                     do_arb_match(Rc::clone(&subexpr), rng, max_width, output);
                 }
-            },
+            }
             Many1(subexpr) => {
                 let n = rng.next_u64();
                 let chosen_len = n % u64::try_from(max_width).unwrap() + 1;
                 for _ in 0..chosen_len {
                     do_arb_match(Rc::clone(&subexpr), rng, max_width, output);
                 }
-            },
+            }
             DistributiveDescription(subexpr, description) => {
                 do_arb_match(Rc::clone(&subexpr), rng, max_width, output);
                 output.push(ustr(&format!(r#""{description}""#)));
-            },
+            }
             Fallback(v) => {
-                let chosen_alternative = usize::try_from(rng.next_u64().rem(u64::try_from(v.len()).unwrap())).unwrap();
+                let chosen_alternative =
+                    usize::try_from(rng.next_u64().rem(u64::try_from(v.len()).unwrap())).unwrap();
                 do_arb_match(Rc::clone(&v[chosen_alternative]), rng, max_width, output);
-            },
+            }
         }
     }
 
@@ -1638,8 +1905,15 @@ pub mod tests {
     }
 
     // Produce an arbitrary sequence matching `e`.
-    pub fn arb_expr_match(inputs: Rc<Vec<Ustr>>, nonterminals: Rc<Vec<Ustr>>, remaining_depth: usize, max_width: usize) -> BoxedStrategy<(Rc<Expr>, Vec<Ustr>)> {
-        arb_expr(inputs, nonterminals, remaining_depth, max_width).prop_perturb(move |e, rng| arb_match(e, rng, max_width)).boxed()
+    pub fn arb_expr_match(
+        inputs: Rc<Vec<Ustr>>,
+        nonterminals: Rc<Vec<Ustr>>,
+        remaining_depth: usize,
+        max_width: usize,
+    ) -> BoxedStrategy<(Rc<Expr>, Vec<Ustr>)> {
+        arb_expr(inputs, nonterminals, remaining_depth, max_width)
+            .prop_perturb(move |e, rng| arb_match(e, rng, max_width))
+            .boxed()
     }
 
     #[test]
@@ -1647,7 +1921,16 @@ pub mod tests {
         const INPUT: &str = r#"--color=<WHEN>"#;
         let (s, e) = subword_sequence_expr(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
-        assert_eq!(e, Expr::Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="), None, 0)), Rc::new(Nonterminal(ustr("WHEN"), 0, ChicSpan::dummy()))]))), 0));
+        assert_eq!(
+            e,
+            Expr::Subword(
+                SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
+                    Rc::new(Terminal(ustr("--color="), None, 0)),
+                    Rc::new(Nonterminal(ustr("WHEN"), 0, ChicSpan::dummy()))
+                ]))),
+                0
+            )
+        );
     }
 
     #[test]
@@ -1655,20 +1938,45 @@ pub mod tests {
         const INPUT: &str = r#"--color=<WHEN> "use markers to highlight the matching strings""#;
         let (s, e) = expr(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
-        assert_eq!(e, DistributiveDescription(Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="), None, 0)), Rc::new(Nonterminal(ustr("WHEN"), 0, ChicSpan::dummy()))]))), 0)), ustr("use markers to highlight the matching strings")));
+        assert_eq!(
+            e,
+            DistributiveDescription(
+                Rc::new(Subword(
+                    SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
+                        Rc::new(Terminal(ustr("--color="), None, 0)),
+                        Rc::new(Nonterminal(ustr("WHEN"), 0, ChicSpan::dummy()))
+                    ]))),
+                    0
+                )),
+                ustr("use markers to highlight the matching strings")
+            )
+        );
     }
-
 
     #[test]
     fn parses_option_argument_alternative_description_expr() {
-        const INPUT: &str = r#"(--color=<WHEN> | --color <WHEN>) "use markers to highlight the matching strings""#;
+        const INPUT: &str =
+            r#"(--color=<WHEN> | --color <WHEN>) "use markers to highlight the matching strings""#;
         let (s, e) = expr(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
-        assert_eq!(e,
-            DistributiveDescription(Rc::new(Alternative(vec![
-                        Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="), None, 0)), Rc::new(Nonterminal(ustr("WHEN"), 0, ChicSpan::dummy()))]))), 0)),
-                        Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color"), None, 0)), Rc::new(Nonterminal(ustr("WHEN"), 0, ChicSpan::dummy()))]))
-            ])), ustr("use markers to highlight the matching strings"))
+        assert_eq!(
+            e,
+            DistributiveDescription(
+                Rc::new(Alternative(vec![
+                    Rc::new(Subword(
+                        SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
+                            Rc::new(Terminal(ustr("--color="), None, 0)),
+                            Rc::new(Nonterminal(ustr("WHEN"), 0, ChicSpan::dummy()))
+                        ]))),
+                        0
+                    )),
+                    Rc::new(Sequence(vec![
+                        Rc::new(Terminal(ustr("--color"), None, 0)),
+                        Rc::new(Nonterminal(ustr("WHEN"), 0, ChicSpan::dummy()))
+                    ]))
+                ])),
+                ustr("use markers to highlight the matching strings")
+            )
         );
     }
 
@@ -1717,7 +2025,9 @@ pub mod tests {
         const INPUT: &str = "{{{ rad patch list | awk '{print $3}' | grep . | grep -vw ID }}}";
         let (s, e) = command_expr(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
-        assert!(matches!(dbg!(e), Command(s, 0, ..) if s == "rad patch list | awk '{print $3}' | grep . | grep -vw ID"));
+        assert!(
+            matches!(dbg!(e), Command(s, 0, ..) if s == "rad patch list | awk '{print $3}' | grep . | grep -vw ID")
+        );
     }
 
     #[test]
@@ -1725,7 +2035,10 @@ pub mod tests {
         const INPUT: &str = "[<foo>]";
         let (s, e) = expr(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
-        assert_eq!(e, Optional(Rc::new(Nonterminal(u("foo"), 0, ChicSpan::dummy()))));
+        assert_eq!(
+            e,
+            Optional(Rc::new(Nonterminal(u("foo"), 0, ChicSpan::dummy())))
+        );
     }
 
     #[test]
@@ -1733,7 +2046,10 @@ pub mod tests {
         const INPUT: &str = "<foo>...";
         let (s, e) = expr(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
-        assert_eq!(e, Many1(Rc::new(Nonterminal(u("foo"), 0, ChicSpan::dummy()))));
+        assert_eq!(
+            e,
+            Many1(Rc::new(Nonterminal(u("foo"), 0, ChicSpan::dummy())))
+        );
     }
 
     #[test]
@@ -1758,7 +2074,10 @@ pub mod tests {
         assert_eq!(
             e,
             Alternative(vec![
-                Rc::new(Sequence(vec![Rc::new(Terminal(u("a"), None, 0)), Rc::new(Terminal(u("b"), None, 0))])),
+                Rc::new(Sequence(vec![
+                    Rc::new(Terminal(u("a"), None, 0)),
+                    Rc::new(Terminal(u("b"), None, 0))
+                ])),
                 Rc::new(Terminal(u("c"), None, 0))
             ])
         );
@@ -1773,7 +2092,10 @@ pub mod tests {
             e,
             Sequence(vec![
                 Rc::new(Terminal(u("a"), None, 0)),
-                Rc::new(Alternative(vec![Rc::new(Terminal(u("b"), None, 0)), Rc::new(Terminal(u("c"), None, 0))])),
+                Rc::new(Alternative(vec![
+                    Rc::new(Terminal(u("b"), None, 0)),
+                    Rc::new(Terminal(u("c"), None, 0))
+                ])),
             ])
         );
     }
@@ -1803,8 +2125,14 @@ foo baz;
             g,
             Grammar {
                 statements: vec![
-                    Statement::CallVariant { head: u("foo"), expr: Rc::new(Terminal(u("bar"), None, 0)) },
-                    Statement::CallVariant { head: u("foo"), expr: Rc::new(Terminal(u("baz"), None, 0)) }
+                    Statement::CallVariant {
+                        head: u("foo"),
+                        expr: Rc::new(Terminal(u("bar"), None, 0))
+                    },
+                    Statement::CallVariant {
+                        head: u("foo"),
+                        expr: Rc::new(Terminal(u("baz"), None, 0))
+                    }
                 ],
             }
         );
@@ -1817,20 +2145,26 @@ foo baz;
         let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(
             g.statements,
-            vec![
-                Statement::CallVariant { head: u("darcs"), expr: Rc::new(Sequence(vec![
+            vec![Statement::CallVariant {
+                head: u("darcs"),
+                expr: Rc::new(Sequence(vec![
                     Rc::new(Terminal(u("help"), None, 0)),
                     Rc::new(Many1(Rc::new(Alternative(vec![
-                        Rc::new(Alternative(vec![Rc::new(Terminal(u("-v"), None, 0)), Rc::new(Terminal(u("--verbose"), None, 0))])),
-                        Rc::new(Alternative(vec![Rc::new(Terminal(u("-q"), None, 0)), Rc::new(Terminal(u("--quiet"), None, 0))])),
+                        Rc::new(Alternative(vec![
+                            Rc::new(Terminal(u("-v"), None, 0)),
+                            Rc::new(Terminal(u("--verbose"), None, 0))
+                        ])),
+                        Rc::new(Alternative(vec![
+                            Rc::new(Terminal(u("-q"), None, 0)),
+                            Rc::new(Terminal(u("--quiet"), None, 0))
+                        ])),
                     ],)),)),
                     Rc::new(Optional(Rc::new(Sequence(vec![
                         Rc::new(Nonterminal(u("DARCS_COMMAND"), 0, ChicSpan::dummy())),
                         Rc::new(Optional(Rc::new(Terminal(u("DARCS_SUBCOMMAND"), None, 0)))),
                     ])))),
-                ])) },
-            ],
-
+                ]))
+            },],
         );
     }
 
@@ -1886,12 +2220,39 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
         assert_eq!(
             g.statements,
             [
-                Statement::CallVariant { head: u("grep"), expr: Rc::new(Sequence(vec![
-                    Rc::new(Many1(Rc::new(Optional(Rc::new(Nonterminal(ustr("OPTION"), 0, ChicSpan::dummy())))))),
-                    Rc::new(Nonterminal(ustr("PATTERNS"), 0, ChicSpan::dummy())), Rc::new(Many1(Rc::new(Optional(Rc::new(Nonterminal(ustr("FILE"), 0, ChicSpan::dummy())))))),
-                ])) },
-                Statement::NonterminalDefinition { symbol: u("OPTION"), shell: None, expr: Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color"), None, 0)), Rc::new(Nonterminal(ustr("WHEN"), 0, ChicSpan::dummy()))])) },
-                Statement::NonterminalDefinition { symbol: u("WHEN"), shell: None, expr: Rc::new(Alternative(vec![Rc::new(Terminal(ustr("always"), None, 0)), Rc::new(Terminal(ustr("never"), None, 0)), Rc::new(Terminal(ustr("auto"), None, 0))])) },
+                Statement::CallVariant {
+                    head: u("grep"),
+                    expr: Rc::new(Sequence(vec![
+                        Rc::new(Many1(Rc::new(Optional(Rc::new(Nonterminal(
+                            ustr("OPTION"),
+                            0,
+                            ChicSpan::dummy()
+                        )))))),
+                        Rc::new(Nonterminal(ustr("PATTERNS"), 0, ChicSpan::dummy())),
+                        Rc::new(Many1(Rc::new(Optional(Rc::new(Nonterminal(
+                            ustr("FILE"),
+                            0,
+                            ChicSpan::dummy()
+                        )))))),
+                    ]))
+                },
+                Statement::NonterminalDefinition {
+                    symbol: u("OPTION"),
+                    shell: None,
+                    expr: Rc::new(Sequence(vec![
+                        Rc::new(Terminal(ustr("--color"), None, 0)),
+                        Rc::new(Nonterminal(ustr("WHEN"), 0, ChicSpan::dummy()))
+                    ]))
+                },
+                Statement::NonterminalDefinition {
+                    symbol: u("WHEN"),
+                    shell: None,
+                    expr: Rc::new(Alternative(vec![
+                        Rc::new(Terminal(ustr("always"), None, 0)),
+                        Rc::new(Terminal(ustr("never"), None, 0)),
+                        Rc::new(Terminal(ustr("auto"), None, 0))
+                    ]))
+                },
             ],
         );
     }
@@ -1919,14 +2280,16 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
         assert_eq!(
             g,
             Grammar {
-                statements: vec![
-                    Statement::NonterminalDefinition { symbol: u("OPTION"), shell: None, expr: Rc::new(Alternative(vec![
+                statements: vec![Statement::NonterminalDefinition {
+                    symbol: u("OPTION"),
+                    shell: None,
+                    expr: Rc::new(Alternative(vec![
                         Rc::new(Terminal(u("--extended-regexp"), None, 0)),
                         Rc::new(Terminal(u("--fixed-strings"), None, 0)),
                         Rc::new(Terminal(u("--basic-regexp"), None, 0)),
                         Rc::new(Terminal(u("--perl-regexp"), None, 0)),
-                    ]))},
-                ],
+                    ]))
+                },],
             }
         );
     }
@@ -1934,29 +2297,65 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
     #[test]
     fn nonterminal_resolution_order_detects_trivial_cycle() {
         let nonterminal_definitions = UstrMap::from_iter([
-            (u("FOO"), Rc::new(Nonterminal(u("BAR"), 0, ChicSpan::dummy()))),
-            (u("BAR"), Rc::new(Nonterminal(u("FOO"), 0, ChicSpan::dummy()))),
+            (
+                u("FOO"),
+                Rc::new(Nonterminal(u("BAR"), 0, ChicSpan::dummy())),
+            ),
+            (
+                u("BAR"),
+                Rc::new(Nonterminal(u("FOO"), 0, ChicSpan::dummy())),
+            ),
         ]);
-        assert!(matches!(get_nonterminals_resolution_order(&nonterminal_definitions), Err(Error::NonterminalDefinitionsCycle(None))));
+        assert!(matches!(
+            get_nonterminals_resolution_order(&nonterminal_definitions),
+            Err(Error::NonterminalDefinitionsCycle(None))
+        ));
     }
 
     #[test]
     fn nonterminal_resolution_order_detects_simple_cycle() {
         let nonterminal_definitions = UstrMap::from_iter([
-            (u("FOO"), Rc::new(Nonterminal(u("BAR"), 0, ChicSpan::dummy()))),
-            (u("BAR"), Rc::new(Nonterminal(u("BAR"), 0, ChicSpan::dummy()))),
+            (
+                u("FOO"),
+                Rc::new(Nonterminal(u("BAR"), 0, ChicSpan::dummy())),
+            ),
+            (
+                u("BAR"),
+                Rc::new(Nonterminal(u("BAR"), 0, ChicSpan::dummy())),
+            ),
         ]);
-        assert!(matches!(&get_nonterminals_resolution_order(&nonterminal_definitions), Err(Error::NonterminalDefinitionsCycle(Some(path))) if path == &[u("BAR"), u("BAR")]));
+        assert!(
+            matches!(&get_nonterminals_resolution_order(&nonterminal_definitions), Err(Error::NonterminalDefinitionsCycle(Some(path))) if path == &[u("BAR"), u("BAR")])
+        );
     }
 
     #[test]
     fn computes_nonterminals_resolution_order() {
         let nonterminal_definitions = UstrMap::from_iter([
-            (u("WHEN"), Rc::new(Alternative(vec![Rc::new(Terminal(u("always"), None, 0)), Rc::new(Terminal(u("never"), None, 0)), Rc::new(Terminal(u("auto"), None, 0))]))),
-            (u("FOO"), Rc::new(Nonterminal(u("WHEN"), 0, ChicSpan::dummy()))),
-            (u("OPTION"), Rc::new(Sequence(vec![Rc::new(Terminal(u("--color"), None, 0)), Rc::new(Nonterminal(u("FOO"), 0, ChicSpan::dummy()))]))),
+            (
+                u("WHEN"),
+                Rc::new(Alternative(vec![
+                    Rc::new(Terminal(u("always"), None, 0)),
+                    Rc::new(Terminal(u("never"), None, 0)),
+                    Rc::new(Terminal(u("auto"), None, 0)),
+                ])),
+            ),
+            (
+                u("FOO"),
+                Rc::new(Nonterminal(u("WHEN"), 0, ChicSpan::dummy())),
+            ),
+            (
+                u("OPTION"),
+                Rc::new(Sequence(vec![
+                    Rc::new(Terminal(u("--color"), None, 0)),
+                    Rc::new(Nonterminal(u("FOO"), 0, ChicSpan::dummy())),
+                ])),
+            ),
         ]);
-        assert_eq!(get_nonterminals_resolution_order(&nonterminal_definitions).unwrap(), vec![u("FOO"), u("OPTION")]);
+        assert_eq!(
+            get_nonterminals_resolution_order(&nonterminal_definitions).unwrap(),
+            vec![u("FOO"), u("OPTION")]
+        );
     }
 
     #[test]
@@ -1971,9 +2370,27 @@ cargo [+{{{ rustup toolchain list | cut -d' ' -f1 }}}] [<OPTIONS>] [<COMMAND>];
             Statement::CallVariant {
                 head: ustr("cargo"),
                 expr: Rc::new(Sequence(vec![
-                    Rc::new(Optional(Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("+"), None, 0)), Rc::new(Command(ustr("rustup toolchain list | cut -d' ' -f1"), 0, ChicSpan::dummy()))]))), 0)))),
-                    Rc::new(Optional(Rc::new(Nonterminal(ustr("OPTIONS"), 0, ChicSpan::dummy())))),
-                    Rc::new(Optional(Rc::new(Nonterminal(ustr("COMMAND"), 0, ChicSpan::dummy())))),
+                    Rc::new(Optional(Rc::new(Subword(
+                        SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
+                            Rc::new(Terminal(ustr("+"), None, 0)),
+                            Rc::new(Command(
+                                ustr("rustup toolchain list | cut -d' ' -f1"),
+                                0,
+                                ChicSpan::dummy()
+                            ))
+                        ]))),
+                        0
+                    )))),
+                    Rc::new(Optional(Rc::new(Nonterminal(
+                        ustr("OPTIONS"),
+                        0,
+                        ChicSpan::dummy()
+                    )))),
+                    Rc::new(Optional(Rc::new(Nonterminal(
+                        ustr("COMMAND"),
+                        0,
+                        ChicSpan::dummy()
+                    )))),
                 ])),
             }
         );
@@ -1991,10 +2408,26 @@ grep --color=<WHEN> --version;
             [
                 Statement::CallVariant {
                     head: ustr("grep"),
-                    expr: Rc::new(Sequence(vec![Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="), None, 0)),Rc::new(Nonterminal(ustr("WHEN"), 0, ChicSpan::dummy()))]))), 0)),Rc::new(Terminal(ustr("--version"), None, 0))])),
+                    expr: Rc::new(Sequence(vec![
+                        Rc::new(Subword(
+                            SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
+                                Rc::new(Terminal(ustr("--color="), None, 0)),
+                                Rc::new(Nonterminal(ustr("WHEN"), 0, ChicSpan::dummy()))
+                            ]))),
+                            0
+                        )),
+                        Rc::new(Terminal(ustr("--version"), None, 0))
+                    ])),
                 },
-
-                Statement::NonterminalDefinition { symbol: ustr("WHEN"), shell: None, expr: Rc::new(Alternative(vec![Rc::new(Terminal(ustr("always"), None, 0)), Rc::new(Terminal(ustr("never"), None, 0)), Rc::new(Terminal(ustr("auto"), None, 0))])) },
+                Statement::NonterminalDefinition {
+                    symbol: ustr("WHEN"),
+                    shell: None,
+                    expr: Rc::new(Alternative(vec![
+                        Rc::new(Terminal(ustr("always"), None, 0)),
+                        Rc::new(Terminal(ustr("never"), None, 0)),
+                        Rc::new(Terminal(ustr("auto"), None, 0))
+                    ]))
+                },
             ],
         );
     }
@@ -2007,12 +2440,20 @@ grep --color=(always | never | auto);
         let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(
             g.statements,
-            [
-                Statement::CallVariant {
-                    head: ustr("grep"),
-                    expr: Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="), None, 0)), Rc::new(Alternative(vec![Rc::new(Terminal(ustr("always"), None, 0)), Rc::new(Terminal(ustr("never"), None, 0)), Rc::new(Terminal(ustr("auto"), None, 0))]))]))), 0)),
-                },
-            ],
+            [Statement::CallVariant {
+                head: ustr("grep"),
+                expr: Rc::new(Subword(
+                    SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
+                        Rc::new(Terminal(ustr("--color="), None, 0)),
+                        Rc::new(Alternative(vec![
+                            Rc::new(Terminal(ustr("always"), None, 0)),
+                            Rc::new(Terminal(ustr("never"), None, 0)),
+                            Rc::new(Terminal(ustr("auto"), None, 0))
+                        ]))
+                    ]))),
+                    0
+                )),
+            },],
         );
     }
 
@@ -2027,27 +2468,64 @@ strace -e <EXPR>;
 "#;
         let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements.len(), 4);
-        assert_eq!(g.statements[0], CallVariant {
-            head: ustr("strace"),
-            expr: Rc::new(Sequence(vec![Rc::new(Terminal(ustr("-e"), None, 0)), Rc::new(Nonterminal(ustr("EXPR"), 0, ChicSpan::dummy()))])),
-        });
-        assert_eq!(g.statements[1], NonterminalDefinition {
-            symbol: ustr("EXPR"),
-            shell: None,
-            expr: Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Nonterminal(ustr("qualifier"), 0, ChicSpan::dummy())), Rc::new(Terminal(ustr("="), None, 0))])))), Rc::new(Optional(Rc::new(Terminal(ustr("!"), None, 0)))), Rc::new(Nonterminal(ustr("value"), 0, ChicSpan::dummy())), Rc::new(Many1(Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Terminal(ustr(","), None, 0)), Rc::new(Nonterminal(ustr("value"), 0, ChicSpan::dummy()))]))))))]))), 0)),
-        });
-        assert_eq!(g.statements[2], NonterminalDefinition {
-            symbol: ustr("qualifier"),
-            shell: None,
-            expr: Rc::new(Alternative(vec![Rc::new(Terminal(ustr("trace"), None, 0)), Rc::new(Terminal(ustr("read"), None, 0)), Rc::new(Terminal(ustr("write"), None, 0)), Rc::new(Terminal(ustr("fault"), None, 0))])),
-        });
-        assert_eq!(g.statements[3], NonterminalDefinition {
-            symbol: ustr("value"),
-            shell: None,
-            expr: Rc::new(Alternative(vec![Rc::new(Terminal(ustr("%file"), None, 0)), Rc::new(Terminal(ustr("file"), None, 0)), Rc::new(Terminal(ustr("all"), None, 0))])),
-        });
+        assert_eq!(
+            g.statements[0],
+            CallVariant {
+                head: ustr("strace"),
+                expr: Rc::new(Sequence(vec![
+                    Rc::new(Terminal(ustr("-e"), None, 0)),
+                    Rc::new(Nonterminal(ustr("EXPR"), 0, ChicSpan::dummy()))
+                ])),
+            }
+        );
+        assert_eq!(
+            g.statements[1],
+            NonterminalDefinition {
+                symbol: ustr("EXPR"),
+                shell: None,
+                expr: Rc::new(Subword(
+                    SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
+                        Rc::new(Optional(Rc::new(Sequence(vec![
+                            Rc::new(Nonterminal(ustr("qualifier"), 0, ChicSpan::dummy())),
+                            Rc::new(Terminal(ustr("="), None, 0))
+                        ])))),
+                        Rc::new(Optional(Rc::new(Terminal(ustr("!"), None, 0)))),
+                        Rc::new(Nonterminal(ustr("value"), 0, ChicSpan::dummy())),
+                        Rc::new(Many1(Rc::new(Optional(Rc::new(Sequence(vec![
+                            Rc::new(Terminal(ustr(","), None, 0)),
+                            Rc::new(Nonterminal(ustr("value"), 0, ChicSpan::dummy()))
+                        ]))))))
+                    ]))),
+                    0
+                )),
+            }
+        );
+        assert_eq!(
+            g.statements[2],
+            NonterminalDefinition {
+                symbol: ustr("qualifier"),
+                shell: None,
+                expr: Rc::new(Alternative(vec![
+                    Rc::new(Terminal(ustr("trace"), None, 0)),
+                    Rc::new(Terminal(ustr("read"), None, 0)),
+                    Rc::new(Terminal(ustr("write"), None, 0)),
+                    Rc::new(Terminal(ustr("fault"), None, 0))
+                ])),
+            }
+        );
+        assert_eq!(
+            g.statements[3],
+            NonterminalDefinition {
+                symbol: ustr("value"),
+                shell: None,
+                expr: Rc::new(Alternative(vec![
+                    Rc::new(Terminal(ustr("%file"), None, 0)),
+                    Rc::new(Terminal(ustr("file"), None, 0)),
+                    Rc::new(Terminal(ustr("all"), None, 0))
+                ])),
+            }
+        );
     }
-
 
     #[test]
     fn parses_lsof_filter_grammar() {
@@ -2060,27 +2538,62 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
 "#;
         let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements.len(), 4);
-        assert_eq!(g.statements[0], CallVariant {
-            head: ustr("lsof"),
-            expr: Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("-s"), None, 0)),Rc::new(Nonterminal(ustr("PROTOCOL"), 0, ChicSpan::dummy())),Rc::new(Terminal(ustr(":"), None, 0)),Rc::new(Nonterminal(ustr("STATE-SPEC"), 0, ChicSpan::dummy())),Rc::new(Many1(Rc::new(Optional(Rc::new(Sequence(vec![Rc::new(Terminal(ustr(","), None, 0)),Rc::new(Nonterminal(ustr("STATE-SPEC"), 0, ChicSpan::dummy()))]))))))]))), 0)),
-        });
-        assert_eq!(g.statements[1], NonterminalDefinition {
-            symbol: ustr("PROTOCOL"),
-            shell: None,
-            expr: Rc::new(Alternative(vec![Rc::new(Terminal(ustr("TCP"), None, 0)), Rc::new(Terminal(ustr("UDP"), None, 0))])),
-        });
-        assert_eq!(g.statements[2], NonterminalDefinition {
-            symbol: ustr("STATE-SPEC"),
-            shell: None,
-            expr: Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Terminal(ustr("^"), None, 0)))), Rc::new(Nonterminal(ustr("STATE"), 0, ChicSpan::dummy()))]))), 0)),
-        });
-        assert_eq!(g.statements[3], NonterminalDefinition {
-            symbol: ustr("STATE"),
-            shell: None,
-            expr: Rc::new(Alternative(vec![Rc::new(Terminal(ustr("LISTEN"), None, 0)), Rc::new(Terminal(ustr("CLOSED"), None, 0))])),
-        });
+        assert_eq!(
+            g.statements[0],
+            CallVariant {
+                head: ustr("lsof"),
+                expr: Rc::new(Subword(
+                    SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
+                        Rc::new(Terminal(ustr("-s"), None, 0)),
+                        Rc::new(Nonterminal(ustr("PROTOCOL"), 0, ChicSpan::dummy())),
+                        Rc::new(Terminal(ustr(":"), None, 0)),
+                        Rc::new(Nonterminal(ustr("STATE-SPEC"), 0, ChicSpan::dummy())),
+                        Rc::new(Many1(Rc::new(Optional(Rc::new(Sequence(vec![
+                            Rc::new(Terminal(ustr(","), None, 0)),
+                            Rc::new(Nonterminal(ustr("STATE-SPEC"), 0, ChicSpan::dummy()))
+                        ]))))))
+                    ]))),
+                    0
+                )),
+            }
+        );
+        assert_eq!(
+            g.statements[1],
+            NonterminalDefinition {
+                symbol: ustr("PROTOCOL"),
+                shell: None,
+                expr: Rc::new(Alternative(vec![
+                    Rc::new(Terminal(ustr("TCP"), None, 0)),
+                    Rc::new(Terminal(ustr("UDP"), None, 0))
+                ])),
+            }
+        );
+        assert_eq!(
+            g.statements[2],
+            NonterminalDefinition {
+                symbol: ustr("STATE-SPEC"),
+                shell: None,
+                expr: Rc::new(Subword(
+                    SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
+                        Rc::new(Optional(Rc::new(Terminal(ustr("^"), None, 0)))),
+                        Rc::new(Nonterminal(ustr("STATE"), 0, ChicSpan::dummy()))
+                    ]))),
+                    0
+                )),
+            }
+        );
+        assert_eq!(
+            g.statements[3],
+            NonterminalDefinition {
+                symbol: ustr("STATE"),
+                shell: None,
+                expr: Rc::new(Alternative(vec![
+                    Rc::new(Terminal(ustr("LISTEN"), None, 0)),
+                    Rc::new(Terminal(ustr("CLOSED"), None, 0))
+                ])),
+            }
+        );
     }
-
 
     #[test]
     fn parses_shell_command_nonterminal_definition() {
@@ -2094,12 +2607,34 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
             vec![
                 Statement::CallVariant {
                     head: u("cargo"),
-                    expr: Rc::new(Sequence(vec![Rc::new(Optional(Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("+"), None, 0)), Rc::new(Nonterminal(ustr("toolchain"), 0, ChicSpan::dummy()))]))), 0)))), Rc::new(Optional(Rc::new(Nonterminal(ustr("OPTIONS"), 0, ChicSpan::dummy())))), Rc::new(Optional(Rc::new(Nonterminal(ustr("COMMAND"), 0, ChicSpan::dummy()))))]))
+                    expr: Rc::new(Sequence(vec![
+                        Rc::new(Optional(Rc::new(Subword(
+                            SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
+                                Rc::new(Terminal(ustr("+"), None, 0)),
+                                Rc::new(Nonterminal(ustr("toolchain"), 0, ChicSpan::dummy()))
+                            ]))),
+                            0
+                        )))),
+                        Rc::new(Optional(Rc::new(Nonterminal(
+                            ustr("OPTIONS"),
+                            0,
+                            ChicSpan::dummy()
+                        )))),
+                        Rc::new(Optional(Rc::new(Nonterminal(
+                            ustr("COMMAND"),
+                            0,
+                            ChicSpan::dummy()
+                        ))))
+                    ]))
                 },
                 Statement::NonterminalDefinition {
                     symbol: u("toolchain"),
                     shell: None,
-                    expr: Rc::new(Command(u("rustup toolchain list | cut -d' ' -f1"), 0, ChicSpan::dummy())),
+                    expr: Rc::new(Command(
+                        u("rustup toolchain list | cut -d' ' -f1"),
+                        0,
+                        ChicSpan::dummy()
+                    )),
                 },
             ],
         );
@@ -2126,7 +2661,14 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
         const INPUT: &str = r#"--extended-regexp "PATTERNS are extended regular expressions""#;
         let (s, e) = expr(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
-        assert_eq!(e, Terminal(ustr("--extended-regexp"), Some(ustr("PATTERNS are extended regular expressions")), 0));
+        assert_eq!(
+            e,
+            Terminal(
+                ustr("--extended-regexp"),
+                Some(ustr("PATTERNS are extended regular expressions")),
+                0
+            )
+        );
     }
 
     #[test]
@@ -2134,7 +2676,17 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
         const INPUT: &str = r#"--context "print NUM lines of output context" <NUM>"#;
         let (s, e) = expr(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
-        assert_eq!(e, Sequence(vec![Rc::new(Terminal(ustr("--context"), Some(ustr("print NUM lines of output context")), 0)), Rc::new(Nonterminal(ustr("NUM"), 0, ChicSpan::dummy()))]));
+        assert_eq!(
+            e,
+            Sequence(vec![
+                Rc::new(Terminal(
+                    ustr("--context"),
+                    Some(ustr("print NUM lines of output context")),
+                    0
+                )),
+                Rc::new(Nonterminal(ustr("NUM"), 0, ChicSpan::dummy()))
+            ])
+        );
     }
 
     #[test]
@@ -2145,9 +2697,14 @@ grep --extended-regexp "PATTERNS are extended regular expressions";
         let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(
             g.statements,
-            vec![
-                Statement::CallVariant { head: u("grep"), expr: Rc::new(Terminal(ustr("--extended-regexp"), Some(ustr("PATTERNS are extended regular expressions")), 0)) }
-            ],
+            vec![Statement::CallVariant {
+                head: u("grep"),
+                expr: Rc::new(Terminal(
+                    ustr("--extended-regexp"),
+                    Some(ustr("PATTERNS are extended regular expressions")),
+                    0
+                ))
+            }],
         );
     }
 
@@ -2159,19 +2716,22 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
 <OPTION> ::= always | never | auto;
 "#;
         let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
-        assert!(matches!(ValidGrammar::from_grammar(g), Err(Error::DuplicateNonterminalDefinition(nonterm, None)) if nonterm == "OPTION"));
+        assert!(
+            matches!(ValidGrammar::from_grammar(g), Err(Error::DuplicateNonterminalDefinition(nonterm, None)) if nonterm == "OPTION")
+        );
     }
 
     #[test]
     fn issue_15() {
         const INPUT: &str = r#"foo.sh [-h] ;"#;
         let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
-        assert_eq!(g.statements, vec![
-            Statement::CallVariant {
+        assert_eq!(
+            g.statements,
+            vec![Statement::CallVariant {
                 head: u("foo.sh"),
                 expr: Rc::new(Optional(Rc::new(Terminal(ustr("-h"), None, 0)))),
-            },
-        ]);
+            },]
+        );
     }
 
     #[test]
@@ -2199,8 +2759,24 @@ ls <FILE>;
                     head: u("ls"),
                     expr: Rc::new(Nonterminal(ustr("FILE"), 0, ChicSpan::dummy())), // should not get expanded because it's specialized
                 },
-                NonterminalDefinition { symbol: ustr("FILE"), shell: Some(ustr("bash")), expr: Rc::new(Command(ustr(r#"compgen -A file "$1""#), 0, ChicSpan::dummy())) },
-                NonterminalDefinition { symbol: ustr("FILE"), shell: Some(ustr("fish")), expr: Rc::new(Command(ustr(r#"__fish_complete_path "$1""#), 0, ChicSpan::dummy())) },
+                NonterminalDefinition {
+                    symbol: ustr("FILE"),
+                    shell: Some(ustr("bash")),
+                    expr: Rc::new(Command(
+                        ustr(r#"compgen -A file "$1""#),
+                        0,
+                        ChicSpan::dummy()
+                    ))
+                },
+                NonterminalDefinition {
+                    symbol: ustr("FILE"),
+                    shell: Some(ustr("fish")),
+                    expr: Rc::new(Command(
+                        ustr(r#"__fish_complete_path "$1""#),
+                        0,
+                        ChicSpan::dummy()
+                    ))
+                },
             ],
         );
         let v = ValidGrammar::from_grammar(g).unwrap();
@@ -2210,14 +2786,39 @@ ls <FILE>;
         assert_eq!(spec.zsh, None);
     }
 
-
     #[test]
     fn distributes_descriptions() {
         const INPUT: &str = r#"mygrep (--color=<WHEN> | --color <WHEN>) "use markers to highlight the matching strings""#;
         let (s, e) = expr(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
         let distributed = distribute_descriptions(Rc::new(e));
-        assert_eq!(distributed, Rc::new(Sequence(vec![Rc::new(Terminal(ustr("mygrep"), None, 0)), Rc::new(Alternative(vec![Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="), Some(ustr("use markers to highlight the matching strings")), 0)), Rc::new(Nonterminal(ustr("WHEN"), 0, ChicSpan::dummy()))]))), 0)), Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color"), Some(ustr("use markers to highlight the matching strings")), 0)), Rc::new(Nonterminal(ustr("WHEN"), 0, ChicSpan::dummy()))]))]))])));
+        assert_eq!(
+            distributed,
+            Rc::new(Sequence(vec![
+                Rc::new(Terminal(ustr("mygrep"), None, 0)),
+                Rc::new(Alternative(vec![
+                    Rc::new(Subword(
+                        SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
+                            Rc::new(Terminal(
+                                ustr("--color="),
+                                Some(ustr("use markers to highlight the matching strings")),
+                                0
+                            )),
+                            Rc::new(Nonterminal(ustr("WHEN"), 0, ChicSpan::dummy()))
+                        ]))),
+                        0
+                    )),
+                    Rc::new(Sequence(vec![
+                        Rc::new(Terminal(
+                            ustr("--color"),
+                            Some(ustr("use markers to highlight the matching strings")),
+                            0
+                        )),
+                        Rc::new(Nonterminal(ustr("WHEN"), 0, ChicSpan::dummy()))
+                    ]))
+                ]))
+            ]))
+        );
     }
 
     #[test]
@@ -2226,7 +2827,36 @@ ls <FILE>;
         let (s, e) = expr(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
         let distributed = distribute_descriptions(Rc::new(e));
-        assert_eq!(distributed, Rc::new(Alternative(vec![Rc::new(Sequence(vec![Rc::new(Terminal(ustr("mygrep"), None, 0)), Rc::new(Terminal(ustr("--help"), None, 0))])), Rc::new(Alternative(vec![Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="), Some(ustr("use markers to highlight the matching strings")), 0)), Rc::new(Nonterminal(ustr("WHEN"), 0, ChicSpan::dummy()))]))), 0)), Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color"), Some(ustr("use markers to highlight the matching strings")), 0)), Rc::new(Nonterminal(ustr("WHEN"), 0, ChicSpan::dummy()))]))]))])));
+        assert_eq!(
+            distributed,
+            Rc::new(Alternative(vec![
+                Rc::new(Sequence(vec![
+                    Rc::new(Terminal(ustr("mygrep"), None, 0)),
+                    Rc::new(Terminal(ustr("--help"), None, 0))
+                ])),
+                Rc::new(Alternative(vec![
+                    Rc::new(Subword(
+                        SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
+                            Rc::new(Terminal(
+                                ustr("--color="),
+                                Some(ustr("use markers to highlight the matching strings")),
+                                0
+                            )),
+                            Rc::new(Nonterminal(ustr("WHEN"), 0, ChicSpan::dummy()))
+                        ]))),
+                        0
+                    )),
+                    Rc::new(Sequence(vec![
+                        Rc::new(Terminal(
+                            ustr("--color"),
+                            Some(ustr("use markers to highlight the matching strings")),
+                            0
+                        )),
+                        Rc::new(Nonterminal(ustr("WHEN"), 0, ChicSpan::dummy()))
+                    ]))
+                ]))
+            ]))
+        );
     }
 
     #[test]
@@ -2235,7 +2865,36 @@ ls <FILE>;
         let (s, e) = expr(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
         let distributed = distribute_descriptions(Rc::new(e));
-        assert_eq!(distributed, Rc::new(Sequence(vec![Rc::new(Terminal(ustr("mygrep"), None, 0)), Rc::new(Alternative(vec![Rc::new(Terminal(ustr("--help"), None, 0)), Rc::new(Alternative(vec![Rc::new(Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color="), Some(ustr("use markers to highlight the matching strings")), 0)), Rc::new(Nonterminal(ustr("WHEN"), 0, ChicSpan::dummy()))]))), 0)), Rc::new(Sequence(vec![Rc::new(Terminal(ustr("--color"), Some(ustr("use markers to highlight the matching strings")), 0)), Rc::new(Nonterminal(ustr("WHEN"), 0, ChicSpan::dummy()))]))]))]))])));
+        assert_eq!(
+            distributed,
+            Rc::new(Sequence(vec![
+                Rc::new(Terminal(ustr("mygrep"), None, 0)),
+                Rc::new(Alternative(vec![
+                    Rc::new(Terminal(ustr("--help"), None, 0)),
+                    Rc::new(Alternative(vec![
+                        Rc::new(Subword(
+                            SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
+                                Rc::new(Terminal(
+                                    ustr("--color="),
+                                    Some(ustr("use markers to highlight the matching strings")),
+                                    0
+                                )),
+                                Rc::new(Nonterminal(ustr("WHEN"), 0, ChicSpan::dummy()))
+                            ]))),
+                            0
+                        )),
+                        Rc::new(Sequence(vec![
+                            Rc::new(Terminal(
+                                ustr("--color"),
+                                Some(ustr("use markers to highlight the matching strings")),
+                                0
+                            )),
+                            Rc::new(Nonterminal(ustr("WHEN"), 0, ChicSpan::dummy()))
+                        ]))
+                    ]))
+                ]))
+            ]))
+        );
     }
 
     #[test]
@@ -2243,7 +2902,16 @@ ls <FILE>;
         const INPUT: &str = r#"cmd (foo || bar)"#;
         let (s, e) = expr(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
-        assert_eq!(e, Sequence(vec![Rc::new(Terminal(ustr("cmd"), None, 0)), Rc::new(Fallback(vec![Rc::new(Terminal(ustr("foo"), None, 0)), Rc::new(Terminal(ustr("bar"), None, 0))]))]));
+        assert_eq!(
+            e,
+            Sequence(vec![
+                Rc::new(Terminal(ustr("cmd"), None, 0)),
+                Rc::new(Fallback(vec![
+                    Rc::new(Terminal(ustr("foo"), None, 0)),
+                    Rc::new(Terminal(ustr("bar"), None, 0))
+                ]))
+            ])
+        );
     }
 
     #[test]
@@ -2251,7 +2919,17 @@ ls <FILE>;
         const INPUT: &str = r#"{{{ git tag }}}..{{{ git tag }}}"#;
         let (s, e) = expr(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
-        assert_eq!(e, Subword(SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![Rc::new(Command(ustr("git tag"), 0, ChicSpan::dummy())), Rc::new(Terminal(ustr(".."), None, 0)), Rc::new(Command(ustr("git tag"), 0, ChicSpan::dummy()))]))), 0));
+        assert_eq!(
+            e,
+            Subword(
+                SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
+                    Rc::new(Command(ustr("git tag"), 0, ChicSpan::dummy())),
+                    Rc::new(Terminal(ustr(".."), None, 0)),
+                    Rc::new(Command(ustr("git tag"), 0, ChicSpan::dummy()))
+                ]))),
+                0
+            )
+        );
     }
 
     fn get_validated_grammar(input: &str) -> Result<ValidGrammar> {
@@ -2261,12 +2939,31 @@ ls <FILE>;
 
     #[test]
     fn detects_commands_at_nontail_position() {
-        assert!(matches!(get_validated_grammar(r#"cmd {{{ git tag }}}..{{{ git tag }}};"#), Err(Error::CommandAtNonTailPosition(..))));
-        assert!(matches!(get_validated_grammar(r#"cmd --option={{{ echo foo }}};"#), Ok(_)));
-        assert!(matches!(get_validated_grammar(r#"cmd {{{ echo foo }}}{{{ echo bar }}};"#), Err(Error::CommandAtNonTailPosition(..))));
+        assert!(matches!(
+            get_validated_grammar(r#"cmd {{{ git tag }}}..{{{ git tag }}};"#),
+            Err(Error::CommandAtNonTailPosition(..))
+        ));
+        assert!(matches!(
+            get_validated_grammar(r#"cmd --option={{{ echo foo }}};"#),
+            Ok(_)
+        ));
+        assert!(matches!(
+            get_validated_grammar(r#"cmd {{{ echo foo }}}{{{ echo bar }}};"#),
+            Err(Error::CommandAtNonTailPosition(..))
+        ));
 
         // https://github.com/adaszko/complgen/issues/49
-        assert!(matches!(get_validated_grammar(r#"build <PLATFORM>-(amd64|arm64); <PLATFORM> ::= {{{ echo foo }}};"#), Err(Error::CommandAtNonTailPosition(..))));
-        assert!(matches!(get_validated_grammar(r#"build <PLATFORM>[-(amd64|arm64)]; <PLATFORM> ::= {{{ echo foo }}};"#), Err(Error::CommandAtNonTailPosition(..))));
+        assert!(matches!(
+            get_validated_grammar(
+                r#"build <PLATFORM>-(amd64|arm64); <PLATFORM> ::= {{{ echo foo }}};"#
+            ),
+            Err(Error::CommandAtNonTailPosition(..))
+        ));
+        assert!(matches!(
+            get_validated_grammar(
+                r#"build <PLATFORM>[-(amd64|arm64)]; <PLATFORM> ::= {{{ echo foo }}};"#
+            ),
+            Err(Error::CommandAtNonTailPosition(..))
+        ));
     }
 }
