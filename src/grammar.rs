@@ -1160,6 +1160,7 @@ fn propagate_fallback_levels(expr: Rc<Expr>) -> Rc<Expr> {
 fn check_subword(
     expr: Rc<Expr>,
     nonterminal_definitions: &UstrMap<Rc<Expr>>,
+    specializations: &UstrMap<Specialization>,
     is_tail: bool,
     overriding_span: Option<&ChicSpan>,
 ) -> Result<()> {
@@ -1177,10 +1178,17 @@ fn check_subword(
             }
         }
         Expr::Nonterminal(nonterm, _, diagnostic_span) => {
+            if !is_tail && specializations.contains_key(nonterm) {
+                return Err(Error::CommandAtNonTailPosition(
+                    *nonterm,
+                    diagnostic_span.clone(),
+                ));
+            }
             if let Some(expr) = nonterminal_definitions.get(nonterm) {
                 check_subword(
                     Rc::clone(&expr),
                     nonterminal_definitions,
+                    specializations,
                     is_tail,
                     Some(diagnostic_span),
                 )?;
@@ -1192,6 +1200,7 @@ fn check_subword(
                 check_subword(
                     Rc::clone(&child),
                     nonterminal_definitions,
+                    specializations,
                     is_tail,
                     overriding_span,
                 )?;
@@ -1203,6 +1212,7 @@ fn check_subword(
                 check_subword(
                     Rc::clone(&child),
                     nonterminal_definitions,
+                    specializations,
                     is_tail,
                     overriding_span,
                 )?;
@@ -1214,6 +1224,7 @@ fn check_subword(
                 check_subword(
                     Rc::clone(&child),
                     nonterminal_definitions,
+                    specializations,
                     is_tail,
                     overriding_span,
                 )?;
@@ -1222,18 +1233,21 @@ fn check_subword(
         Expr::Optional(child) => check_subword(
             Rc::clone(&child),
             nonterminal_definitions,
+            specializations,
             false,
             overriding_span,
         )?,
         Expr::Many1(child) => check_subword(
             Rc::clone(&child),
             nonterminal_definitions,
+            specializations,
             false,
             overriding_span,
         )?,
         Expr::Subword(SubwordCompilationPhase::Expr(expr), ..) => check_subword(
             Rc::clone(&expr),
             nonterminal_definitions,
+            specializations,
             false,
             overriding_span,
         )?,
@@ -1246,6 +1260,7 @@ fn check_subword(
 fn do_ensure_subword_commands_only_at_tail_position(
     expr: Rc<Expr>,
     nonterminal_definitions: &UstrMap<Rc<Expr>>,
+    specializations: &UstrMap<Specialization>,
 ) -> Result<()> {
     match expr.as_ref() {
         Expr::Terminal(..) => {}
@@ -1255,6 +1270,7 @@ fn do_ensure_subword_commands_only_at_tail_position(
                 do_ensure_subword_commands_only_at_tail_position(
                     Rc::clone(&expr),
                     nonterminal_definitions,
+                    specializations,
                 )?;
             }
         }
@@ -1264,6 +1280,7 @@ fn do_ensure_subword_commands_only_at_tail_position(
                 do_ensure_subword_commands_only_at_tail_position(
                     Rc::clone(&child),
                     nonterminal_definitions,
+                    specializations,
                 )?;
             }
         }
@@ -1272,6 +1289,7 @@ fn do_ensure_subword_commands_only_at_tail_position(
                 do_ensure_subword_commands_only_at_tail_position(
                     Rc::clone(&child),
                     nonterminal_definitions,
+                    specializations,
                 )?;
             }
         }
@@ -1280,6 +1298,7 @@ fn do_ensure_subword_commands_only_at_tail_position(
                 do_ensure_subword_commands_only_at_tail_position(
                     Rc::clone(&child),
                     nonterminal_definitions,
+                    specializations,
                 )?;
             }
         }
@@ -1287,16 +1306,24 @@ fn do_ensure_subword_commands_only_at_tail_position(
             do_ensure_subword_commands_only_at_tail_position(
                 Rc::clone(&child),
                 nonterminal_definitions,
+                specializations,
             )?;
         }
         Expr::Many1(child) => {
             do_ensure_subword_commands_only_at_tail_position(
                 Rc::clone(&child),
                 nonterminal_definitions,
+                specializations,
             )?;
         }
         Expr::Subword(SubwordCompilationPhase::Expr(expr), ..) => {
-            check_subword(Rc::clone(&expr), nonterminal_definitions, true, None)?;
+            check_subword(
+                Rc::clone(&expr),
+                nonterminal_definitions,
+                specializations,
+                true,
+                None,
+            )?;
         }
         Expr::Subword(SubwordCompilationPhase::DFA(..), ..) => unreachable!(),
         Expr::DistributiveDescription(..) => unreachable!(),
@@ -1307,6 +1334,7 @@ fn do_ensure_subword_commands_only_at_tail_position(
 fn ensure_subword_commands_only_at_tail_position(
     expr: Rc<Expr>,
     nonterminal_definitions: &UstrMap<Rc<Expr>>,
+    specializations: &UstrMap<Specialization>,
 ) -> Result<()> {
     match expr.as_ref() {
         Expr::Sequence(children) => {
@@ -1314,11 +1342,16 @@ fn ensure_subword_commands_only_at_tail_position(
                 do_ensure_subword_commands_only_at_tail_position(
                     Rc::clone(&child),
                     nonterminal_definitions,
+                    specializations,
                 )?;
             }
         }
         _ => {
-            do_ensure_subword_commands_only_at_tail_position(expr, nonterminal_definitions)?;
+            do_ensure_subword_commands_only_at_tail_position(
+                expr,
+                nonterminal_definitions,
+                specializations,
+            )?;
         }
     }
     Ok(())
@@ -1388,9 +1421,13 @@ impl ValidGrammar {
 
         let expr = distribute_descriptions(expr);
 
-        ensure_subword_commands_only_at_tail_position(Rc::clone(&expr), &nonterminal_definitions)?;
-
         let specializations = make_specializations_map(&grammar.statements)?;
+
+        ensure_subword_commands_only_at_tail_position(
+            Rc::clone(&expr),
+            &nonterminal_definitions,
+            &specializations,
+        )?;
 
         let mut unused_nonterminals: UstrSet = nonterminal_definitions.keys().copied().collect();
 
@@ -2968,8 +3005,12 @@ ls <FILE>;
 
         // https://github.com/adaszko/complgen/issues/53
         assert!(matches!(
-            get_validated_grammar(r#"cmd --option=<CMD>; <CMD@bash> ::= {{{ echo foo }}};"#),
+            get_validated_grammar(r#"cmd <DUMMY>,<DUMMY>; <DUMMY@bash> ::= {{{ echo dummy }}};"#),
             Err(Error::CommandAtNonTailPosition(..))
+        ));
+        assert!(matches!(
+            get_validated_grammar(r#"cmd --option=<FOO>; <FOO@bash> ::= {{{ echo bash }}};"#),
+            Ok(_)
         ));
         assert!(matches!(
             get_validated_grammar(
