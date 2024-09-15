@@ -158,6 +158,21 @@ def test_jit_subword_descriptions(complgen_binary_path: Path):
     ])
 
 
+def test_jit_subword_descriptions_bug(complgen_binary_path: Path):
+    GRAMMAR = r'''
+cmd --binary-files=<TYPE> "assume that binary files are <TYPE>";
+<TYPE> ::= binary "Search binary files but do not print them"
+         | text "Treat all files as text"
+         | without-match "Do not search binary files";
+'''
+    actual = [s.split(maxsplit=3) for s in get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'cmd', prefix='--binary-files=')]
+    assert actual == sorted([
+        ['--binary-files=binary', 'binary', '-- Search binary files but do not print them'],
+        ['--binary-files=text', 'text', '-- Treat all files as text'],
+        ['--binary-files=without-match', 'without-match', '-- Do not search binary files'],
+    ])
+
+
 def test_jit_completes_subword_external_command(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option={{{ echo -e "argument\tdescription" }}};'''
     actual = [s.split() for s in get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'cmd', prefix='--option=')]
@@ -197,6 +212,11 @@ def test_fallback_completion(complgen_binary_path: Path):
 def test_fallbacks_on_no_matches(complgen_binary_path: Path):
     GRAMMAR = r'''cmd (foo || --bar);'''
     assert get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'cmd', prefix='--') == sorted(['--bar'])
+
+
+def test_funky_spec_command_name(complgen_binary_path: Path):
+    GRAMMAR = r'''// <NONTERM>; <NONTERM@zsh> ::= {{{ echo dummy }}};'''
+    assert get_sorted_jit_completions(complgen_binary_path, GRAMMAR, '// ') == sorted(["dummy"])
 
 
 LITERALS_ALPHABET = string.ascii_letters + ':='

@@ -181,6 +181,13 @@ def test_respects_ignore_case_option(complgen_binary_path: Path):
         assert get_sorted_bash_completions(completion_script, input) == sorted(['--case-lower'])
 
 
+def test_funky_spec_command_name(complgen_binary_path: Path):
+    GRAMMAR = r'''// <NONTERM>; <NONTERM@bash> ::= {{{ echo dummy }}};'''
+    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR) as completion_script:
+        input = r'''COMP_WORDS=(//); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(completion_script, input) == sorted(['dummy'])
+
+
 LITERALS_ALPHABET = string.ascii_letters + ':='
 @given(text(LITERALS_ALPHABET, min_size=1))
 @settings(max_examples=10)

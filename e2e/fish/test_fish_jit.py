@@ -112,7 +112,12 @@ def test_fallback_bug1(complgen_binary_path: Path):
     assert get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR, prefix='--') == sorted([('--disable-log-timestamp', '')])
 
 
-LITERALS_ALPHABET = string.ascii_letters + ':='
+def test_funky_spec_command_name(complgen_binary_path: Path):
+    GRAMMAR = r'''// <NONTERM>; <NONTERM@fish> ::= {{{ echo dummy }}};'''
+    assert get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR) == sorted([('dummy', '')])
+
+
+LITERALS_ALPHABET = string.ascii_letters + ':=/'
 @given(text(LITERALS_ALPHABET, min_size=1))
 @settings(max_examples=10, deadline=None)
 def test_handles_special_characters(complgen_binary_path: Path, literal: str):

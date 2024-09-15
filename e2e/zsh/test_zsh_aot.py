@@ -161,6 +161,22 @@ def test_subword_descriptions(complgen_binary_path: Path):
         ['--option=arg2', '--option=arg2', '--', 'descr2'],
     ])
 
+
+def test_subword_descriptions_bug(complgen_binary_path: Path):
+    GRAMMAR = r'''
+cmd --binary-files=<TYPE> "assume that binary files are <TYPE>";
+<TYPE> ::= binary "Search binary files but do not print them"
+         | text "Treat all files as text"
+         | without-match "Do not search binary files";
+'''
+    actual = [s.split(maxsplit=3) for s in get_sorted_aot_completions(complgen_binary_path, GRAMMAR, 'cmd --binary-files=')]
+    assert actual == sorted([
+        ['--binary-files=binary', 'binary', '-- Search binary files but do not print them'],
+        ['--binary-files=text', 'text', '-- Treat all files as text'],
+        ['--binary-files=without-match', 'without-match', '-- Do not search binary files'],
+    ])
+
+
 def test_completes_subword_external_command(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option={{{ echo -e "argument\tdescription" }}};'''
     actual = [s.split() for s in get_sorted_aot_completions(complgen_binary_path, GRAMMAR, 'cmd --option=')]
