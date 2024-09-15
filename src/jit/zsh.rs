@@ -257,7 +257,16 @@ pub fn write_zsh_completion_shell_code<W: Write>(
             let subdfa_id = id_from_dfa.get(subdfa).unwrap();
             writeln!(
                 output,
-                r#"    {} complete {prefix_constant}"#,
+                r#"
+    {} complete {prefix_constant}
+    completions_no_description_trailing_space+=("${{subword_completions_no_description_trailing_space[@]}}")
+    completions_trailing_space+=("${{subword_completions_trailing_space[@]}}")
+    completions_no_trailing_space+=("${{subword_completions_no_trailing_space[@]}}")
+    suffixes_no_trailing_space+=("${{subword_suffixes_no_trailing_space[@]}}")
+    suffixes_trailing_space+=("${{subword_suffixes_trailing_space[@]}}")
+    descriptions_trailing_space+=("${{subword_descriptions_trailing_space[@]}}")
+    descriptions_no_trailing_space+=("${{subword_descriptions_no_trailing_space[@]}}")
+"#,
                 make_subword_fn_name(completed_command, *subdfa_id)
             )?;
         }

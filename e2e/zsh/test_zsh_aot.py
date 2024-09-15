@@ -211,7 +211,7 @@ def test_subword_fallback_bug(complgen_binary_path: Path):
 cmd (--color=<WHEN> || --color <WHEN> | --colour=<WHEN> | --colour <WHEN>);
 <WHEN> ::= always | never | auto;
 '''
-    assert get_sorted_aot_completions(complgen_binary_path, GRAMMAR, 'cmd --colour') == sorted(['--colour', '--colour='])
+    assert get_sorted_aot_completions(complgen_binary_path, GRAMMAR, 'cmd --colour') == sorted(['--colour', '--colour= --colour='])
 
 
 LITERALS_ALPHABET = string.ascii_letters + ':='

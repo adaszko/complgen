@@ -168,8 +168,8 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
     local completed_prefix="${{word:$char_index}}"
 
     local -a matches=()
-    for (( fallback_level=0; fallback_level <= max_fallback_level; fallback_level++ )) {{
-        eval "declare literal_transitions_name=literal_transitions_level_${{fallback_level}}"
+    for (( subword_fallback_level=0; subword_fallback_level <= max_fallback_level; subword_fallback_level++ )) {{
+        eval "declare literal_transitions_name=literal_transitions_level_${{subword_fallback_level}}"
         eval "declare -a transitions=(\${{$literal_transitions_name[$state]}})"
         for literal_id in "${{transitions[@]}}"; do
             local literal=${{literals[$literal_id]}}
@@ -178,7 +178,7 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
             fi
         done
 
-        eval "declare commands_name=commands_level_${{fallback_level}}"
+        eval "declare commands_name=commands_level_${{subword_fallback_level}}"
         eval "declare -a transitions=(\${{$commands_name[$state]}})"
         for command_id in "${{transitions[@]}}"; do
             local completions=()
@@ -188,7 +188,7 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
             done
         done
 
-        eval "declare specialized_commands_name=specialized_commands_level_$fallback_level"
+        eval "declare specialized_commands_name=specialized_commands_level_$subword_fallback_level"
         eval "declare -a transitions=(\${{$specialized_commands_name[$state]}})"
         for command_id in "${{transitions[@]}}"; do
             local completions=()

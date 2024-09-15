@@ -26,6 +26,7 @@ pub fn make_string_constant(s: &str) -> String {
 fn write_lookup_tables<W: Write>(
     buffer: &mut W,
     dfa: &DFA,
+    prefix: &str,
 ) -> Result<HashMap<(Ustr, Ustr), usize>> {
     let all_literals: Vec<(usize, Ustr, Ustr)> = dfa
         .get_all_literals()
@@ -44,20 +45,20 @@ fn write_lookup_tables<W: Write>(
             .map(|(_, literal, _)| make_string_constant(literal)),
         " ",
     );
-    writeln!(buffer, r#"    local -a literals=({literals})"#)?;
+    writeln!(buffer, r#"    local -a {prefix}literals=({literals})"#)?;
     writeln!(buffer)?;
 
-    writeln!(buffer, r#"    local -A descriptions"#)?;
+    writeln!(buffer, r#"    local -A {prefix}descriptions"#)?;
     for (id, _, description) in all_literals.iter() {
         if description.is_empty() {
             continue;
         }
         let quoted = make_string_constant(description);
-        writeln!(buffer, r#"    descriptions[{id}]={quoted}"#)?;
+        writeln!(buffer, r#"    {prefix}descriptions[{id}]={quoted}"#)?;
     }
     writeln!(buffer)?;
 
-    writeln!(buffer, r#"    local -A literal_transitions"#)?;
+    writeln!(buffer, r#"    local -A {prefix}literal_transitions"#)?;
     for state in dfa.get_all_states() {
         let literal_transitions =
             dfa.get_literal_transitions_from(StateId::try_from(state).unwrap());
@@ -83,14 +84,14 @@ fn write_lookup_tables<W: Write>(
         );
         writeln!(
             buffer,
-            r#"    literal_transitions[{}]="({state_transitions})""#,
+            r#"    {prefix}literal_transitions[{}]="({state_transitions})""#,
             state + 1
         )?;
     }
 
     writeln!(buffer)?;
 
-    writeln!(buffer, r#"    local -A match_anything_transitions"#)?;
+    writeln!(buffer, r#"    local -A {prefix}match_anything_transitions"#)?;
     let match_anything_transitions = itertools::join(
         dfa.iter_match_anything_transitions()
             .into_iter()
@@ -99,7 +100,7 @@ fn write_lookup_tables<W: Write>(
     );
     writeln!(
         buffer,
-        r#"    match_anything_transitions=({match_anything_transitions})"#
+        r#"    {prefix}match_anything_transitions=({match_anything_transitions})"#
     )?;
 
     Ok(literal_id_from_input_description)
@@ -127,17 +128,17 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
 
         local subword=${{word:$char_index}}
 
-        if [[ -v "literal_transitions[$state]" ]]; then
+        if [[ -v "subword_literal_transitions[$subword_state]" ]]; then
             declare -A state_transitions
-            eval "state_transitions=${{literal_transitions[$state]}}"
+            eval "state_transitions=${{subword_literal_transitions[$subword_state]}}"
 
             local literal_matched=0
-            for ((literal_id = 1; literal_id <= $#literals; literal_id++)); do
-                local literal=${{literals[$literal_id]}}
+            for ((literal_id = 1; literal_id <= $#subword_literals; literal_id++)); do
+                local literal=${{subword_literals[$literal_id]}}
                 local literal_len=${{#literal}}
                 if [[ ${{subword:0:$literal_len}} = "$literal" ]]; then
                     if [[ -v "state_transitions[$literal_id]" ]]; then
-                        state=${{state_transitions[$literal_id]}}
+                        subword_state=${{state_transitions[$literal_id]}}
                         char_index=$((char_index + literal_len))
                         literal_matched=1
                     fi
@@ -148,8 +149,8 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
             fi
         fi
 
-        if [[ -v "match_anything_transitions[$state]" ]]; then
-            state=${{match_anything_transitions[$state]}}
+        if [[ -v "subword_match_anything_transitions[$subword_state]" ]]; then
+            subword_state=${{subword_match_anything_transitions[$subword_state]}}
             matched=1
             break
         fi
@@ -168,78 +169,86 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
     write!(
         buffer,
         r#"
-   local matched_prefix="${{word:0:$char_index}}"
-   local completed_prefix="${{word:$char_index}}"
+    local matched_prefix="${{word:0:$char_index}}"
+    local completed_prefix="${{word:$char_index}}"
 
-   for (( fallback_level=0; fallback_level <= max_fallback_level; fallback_level++ )) {{
-        declare literal_transitions_name=literal_transitions_level_${{fallback_level}}
-        eval "declare initializer=\${{${{literal_transitions_name}}[$state]}}"
-        eval "declare -a transitions=($initializer)"
-        for literal_id in "${{transitions[@]}}"; do
-            local literal=${{literals[$literal_id]}}
-            if [[ $literal = "${{completed_prefix}}"* ]]; then
-                local completion="$matched_prefix$literal"
-                if [[ -v "descriptions[$literal_id]" ]]; then
-                    completions_no_trailing_space+=("${{completion}}")
-                    suffixes_no_trailing_space+=("${{completion}}")
-                    descriptions_no_trailing_space+=("${{descriptions[$literal_id]}}")
-                else
-                    completions_no_trailing_space+=("${{completion}}")
-                    suffixes_no_trailing_space+=("${{literal}}")
-                    descriptions_no_trailing_space+=('')
-                fi
-            fi
-        done
+    subword_completions_no_description_trailing_space=()
+    subword_completions_trailing_space=()
+    subword_completions_no_trailing_space=()
+    subword_suffixes_trailing_space=()
+    subword_suffixes_no_trailing_space=()
+    subword_descriptions_trailing_space=()
+    subword_descriptions_no_trailing_space=()
 
-        declare commands_name=commands_level_${{fallback_level}}
-        eval "declare initializer=\${{${{commands_name}}[$state]}}"
-        eval "declare -a transitions=($initializer)"
-        for command_id in "${{transitions[@]}}"; do
-            local completions=()
-            local output=$(_{command}_cmd_${{command_id}} "$matched_prefix")
-            local -a command_completions=("${{(@f)output}}")
-            for line in ${{command_completions[@]}}; do
-                if [[ $line = "${{completed_prefix}}"* ]]; then
-                    local parts=(${{(@s:	:)line}})
-                    if [[ -v "parts[2]" ]]; then
-                        local completion=$matched_prefix${{parts[1]}}
-                        completions_trailing_space+=("${{completion}}")
-                        suffixes_trailing_space+=("${{parts[1]}}")
-                        descriptions_trailing_space+=("${{parts[2]}}")
-                    else
-                        line="$matched_prefix$line"
-                        completions_no_description_trailing_space+=("$line")
-                    fi
-                fi
-            done
-        done
+    for (( subword_fallback_level=0; subword_fallback_level <= subword_max_fallback_level; subword_fallback_level++ )) {{
+         declare literal_transitions_name=subword_literal_transitions_level_${{subword_fallback_level}}
+         eval "declare initializer=\${{${{literal_transitions_name}}[$subword_state]}}"
+         eval "declare -a transitions=($initializer)"
+         for literal_id in "${{transitions[@]}}"; do
+             local literal=${{subword_literals[$literal_id]}}
+             if [[ $literal = "${{completed_prefix}}"* ]]; then
+                 local completion="$matched_prefix$literal"
+                 if [[ -v "subword_descriptions[$literal_id]" ]]; then
+                     subword_completions_no_trailing_space+=("${{completion}}")
+                     subword_suffixes_no_trailing_space+=("${{completion}}")
+                     subword_descriptions_no_trailing_space+=("${{subword_descriptions[$literal_id]}}")
+                 else
+                     subword_completions_no_trailing_space+=("${{completion}}")
+                     subword_suffixes_no_trailing_space+=("${{literal}}")
+                     subword_descriptions_no_trailing_space+=('')
+                 fi
+             fi
+         done
 
-        declare specialized_commands_name=specialized_commands_level_${{fallback_level}}
-        eval "declare initializer=\${{${{specialized_commands_name}}[$state]}}"
-        eval "declare -a transitions=($initializer)"
-        for command_id in "${{transitions[@]}}"; do
-            local output=$(_{command}_cmd_${{command_id}} "$matched_prefix")
-            local -a completions=("${{(@f)output}}")
-            for line in ${{completions[@]}}; do
-                if [[ $line = "${{completed_prefix}}"* ]]; then
-                    line="$matched_prefix$line"
-                    local parts=(${{(@s:	:)line}})
-                    if [[ -v "parts[2]" ]]; then
-                        completions_trailing_space+=("${{parts[1]}}")
-                        suffixes_trailing_space+=("${{parts[1]}}")
-                        descriptions_trailing_space+=("${{parts[2]}}")
-                    else
-                        completions_no_description_trailing_space+=("$line")
-                    fi
-                fi
-            done
-        done
+         declare commands_name=subword_commands_level_${{subword_fallback_level}}
+         eval "declare initializer=\${{${{commands_name}}[$subword_state]}}"
+         eval "declare -a transitions=($initializer)"
+         for command_id in "${{transitions[@]}}"; do
+             local completions=()
+             local output=$(_{command}_cmd_${{command_id}} "$matched_prefix")
+             local -a command_completions=("${{(@f)output}}")
+             for line in ${{command_completions[@]}}; do
+                 if [[ $line = "${{completed_prefix}}"* ]]; then
+                     local parts=(${{(@s:	:)line}})
+                     if [[ -v "parts[2]" ]]; then
+                         local completion=$matched_prefix${{parts[1]}}
+                         subword_completions_trailing_space+=("${{completion}}")
+                         subword_suffixes_trailing_space+=("${{parts[1]}}")
+                         subword_descriptions_trailing_space+=("${{parts[2]}}")
+                     else
+                         line="$matched_prefix$line"
+                         subword_completions_no_description_trailing_space+=("$line")
+                     fi
+                 fi
+             done
+         done
 
-        if [[ ${{#completions_no_description_trailing_space}} -gt 0 || ${{#completions_no_description_no_trailing_space}} -gt 0 || ${{#completions_trailing_space}} -gt 0 || ${{#completions_no_trailing_space}} -gt 0 ]]; then
-            break
-        fi
-   }}
-   return 0
+         declare specialized_commands_name=subword_specialized_commands_level_${{subword_fallback_level}}
+         eval "declare initializer=\${{${{specialized_commands_name}}[$subword_state]}}"
+         eval "declare -a transitions=($initializer)"
+         for command_id in "${{transitions[@]}}"; do
+             local output=$(_{command}_cmd_${{command_id}} "$matched_prefix")
+             local -a completions=("${{(@f)output}}")
+             for line in ${{completions[@]}}; do
+                 if [[ $line = "${{completed_prefix}}"* ]]; then
+                     line="$matched_prefix$line"
+                     local parts=(${{(@s:	:)line}})
+                     if [[ -v "parts[2]" ]]; then
+                         subword_completions_trailing_space+=("${{parts[1]}}")
+                         subword_suffixes_trailing_space+=("${{parts[1]}}")
+                         subword_descriptions_trailing_space+=("${{parts[2]}}")
+                     else
+                         subword_completions_no_description_trailing_space+=("$line")
+                     fi
+                 fi
+             done
+         done
+
+         if [[ ${{#subword_completions_no_description_trailing_space}} -gt 0 || ${{#subword_completions_trailing_space}} -gt 0 || ${{#subword_completions_no_trailing_space}} -gt 0 ]]; then
+             break
+         fi
+    }}
+    return 0
 }}
 "#
     )?;
@@ -258,7 +267,7 @@ pub fn write_subword_fn<W: Write>(
 ) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
 
-    let literal_id_from_input_description = write_lookup_tables(buffer, dfa)?;
+    let literal_id_from_input_description = write_lookup_tables(buffer, dfa, "subword_")?;
 
     let max_fallback_level = get_max_fallback_level(dfa).unwrap();
 
@@ -316,7 +325,7 @@ pub fn write_subword_fn<W: Write>(
         );
         writeln!(
             buffer,
-            r#"    declare -A literal_transitions_level_{level}=({initializer})"#
+            r#"    declare -A subword_literal_transitions_level_{level}=({initializer})"#
         )?;
     }
 
@@ -333,7 +342,7 @@ pub fn write_subword_fn<W: Write>(
         );
         writeln!(
             buffer,
-            r#"    declare -A commands_level_{level}=({initializer})"#
+            r#"    declare -A subword_commands_level_{level}=({initializer})"#
         )?;
     }
 
@@ -350,17 +359,17 @@ pub fn write_subword_fn<W: Write>(
         );
         writeln!(
             buffer,
-            r#"    declare -A specialized_commands_level_{level}=({initializer})"#
+            r#"    declare -A subword_specialized_commands_level_{level}=({initializer})"#
         )?;
     }
 
     writeln!(
         buffer,
-        r#"    declare max_fallback_level={max_fallback_level}"#
+        r#"    declare subword_max_fallback_level={max_fallback_level}"#
     )?;
     writeln!(
         buffer,
-        r#"    declare state={starting_state}"#,
+        r#"    declare subword_state={starting_state}"#,
         starting_state = dfa.starting_state + 1
     )?;
 
@@ -439,7 +448,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
     writeln!(buffer, r#"_{command} () {{"#)?;
 
-    let literal_id_from_input_description = write_lookup_tables(buffer, dfa)?;
+    let literal_id_from_input_description = write_lookup_tables(buffer, dfa, "")?;
 
     writeln!(buffer)?;
     writeln!(buffer, r#"    declare -A subword_transitions"#)?;
@@ -653,104 +662,111 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     write!(
         buffer,
         r#"
-    local max_fallback_level={max_fallback_level}
-    for (( fallback_level=0; fallback_level <= max_fallback_level; fallback_level++ )) {{
-        completions_no_description_trailing_space=()
-        completions_no_description_no_trailing_space=()
-        completions_trailing_space=()
-        suffixes_trailing_space=()
-        descriptions_trailing_space=()
-        completions_no_trailing_space=()
-        suffixes_no_trailing_space=()
-        descriptions_no_trailing_space=()
-        matches=()
+     local max_fallback_level={max_fallback_level}
+     for (( fallback_level=0; fallback_level <= max_fallback_level; fallback_level++ )) {{
+         completions_no_description_trailing_space=()
+         completions_no_description_no_trailing_space=()
+         completions_trailing_space=()
+         suffixes_trailing_space=()
+         descriptions_trailing_space=()
+         completions_no_trailing_space=()
+         suffixes_no_trailing_space=()
+         descriptions_no_trailing_space=()
+         matches=()
 
-        declare literal_transitions_name=literal_transitions_level_${{fallback_level}}
-        eval "declare initializer=\${{${{literal_transitions_name}}[$state]}}"
-        eval "declare -a transitions=($initializer)"
-        for literal_id in "${{transitions[@]}}"; do
-            if [[ -v "descriptions[$literal_id]" ]]; then
-                completions_trailing_space+=("${{literals[$literal_id]}}")
-                suffixes_trailing_space+=("${{literals[$literal_id]}}")
-                descriptions_trailing_space+=("${{descriptions[$literal_id]}}")
-            else
-                completions_no_description_trailing_space+=("${{literals[$literal_id]}}")
-            fi
-        done
+         declare literal_transitions_name=literal_transitions_level_${{fallback_level}}
+         eval "declare initializer=\${{${{literal_transitions_name}}[$state]}}"
+         eval "declare -a transitions=($initializer)"
+         for literal_id in "${{transitions[@]}}"; do
+             if [[ -v "descriptions[$literal_id]" ]]; then
+                 completions_trailing_space+=("${{literals[$literal_id]}}")
+                 suffixes_trailing_space+=("${{literals[$literal_id]}}")
+                 descriptions_trailing_space+=("${{descriptions[$literal_id]}}")
+             else
+                 completions_no_description_trailing_space+=("${{literals[$literal_id]}}")
+             fi
+         done
 
-        declare subword_transitions_name=subword_transitions_level_${{fallback_level}}
-        eval "declare initializer=\${{${{subword_transitions_name}}[$state]}}"
-        eval "declare -a transitions=($initializer)"
-        for subword_id in "${{transitions[@]}}"; do
+         declare subword_transitions_name=subword_transitions_level_${{fallback_level}}
+         eval "declare initializer=\${{${{subword_transitions_name}}[$state]}}"
+         eval "declare -a transitions=($initializer)"
+         for subword_id in "${{transitions[@]}}"; do
              _{command}_subword_${{subword_id}} complete "${{words[$CURRENT]}}"
-        done
+             completions_no_description_trailing_space+=("${{subword_completions_no_description_trailing_space[@]}}")
+             completions_trailing_space+=("${{subword_completions_trailing_space[@]}}")
+             completions_no_trailing_space+=("${{subword_completions_no_trailing_space[@]}}")
+             suffixes_no_trailing_space+=("${{subword_suffixes_no_trailing_space[@]}}")
+             suffixes_trailing_space+=("${{subword_suffixes_trailing_space[@]}}")
+             descriptions_trailing_space+=("${{subword_descriptions_trailing_space[@]}}")
+             descriptions_no_trailing_space+=("${{subword_descriptions_no_trailing_space[@]}}")
+         done
 
-        declare commands_name=commands_level_${{fallback_level}}
-        eval "declare initializer=\${{${{commands_name}}[$state]}}"
-        eval "declare -a transitions=($initializer)"
-        for command_id in "${{transitions[@]}}"; do
-            local output=$(_{command}_cmd_${{command_id}} "${{words[$CURRENT]}}")
-            local -a command_completions=("${{(@f)output}}")
-            for line in ${{command_completions[@]}}; do
-                local parts=(${{(@s:	:)line}})
-                if [[ -v "parts[2]" ]]; then
-                    completions_trailing_space+=("${{parts[1]}}")
-                    suffixes_trailing_space+=("${{parts[1]}}")
-                    descriptions_trailing_space+=("${{parts[2]}}")
-                else
-                    completions_no_description_trailing_space+=("${{parts[1]}}")
-                fi
-            done
-        done
+         declare commands_name=commands_level_${{fallback_level}}
+         eval "declare initializer=\${{${{commands_name}}[$state]}}"
+         eval "declare -a transitions=($initializer)"
+         for command_id in "${{transitions[@]}}"; do
+             local output=$(_{command}_cmd_${{command_id}} "${{words[$CURRENT]}}")
+             local -a command_completions=("${{(@f)output}}")
+             for line in ${{command_completions[@]}}; do
+                 local parts=(${{(@s:	:)line}})
+                 if [[ -v "parts[2]" ]]; then
+                     completions_trailing_space+=("${{parts[1]}}")
+                     suffixes_trailing_space+=("${{parts[1]}}")
+                     descriptions_trailing_space+=("${{parts[2]}}")
+                 else
+                     completions_no_description_trailing_space+=("${{parts[1]}}")
+                 fi
+             done
+         done
 
-        declare specialized_commands_name=specialized_commands_level_${{fallback_level}}
-        eval "declare initializer=\${{${{specialized_commands_name}}[$state]}}"
-        eval "declare -a transitions=($initializer)"
-        for command_id in "${{transitions[@]}}"; do
-            _{command}_cmd_${{command_id}} ${{words[$CURRENT]}}
-        done
+         declare specialized_commands_name=specialized_commands_level_${{fallback_level}}
+         eval "declare initializer=\${{${{specialized_commands_name}}[$state]}}"
+         eval "declare -a transitions=($initializer)"
+         for command_id in "${{transitions[@]}}"; do
+             _{command}_cmd_${{command_id}} ${{words[$CURRENT]}}
+         done
 
-        local maxlen=0
-        for suffix in ${{suffixes_trailing_space[@]}}; do
-            if [[ ${{#suffix}} -gt $maxlen ]]; then
-                maxlen=${{#suffix}}
-            fi
-        done
-        for suffix in ${{suffixes_no_trailing_space[@]}}; do
-            if [[ ${{#suffix}} -gt $maxlen ]]; then
-                maxlen=${{#suffix}}
-            fi
-        done
+         local maxlen=0
+         for suffix in ${{suffixes_trailing_space[@]}}; do
+             if [[ ${{#suffix}} -gt $maxlen ]]; then
+                 maxlen=${{#suffix}}
+             fi
+         done
+         for suffix in ${{suffixes_no_trailing_space[@]}}; do
+             if [[ ${{#suffix}} -gt $maxlen ]]; then
+                 maxlen=${{#suffix}}
+             fi
+         done
 
-        for ((i = 1; i <= $#suffixes_trailing_space; i++)); do
-            if [[ -z ${{descriptions_trailing_space[$i]}} ]]; then
-                descriptions_trailing_space[$i]="${{(r($maxlen)( ))${{suffixes_trailing_space[$i]}}}}"
-            else
-                descriptions_trailing_space[$i]="${{(r($maxlen)( ))${{suffixes_trailing_space[$i]}}}} -- ${{descriptions_trailing_space[$i]}}"
-            fi
-        done
+         for ((i = 1; i <= $#suffixes_trailing_space; i++)); do
+             if [[ -z ${{descriptions_trailing_space[$i]}} ]]; then
+                 descriptions_trailing_space[$i]="${{(r($maxlen)( ))${{suffixes_trailing_space[$i]}}}}"
+             else
+                 descriptions_trailing_space[$i]="${{(r($maxlen)( ))${{suffixes_trailing_space[$i]}}}} -- ${{descriptions_trailing_space[$i]}}"
+             fi
+         done
 
-        for ((i = 1; i <= $#suffixes_no_trailing_space; i++)); do
-            if [[ -z ${{descriptions_no_trailing_space[$i]}} ]]; then
-                descriptions_no_trailing_space[$i]="${{(r($maxlen)( ))${{suffixes_no_trailing_space[$i]}}}}"
-            else
-                descriptions_no_trailing_space[$i]="${{(r($maxlen)( ))${{suffixes_no_trailing_space[$i]}}}} -- ${{descriptions_no_trailing_space[$i]}}"
-            fi
-        done
+         for ((i = 1; i <= $#suffixes_no_trailing_space; i++)); do
+             if [[ -z ${{descriptions_no_trailing_space[$i]}} ]]; then
+                 descriptions_no_trailing_space[$i]="${{(r($maxlen)( ))${{suffixes_no_trailing_space[$i]}}}}"
+             else
+                 descriptions_no_trailing_space[$i]="${{(r($maxlen)( ))${{suffixes_no_trailing_space[$i]}}}} -- ${{descriptions_no_trailing_space[$i]}}"
+             fi
+         done
 
-        compadd -O m -a completions_no_description_trailing_space; matches+=("${{m[@]}}")
-        compadd -O m -a completions_no_description_no_trailing_space; matches+=("${{m[@]}}")
-        compadd -O m -a completions_trailing_space; matches+=("${{m[@]}}")
-        compadd -O m -a completions_no_trailing_space; matches+=("${{m[@]}}")
+         compadd -O m -a completions_no_description_trailing_space; matches+=("${{m[@]}}")
+         compadd -O m -a completions_no_description_no_trailing_space; matches+=("${{m[@]}}")
+         compadd -O m -a completions_trailing_space; matches+=("${{m[@]}}")
+         compadd -O m -a completions_no_trailing_space; matches+=("${{m[@]}}")
 
-        if [[ ${{#matches}} -gt 0 ]]; then
-            compadd -Q -a completions_no_description_trailing_space
-            compadd -Q -S ' ' -a completions_no_description_no_trailing_space
-            compadd -l -Q -a -d descriptions_trailing_space completions_trailing_space
-            compadd -l -Q -S '' -a -d descriptions_no_trailing_space completions_no_trailing_space
-            return 0
-        fi
-    }}
+         if [[ ${{#matches}} -gt 0 ]]; then
+             compadd -Q -a completions_no_description_trailing_space
+             compadd -Q -S ' ' -a completions_no_description_no_trailing_space
+             compadd -l -Q -a -d descriptions_trailing_space completions_trailing_space
+             compadd -l -Q -S '' -a -d descriptions_no_trailing_space completions_no_trailing_space
+             return 0
+         fi
+     }}
 }}
 "#
     )?;
