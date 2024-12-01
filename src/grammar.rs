@@ -2068,7 +2068,7 @@ pub mod tests {
         let (s, e) = command_expr(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
         assert!(
-            matches!(dbg!(e), Command(s, 0, ..) if s == "rad patch list | awk '{print $3}' | grep . | grep -vw ID")
+            matches!(e, Command(s, 0, ..) if s == "rad patch list | awk '{print $3}' | grep . | grep -vw ID")
         );
     }
 

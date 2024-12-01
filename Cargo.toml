@@ -19,6 +19,7 @@ chic = "1.2.2"
 clap = { version = "4.2.1", features = ["derive"] }
 env_logger = "0.10.0"
 hashbrown = "0.13.2"
+indexmap = "2.7.0"
 itertools = "0.10.5"
 log = "0.4.19"
 nom = "7.1.3"

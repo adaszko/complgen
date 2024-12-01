@@ -1,4 +1,5 @@
 use hashbrown::{HashMap, HashSet};
+use indexmap::{IndexMap, IndexSet};
 use std::{cmp::Ordering, collections::BTreeSet, hash::Hash, io::Write, rc::Rc};
 
 use roaring::{MultiOps, RoaringBitmap};
@@ -19,9 +20,12 @@ pub const FIRST_STATE_ID: StateId = 1;
 #[derive(Debug, Clone)]
 pub struct DFA {
     pub starting_state: StateId,
-    pub transitions: HashMap<StateId, HashMap<Input, StateId>>,
+
+    // IndexMap is used to keep complgen deterministic
+    // https://github.com/adaszko/complgen/issues/60
+    pub transitions: IndexMap<StateId, IndexMap<Input, StateId>>,
     pub accepting_states: RoaringBitmap,
-    pub input_symbols: Rc<HashSet<Input>>,
+    pub input_symbols: Rc<IndexSet<Input>>,
 }
 
 impl std::hash::Hash for DFA {
@@ -52,12 +56,12 @@ fn dfa_from_regex(regex: &AugmentedRegex) -> DFA {
     let combined_starting_state_id = unallocated_state_id;
     unallocated_state_id += 1;
 
-    let mut dstates: HashMap<BTreeSet<Position>, StateId> =
-        HashMap::from_iter([(combined_starting_state.clone(), combined_starting_state_id)]);
+    let mut dstates: IndexMap<BTreeSet<Position>, StateId> =
+        IndexMap::from_iter([(combined_starting_state.clone(), combined_starting_state_id)]);
 
     let followpos = regex.followpos();
 
-    let mut dtran: HashMap<StateId, HashMap<Input, StateId>> = Default::default();
+    let mut dtran: IndexMap<StateId, IndexMap<Input, StateId>> = Default::default();
     let mut unmarked_states: HashSet<BTreeSet<Position>> = Default::default();
     unmarked_states.insert(combined_starting_state.clone());
     loop {
@@ -286,8 +290,8 @@ fn renumber_states(
 
 fn hashmap_transitions_from_vec(
     transitions: &[Transition],
-) -> HashMap<StateId, HashMap<Input, StateId>> {
-    let mut result: HashMap<StateId, HashMap<Input, StateId>> = Default::default();
+) -> IndexMap<StateId, IndexMap<Input, StateId>> {
+    let mut result: IndexMap<StateId, IndexMap<Input, StateId>> = Default::default();
 
     for transition in transitions {
         result
@@ -300,12 +304,12 @@ fn hashmap_transitions_from_vec(
 }
 
 fn make_transitions_image(
-    transitions: &HashMap<StateId, HashMap<Input, StateId>>,
-    input_symbols: Rc<HashSet<Input>>,
+    transitions: &IndexMap<StateId, IndexMap<Input, StateId>>,
+    input_symbols: Rc<IndexSet<Input>>,
 ) -> Vec<Transition> {
     let mut result: Vec<Transition> = Default::default();
     for (from, tos) in transitions {
-        let meaningful_inputs: HashSet<Input> = tos.keys().cloned().collect();
+        let meaningful_inputs: IndexSet<Input> = tos.keys().cloned().collect();
         for (input, to) in tos {
             result.push(Transition {
                 from: *from,
@@ -739,7 +743,7 @@ impl DFA {
     pub fn iter_transitions_from(&self, from: StateId) -> impl Iterator<Item = (Input, StateId)> {
         match self.transitions.get(&from) {
             Some(transitions) => transitions.clone().into_iter(),
-            None => HashMap::<Input, StateId>::default().into_iter(),
+            None => IndexMap::<Input, StateId>::default().into_iter(),
         }
     }
 
@@ -1167,7 +1171,7 @@ mod tests {
         use ustr::ustr;
         let dfa = {
             let starting_state = 0;
-            let mut transitions: HashMap<StateId, HashMap<Input, StateId>> = Default::default();
+            let mut transitions: IndexMap<StateId, IndexMap<Input, StateId>> = Default::default();
             transitions
                 .entry(0)
                 .or_default()
@@ -1189,7 +1193,7 @@ mod tests {
                 .or_default()
                 .insert(Input::Literal(ustr("e"), None, 0), 5);
             let accepting_states = RoaringBitmap::from_iter([3, 5]);
-            let input_symbols = Rc::new(HashSet::from_iter([
+            let input_symbols = Rc::new(IndexSet::from_iter([
                 Input::Literal(ustr("f"), None, 0),
                 Input::Literal(ustr("e"), None, 0),
                 Input::Literal(ustr("i"), None, 0),
