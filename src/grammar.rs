@@ -302,8 +302,13 @@ fn comment(input: Span) -> IResult<Span, Span> {
     Ok((input, content))
 }
 
+fn form_feed(input: Span) -> IResult<Span, Span> {
+    let (input, _) = char('\u{000C}')(input)?;
+    Ok((input, input))
+}
+
 fn blanks(input: Span) -> IResult<Span, ()> {
-    let (input, _) = alt((multispace1, comment))(input)?;
+    let (input, _) = alt((multispace1, comment, form_feed))(input)?;
     Ok((input, ()))
 }
 
@@ -3021,5 +3026,19 @@ duf -hide-fs <FS>[,<FS>]...;
             ),
             Err(Error::CommandAtNonTailPosition(..))
         ));
+    }
+
+    #[test]
+    fn ignores_form_feed() {
+        const INPUT: &str = "cmd \u{000C} \u{000C} \u{000C}\u{000C} foo";
+        let (s, e) = expr(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty());
+        assert_eq!(
+            e,
+            Sequence(vec![
+                Rc::new(Terminal(ustr("cmd"), None, 0)),
+                Rc::new(Terminal(ustr("foo"), None, 0)),
+            ])
+        );
     }
 }
