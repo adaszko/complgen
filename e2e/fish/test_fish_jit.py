@@ -1,8 +1,10 @@
 import os
 import string
+from subprocess import CalledProcessError
 import tempfile
 from pathlib import Path
 
+import pytest
 from hypothesis import given, settings
 from hypothesis.strategies import text
 
@@ -114,7 +116,8 @@ def test_fallback_bug1(complgen_binary_path: Path):
 
 def test_funky_spec_command_name(complgen_binary_path: Path):
     GRAMMAR = r'''// <NONTERM>; <NONTERM@fish> ::= {{{ echo dummy }}};'''
-    assert get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR) == sorted([('dummy', '')])
+    with pytest.raises(CalledProcessError):
+        get_sorted_jit_fish_completions(complgen_binary_path, GRAMMAR)
 
 
 LITERALS_ALPHABET = string.ascii_letters + ':=/'

@@ -17,6 +17,9 @@ pub enum Error {
     #[error("One command is allowed in completions definition")]
     VaryingCommandNames(Vec<Ustr>),
 
+    #[error("Invalid command name: {}", .0)]
+    InvalidCommandName(String),
+
     #[error("Nonterminal definitions depend on each other cyclically")]
     NonterminalDefinitionsCycle(Option<Vec<Ustr>>),
 

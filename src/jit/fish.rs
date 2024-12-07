@@ -5,7 +5,9 @@ use slice_group_by::GroupBy;
 use ustr::{ustr, Ustr, UstrMap};
 
 use crate::{
-    aot::fish::{make_string_constant, write_generic_subword_fn, write_subword_fn},
+    aot::fish::{
+        make_string_constant, validate_command_name, write_generic_subword_fn, write_subword_fn,
+    },
     dfa::DFA,
     grammar::{DFARef, Specialization},
     regex::Input,
@@ -194,6 +196,8 @@ pub fn write_fish_completion_shell_code<W: Write>(
     output: &mut W,
     test_mode: bool,
 ) -> anyhow::Result<()> {
+    validate_command_name(completed_command)?;
+
     let prefix_constant = make_string_constant(entered_prefix);
 
     let mut transitions = get_transitions(&dfa, &words_before_cursor);

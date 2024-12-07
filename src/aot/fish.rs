@@ -409,11 +409,19 @@ fn write_lookup_tables<W: Write>(buffer: &mut W, dfa: &DFA) -> Result<()> {
         buffer,
         r#"    set match_anything_transitions_to {match_anything_transitions_to}"#
     )?;
+    Ok(())
+}
 
+pub fn validate_command_name(command: &str) -> crate::Result<()> {
+    if command.contains('/') {
+        return Err(crate::Error::InvalidCommandName(command.to_owned()));
+    }
     Ok(())
 }
 
 pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
+    validate_command_name(command)?;
+
     let top_level_command_transitions: Vec<(StateId, Ustr)> =
         dfa.iter_command_transitions().collect();
     let subword_command_transitions = dfa.get_subword_command_transitions();
