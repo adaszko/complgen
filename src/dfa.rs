@@ -980,9 +980,9 @@ impl DFA {
         })
     }
 
-    pub fn get_subwords(&self, first_id: usize) -> HashMap<DFARef, usize> {
+    pub fn get_subwords(&self, first_id: usize) -> IndexMap<DFARef, usize> {
         let mut unallocated_id = first_id;
-        let mut result: HashMap<DFARef, usize> = Default::default();
+        let mut result: IndexMap<DFARef, usize> = Default::default();
         for (_, tos) in &self.transitions {
             for (input, _) in tos {
                 let dfa = match input {

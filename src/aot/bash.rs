@@ -6,7 +6,8 @@ use crate::regex::Input;
 use crate::Result;
 use crate::StateId;
 use hashbrown::HashMap;
-use ustr::{ustr, Ustr, UstrMap};
+use indexmap::IndexMap;
+use ustr::{ustr, Ustr};
 
 use super::get_max_fallback_level;
 
@@ -221,7 +222,7 @@ pub fn write_subword_fn<W: Write>(
     command: &str,
     id: usize,
     dfa: &DFA,
-    id_from_cmd: &UstrMap<usize>,
+    id_from_cmd: &IndexMap<Ustr, usize>,
 ) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
 
@@ -335,8 +336,8 @@ pub fn write_subword_fn<W: Write>(
     Ok(())
 }
 
-pub fn make_id_from_command_map(dfa: &DFA) -> UstrMap<usize> {
-    let mut result: UstrMap<usize> = Default::default();
+pub fn make_id_from_command_map(dfa: &DFA) -> IndexMap<Ustr, usize> {
+    let mut result: IndexMap<Ustr, usize> = Default::default();
 
     let mut unallocated_id = 0;
     for cmd in dfa.iter_command_transitions().map(|(_, cmd)| cmd) {
