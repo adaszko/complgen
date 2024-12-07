@@ -165,11 +165,11 @@ cmd --binary-files=<TYPE> "assume that binary files are <TYPE>";
          | text "Treat all files as text"
          | without-match "Do not search binary files";
 '''
-    actual = [s.split(maxsplit=3) for s in get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'cmd', prefix='--binary-files=')]
+    actual = [s.split(maxsplit=2) for s in get_sorted_jit_completions(complgen_binary_path, GRAMMAR, 'cmd', prefix='--binary-files=')]
     assert actual == sorted([
-        ['--binary-files=binary', 'binary', '-- Search binary files but do not print them'],
-        ['--binary-files=text', 'text', '-- Treat all files as text'],
-        ['--binary-files=without-match', 'without-match', '-- Do not search binary files'],
+        ['--binary-files=binary', '--binary-files=binary', '-- Search binary files but do not print them'],
+        ['--binary-files=text', '--binary-files=text', '-- Treat all files as text'],
+        ['--binary-files=without-match', '--binary-files=without-match', '-- Do not search binary files'],
     ])
 
 
