@@ -1,11 +1,11 @@
-use std::string::FromUtf8Error;
 use grammar::ChicSpan;
+use std::string::FromUtf8Error;
 use ustr::Ustr;
 
-pub mod grammar;
-pub mod dfa;
-pub mod jit;
 pub mod aot;
+pub mod dfa;
+pub mod grammar;
+pub mod jit;
 pub mod regex;
 pub mod scrape;
 
