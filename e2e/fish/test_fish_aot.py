@@ -122,11 +122,20 @@ def test_completes_lsof_filter(complgen_binary_path: Path):
         assert completions == sorted([('-s', '')])
 
 
+def test_issue_59(complgen_binary_path: Path):
+    GRAMMAR = '''hello [ id=<ID> | foo ]...;'''
+    with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
+        input = 'complete --command cargo --do-complete "hello id=42 "'
+        completions = get_sorted_fish_completions(completions_file_path, input)
+        assert completions == sorted([('foo', ''), ('id=', '')])
+
+
 def test_subword_descriptions(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option=(arg1 "descr1" | arg2 "descr2");'''
     with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
         input = 'complete --command cmd --do-complete "cmd --option="'
         assert get_sorted_fish_completions(completions_file_path, input) == [('--option=arg1', 'descr1'), ('--option=arg2', 'descr2')]
+
 
 def test_completes_subword_external_command(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option={{{ echo -e "argument\tdescription" }}};'''
