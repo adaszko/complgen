@@ -1,93 +1,25 @@
 use std::io::Write;
 
-use hashbrown::HashMap;
 use slice_group_by::GroupBy;
-use ustr::{ustr, Ustr, UstrMap};
+use ustr::{ustr, Ustr};
 
 use crate::{
     aot::fish::{
-        make_string_constant, validate_command_name, write_generic_subword_fn, write_subword_fn,
+        make_id_from_command_map, make_string_constant, validate_command_name,
+        write_generic_subword_fn, write_subword_fn,
     },
     dfa::DFA,
-    grammar::{DFARef, Specialization},
+    grammar::Specialization,
     regex::Input,
-    StateId,
 };
 
 use super::{
-    get_command_transitions, get_subword_commands, get_subword_transitions, get_transitions,
-    make_external_command_fn_name, make_specialized_external_command_fn_name,
-    make_subword_external_command_fn_name, make_subword_fn_name,
-    make_subword_specialized_external_command_fn_name,
+    get_subword_transitions, get_transitions, make_external_command_fn_name, make_subword_fn_name,
 };
 
-// Returns a map: command -> spec command id
-fn get_fish_specialized_command_transitions(transitions: &[Input]) -> UstrMap<usize> {
-    let mut id = 0;
-    let mut top_level: UstrMap<usize> = Default::default();
-    for input in transitions {
-        let cmd = match input {
-            Input::Nonterminal(
-                _,
-                Some(Specialization {
-                    fish: Some(cmd), ..
-                }),
-                ..,
-            ) => *cmd,
-            Input::Subword(..) => continue,
-            Input::Nonterminal(..) => continue,
-            Input::Command(..) => continue,
-            Input::Literal(..) => continue,
-        };
-        top_level.entry(cmd).or_insert_with(|| {
-            let sav = id;
-            id += 1;
-            sav
-        });
-    }
-    top_level
-}
+pub const MATCH_FN_NAME: &str = "__complgen_match";
 
-fn get_fish_subword_specialized_commands(
-    transitions: &[Input],
-) -> HashMap<DFARef, Vec<(StateId, Ustr)>> {
-    let mut subdfas: HashMap<DFARef, Vec<(StateId, Ustr)>> = Default::default();
-    for input in transitions {
-        match input {
-            Input::Subword(subdfa, ..) => {
-                if subdfas.contains_key(subdfa) {
-                    continue;
-                }
-                let transitions = subdfas.entry(subdfa.clone()).or_default();
-                for (from, tos) in &subdfa.as_ref().transitions {
-                    for (input, _) in tos {
-                        match input {
-                            Input::Nonterminal(
-                                _,
-                                Some(Specialization {
-                                    fish: Some(cmd), ..
-                                }),
-                                ..,
-                            ) => transitions.push((*from, *cmd)),
-                            Input::Nonterminal(..) => continue,
-                            Input::Subword(..) => unreachable!(),
-                            Input::Command(..) => continue,
-                            Input::Literal(..) => continue,
-                        }
-                    }
-                }
-            }
-            Input::Command(..) => continue,
-            Input::Nonterminal(..) => continue,
-            Input::Literal(..) => continue,
-        }
-    }
-    subdfas
-}
-
-const MATCH_FN_NAME: &str = "__complgen_match";
-
-fn write_match_fn<W: Write>(
+pub fn write_match_fn<W: Write>(
     entered_prefix: &str,
     prefix_constant: &str,
     output: &mut W,
@@ -203,98 +135,33 @@ pub fn write_fish_completion_shell_code<W: Write>(
     let mut transitions = get_transitions(&dfa, &words_before_cursor);
     transitions.sort_unstable_by_key(|input| input.get_fallback_level());
 
-    let id_from_top_level_command = get_command_transitions(&transitions);
-    for (cmd, id) in &id_from_top_level_command {
+    let id_from_cmd = make_id_from_command_map(dfa);
+    for (cmd, id) in &id_from_cmd {
         write!(
             output,
             r#"function {}
     set 1 $argv[1]
     {cmd}
 end
+
 "#,
             make_external_command_fn_name(completed_command, *id)
         )?;
     }
 
     let id_from_dfa = get_subword_transitions(&transitions);
-    let subword_command_transitions = get_subword_commands(&transitions);
-    let id_from_subword_command: UstrMap<usize> = subword_command_transitions
-        .iter()
-        .enumerate()
-        .flat_map(|(id, (_, transitions))| transitions.iter().map(move |(_, cmd)| (*cmd, id)))
-        .collect();
-    for (cmd, id) in &id_from_subword_command {
-        write!(
-            output,
-            r#"function {}
-    set 1 $argv[1]
-    {cmd}
-end
-"#,
-            make_subword_external_command_fn_name(completed_command, *id)
-        )?;
-    }
-
-    let subword_spec_transitions = get_fish_subword_specialized_commands(&transitions);
-    let id_from_subword_spec: UstrMap<usize> = subword_spec_transitions
-        .iter()
-        .enumerate()
-        .flat_map(|(id, (_, transitions))| transitions.iter().map(move |(_, cmd)| (*cmd, id)))
-        .collect();
-    for (cmd, id) in &id_from_subword_spec {
-        write!(
-            output,
-            r#"function {}
-    set 1 $argv[1]
-    {cmd}
-end
-"#,
-            make_subword_specialized_external_command_fn_name(completed_command, *id)
-        )?;
-    }
 
     if !id_from_dfa.is_empty() {
         write_generic_subword_fn(output, completed_command)?;
+        writeln!(output)?;
     }
     for (dfa, id) in &id_from_dfa {
-        let subword_command_id_from_state: HashMap<StateId, usize> = subword_command_transitions
-            .get(dfa)
-            .unwrap()
-            .iter()
-            .map(|(state, cmd)| (*state, *id_from_subword_command.get(cmd).unwrap()))
-            .collect();
-        let subword_spec_id_from_state: HashMap<StateId, usize> = subword_spec_transitions
-            .get(dfa)
-            .unwrap()
-            .iter()
-            .map(|(state, cmd)| (*state, *id_from_subword_spec.get(cmd).unwrap()))
-            .collect();
-        write_subword_fn(
-            output,
-            completed_command,
-            *id,
-            dfa.as_ref(),
-            &subword_command_id_from_state,
-            &subword_spec_id_from_state,
-        )?;
+        write_subword_fn(output, completed_command, *id, dfa.as_ref(), &id_from_cmd)?;
         writeln!(output)?;
     }
 
-    let id_from_specialized_command: UstrMap<usize> =
-        get_fish_specialized_command_transitions(&transitions);
-    for (cmd, id) in &id_from_specialized_command {
-        write!(
-            output,
-            r#"function {}
-    set 1 $argv[1]
-    {cmd}
-end
-"#,
-            make_specialized_external_command_fn_name(completed_command, *id)
-        )?;
-    }
-
     write_match_fn(entered_prefix, &prefix_constant, output)?;
+    writeln!(output)?;
 
     // Generate shell code for fallback levels in order, optionally calling shell functions defined
     // above.
@@ -353,7 +220,7 @@ end
             ) => Some(*cmd),
             _ => None,
         }) {
-            let command_id = id_from_top_level_command.get(&cmd).unwrap();
+            let command_id = id_from_cmd.get(&cmd).unwrap();
             let fn_name = make_external_command_fn_name(completed_command, *command_id);
             writeln!(
                 output,
@@ -384,8 +251,8 @@ end
             ) => Some(*cmd),
             _ => None,
         }) {
-            let command_id = id_from_specialized_command.get(&cmd).unwrap();
-            let fn_name = make_specialized_external_command_fn_name(completed_command, *command_id);
+            let command_id = id_from_cmd.get(&cmd).unwrap();
+            let fn_name = make_external_command_fn_name(completed_command, *command_id);
             writeln!(
                 output,
                 r#"    set --append candidates ({fn_name} {})"#,
@@ -395,7 +262,7 @@ end
 
         writeln!(
             output,
-            "    printf '%s\n' $candidates | {MATCH_FN_NAME} && return 0"
+            r#"    printf '%s\n' $candidates | {MATCH_FN_NAME} && return 0"#
         )?;
     }
     writeln!(output, r#"end"#)?;
@@ -405,6 +272,7 @@ end
     }
 
     // Call the generated shell function.
+    writeln!(output)?;
     writeln!(output, r#"__complgen_jit"#)?;
 
     Ok(())

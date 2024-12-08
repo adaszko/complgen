@@ -1,15 +1,14 @@
 use crate::StateId;
 
 use hashbrown::HashMap;
-use ustr::{UstrMap, Ustr};
+use ustr::{Ustr, UstrMap};
 
 use crate::grammar::DFARef;
 use crate::{dfa::DFA, regex::Input};
 
 pub mod bash;
-pub mod zsh;
 pub mod fish;
-
+pub mod zsh;
 
 pub fn get_match_final_state(dfa: &DFA, words: &[&str]) -> Option<StateId> {
     // Match words up to `completed_word_index`
@@ -50,15 +49,16 @@ pub fn get_match_final_state(dfa: &DFA, words: &[&str]) -> Option<StateId> {
     Some(state)
 }
 
-
 pub fn get_transitions(dfa: &DFA, words_before_cursor: &[&str]) -> Vec<Input> {
     let Some(state) = get_match_final_state(dfa, words_before_cursor) else {
         return vec![];
     };
-    let inputs = dfa.iter_transitions_from(state).map(|(input, _)| input).collect();
+    let inputs = dfa
+        .iter_transitions_from(state)
+        .map(|(input, _)| input)
+        .collect();
     inputs
 }
-
 
 // Returns a map: command -> command id
 pub fn get_command_transitions(transitions: &[Input]) -> UstrMap<usize> {
@@ -80,7 +80,6 @@ pub fn get_command_transitions(transitions: &[Input]) -> UstrMap<usize> {
     top_level
 }
 
-
 pub fn get_subword_transitions(transitions: &[Input]) -> HashMap<DFARef, usize> {
     let mut id = 1;
     let mut id_from_dfa: HashMap<DFARef, usize> = Default::default();
@@ -99,7 +98,6 @@ pub fn get_subword_transitions(transitions: &[Input]) -> HashMap<DFARef, usize> 
     }
     id_from_dfa
 }
-
 
 pub fn get_subword_commands(transitions: &[Input]) -> HashMap<DFARef, Vec<(StateId, Ustr)>> {
     let mut subdfas: HashMap<DFARef, Vec<(StateId, Ustr)>> = Default::default();
@@ -121,7 +119,7 @@ pub fn get_subword_commands(transitions: &[Input]) -> HashMap<DFARef, Vec<(State
                         transitions.push((*from, cmd));
                     }
                 }
-            },
+            }
             Input::Command(..) => continue,
             Input::Nonterminal(..) => continue,
             Input::Literal(..) => continue,
@@ -130,25 +128,14 @@ pub fn get_subword_commands(transitions: &[Input]) -> HashMap<DFARef, Vec<(State
     subdfas
 }
 
-
 fn make_external_command_fn_name(command: &str, id: usize) -> String {
     format!("_{command}_cmd_{id}")
 }
-
 
 fn make_specialized_external_command_fn_name(command: &str, id: usize) -> String {
     format!("_{command}_spec_{id}")
 }
 
-
 fn make_subword_fn_name(command: &str, id: usize) -> String {
     format!("_{command}_subword_{id}")
-}
-
-fn make_subword_external_command_fn_name(command: &str, id: usize) -> String {
-    format!("_{command}_subword_cmd_{id}")
-}
-
-fn make_subword_specialized_external_command_fn_name(command: &str, id: usize) -> String {
-    format!("_{command}_subword_spec_{id}")
 }

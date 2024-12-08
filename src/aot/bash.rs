@@ -239,9 +239,6 @@ pub fn write_subword_fn<W: Write>(
     let mut fallback_commands: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
     fallback_commands.resize_with(max_fallback_level + 1, Default::default);
 
-    let mut fallback_specialized: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    fallback_specialized.resize_with(max_fallback_level + 1, Default::default);
-
     for (from, input, _) in dfa.iter_transitions() {
         match input {
             Input::Literal(lit, descr, fallback_level) => {
@@ -268,7 +265,7 @@ pub fn write_subword_fn<W: Write>(
                 fallback_level,
             ) => {
                 let specialized_id = *id_from_cmd.get(cmd).unwrap();
-                fallback_specialized[*fallback_level]
+                fallback_commands[*fallback_level]
                     .entry(from)
                     .or_default()
                     .push(specialized_id);
@@ -302,20 +299,6 @@ pub fn write_subword_fn<W: Write>(
         writeln!(
             buffer,
             r#"    declare -A commands_level_{level}=({initializer})"#
-        )?;
-    }
-
-    for (level, transitions) in fallback_specialized.iter().enumerate() {
-        let initializer = itertools::join(
-            transitions.iter().map(|(from_state, specialized_ids)| {
-                let joined_specialized_ids = itertools::join(specialized_ids, " ");
-                format!(r#"[{from_state}]="{joined_specialized_ids}""#)
-            }),
-            " ",
-        );
-        writeln!(
-            buffer,
-            r#"    declare -A specialized_commands_level_{level}=({initializer})"#
         )?;
     }
 
@@ -526,9 +509,6 @@ fi
     let mut fallback_commands: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
     fallback_commands.resize_with(max_fallback_level + 1, Default::default);
 
-    let mut fallback_specialized: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    fallback_specialized.resize_with(max_fallback_level + 1, Default::default);
-
     for (from, input, _) in dfa.iter_transitions() {
         match input {
             Input::Literal(lit, descr, fallback_level) => {
@@ -562,7 +542,7 @@ fi
                 fallback_level,
             ) => {
                 let specialized_id = *id_from_cmd.get(cmd).unwrap();
-                fallback_specialized[*fallback_level]
+                fallback_commands[*fallback_level]
                     .entry(from)
                     .or_default()
                     .push(specialized_id);
@@ -609,20 +589,6 @@ fi
         writeln!(
             buffer,
             r#"    declare -A commands_level_{level}=({initializer})"#
-        )?;
-    }
-
-    for (level, transitions) in fallback_specialized.iter().enumerate() {
-        let initializer = itertools::join(
-            transitions.iter().map(|(from_state, specialized_ids)| {
-                let joined_specialized_ids = itertools::join(specialized_ids, " ");
-                format!(r#"[{from_state}]="{joined_specialized_ids}""#)
-            }),
-            " ",
-        );
-        writeln!(
-            buffer,
-            r#"    declare -A specialized_commands_level_{level}=({initializer})"#
         )?;
     }
 
