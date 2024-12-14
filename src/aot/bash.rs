@@ -550,6 +550,7 @@ fi
             _ => (),
         }
     }
+
     for (level, transitions) in fallback_literals.iter().enumerate() {
         let initializer = itertools::join(
             transitions.iter().map(|(from_state, literal_ids)| {

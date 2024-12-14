@@ -300,14 +300,6 @@ The above grammar was pulled straight out of [`strace` man page](https://man7.or
 
 ### Fallback Completions
 
-This feature is currently work-in-progress, here's where it's supported already:
-
-| Shell | jit | aot |
-|-------|-----|-----|
-| bash  | ✅  | ✅  |
-| fish  | ✅  | ❌  |
-| zsh   | ✅  | ✅  |
-
 If you do `git <TAB>` in most shells you're presented with a list of git subcommands.  Even though git accepts
 a bunch of global options (`--help`, `--version`, etc.), they don't show up there (sic!).  That's a special
 mechanism intended for reducing clutter.  Under complgen, the same effect is achieved via a construction

@@ -87,12 +87,12 @@ def test_specializes_for_fish(complgen_binary_path: Path):
 
 def test_matches_prefix(complgen_binary_path: Path):
     GRAMMAR = '''
-cargo +<toolchain> foo;
-cargo test --test testname;
+cmd +<toolchain> foo;
+cmd test --test testname;
 <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 '''
     with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        input = 'complete --command cargo --do-complete "cargo +stable-aarch64-apple-darwin "'
+        input = 'complete --command cmd --do-complete "cmd +stable-aarch64-apple-darwin "'
         completions = get_sorted_fish_completions(completions_file_path, input)
         assert completions == sorted([('foo', '')])
 
@@ -164,7 +164,6 @@ cmd --option "$f\"\\";
         assert get_sorted_fish_completions(completions_file_path, input) == [('--option', '$f\"\\')]
 
 
-@pytest.mark.xfail(reason="Not implemented yet")
 def test_fallback_completes_default(complgen_binary_path: Path):
     GRAMMAR = r'''cmd (foo || --bar);'''
     with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
@@ -172,7 +171,6 @@ def test_fallback_completes_default(complgen_binary_path: Path):
         assert get_sorted_fish_completions(completions_file_path, input) == sorted([('foo', '')])
 
 
-@pytest.mark.xfail(reason="Not implemented yet")
 def test_fallbacks_on_no_matches(complgen_binary_path: Path):
     GRAMMAR = r'''cmd (foo || --bar);'''
     with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
@@ -180,15 +178,13 @@ def test_fallbacks_on_no_matches(complgen_binary_path: Path):
         assert get_sorted_fish_completions(completions_file_path, input) == sorted([('--bar', '')])
 
 
-@pytest.mark.xfail(reason="Not implemented yet")
 def test_subword_fallback_completes_default(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option=(primary || secondary);'''
     with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
         input = 'complete --command cmd --do-complete "cmd --option="'
-        assert get_sorted_fish_completions(completions_file_path, input) == sorted([('primary', '')])
+        assert get_sorted_fish_completions(completions_file_path, input) == sorted([('--option=primary', '')])
 
 
-@pytest.mark.xfail(reason="Not implemented yet")
 def test_subword_fallbacks_on_no_matches(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option=(primary || secondary);'''
     with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:

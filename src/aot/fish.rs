@@ -2,13 +2,12 @@ use std::io::Write;
 
 use crate::dfa::DFA;
 use crate::grammar::Specialization;
-use crate::jit::fish::MATCH_FN_NAME;
 use crate::regex::Input;
 use crate::{Result, StateId};
 use hashbrown::HashMap;
 use indexmap::IndexMap;
 use itertools::Itertools;
-use ustr::{ustr, Ustr, UstrMap};
+use ustr::{ustr, Ustr};
 
 use super::get_max_fallback_level;
 
@@ -17,17 +16,99 @@ use super::get_max_fallback_level;
 //   includes things like an if block.  Therefore the prevalent use of --local in this module is
 //   not warranted and can be changed.
 // * Unlike in other shells, scoping *is not* dynamic in fish!  It's lexical-ish!
-// * There's
-//   [Dereferencing](https://fishshell.com/docs/current/language.html#dereferencing-variables) but
-//   eval is still more useful due to weird binding order in expressions like $$array_name[$index]
+// * Metaprogramming:
+//   1) $$var_name (https://fishshell.com/docs/current/language.html#dereferencing-variables)
+//   2) printf [...] | source
+
+// TODO Optimization: Do not emit __complgen_match if there's just one fallback level as it's
+// unnecessary in that case.
 
 pub fn make_string_constant(s: &str) -> String {
-    format!(
-        r#""{}""#,
-        s.replace('\\', "\\\\")
-            .replace('\"', "\\\"")
-            .replace('$', "\\$")
-    )
+    if s.is_empty() {
+        return r#""""#.to_string();
+    }
+    if s.contains(&[' ', '\t', '\n', '|']) {
+        format!(
+            r#""{}""#,
+            s.replace('\\', "\\\\")
+                .replace('\"', "\\\"")
+                .replace('$', "\\$")
+        )
+    } else {
+        format!(
+            r#"{}"#,
+            s.replace('\\', "\\\\")
+                .replace('\"', "\\\"")
+                .replace('$', "\\$")
+        )
+    }
+}
+
+pub const MATCH_FN_NAME: &str = "__complgen_match";
+pub fn write_match_fn<W: Write>(output: &mut W) -> anyhow::Result<()> {
+    // Unzip completions from stdin into two arrays -- completions and descriptions
+    writeln!(
+        output,
+        r#"function {MATCH_FN_NAME}
+    set prefix $argv[1]
+
+    set completions
+    set descriptions
+    while read c
+        set a (string split --max 1 -- "	" $c)
+        set --append completions $a[1]
+        if set --query a[2]
+            set --append descriptions $a[2]
+        else
+            set --append descriptions ""
+        end
+    end
+
+    if test -z "$completions"
+        return 1
+    end
+
+    set escaped_prefix (string escape --style=regex -- $prefix)
+    set regex "^$escaped_prefix.*"
+
+    set matches_case_sensitive
+    set descriptions_case_sensitive
+    for i in (seq 1 (count $completions))
+        if string match --regex --quiet --entire -- $regex $completions[$i]
+            set --append matches_case_sensitive $completions[$i]
+            set --append descriptions_case_sensitive $descriptions[$i]
+        end
+    end
+
+    if set --query matches_case_sensitive[1]
+        for i in (seq 1 (count $matches_case_sensitive))
+            printf '%s	%s\n' $matches_case_sensitive[$i] $descriptions_case_sensitive[$i]
+        end
+        return 0
+    end
+
+    set matches_case_insensitive
+    set descriptions_case_insensitive
+    for i in (seq 1 (count $completions))
+        if string match --regex --quiet --ignore-case --entire -- $regex $completions[$i]
+            set --append matches_case_insensitive $completions[$i]
+            set --append descriptions_case_insensitive $descriptions[$i]
+        end
+    end
+
+    if set --query matches_case_insensitive[1]
+        for i in (seq 1 (count $matches_case_insensitive))
+            printf '%s	%s\n' $matches_case_insensitive[$i] $descriptions_case_insensitive[$i]
+        end
+        return 0
+    end
+
+    return 1
+end
+"#
+    )?;
+
+    Ok(())
 }
 
 fn write_subword_lookup_tables<W: Write>(
@@ -97,17 +178,20 @@ fn write_subword_lookup_tables<W: Write>(
                 .map(|(literal_id, _)| format!("{}", literal_id)),
             " ",
         );
+        // TODO Initialize subword_literal_transitions_inputs as a single assigment
         writeln!(
             buffer,
-            r#"    set --global subword_literal_transitions_inputs[{}] "{state_inputs}""#,
-            state + 1
+            r#"    set --global subword_literal_transitions_inputs[{}] {}"#,
+            state + 1,
+            make_string_constant(&state_inputs),
         )?;
         let state_tos: String =
             itertools::join(transitions.iter().map(|(_, to)| format!("{}", to + 1)), " ");
         writeln!(
             buffer,
-            r#"    set --global subword_literal_transitions_tos[{}] "{state_tos}""#,
-            state + 1
+            r#"    set --global subword_literal_transitions_tos[{}] {}"#,
+            state + 1,
+            make_string_constant(&state_tos),
         )?;
     }
 
@@ -123,7 +207,7 @@ fn write_subword_lookup_tables<W: Write>(
     );
     writeln!(
         buffer,
-        r#"    set --global match_anything_transitions_from {match_anything_transitions_from}"#
+        r#"    set --global subword_match_anything_transitions_from {match_anything_transitions_from}"#
     )?;
     let match_anything_transitions_to = itertools::join(
         match_anything_transitions
@@ -133,7 +217,7 @@ fn write_subword_lookup_tables<W: Write>(
     );
     writeln!(
         buffer,
-        r#"    set --global match_anything_transitions_to {match_anything_transitions_to}"#
+        r#"    set --global subword_match_anything_transitions_to {match_anything_transitions_to}"#
     )?;
 
     Ok(literal_id_from_input_description)
@@ -171,7 +255,7 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
                 set literal_len (string length -- "$literal")
                 set subword_slice (string sub --end=$literal_len -- "$subword")
                 if test $subword_slice = $literal
-                    set index (contains --index -- $literal_id $inputs)
+                    set index (contains --index -- "$literal_id" $inputs)
                     set subword_state $tos[$index]
                     set char_index (math $char_index + $literal_len)
                     set literal_matched 1
@@ -183,8 +267,8 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
             end
         end
 
-        if set --query subword_match_anything_transitions_from[$subword_state] && test -n $subword_match_anything_transitions_from[$subword_state]
-            set index (contains --index -- $subword_state $subword_match_anything_transitions_from)
+        set index (contains --index -- "$subword_state" $subword_match_anything_transitions_from)
+        if test -n "$index"
             set subword_state $subword_match_anything_transitions_to[$index]
             set matched 1
             break
@@ -213,12 +297,12 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
         set matched_prefix (string sub --end=(math $char_index - 1) -- "$word")
     end
 
-    set --local candidates
     for fallback_level in (seq 0 $subword_max_fallback_level)
+        set candidates
         set froms_name subword_literal_transitions_from_level_$fallback_level
         set froms (string split ' ' $$froms_name)
         if contains $subword_state $froms
-            set index (contains --index $subword_state $froms)
+            set index (contains --index -- "$subword_state" $froms)
             set transitions_name subword_literal_transitions_level_$fallback_level
             printf 'set transitions (string split \' \' $%s[%d])' $transitions_name $index | source
             for literal_id in $transitions
@@ -240,8 +324,8 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
 
         set froms_name subword_commands_from_level_$fallback_level
         set froms (string split ' ' $$froms_name)
-        if contains $subword_state $froms
-            set index (contains --index $subword_state $froms)
+        set index (contains --index -- "$subword_state" $froms)
+        if test -n "$index"
             printf 'set function_id $subword_commands_level_%s[%d]' $fallback_level $index | source
             set function_name _{command}_cmd_$function_id
             $function_name "$matched_prefix" | while read line
@@ -335,10 +419,7 @@ pub fn write_subword_fn<W: Write>(
         let literals_initializer = transitions
             .iter()
             .map(|(_, literal_ids)| {
-                format!(
-                    r#""{}""#,
-                    literal_ids.iter().map(|id| format!("{}", id)).join(" ")
-                )
+                make_string_constant(&literal_ids.iter().map(|id| format!("{}", id)).join(" "))
             })
             .join(" ");
         writeln!(
@@ -359,12 +440,7 @@ pub fn write_subword_fn<W: Write>(
 
         let commands_initializer = transitions
             .iter()
-            .map(|(_, command_ids)| {
-                format!(
-                    r#""{}""#,
-                    command_ids.iter().map(|id| format!("{}", id)).join(" ")
-                )
-            })
+            .map(|(_, command_ids)| command_ids.iter().map(|id| format!("{}", id)).join(" "))
             .join(" ");
         writeln!(
             buffer,
@@ -377,12 +453,13 @@ pub fn write_subword_fn<W: Write>(
         r#"    set --global subword_max_fallback_level {max_fallback_level}"#
     )?;
 
+    writeln!(buffer)?;
+
     writeln!(
         buffer,
         r#"    set --global subword_state {}"#,
         dfa.starting_state + 1
     )?;
-
     writeln!(buffer, r#"    _{command}_subword "$mode" "$word""#)?;
 
     writeln!(buffer, r#"end"#)?;
@@ -451,15 +528,21 @@ fn write_lookup_tables<W: Write>(
         );
         let state_tos: String =
             itertools::join(transitions.iter().map(|(_, to)| format!("{}", to + 1)), " ");
+        // TODO Optimize for output size: Emit a single assigment to literal_transitions_inputs
+        // instead of many
         writeln!(
             buffer,
-            r#"    set literal_transitions_inputs[{}] "{state_inputs}""#,
-            state + 1
+            r#"    set literal_transitions_inputs[{}] {}"#,
+            state + 1,
+            make_string_constant(&state_inputs),
         )?;
+        // TODO Optimize for output size: Emit a single assigment to literal_transitions_tos
+        // instead of many
         writeln!(
             buffer,
-            r#"    set literal_transitions_tos[{}] "{state_tos}""#,
-            state + 1
+            r#"    set literal_transitions_tos[{}] {}"#,
+            state + 1,
+            make_string_constant(&state_tos),
         )?;
     }
 
@@ -537,72 +620,20 @@ pub fn validate_command_name(command: &str) -> crate::Result<()> {
     Ok(())
 }
 
-pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
+pub fn write_completion_script<W: Write>(
+    buffer: &mut W,
+    command: &str,
+    dfa: &DFA,
+) -> anyhow::Result<()> {
     validate_command_name(command)?;
 
     let id_from_cmd = make_id_from_command_map(dfa);
     for (cmd, id) in &id_from_cmd {
         write!(
             buffer,
-            r#"function _{command}_{id}
+            r#"function _{command}_cmd_{id}
     set 1 $argv[1]
     {cmd}
-end
-
-"#
-        )?;
-    }
-
-    let top_level_command_transitions: Vec<(StateId, Ustr)> =
-        dfa.iter_command_transitions().collect();
-    let subword_command_transitions = dfa.get_subword_command_transitions();
-
-    let id_from_top_level_command: UstrMap<usize> = top_level_command_transitions
-        .iter()
-        .enumerate()
-        .map(|(id, (_, cmd))| (*cmd, id + 1))
-        .collect();
-    for (cmd, id) in &id_from_top_level_command {
-        write!(
-            buffer,
-            r#"function _{command}_{id}
-    set 1 $argv[1]
-    {cmd}
-end
-
-"#
-        )?;
-    }
-
-    let id_from_subword_command: UstrMap<usize> = subword_command_transitions
-        .iter()
-        .enumerate()
-        .flat_map(|(id, (_, transitions))| transitions.iter().map(move |(_, cmd)| (*cmd, id)))
-        .collect();
-    for (cmd, id) in &id_from_subword_command {
-        write!(
-            buffer,
-            r#"function _{command}_subword_cmd_{id}
-    {cmd}
-end
-
-"#
-        )?;
-    }
-
-    let top_level_spec_transitions = dfa.get_fish_command_transitions();
-
-    let id_from_specialized_command: UstrMap<usize> = top_level_spec_transitions
-        .iter()
-        .enumerate()
-        .map(|(id, (_, cmd))| (*cmd, id + 1))
-        .collect();
-    for (cmd, id) in &id_from_specialized_command {
-        write!(
-            buffer,
-            r#"function _{command}_spec_{id}
-set 1 $argv[1]
-{cmd}
 end
 
 "#
@@ -619,6 +650,9 @@ end
         writeln!(buffer)?;
         writeln!(buffer)?;
     }
+
+    write_match_fn(buffer)?;
+    writeln!(buffer)?;
 
     write!(buffer, r#"function _{command}"#)?;
 
@@ -665,13 +699,15 @@ end
         );
         writeln!(
             buffer,
-            r#"    set subword_transitions_ids[{}] "{subword_ids}""#,
-            state + 1
+            r#"    set subword_transitions_ids[{}] {}"#,
+            state + 1,
+            make_string_constant(&subword_ids),
         )?;
         writeln!(
             buffer,
-            r#"    set subword_transitions_tos[{}] "{tos}""#,
-            state + 1
+            r#"    set subword_transitions_tos[{}] {}"#,
+            state + 1,
+            make_string_constant(&tos),
         )?;
     }
 
@@ -684,23 +720,15 @@ end
         set -- word $COMP_WORDS[$word_index]
 
         if set --query literal_transitions_inputs[$state] && test -n $literal_transitions_inputs[$state]
-            set inputs $literal_transitions_inputs[$state]
-            set tos $literal_transitions_tos[$state]
+            set inputs (string split ' ' $literal_transitions_inputs[$state])
+            set tos (string split ' ' $literal_transitions_tos[$state])
 
-            if contains -- $word $literals
-                set literal_matched 0
-                for literal_id in (seq 1 (count $literals))
-                    if test $literals[$literal_id] = $word
-                        set index (contains --index -- $literal_id $inputs)
-                        set state $tos[$index]
-                        set word_index (math $word_index + 1)
-                        set literal_matched 1
-                        break
-                    end
-                end
-                if test $literal_matched -ne 0
-                    continue
-                end
+            set literal_id (contains --index -- "$word" $literals)
+            if test -n "$literal_id"
+                set index (contains --index -- "$literal_id" $inputs)
+                set state $tos[$index]
+                set word_index (math $word_index + 1)
+                continue
             end
         end
 "#,
@@ -736,7 +764,7 @@ end
         buffer,
         r#"
         if set --query match_anything_transitions_from[$state] && test -n $match_anything_transitions_from[$state]
-            set index (contains --index -- $state $match_anything_transitions_from)
+            set index (contains --index -- "$state" $match_anything_transitions_from)
             set state $match_anything_transitions_to[$index]
             set word_index (math $word_index + 1)
             continue
@@ -746,6 +774,8 @@ end
     end
 "#
     )?;
+
+    writeln!(buffer)?;
 
     //////////////////////////////// Completion ///////////////////////////////////
 
@@ -803,51 +833,96 @@ end
     }
 
     for (level, transitions) in fallback_literals.iter().enumerate() {
-        let initializer = itertools::join(
-            transitions.iter().map(|(from_state, literal_ids)| {
-                let joined_literal_ids = itertools::join(literal_ids, " ");
-                format!(
-                    r#"[{from_state_fish}]="{joined_literal_ids}""#,
-                    from_state_fish = from_state + 1
-                )
-            }),
+        let froms_initializer = itertools::join(
+            transitions
+                .iter()
+                .map(|(from_state, _)| format!("{}", from_state + 1)),
             " ",
         );
         writeln!(
             buffer,
-            r#"    set literal_transitions_level_{level} {initializer}"#
+            r#"    set literal_froms_level_{level} {froms_initializer}"#
         )?;
-    }
 
-    for (level, transitions) in fallback_subwords.iter().enumerate() {
-        let initializer = itertools::join(
-            transitions.iter().map(|(from_state, subword_ids)| {
-                let joined_subword_ids = itertools::join(subword_ids, " ");
-                format!(
-                    r#"[{from_state_fish}]="{joined_subword_ids}""#,
-                    from_state_fish = from_state + 1
-                )
+        let inputs_initializer = itertools::join(
+            transitions.iter().map(|(_, state_inputs)| {
+                let cell = itertools::join(
+                    state_inputs
+                        .iter()
+                        .map(|literal_id| format!("{}", literal_id)),
+                    " ",
+                );
+                format!(r#"{}"#, cell)
             }),
-            " ",
+            "|",
         );
         writeln!(
             buffer,
-            r#"    set subword_transitions_level_{level} {initializer}"#
+            r#"    set literal_inputs_level_{level} {}"#,
+            make_string_constant(&inputs_initializer),
         )?;
     }
 
-    for (level, transitions) in fallback_commands.iter().enumerate() {
-        let initializer = itertools::join(
-            transitions.iter().map(|(from_state, command_ids)| {
-                let joined_command_ids = itertools::join(command_ids, " ");
-                format!(
-                    r#"[{from_state_fish}]="{joined_command_ids}""#,
-                    from_state_fish = from_state + 1
-                )
-            }),
-            " ",
-        );
-        writeln!(buffer, r#"    set commands_level_{level} {initializer}"#)?;
+    if !fallback_subwords.first().unwrap().is_empty() {
+        for (level, transitions) in fallback_subwords.iter().enumerate() {
+            let froms_initializer = itertools::join(
+                transitions
+                    .iter()
+                    .map(|(from_state, _)| format!("{}", from_state + 1)),
+                " ",
+            );
+            writeln!(
+                buffer,
+                r#"    set subword_froms_level_{level} {froms_initializer}"#
+            )?;
+
+            let subwords_initializer = itertools::join(
+                transitions.iter().map(|(_, state_subwords)| {
+                    let cell = itertools::join(
+                        state_subwords
+                            .iter()
+                            .map(|literal_id| format!("{}", literal_id)),
+                        " ",
+                    );
+                    format!(r#""{}""#, cell)
+                }),
+                " ",
+            );
+            writeln!(
+                buffer,
+                r#"    set subwords_level_{level} {subwords_initializer}"#
+            )?;
+        }
+    }
+
+    if !fallback_commands.first().unwrap().is_empty() {
+        for (level, transitions) in fallback_commands.iter().enumerate() {
+            let from_initializer = transitions
+                .iter()
+                .map(|(from_state, _)| from_state + 1)
+                .join(" ");
+            writeln!(
+                buffer,
+                r#"    set command_froms_level_{level} {from_initializer}"#
+            )?;
+
+            let commands_initializer = itertools::join(
+                transitions.iter().map(|(_, state_commands)| {
+                    let cell = itertools::join(
+                        state_commands
+                            .iter()
+                            .map(|literal_id| format!("{}", literal_id)),
+                        " ",
+                    );
+                    format!(r#""{}""#, cell)
+                }),
+                " ",
+            );
+            writeln!(
+                buffer,
+                r#"    set commands_level_{level} {commands_initializer}"#
+            )?;
+        }
     }
 
     write!(
@@ -855,47 +930,66 @@ end
         r#"
     set max_fallback_level {max_fallback_level}
     for fallback_level in (seq 0 {max_fallback_level})
-        set name literal_transitions_level_$fallback_level
-        set transitions (string split ' ' $$name[$state])
-        if set --query literal_transitions_inputs[$state] && test -n $literal_transitions_inputs[$state]
-            set inputs $literal_transitions_inputs[$state]
-            set tos $literal_transitions_tos[$state]
-            for literal_id in $inputs
-                if test -n $descriptions[$literal_id]
-                    printf '%s\t%s\n' $literals[$literal_id] $descriptions[$literal_id]
+        set candidates
+        set froms_name literal_froms_level_$fallback_level
+        set froms $$froms_name
+        set index (contains --index -- "$state" $froms)
+        if test -n "$index"
+            set level_inputs_name literal_inputs_level_$fallback_level
+            set input_assoc_values (string split '|' $$level_inputs_name)
+            set state_inputs (string split ' ' $input_assoc_values[$index])
+            for literal_id in $state_inputs
+                if test -n "$descriptions[$literal_id]"
+                    set --append candidates (printf '%s\t%s\n' $literals[$literal_id] $descriptions[$literal_id])
                 else
-                    printf '%s\n' $literals[$literal_id]
+                    set --append candidates (printf '%s\n' $literals[$literal_id])
                 end
             end
         end
-
-        if set --query subword_transitions_ids[$state] && test -n $subword_transitions_ids[$state]
-            set subword_ids $subword_transitions_ids[$state]
-
-            for subword_id in $subword_ids
-                set function_name _{command}_subword_$subword_id
-                $function_name complete "$COMP_WORDS[$COMP_CWORD]"
-            end
-        end
-
-        if contains $state $command_states
-            set index (contains --index $state $command_states)
-            set function_id $command_ids[$index]
-            set function_name _{command}_$function_id
-            $function_name "$COMP_WORDS[$COMP_CWORD]"
-        end
-    end
 "#
     )?;
 
+    if !fallback_subwords.first().unwrap().is_empty() {
+        write!(
+            buffer,
+            r#"
+        set subwords_name subword_froms_level_$fallback_level
+        set subwords $$subwords_name
+        set index (contains --index -- "$state" $subwords)
+        if test -n "$index"
+            set subwords_name subwords_level_$fallback_level
+            set subwords (string split ' ' $$subwords_name)
+            for id in $subwords
+                set function_name _{command}_subword_$id
+                set --append candidates ($function_name complete "$COMP_WORDS[$COMP_CWORD]")
+            end
+        end
+"#
+        )?;
+    }
+
+    if !fallback_commands.first().unwrap().is_empty() {
+        write!(
+            buffer,
+            r#"
+        set commands_name command_froms_level_$fallback_level
+        set commands $$commands_name
+        set index (contains --index -- "$state" $commands)
+        if test -n "$index"
+            set commands_name commands_level_$fallback_level
+            set commands (string split ' ' $$commands_name)
+            set function_id $commands[$index]
+            set function_name _{command}_cmd_$function_id
+            set --append candidates ($function_name "$COMP_WORDS[$COMP_CWORD]")
+        end
+"#
+        )?;
+    }
+
     writeln!(
         buffer,
-        "    printf '%s\n' $candidates | {MATCH_FN_NAME} && return 0"
-    )?;
-
-    write!(
-        buffer,
-        r#"
+        r#"        printf '%s\n' $candidates | {MATCH_FN_NAME} $COMP_WORDS[$word_index] && return 0
+    end
 end
 "#
     )?;

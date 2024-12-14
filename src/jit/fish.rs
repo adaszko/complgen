@@ -6,7 +6,7 @@ use ustr::{ustr, Ustr};
 use crate::{
     aot::fish::{
         make_id_from_command_map, make_string_constant, validate_command_name,
-        write_generic_subword_fn, write_subword_fn,
+        write_generic_subword_fn, write_match_fn, write_subword_fn, MATCH_FN_NAME,
     },
     dfa::DFA,
     grammar::Specialization,
@@ -16,109 +16,6 @@ use crate::{
 use super::{
     get_subword_transitions, get_transitions, make_external_command_fn_name, make_subword_fn_name,
 };
-
-pub const MATCH_FN_NAME: &str = "__complgen_match";
-
-pub fn write_match_fn<W: Write>(
-    entered_prefix: &str,
-    prefix_constant: &str,
-    output: &mut W,
-) -> anyhow::Result<()> {
-    // Unzip completions from stdin into two arrays -- completions and descriptions
-    writeln!(
-        output,
-        r#"function {MATCH_FN_NAME}
-    set --local completions
-    set --local descriptions
-    while read --local c
-        set --local a (string split --max 1 -- "	" $c)
-        set --append completions $a[1]
-        if set --query a[2]
-            set --append descriptions $a[2]
-        else
-            set --append descriptions ""
-        end
-    end
-"#
-    )?;
-
-    // First, filter `completions` array by `prefix` in a case-sensitive manner
-    writeln!(output, "    set --local matches_case_sensitive")?;
-    writeln!(output, "    set --local descriptions_case_sensitive")?;
-
-    if entered_prefix.is_empty() {
-        writeln!(output, r#"    set matches_case_sensitive $completions"#)?;
-        writeln!(
-            output,
-            r#"    set descriptions_case_sensitive $descriptions"#
-        )?;
-    } else {
-        writeln!(
-            output,
-            r#"
-    for i in (seq 1 (count $completions))
-        if string match --quiet -- {prefix_constant}\* $completions[$i]
-            set --append matches_case_sensitive $completions[$i]
-            set --append descriptions_case_sensitive $descriptions[$i]
-        end
-    end
-"#
-        )?;
-    }
-
-    // Early return if there are any case-sensitively matching completions
-    writeln!(
-        output,
-        r#"
-    if set --query matches_case_sensitive[1]
-        for i in (seq 1 (count $matches_case_sensitive))
-            printf '%s	%s\n' $matches_case_sensitive[$i] $descriptions_case_sensitive[$i]
-        end
-        return 0
-    end
-"#
-    )?;
-
-    // Second, if case-sensitive filtering yielded no results, try in a case-insensitive manner
-    writeln!(output, "    set --local matches_case_insensitive")?;
-    writeln!(output, "    set --local descriptions_case_insensitive")?;
-    if entered_prefix.is_empty() {
-        writeln!(output, r#"    set matches_case_sensitive $completions"#)?;
-        writeln!(
-            output,
-            r#"    set descriptions_case_sensitive $descriptions"#
-        )?;
-    } else {
-        writeln!(
-            output,
-            r#"
-    for i in (seq 1 (count $completions))
-        if string match  --quiet --ignore-case -- {prefix_constant}\* $completions[$i]
-            set --append matches_case_insensitive $completions[$i]
-            set --append descriptions_case_insensitive $descriptions[$i]
-        end
-    end
-"#
-        )?;
-    }
-
-    writeln!(
-        output,
-        r#"
-    if set --query matches_case_insensitive[1]
-        for i in (seq 1 (count $matches_case_insensitive))
-            printf '%s	%s\n' $matches_case_insensitive[$i] $descriptions_case_insensitive[$i]
-        end
-        return 0
-    end
-"#
-    )?;
-
-    writeln!(output, r#"    return 1"#)?;
-
-    writeln!(output, r#"end"#)?;
-    Ok(())
-}
 
 pub fn write_fish_completion_shell_code<W: Write>(
     completed_command: &str,
@@ -160,7 +57,7 @@ end
         writeln!(output)?;
     }
 
-    write_match_fn(entered_prefix, &prefix_constant, output)?;
+    write_match_fn(output)?;
     writeln!(output)?;
 
     // Generate shell code for fallback levels in order, optionally calling shell functions defined
@@ -168,7 +65,7 @@ end
     writeln!(
         output,
         r#"function __complgen_jit
-    set --local candidates
+    set candidates
 "#
     )?;
 
@@ -224,8 +121,7 @@ end
             let fn_name = make_external_command_fn_name(completed_command, *command_id);
             writeln!(
                 output,
-                r#"    set --append candidates ({fn_name} {})"#,
-                make_string_constant(entered_prefix)
+                r#"    set --append candidates ({fn_name} {prefix_constant})"#,
             )?;
         }
 
@@ -234,10 +130,9 @@ end
             _ => None,
         }) {
             let subdfa_id = id_from_dfa.get(subdfa).unwrap();
-            let prefix = make_string_constant(entered_prefix);
             writeln!(
                 output,
-                r#"    set --append candidates ({} complete {prefix})"#,
+                r#"    set --append candidates ({} complete {prefix_constant})"#,
                 make_subword_fn_name(completed_command, *subdfa_id)
             )?;
         }
@@ -255,14 +150,13 @@ end
             let fn_name = make_external_command_fn_name(completed_command, *command_id);
             writeln!(
                 output,
-                r#"    set --append candidates ({fn_name} {})"#,
-                make_string_constant(entered_prefix)
+                r#"    set --append candidates ({fn_name} {prefix_constant})"#,
             )?;
         }
 
         writeln!(
             output,
-            r#"    printf '%s\n' $candidates | {MATCH_FN_NAME} && return 0"#
+            r#"    printf '%s\n' $candidates | {MATCH_FN_NAME} {prefix_constant} && return 0"#
         )?;
     }
     writeln!(output, r#"end"#)?;
