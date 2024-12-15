@@ -23,7 +23,7 @@ cmd <COMMAND> [--help];
 '''
 
     with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        input = 'complete --command cmd --do-complete "cmd "'
+        input = 'complete --do-complete "cmd "'
         assert get_sorted_fish_completions(completions_file_path, input) == sorted([('rm', "Remove a project"), ('remote', "Manage a project's remotes")], key=lambda pair: pair[0])
 
 
@@ -37,7 +37,7 @@ cmd [<OPTION>]...;
 '''
 
     with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        input = 'complete --command cmd --do-complete "cmd "'
+        input = 'complete --do-complete "cmd "'
         assert get_sorted_fish_completions(completions_file_path, input) == sorted([('--color', "use markers to highlight the matching strings"), ('--colour', "use markers to highlight the matching strings")], key=lambda pair: pair[0])
 
 
@@ -47,7 +47,7 @@ cmd {{{ echo -e "completion\tdescription" }}};
 '''
 
     with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        input = 'complete --command cmd --do-complete "cmd "'
+        input = 'complete --do-complete "cmd "'
         assert get_sorted_fish_completions(completions_file_path, input) == [('completion', 'description')]
 
 
@@ -61,7 +61,7 @@ def test_completes_paths(complgen_binary_path: Path):
                 Path('filename with spaces').write_text('dummy')
                 Path(SPECIAL_CHARACTERS).write_text('dummy')
                 os.mkdir('dir with spaces')
-                input = 'complete --command cmd --do-complete "cmd "'
+                input = 'complete --do-complete "cmd "'
                 completions = get_sorted_fish_completions(completions_file_path, input)
                 assert completions == sorted([(SPECIAL_CHARACTERS, ''), ('dir with spaces/', ''), ('filename with spaces', '')])
 
@@ -73,7 +73,7 @@ def test_completes_directories(complgen_binary_path: Path):
                 os.mkdir('dir with spaces')
                 os.mkdir(SPECIAL_CHARACTERS)
                 Path('baz').write_text('dummy')
-                input = 'complete --command cmd --do-complete "cmd "'
+                input = 'complete --do-complete "cmd "'
                 completions = get_sorted_fish_completions(completions_file_path, input)
                 assert completions == sorted([(SPECIAL_CHARACTERS + '/', 'Directory'), ('dir with spaces/', 'Directory')])
 
@@ -81,7 +81,7 @@ def test_completes_directories(complgen_binary_path: Path):
 def test_specializes_for_fish(complgen_binary_path: Path):
     GRAMMAR = '''cmd <FOO>; <FOO> ::= {{{ echo foo }}}; <FOO@fish> ::= {{{ echo fish }}};'''
     with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        input = 'complete --command cmd --do-complete "cmd "'
+        input = 'complete --do-complete "cmd "'
         assert get_sorted_fish_completions(completions_file_path, input) == [('fish', '')]
 
 
@@ -92,7 +92,7 @@ cmd test --test testname;
 <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 '''
     with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        input = 'complete --command cmd --do-complete "cmd +stable-aarch64-apple-darwin "'
+        input = 'complete --do-complete "cmd +stable-aarch64-apple-darwin "'
         completions = get_sorted_fish_completions(completions_file_path, input)
         assert completions == sorted([('foo', '')])
 
@@ -103,21 +103,21 @@ cargo +<toolchain>;
 <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 '''
     with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        input = 'complete --command cargo --do-complete "cargo +"'
+        input = 'complete --do-complete "cargo +"'
         completions = get_sorted_fish_completions(completions_file_path, input)
         assert completions == sorted([('+stable-aarch64-apple-darwin', ''), ('+stable-x86_64-apple-darwin', '')])
 
 
 def test_completes_strace_expr(complgen_binary_path: Path):
     with gen_fish_aot_completion_script_path(complgen_binary_path, STRACE_EXPR_GRAMMAR) as completions_file_path:
-        input = 'complete --command cargo --do-complete "strace -e "'
+        input = 'complete --do-complete "strace -e "'
         completions = get_sorted_fish_completions(completions_file_path, input)
         assert completions == sorted([('!', ''), ('%file', ''), ('file', ''), ('all', ''), ('read', ''), ('trace', ''), ('write', ''), ('fault', '')])
 
 
 def test_completes_lsof_filter(complgen_binary_path: Path):
     with gen_fish_aot_completion_script_path(complgen_binary_path, LSOF_FILTER_GRAMMAR) as completions_file_path:
-        input = 'complete --command cargo --do-complete "lsf "'
+        input = 'complete --do-complete "lsf "'
         completions = get_sorted_fish_completions(completions_file_path, input)
         assert completions == sorted([('-s', '')])
 
@@ -125,7 +125,7 @@ def test_completes_lsof_filter(complgen_binary_path: Path):
 def test_issue_59(complgen_binary_path: Path):
     GRAMMAR = '''hello [ id=<ID> | foo ]...;'''
     with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        input = 'complete --command cargo --do-complete "hello id=42 "'
+        input = 'complete --do-complete "hello id=42 "'
         completions = get_sorted_fish_completions(completions_file_path, input)
         assert completions == sorted([('foo', ''), ('id=', '')])
 
@@ -133,14 +133,14 @@ def test_issue_59(complgen_binary_path: Path):
 def test_subword_descriptions(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option=(arg1 "descr1" | arg2 "descr2");'''
     with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        input = 'complete --command cmd --do-complete "cmd --option="'
+        input = 'complete --do-complete "cmd --option="'
         assert get_sorted_fish_completions(completions_file_path, input) == [('--option=arg1', 'descr1'), ('--option=arg2', 'descr2')]
 
 
 def test_completes_subword_external_command(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option={{{ echo -e "argument\tdescription" }}};'''
     with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        input = 'complete --command cmd --do-complete "cmd --option="'
+        input = 'complete --do-complete "cmd --option="'
         assert get_sorted_fish_completions(completions_file_path, input) == [('--option=argument', 'description')]
 
 
@@ -151,7 +151,7 @@ cmd --option=<FOO>;
 <FOO@fish> ::= {{{ echo fish }}};
 '''
     with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        input = 'complete --command cmd --do-complete "cmd --option="'
+        input = 'complete --do-complete "cmd --option="'
         assert get_sorted_fish_completions(completions_file_path, input) == [('--option=fish', '')]
 
 
@@ -160,35 +160,35 @@ def test_description_special_characters(complgen_binary_path: Path):
 cmd --option "$f\"\\";
 '''
     with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        input = 'complete --command cmd --do-complete "cmd --option"'
+        input = 'complete --do-complete "cmd --option"'
         assert get_sorted_fish_completions(completions_file_path, input) == [('--option', '$f\"\\')]
 
 
 def test_fallback_completes_default(complgen_binary_path: Path):
     GRAMMAR = r'''cmd (foo || --bar);'''
     with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        input = 'complete --command cmd --do-complete "cmd "'
+        input = 'complete --do-complete "cmd "'
         assert get_sorted_fish_completions(completions_file_path, input) == sorted([('foo', '')])
 
 
 def test_fallbacks_on_no_matches(complgen_binary_path: Path):
     GRAMMAR = r'''cmd (foo || --bar);'''
     with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        input = 'complete --command cmd --do-complete "cmd --"'
+        input = 'complete --do-complete "cmd --"'
         assert get_sorted_fish_completions(completions_file_path, input) == sorted([('--bar', '')])
 
 
 def test_subword_fallback_completes_default(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option=(primary || secondary);'''
     with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        input = 'complete --command cmd --do-complete "cmd --option="'
+        input = 'complete --do-complete "cmd --option="'
         assert get_sorted_fish_completions(completions_file_path, input) == sorted([('--option=primary', '')])
 
 
 def test_subword_fallbacks_on_no_matches(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option=(primary || secondary);'''
     with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        input = 'complete --command cmd --do-complete "cmd --option=sec"'
+        input = 'complete --do-complete "cmd --option=sec"'
         assert get_sorted_fish_completions(completions_file_path, input) == sorted([('--option=secondary', '')])
 
 
@@ -198,5 +198,5 @@ LITERALS_ALPHABET = string.ascii_letters + ':='
 def test_handles_special_characters(complgen_binary_path: Path, literal: str):
     GRAMMAR = '''cmd {};'''.format(literal)
     with gen_fish_aot_completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        input = 'complete --command cmd --do-complete "cmd "'
+        input = 'complete --do-complete "cmd "'
         assert get_sorted_fish_completions(completions_file_path, input) == sorted([(literal, '')])

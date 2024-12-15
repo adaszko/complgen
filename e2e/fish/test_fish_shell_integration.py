@@ -42,7 +42,7 @@ mycargo +<toolchain>;
         INTEGRATION_SCRIPT = INTEGRATION_SCRIPT_TEMPLATE.format(complgen_binary_path=complgen_binary_path, usage_files_dir=usage_files_dir)
         (Path(usage_files_dir) / 'mycargo.usage').write_text(GRAMMAR)
         with temp_file_with_contents(INTEGRATION_SCRIPT) as p:
-            command = 'complete --command mycargo --do-complete "mycargo +"'
+            command = 'complete --do-complete "mycargo +"'
             assert get_sorted_fish_completions(p, command) == [('+bar', ''), ('+foo', '')]
 
 
@@ -54,5 +54,5 @@ mycargo foo "descr1";
         INTEGRATION_SCRIPT = INTEGRATION_SCRIPT_TEMPLATE.format(complgen_binary_path=complgen_binary_path, usage_files_dir=usage_files_dir)
         (Path(usage_files_dir) / 'mycargo.usage').write_text(GRAMMAR)
         with temp_file_with_contents(INTEGRATION_SCRIPT) as p:
-            command = 'complete --command mycargo --do-complete "mycargo "'
+            command = 'complete --do-complete "mycargo "'
             assert get_sorted_fish_completions(p, command) == [('foo', 'descr1')]
