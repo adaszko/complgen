@@ -119,6 +119,7 @@ end
 
 for path in ~/.config/complgen/*.usage
     set --local stem (basename $path .usage)
+    complete --erase $stem
     complete --command $stem --no-files --arguments "(_complgen_jit ~/.config/complgen/$basename.usage)"
 end
 ```

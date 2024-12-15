@@ -994,7 +994,8 @@ end
 "#
     )?;
 
-    write!(
+    writeln!(buffer, r#"complete --erase {command}"#)?;
+    writeln!(
         buffer,
         r#"complete --command {command} --no-files --arguments "(_{command})""#
     )?;
