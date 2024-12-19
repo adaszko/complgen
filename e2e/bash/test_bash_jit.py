@@ -34,7 +34,7 @@ cargo test --test testname;
 
 def test_jit_completes_literal_prefix(complgen_binary_path: Path):
     GRAMMAR = '''cmd (--help | --version);'''
-    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, prefix='--h') as completion_script:
+    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, last_incomplete_word='--h') as completion_script:
         input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_bash_completions(completion_script, input) == sorted(['--help'])
 
@@ -57,7 +57,7 @@ def test_jit_completes_subdirectory_files(complgen_binary_path: Path):
         with set_working_dir(Path(dir)):
             os.mkdir('subdir')
             (Path('subdir') / 'file.txt').write_text('dummy')
-            with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, prefix='subdir/') as completion_script:
+            with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, last_incomplete_word='subdir/') as completion_script:
                 input = r'''COMP_WORDS=(cmd subdir/); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
                 assert get_sorted_bash_completions(completion_script, input) == sorted(['subdir/file.txt'])
 
@@ -86,33 +86,33 @@ def test_jit_completes_prefix(complgen_binary_path: Path):
 cargo +<toolchain>;
 <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 '''
-    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, prefix='+') as completion_script:
+    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, last_incomplete_word='+') as completion_script:
         input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_bash_completions(completion_script, input) == sorted(['+stable-aarch64-apple-darwin', '+stable-x86_64-apple-darwin'])
 
 
 def test_jit_completes_strace_expr(complgen_binary_path: Path):
-    with gen_bash_jit_completions_script_path(complgen_binary_path, STRACE_EXPR_GRAMMAR, ['-e'], prefix='trace=') as completion_script:
+    with gen_bash_jit_completions_script_path(complgen_binary_path, STRACE_EXPR_GRAMMAR, ['-e'], last_incomplete_word='trace=') as completion_script:
         input = r'''COMP_WORDS=(strace); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_bash_completions(completion_script, input) == sorted(['!', '%file', 'file', 'all'])
 
 
 def test_jit_completes_lsf_filter(complgen_binary_path: Path):
-    with gen_bash_jit_completions_script_path(complgen_binary_path, LSOF_FILTER_GRAMMAR, prefix='-sTCP:') as completion_script:
+    with gen_bash_jit_completions_script_path(complgen_binary_path, LSOF_FILTER_GRAMMAR, last_incomplete_word='-sTCP:') as completion_script:
         input = r'''COMP_WORDS=(lsf); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_bash_completions(completion_script, input) == sorted(['^', 'LISTEN', 'CLOSED'])
 
 
 def test_jit_subword_descriptions(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option=(arg1 "descr1" | arg2 "descr2");'''
-    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, prefix='--option=') as completion_script:
+    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, last_incomplete_word='--option=') as completion_script:
         input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_bash_completions(completion_script, input) == sorted(['arg1', 'arg2'])
 
 
 def test_jit_completes_subword_external_command(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option={{{ echo -e "argument\tdescription" }}};'''
-    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, prefix='--option=') as completion_script:
+    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, last_incomplete_word='--option=') as completion_script:
         input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_bash_completions(completion_script, input) == sorted(['argument'])
 
@@ -123,7 +123,7 @@ cmd --option=<FOO>;
 <FOO> ::= {{{ echo generic }}};
 <FOO@bash> ::= {{{ echo bash }}};
 '''
-    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, prefix='--option=') as completion_script:
+    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, last_incomplete_word='--option=') as completion_script:
         input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_bash_completions(completion_script, input) == sorted(['bash'])
 
@@ -133,55 +133,55 @@ def test_github_issue_34(complgen_binary_path: Path):
 mygrep --color "use markers to highlight the matching strings"=<WHEN>;
 <WHEN> ::= always | never | auto;
 '''
-    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, prefix='--color') as completion_script:
+    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, last_incomplete_word='--color') as completion_script:
         input = r'''COMP_WORDS=(mygrep); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_bash_completions(completion_script, input) == sorted(['--color='])
 
 
 def test_fallback_completes_default(complgen_binary_path: Path):
     GRAMMAR = r'''cmd (foo || --bar);'''
-    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, prefix='') as completion_script:
+    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, last_incomplete_word='') as completion_script:
         input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_bash_completions(completion_script, input) == sorted(['foo'])
 
 
 def test_fallbacks_on_no_matches(complgen_binary_path: Path):
     GRAMMAR = r'''cmd (foo || --bar);'''
-    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, prefix='--') as completion_script:
+    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, last_incomplete_word='--') as completion_script:
         input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_bash_completions(completion_script, input) == sorted(['--bar'])
 
 
 def test_subword_fallback_completes_default(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option=(primary || secondary);'''
-    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, prefix='--option=') as completion_script:
+    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, last_incomplete_word='--option=') as completion_script:
         input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_bash_completions(completion_script, input) == sorted(['primary'])
 
 
 def test_subword_fallbacks_on_no_matches(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option=(primary || secondary);'''
-    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, prefix='--option=sec') as completion_script:
+    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, last_incomplete_word='--option=sec') as completion_script:
         input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_bash_completions(completion_script, input) == sorted(['secondary'])
 
 
 def test_respects_ignore_case_option(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --case-lower | --CASE-UPPER;'''
-    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, prefix='--case-') as completion_script:
+    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, last_incomplete_word='--case-') as completion_script:
         input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; bind "set completion-ignore-case on"; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_bash_completions(completion_script, input) == sorted(['--case-lower', '--CASE-UPPER'])
-    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, prefix='--case-') as completion_script:
+    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, last_incomplete_word='--case-') as completion_script:
         input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; bind "set completion-ignore-case off"; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_bash_completions(completion_script, input) == sorted(['--case-lower'])
 
 
 def test_respects_ignore_case_option_subwords(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option=(lower | UPPER);'''
-    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, prefix='--option=LO') as completion_script:
+    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, last_incomplete_word='--option=LO') as completion_script:
         input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; bind "set completion-ignore-case on"; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_bash_completions(completion_script, input) == sorted(['lower'])
-    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, prefix='--option=LO') as completion_script:
+    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, last_incomplete_word='--option=LO') as completion_script:
         input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; bind "set completion-ignore-case off"; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_bash_completions(completion_script, input) == sorted([''])
 

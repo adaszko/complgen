@@ -49,11 +49,11 @@ def temp_file_with_contents(contents: str) -> Generator[Path, None, None]:
 
 
 @contextlib.contextmanager
-def gen_bash_jit_completions_script_path(complgen_binary_path: Path, grammar: str, words_before_cursor: list[str] = [], prefix: Optional[str] = None) -> Generator[Path, None, None]:
+def gen_bash_jit_completions_script_path(complgen_binary_path: Path, grammar: str, words_before_cursor: list[str] = [], last_incomplete_word: Optional[str] = None) -> Generator[Path, None, None]:
     comp_wordbreaks = ''' "'><=;|&(:'''
     args = [complgen_binary_path, 'jit', '--test', 'dummy', '-', 'bash', '--comp-wordbreaks', comp_wordbreaks]
-    if prefix is not None:
-        args += ['--prefix={}'.format(prefix)]
+    if last_incomplete_word is not None:
+        args += ['--prefix={}'.format(last_incomplete_word)]
     args += ['--']
     args += words_before_cursor
     process = subprocess.run(args, input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True)
