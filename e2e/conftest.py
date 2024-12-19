@@ -49,11 +49,9 @@ def temp_file_with_contents(contents: str) -> Generator[Path, None, None]:
 
 
 @contextlib.contextmanager
-def gen_bash_jit_completions_script_path(complgen_binary_path: Path, grammar: str, words_before_cursor: list[str] = [], prefix: Optional[str] = None, ignore_case=False) -> Generator[Path, None, None]:
+def gen_bash_jit_completions_script_path(complgen_binary_path: Path, grammar: str, words_before_cursor: list[str] = [], prefix: Optional[str] = None) -> Generator[Path, None, None]:
     comp_wordbreaks = ''' "'><=;|&(:'''
     args = [complgen_binary_path, 'jit', '--test', 'dummy', '-', 'bash', '--comp-wordbreaks', comp_wordbreaks]
-    if ignore_case:
-        args += ['--ignore-case']
     if prefix is not None:
         args += ['--prefix={}'.format(prefix)]
     args += ['--']

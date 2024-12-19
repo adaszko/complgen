@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
  - Fish,JIT: Descriptions were wrongly being made part of the completion
+ - Bash: Respect `completion-ignore-case` readline setting
 
 ## 0.2.0
 ### Changed

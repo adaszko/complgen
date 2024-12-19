@@ -61,9 +61,6 @@ struct CompleteBashArgs {
     #[arg(long)]
     prefix: Option<String>,
 
-    #[arg(long)]
-    ignore_case: bool,
-
     words: Vec<String>,
 }
 
@@ -226,7 +223,6 @@ fn jit(args: &JitArgs) -> anyhow::Result<()> {
             write_bash_completion_shell_code(
                 &validated.command,
                 &dfa,
-                bash_args.ignore_case,
                 &words_before_cursor,
                 word,
                 superfluous_prefix,

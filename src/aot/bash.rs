@@ -36,6 +36,33 @@ pub fn make_string_constant(s: &str) -> String {
     }
 }
 
+pub const MATCH_FN_NAME: &str = "__complgen_match";
+pub fn write_match_fn<W: Write>(buffer: &mut W) -> Result<()> {
+    writeln!(
+        buffer,
+        r#"{MATCH_FN_NAME} () {{
+    [[ $# -lt 2 ]] && return 1
+    local ignore_case=$1
+    local prefix=$2
+    [[ -z $prefix ]] && cat
+    if [[ $ignore_case = on ]]; then
+        prefix=${{prefix,,}}
+        prefix=$(printf '%q' "$prefix")
+        while read line; do
+            [[ ${{line,,}} = ${{prefix}}* ]] && echo $line
+        done
+    else
+        prefix=$(printf '%q' "$prefix")
+        while read line; do
+            [[ $line = ${{prefix}}* ]] && echo $line
+        done
+    fi
+}}
+"#
+    )?;
+    Ok(())
+}
+
 fn write_lookup_tables<W: Write>(
     buffer: &mut W,
     dfa: &DFA,
@@ -168,21 +195,23 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
     local matched_prefix="${{word:0:$char_index}}"
     local completed_prefix="${{word:$char_index}}"
 
+    local -a completions=()
     local -a matches=()
+    local ignore_case=$(bind -v | grep completion-ignore-case | cut -d' ' -f3)
     for (( subword_fallback_level=0; subword_fallback_level <= max_fallback_level; subword_fallback_level++ )) {{
         eval "declare literal_transitions_name=literal_transitions_level_${{subword_fallback_level}}"
         eval "declare -a transitions=(\${{$literal_transitions_name[$state]}})"
         for literal_id in "${{transitions[@]}}"; do
             local literal=${{literals[$literal_id]}}
-            if [[ $literal = "${{completed_prefix}}"* ]]; then
-                matches+=("$matched_prefix$literal")
-            fi
+            completions+=("$matched_prefix$literal")
         done
+        if [[ ${{#completions[@]}} -gt 0 ]]; then
+            readarray -t matches < <(printf "%s\n" "${{completions[@]}}" | {MATCH_FN_NAME} "$ignore_case" "$matched_prefix$completed_prefix")
+        fi
 
         eval "declare commands_name=commands_level_${{subword_fallback_level}}"
         eval "declare -a transitions=(\${{$commands_name[$state]}})"
         for command_id in "${{transitions[@]}}"; do
-            local completions=()
             readarray -t completions < <(_{command}_cmd_$command_id "$matched_prefix" | cut -f1)
             for item in "${{completions[@]}}"; do
                 matches+=("$matched_prefix$item")
@@ -192,7 +221,6 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
         eval "declare specialized_commands_name=specialized_commands_level_$subword_fallback_level"
         eval "declare -a transitions=(\${{$specialized_commands_name[$state]}})"
         for command_id in "${{transitions[@]}}"; do
-            local completions=()
             readarray -t completions < <(_{command}_cmd_$command_id "$prefix" | cut -f1)
             for item in "${{completions[@]}}"; do
                 matches+=("$matched_prefix$item")
@@ -368,6 +396,8 @@ fi
 
 "#
     )?;
+
+    write_match_fn(buffer)?;
 
     let id_from_cmd = make_id_from_command_map(dfa);
     for (cmd, id) in &id_from_cmd {
@@ -596,65 +626,62 @@ fi
     write!(
         buffer,
         r#"
+    local -a completions=()
     local -a matches=()
+    local ignore_case=$(bind -v | grep completion-ignore-case | cut -d' ' -f3)
     local max_fallback_level={max_fallback_level}
     local prefix="${{words[$cword]}}"
     for (( fallback_level=0; fallback_level <= max_fallback_level; fallback_level++ )) {{
-       eval "declare literal_transitions_name=literal_transitions_level_${{fallback_level}}"
-       eval "declare -a transitions=(\${{$literal_transitions_name[$state]}})"
-       for literal_id in "${{transitions[@]}}"; do
-           local literal="${{literals[$literal_id]}}"
-           if [[ $literal = "${{prefix}}"* ]]; then
-               matches+=("$literal ")
-           fi
-       done
+        eval "declare literal_transitions_name=literal_transitions_level_${{fallback_level}}"
+        eval "declare -a transitions=(\${{$literal_transitions_name[$state]}})"
+        for literal_id in "${{transitions[@]}}"; do
+            local literal="${{literals[$literal_id]}}"
+            completions+=("$literal ")
+        done
+        if [[ ${{#completions[@]}} -gt 0 ]]; then
+            readarray -t matches < <(printf "%s\n" "${{completions[@]}}" | {MATCH_FN_NAME} "$ignore_case" "$prefix")
+        fi
 
-       eval "declare subword_transitions_name=subword_transitions_level_${{fallback_level}}"
-       eval "declare -a transitions=(\${{$subword_transitions_name[$state]}})"
-       for subword_id in "${{transitions[@]}}"; do
-           readarray -t -O "${{#matches[@]}}" matches < <(_{command}_subword_$subword_id complete "$prefix")
-       done
+        eval "declare subword_transitions_name=subword_transitions_level_${{fallback_level}}"
+        eval "declare -a transitions=(\${{$subword_transitions_name[$state]}})"
+        for subword_id in "${{transitions[@]}}"; do
+            readarray -t -O "${{#matches[@]}}" matches < <(_{command}_subword_$subword_id complete "$prefix")
+        done
 
-       eval "declare commands_name=commands_level_${{fallback_level}}"
-       eval "declare -a transitions=(\${{$commands_name[$state]}})"
-       for command_id in "${{transitions[@]}}"; do
-           local completions=()
-           readarray -t completions < <(_{command}_cmd_$command_id "$prefix" | cut -f1)
-           for item in "${{completions[@]}}"; do
-               if [[ $item = "${{prefix}}"* ]]; then
-                   matches+=("$item")
-               fi
-           done
-       done
+        eval "declare commands_name=commands_level_${{fallback_level}}"
+        eval "declare -a transitions=(\${{$commands_name[$state]}})"
+        for command_id in "${{transitions[@]}}"; do
+            readarray -t completions < <(_{command}_cmd_$command_id "$prefix" | cut -f1)
+            if [[ ${{#completions[@]}} -gt 0 ]]; then
+                readarray -t -O "${{#matches[@]}}" matches < <(printf "%s\n" "${{completions[@]}}" | {MATCH_FN_NAME} "$ignore_case" "$prefix")
+            fi
+        done
 
-       eval "declare specialized_commands_name=specialized_commands_level_${{fallback_level}}"
-       eval "declare -a transitions=(\${{$specialized_commands_name[$state]}})"
-       for command_id in "${{transitions[@]}}"; do
-           local completions=()
-           readarray -t completions < <(_{command}_cmd_"${{command_id}}" "$prefix" | cut -f1)
-           for item in "${{completions[@]}}"; do
-               if [[ $item = "${{prefix}}"* ]]; then
-                   matches+=("$item")
-               fi
-           done
-       done
+        eval "declare specialized_commands_name=specialized_commands_level_${{fallback_level}}"
+        eval "declare -a transitions=(\${{$specialized_commands_name[$state]}})"
+        for command_id in "${{transitions[@]}}"; do
+            readarray -t completions < <(_{command}_cmd_"${{command_id}}" "$prefix" | cut -f1)
+            if [[ ${{#completions[@]}} -gt 0 ]]; then
+                readarray -t -O "${{#matches[@]}}" matches < <(printf "%s\n" "${{completions[@]}}" | {MATCH_FN_NAME} "$ignore_case" "$prefix")
+            fi
+        done
 
-       if [[ ${{#matches[@]}} -gt 0 ]]; then
-           local shortest_suffix="$prefix"
-           for ((i=0; i < ${{#COMP_WORDBREAKS}}; i++)); do
-               local char="${{COMP_WORDBREAKS:$i:1}}"
-               local candidate=${{prefix##*$char}}
-               if [[ ${{#candidate}} -lt ${{#shortest_suffix}} ]]; then
-                   shortest_suffix=$candidate
-               fi
-           done
-           local superfluous_prefix=""
-           if [[ "$shortest_suffix" != "$prefix" ]]; then
-               local superfluous_prefix=${{prefix%$shortest_suffix}}
-           fi
-           COMPREPLY=("${{matches[@]#$superfluous_prefix}}")
-           break
-       fi
+        if [[ ${{#matches[@]}} -gt 0 ]]; then
+            local shortest_suffix="$prefix"
+            for ((i=0; i < ${{#COMP_WORDBREAKS}}; i++)); do
+                local char="${{COMP_WORDBREAKS:$i:1}}"
+                local candidate=${{prefix##*$char}}
+                if [[ ${{#candidate}} -lt ${{#shortest_suffix}} ]]; then
+                    shortest_suffix=$candidate
+                fi
+            done
+            local superfluous_prefix=""
+            if [[ "$shortest_suffix" != "$prefix" ]]; then
+                local superfluous_prefix=${{prefix%$shortest_suffix}}
+            fi
+            COMPREPLY=("${{matches[@]#$superfluous_prefix}}")
+            break
+        fi
     }}
 "#
     )?;
