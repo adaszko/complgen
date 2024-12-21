@@ -129,6 +129,39 @@ def test_specializes_for_fish(complgen_binary_path: Path):
         ]
 
 
+def test_nontail_alternative(complgen_binary_path: Path):
+    GRAMMAR = """cmd <LEFT> | right; <LEFT> ::= {{{ echo left }}}@fish"left";"""
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        input = 'complete --do-complete "cmd rig"'
+        assert get_sorted_fish_completions(completions_file_path, input) == [
+            ("right", "")
+        ]
+
+
+def test_nontail_fallback(complgen_binary_path: Path):
+    GRAMMAR = """cmd <LEFT> || right; <LEFT> ::= {{{ echo left }}}@fish"left";"""
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        input = 'complete --do-complete "cmd rig"'
+        assert get_sorted_fish_completions(completions_file_path, input) == [
+            ("right", "")
+        ]
+
+
+def test_nontail_subword(complgen_binary_path: Path):
+    GRAMMAR = """cmd <LEFT>right; <LEFT> ::= {{{ echo left }}}@fish"left";"""
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        input = 'complete --do-complete "cmd left"'
+        assert get_sorted_fish_completions(completions_file_path, input) == [
+            ("leftright", "")
+        ]
+
+
 def test_matches_prefix(complgen_binary_path: Path):
     GRAMMAR = """
 cmd +<toolchain> foo;

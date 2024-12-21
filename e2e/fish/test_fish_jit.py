@@ -71,6 +71,27 @@ def test_jit_specializes_for_fish(complgen_binary_path: Path):
     )
 
 
+def test_nontail_alternative(complgen_binary_path: Path):
+    GRAMMAR = """cmd <LEFT> | right; <LEFT> ::= {{{ echo left }}}@fish"left";"""
+    assert get_sorted_jit_fish_completions(
+        complgen_binary_path, GRAMMAR, prefix="rig"
+    ) == sorted([("fish", "")])
+
+
+def test_nontail_fallback(complgen_binary_path: Path):
+    GRAMMAR = """cmd <LEFT> || right; <LEFT> ::= {{{ echo left }}}@fish"left";"""
+    assert get_sorted_jit_fish_completions(
+        complgen_binary_path, GRAMMAR, prefix="rig"
+    ) == sorted([("fish", "")])
+
+
+def test_nontail_subword(complgen_binary_path: Path):
+    GRAMMAR = """cmd <LEFT>right; <LEFT> ::= {{{ echo left }}}@fish"left";"""
+    assert get_sorted_jit_fish_completions(
+        complgen_binary_path, GRAMMAR, prefix="left"
+    ) == sorted([("leftright", "")])
+
+
 def test_jit_matches_prefix(complgen_binary_path: Path):
     GRAMMAR = """
 cargo +<toolchain> foo;

@@ -140,6 +140,27 @@ def test_jit_specializes_for_zsh(complgen_binary_path: Path):
     )
 
 
+def test_nontail_alternative(complgen_binary_path: Path):
+    GRAMMAR = """cmd <LEFT> | right; <LEFT> ::= {{{ echo left }}}@zsh"left";"""
+    assert get_sorted_jit_completions(
+        complgen_binary_path, GRAMMAR, "cmd rig"
+    ) == sorted(["right"])
+
+
+def test_nontail_fallback(complgen_binary_path: Path):
+    GRAMMAR = """cmd <LEFT> || right; <LEFT> ::= {{{ echo left }}}@zsh"left";"""
+    assert get_sorted_jit_completions(
+        complgen_binary_path, GRAMMAR, "cmd rig"
+    ) == sorted(["right"])
+
+
+def test_nontail_subword(complgen_binary_path: Path):
+    GRAMMAR = """cmd <LEFT>right; <LEFT> ::= {{{ echo left }}}@zsh"left";"""
+    assert get_sorted_jit_completions(
+        complgen_binary_path, GRAMMAR, "cmd left"
+    ) == sorted(["leftright"])
+
+
 def test_jit_matches_prefix(complgen_binary_path: Path):
     GRAMMAR = """
 cmd +<toolchain> foo;

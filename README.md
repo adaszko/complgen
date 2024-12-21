@@ -340,15 +340,15 @@ There are exceptions:
 
 * `{{{ ... }}}` is only allowed at tail positions, where it doesn't lead to matching against an arbitrary
   output of an external command:
-    * OK: `cmd {{{ echo foo }}} {{{ echo bar }}};`
-    * ERROR: `cmd ({{{ echo foo }}} | {{{ echo bar }}});`
+    * OK: `cmd {{{ echo foo }}} bar;`
+    * ERROR: `cmd ({{{ echo foo }}} | bar);`
 
         We'd have to match against the output of `{{{ echo foo }}}` at *compilation* time to determine which
         branch to take, which is impossible to do in general as `echo foo` might as well have been an
         arbitrary shell command.
 
     * OK: `cmd (foo | {{{ echo bar }}});`
-    * ERROR: `cmd ({{{ echo foo }}} || {{{ echo bar }}});`
+    * ERROR: `cmd ({{{ echo foo }}} || bar);`
 
         Reason: Same as for `|` above.
 
@@ -363,16 +363,16 @@ There are exceptions:
 
 * Within subwords, `{{{ ... }}}` is only allowed at tail position, where it doesn't lead to matching against
   an arbitrary output of an external command:
-    * ERROR: `{{{ git tag }}}..{{{ git tag }}}`
+    * ERROR: `{{{ git tag }}}..tag`
 
         Impossible to guess at compilation time where the output of the first `{{{ git tag }}` ends and *our*
         `..` begins.
 
     * OK: `--option={{{ echo foo }}}`
-    * ERROR: `{{{ echo foo }}}{{{ echo bar }}}`
+    * ERROR: `{{{ echo foo }}}bar`
 
         Impossible to guess at compilation time where the output of the first `{{{ echo foo }}` ends the
-        second `{{{ echo bar }}}` begins.
+        second `bar` begins in the general case.
 
 * The limitations above also apply to predefined nonterminals (`<PATH>`, `<DIRECTORY>`, etc.) since they're
   internally implemented as external commands.

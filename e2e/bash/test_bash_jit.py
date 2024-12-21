@@ -111,6 +111,39 @@ def test_jit_specializes_for_bash(complgen_binary_path: Path):
         assert get_sorted_bash_completions(completion_script, input) == sorted(["bash"])
 
 
+def test_jit_nontail_alternative(complgen_binary_path: Path):
+    GRAMMAR = """cmd <LEFT> | right; <LEFT> ::= {{{ echo left }}}@bash"left";"""
+    with gen_bash_jit_completions_script_path(
+        complgen_binary_path, GRAMMAR, last_incomplete_word="rig"
+    ) as completion_script:
+        input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(completion_script, input) == sorted(
+            ["right"]
+        )
+
+
+def test_jit_nontail_fallback(complgen_binary_path: Path):
+    GRAMMAR = """cmd <LEFT> || right; <LEFT> ::= {{{ echo left }}}@bash"left";"""
+    with gen_bash_jit_completions_script_path(
+        complgen_binary_path, GRAMMAR, last_incomplete_word="rig"
+    ) as completion_script:
+        input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(completion_script, input) == sorted(
+            ["right"]
+        )
+
+
+def test_jit_nontail_subword(complgen_binary_path: Path):
+    GRAMMAR = """cmd <PREFIX><SUFFIX>; <PREFIX> ::= {{{ echo prefix }}}@bash"prefix"; <SUFFIX> ::= {{{ echo suffix }}}@bash"suffix";"""
+    with gen_bash_jit_completions_script_path(
+        complgen_binary_path, GRAMMAR, last_incomplete_word="prefix"
+    ) as completion_script:
+        input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(completion_script, input) == sorted(
+            ["prefixsuffix"]
+        )
+
+
 def test_jit_completes_prefix(complgen_binary_path: Path):
     GRAMMAR = """
 cargo +<toolchain>;

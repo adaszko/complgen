@@ -118,6 +118,27 @@ def test_specializes_for_bash(complgen_binary_path: Path):
         assert get_sorted_bash_completions(path, input) == sorted(["bash"])
 
 
+def test_nontail_alternative(complgen_binary_path: Path):
+    GRAMMAR = """cmd <LEFT> | right; <LEFT> ::= {{{ echo left }}}@bash"left";"""
+    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
+        input = r'''COMP_WORDS=(cmd rig); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(["right"])
+
+
+def test_nontail_fallback(complgen_binary_path: Path):
+    GRAMMAR = """cmd <LEFT> || right; <LEFT> ::= {{{ echo left }}}@bash"left";"""
+    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
+        input = r'''COMP_WORDS=(cmd rig); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(["right"])
+
+
+def test_nontail_subword(complgen_binary_path: Path):
+    GRAMMAR = """cmd <LEFT>right; <LEFT> ::= {{{ echo left }}}@bash"left";"""
+    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
+        input = r'''COMP_WORDS=(cmd left); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(["leftright"])
+
+
 def test_mycargo(complgen_binary_path: Path):
     GRAMMAR = r"""
 mycargo test <TESTNAME>;

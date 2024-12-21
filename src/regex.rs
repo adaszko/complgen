@@ -273,7 +273,7 @@ fn do_from_expr<'a>(
             symbols.insert(input);
             result
         }
-        Expr::Command(code, fallback_level, ..) => {
+        Expr::Command(code, _, fallback_level, ..) => {
             let result = AugmentedRegexNode::Command(
                 *code,
                 Position::try_from(input_from_position.len()).unwrap(),

@@ -80,7 +80,9 @@ pub enum Expr {
     Nonterminal(Ustr, usize, ChicSpan), // name, fallback level
 
     /// `{{{ ls }}}`
-    Command(Ustr, usize, ChicSpan), // command, fallback level
+    /// or
+    /// `{{{ ls }}}@bash"foo"@fish"bar"`
+    Command(Ustr, Option<CmdRegexDecl>, usize, ChicSpan), // command, [regex], fallback level
 
     /// `foo bar`
     Sequence(Vec<Rc<Expr>>),
@@ -101,6 +103,14 @@ pub enum Expr {
 
     // `foo || bar`
     Fallback(Vec<Rc<Expr>>),
+}
+
+// Invariant: At least one field must be Some(_)
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct CmdRegexDecl {
+    pub bash: Option<Ustr>,
+    pub fish: Option<Ustr>,
+    pub zsh: Option<Ustr>,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -127,8 +137,8 @@ impl std::fmt::Debug for Expr {
             Expr::Nonterminal(nonterm, level, _) => f.write_fmt(format_args!(
                 r#"Rc::new(Nonterminal(ustr("{nonterm}"), {level}))"#
             )),
-            Self::Command(cmd, level, span) => f.write_fmt(format_args!(
-                r#"Rc::new(Command(ustr({cmd:?}), {level}, {span:?}))"#
+            Self::Command(cmd, regex, level, span) => f.write_fmt(format_args!(
+                r#"Rc::new(Command(ustr({cmd:?}), {regex:?}, {level}, {span:?}))"#
             )),
             Self::Sequence(arg0) => {
                 f.write_fmt(format_args!(r#"Rc::new(Sequence(vec!{:?}))"#, arg0))
@@ -433,16 +443,58 @@ fn triple_bracket_command(input: Span) -> IResult<Span, Span> {
     Ok((input, Span::new(cmd.into_fragment().trim())))
 }
 
-fn command(input: Span) -> IResult<Span, Span> {
-    triple_bracket_command(input)
-}
-
 fn command_expr(input: Span) -> IResult<Span, Expr> {
-    let (after, cmd) = command(input)?;
+    let (after, cmd) = triple_bracket_command(input)?;
     let command_span = ChicSpan::new(input, after);
     Ok((
         after,
-        Expr::Command(ustr(cmd.into_fragment()), 0, command_span),
+        Expr::Command(ustr(cmd.into_fragment()), None, 0, command_span),
+    ))
+}
+
+fn at_shell_regex(input: Span) -> IResult<Span, (String, String)> {
+    let (input, _) = char('@')(input)?;
+    let (input, shell) = terminal(input)?;
+    let shell = match shell.as_ref() {
+        "bash" | "fish" | "zsh" => shell,
+        _ => return fail(input),
+    };
+    let (input, regex) = description(input)?;
+    Ok((input, (shell, regex)))
+}
+
+fn cmd_regex_decl(mut input: Span) -> IResult<Span, CmdRegexDecl> {
+    let mut spec = CmdRegexDecl::default();
+    while let Ok((rest, (shell, regex))) = at_shell_regex(input) {
+        match shell.as_ref() {
+            "bash" => spec.bash = Some(ustr(regex.as_ref())),
+            "fish" => spec.fish = Some(ustr(regex.as_ref())),
+            "zsh" => spec.zsh = Some(ustr(regex.as_ref())),
+            _ => unreachable!(),
+        }
+        input = rest;
+    }
+
+    if let CmdRegexDecl {
+        bash: None,
+        fish: None,
+        zsh: None,
+    } = spec
+    {
+        return fail(input);
+    }
+
+    Ok((input, spec))
+}
+
+fn nontail_command_expr(mut input: Span) -> IResult<Span, Expr> {
+    let (after, cmd) = triple_bracket_command(input)?;
+    let command_span = ChicSpan::new(input, after);
+    input = after;
+    let (input, regex_decl) = cmd_regex_decl(input)?;
+    Ok((
+        input,
+        Expr::Command(ustr(cmd.into_fragment()), Some(regex_decl), 0, command_span),
     ))
 }
 
@@ -475,6 +527,7 @@ fn unary_expr(input: Span) -> IResult<Span, Expr> {
         nonterminal_expr,
         optional_expr,
         parenthesized_expr,
+        nontail_command_expr,
         command_expr,
         terminal_opt_description_expr,
     ))(input)?;
@@ -988,10 +1041,8 @@ fn do_distribute_descriptions(expr: Rc<Expr>, description: &mut Option<Ustr>) ->
             *description = None; // spend it
             result
         }
-        Expr::Terminal(_, None, _) => Rc::clone(&expr),
-        Expr::Terminal(_, Some(_), _) => Rc::clone(&expr),
-        Expr::Nonterminal(..) => Rc::clone(&expr),
-        Expr::Command(..) => Rc::clone(&expr),
+        Expr::Terminal(..) => Rc::clone(&expr),
+        Expr::Nonterminal(..) | Expr::Command(..) => Rc::clone(&expr),
         Expr::Sequence(children) => {
             let new_children: Vec<Rc<Expr>> = children
                 .iter()
@@ -1094,8 +1145,7 @@ fn do_propagate_fallback_levels(expr: Rc<Expr>, fallback_level: usize) -> Rc<Exp
                 Rc::new(Expr::Fallback(new_children))
             }
         }
-        Expr::Command(..) => Rc::clone(&expr),
-        Expr::Nonterminal(..) => Rc::clone(&expr),
+        Expr::Nonterminal(..) | Expr::Command(..) => Rc::clone(&expr),
         Expr::Sequence(children) => {
             let new_children: Vec<Rc<Expr>> = children
                 .iter()
@@ -1172,7 +1222,7 @@ fn check_subword(
     match expr.as_ref() {
         Expr::Terminal(..) => {}
         Expr::Command(..) if is_tail => {}
-        Expr::Command(cmd, _, span) => {
+        Expr::Command(cmd, None, _, span) => {
             return if let Some(overriding_span) = overriding_span {
                 Err(Error::CommandAtNonTailPosition(
                     *cmd,
@@ -1182,6 +1232,7 @@ fn check_subword(
                 Err(Error::CommandAtNonTailPosition(*cmd, span.clone()))
             }
         }
+        Expr::Command(_, Some(..), _, _) => {}
         Expr::Nonterminal(nonterm, _, diagnostic_span) => {
             if !is_tail && specializations.contains_key(nonterm) {
                 return Err(Error::CommandAtNonTailPosition(
@@ -1268,8 +1319,7 @@ fn do_ensure_subword_commands_only_at_tail_position(
     specializations: &UstrMap<Specialization>,
 ) -> Result<()> {
     match expr.as_ref() {
-        Expr::Terminal(..) => {}
-        Expr::Command(..) => {}
+        Expr::Terminal(..) | Expr::Command(..) => {}
         Expr::Nonterminal(nonterm, _, _) => {
             if let Some(expr) = nonterminal_definitions.get(nonterm) {
                 do_ensure_subword_commands_only_at_tail_position(
@@ -1480,7 +1530,7 @@ fn resolve_nonterminals(
     unused_nonterminals: &mut UstrSet,
 ) -> Rc<Expr> {
     match expr.as_ref() {
-        Expr::Terminal(..) => Rc::clone(&expr),
+        Expr::Terminal(..) | Expr::Command(..) => Rc::clone(&expr),
         Expr::Subword(child, fallback_level) => {
             let child = match child {
                 SubwordCompilationPhase::Expr(e) => Rc::clone(e),
@@ -1509,7 +1559,6 @@ fn resolve_nonterminals(
                 },
             }
         },
-        Expr::Command(..) => Rc::clone(&expr),
         Expr::Sequence(children) => {
             let mut new_children: Vec<Rc<Expr>> = Default::default();
             let mut any_child_replaced = false;
@@ -1582,7 +1631,7 @@ fn resolve_nonterminals(
 
 fn do_get_expression_nonterminals(expr: Rc<Expr>, deps: &mut UstrSet) {
     match expr.as_ref() {
-        Expr::Terminal(..) => {},
+        Expr::Terminal(..) | Expr::Command(..) => {},
         Expr::Subword(subexpr, ..) => {
             let subexpr = match subexpr {
                 SubwordCompilationPhase::Expr(e) => Rc::clone(e),
@@ -1593,7 +1642,6 @@ fn do_get_expression_nonterminals(expr: Rc<Expr>, deps: &mut UstrSet) {
         Expr::Nonterminal(varname, ..) => {
             deps.insert(*varname);
         },
-        Expr::Command(..) => {},
         Expr::Sequence(children) => {
             for child in children {
                 do_get_expression_nonterminals(Rc::clone(child), deps);
@@ -2059,7 +2107,17 @@ pub mod tests {
         const INPUT: &str = "{{{ rustup toolchain list | cut -d' ' -f1 }}}";
         let (s, e) = command_expr(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
-        assert!(matches!(e, Command(s, 0, ..) if s == "rustup toolchain list | cut -d' ' -f1"));
+        assert!(
+            matches!(e, Command(s, None, 0, ..) if s == "rustup toolchain list | cut -d' ' -f1")
+        );
+    }
+
+    #[test]
+    fn parses_nontail_command() {
+        const INPUT: &str = r#"{{{ foo }}}@bash"bar""#;
+        let (s, e) = nontail_command_expr(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty(), "{:?}", s.fragment());
+        assert!(matches!(e, Command(s, _, 0, ..) if s == "foo"));
     }
 
     #[test]
@@ -2068,7 +2126,7 @@ pub mod tests {
         let (s, e) = command_expr(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
         assert!(
-            matches!(e, Command(s, 0, ..) if s == "rad patch list | awk '{print $3}' | grep . | grep -vw ID")
+            matches!(e, Command(s, None, 0, ..) if s == "rad patch list | awk '{print $3}' | grep . | grep -vw ID")
         );
     }
 
@@ -2417,6 +2475,7 @@ cargo [+{{{ rustup toolchain list | cut -d' ' -f1 }}}] [<OPTIONS>] [<COMMAND>];
                             Rc::new(Terminal(ustr("+"), None, 0)),
                             Rc::new(Command(
                                 ustr("rustup toolchain list | cut -d' ' -f1"),
+                                None,
                                 0,
                                 ChicSpan::dummy()
                             ))
@@ -2674,6 +2733,7 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
                     shell: None,
                     expr: Rc::new(Command(
                         u("rustup toolchain list | cut -d' ' -f1"),
+                        None,
                         0,
                         ChicSpan::dummy()
                     )),
@@ -2806,6 +2866,7 @@ ls <FILE>;
                     shell: Some(ustr("bash")),
                     expr: Rc::new(Command(
                         ustr(r#"compgen -A file "$1""#),
+                        None,
                         0,
                         ChicSpan::dummy()
                     ))
@@ -2815,6 +2876,7 @@ ls <FILE>;
                     shell: Some(ustr("fish")),
                     expr: Rc::new(Command(
                         ustr(r#"__fish_complete_path "$1""#),
+                        None,
                         0,
                         ChicSpan::dummy()
                     ))
@@ -2965,9 +3027,9 @@ ls <FILE>;
             e,
             Subword(
                 SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
-                    Rc::new(Command(ustr("git tag"), 0, ChicSpan::dummy())),
+                    Rc::new(Command(ustr("git tag"), None, 0, ChicSpan::dummy())),
                     Rc::new(Terminal(ustr(".."), None, 0)),
-                    Rc::new(Command(ustr("git tag"), 0, ChicSpan::dummy()))
+                    Rc::new(Command(ustr("git tag"), None, 0, ChicSpan::dummy()))
                 ]))),
                 0
             )
@@ -3038,6 +3100,29 @@ duf -hide-fs <FS>[,<FS>]...;
             Sequence(vec![
                 Rc::new(Terminal(ustr("cmd"), None, 0)),
                 Rc::new(Terminal(ustr("foo"), None, 0)),
+            ])
+        );
+    }
+
+    #[test]
+    fn parses_nontail_command_script() {
+        const INPUT: &str = r#"cmd {{{ echo foo }}}@bash"bar"@fish"baz"@zsh"quux""#;
+        let (s, e) = expr(Span::new(INPUT)).unwrap();
+        assert!(s.is_empty(), "{:?}", s.fragment());
+        assert_eq!(
+            e,
+            Sequence(vec![
+                Rc::new(Terminal(ustr("cmd"), None, 0)),
+                Rc::new(Command(
+                    ustr("echo foo"),
+                    Some(CmdRegexDecl {
+                        bash: Some(ustr("bar")),
+                        fish: Some(ustr("baz")),
+                        zsh: Some(ustr("quux"))
+                    }),
+                    0,
+                    ChicSpan::dummy(),
+                )),
             ])
         );
     }

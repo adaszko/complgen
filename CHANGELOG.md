@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
  - JIT mode can now produce a Graphviz diagram of the DFA
+ - Nontail-position commands
 
 ### Fixed
 
