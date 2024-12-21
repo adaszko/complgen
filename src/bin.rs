@@ -77,6 +77,9 @@ struct JitArgs {
     railroad_svg: Option<String>,
 
     #[clap(long)]
+    dfa_dot: Option<String>,
+
+    #[clap(long)]
     test: Option<String>,
 
     usage_file_path: String,
@@ -191,6 +194,11 @@ fn jit(args: &JitArgs) -> anyhow::Result<()> {
     let arena = Bump::new();
     let regex = AugmentedRegex::from_expr(&validated.expr, &validated.specializations, &arena);
     let dfa = DFA::from_regex(&regex);
+
+    if let Some(dot_file_path) = &args.dfa_dot {
+        let mut dot_file = get_file_or_stdout(dot_file_path)?;
+        dfa.to_dot(&mut dot_file).context(dot_file_path.clone())?;
+    }
 
     let (prefix, words) = match &args.shell {
         Shell::Bash(a) => (&a.prefix, &a.words),
