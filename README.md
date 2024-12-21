@@ -300,7 +300,7 @@ strace -e <EXPR>;
 
 The above grammar was pulled straight out of [`strace` man page](https://man7.org/linux/man-pages/man1/strace.1.html#OPTIONS).
 
-### Fallback Completions
+### Cleaning up the list of completion candidates
 
 If you do `git <TAB>` in most shells you're presented with a list of git subcommands.  Even though git accepts
 a bunch of global options (`--help`, `--version`, etc.), they don't show up there (sic!).  That's a special
