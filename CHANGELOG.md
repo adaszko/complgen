@@ -11,6 +11,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - JIT mode can now produce a Graphviz diagram of the DFA
 
 ### Fixed
+
+ - Bash: Bug in `prefix{{{ shell command }}}` case
+
 ## 0.3.0
 ### Added
 

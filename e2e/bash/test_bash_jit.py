@@ -11,6 +11,9 @@ from conftest import complgen_binary_path, set_working_dir, gen_bash_jit_complet
 from common import LSOF_FILTER_GRAMMAR, STRACE_EXPR_GRAMMAR
 
 
+# Note bash's printf '%s\n' ARRAY prints a useless empty string ('') when the array is empty (!)
+
+
 SPECIAL_CHARACTERS = '?[^a]*{foo,*bar}'
 
 
@@ -166,7 +169,7 @@ def test_subword_fallbacks_on_no_matches(complgen_binary_path: Path):
         assert get_sorted_bash_completions(completion_script, input) == sorted(['secondary'])
 
 
-def test_respects_ignore_case_option(complgen_binary_path: Path):
+def test_respects_ignore_case_option_literal(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --case-lower | --CASE-UPPER;'''
     with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, last_incomplete_word='--case-') as completion_script:
         input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; bind "set completion-ignore-case on"; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
@@ -175,15 +178,32 @@ def test_respects_ignore_case_option(complgen_binary_path: Path):
         input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; bind "set completion-ignore-case off"; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_bash_completions(completion_script, input) == sorted(['--case-lower'])
 
+def test_respects_ignore_case_option_command(complgen_binary_path: Path):
+    GRAMMAR = r'''cmd {{{ echo case-lower; echo CASE-UPPER }}};'''
+    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, last_incomplete_word='case-') as completion_script:
+        input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; bind "set completion-ignore-case on"; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(completion_script, input) == sorted(['case-lower', 'CASE-UPPER'])
+    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, last_incomplete_word='case-') as completion_script:
+        input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; bind "set completion-ignore-case off"; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(completion_script, input) == sorted(['case-lower'])
 
-def test_respects_ignore_case_option_subwords(complgen_binary_path: Path):
+def test_respects_ignore_case_option_subword_literal(complgen_binary_path: Path):
     GRAMMAR = r'''cmd --option=(lower | UPPER);'''
     with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, last_incomplete_word='--option=LO') as completion_script:
         input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; bind "set completion-ignore-case on"; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_bash_completions(completion_script, input) == sorted(['lower'])
     with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, last_incomplete_word='--option=LO') as completion_script:
-        input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; bind "set completion-ignore-case off"; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_bash_completions(completion_script, input) == sorted([''])
+        input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; bind "set completion-ignore-case off"; __complgen_jit; [[ ${#COMPREPLY[@]} -eq 0 ]] || printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(completion_script, input) == sorted([])
+
+def test_respects_ignore_case_option_subword_command(complgen_binary_path: Path):
+    GRAMMAR = r'''cmd --option={{{ echo lower; echo UPPER }}};'''
+    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, last_incomplete_word='--option=LO') as completion_script:
+        input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; bind "set completion-ignore-case on"; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(completion_script, input) == sorted(['lower'])
+    with gen_bash_jit_completions_script_path(complgen_binary_path, GRAMMAR, last_incomplete_word='--option=LO') as completion_script:
+        input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; bind "set completion-ignore-case off"; __complgen_jit; [[ ${#COMPREPLY[@]} -eq 0 ]] || printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(completion_script, input) == sorted([])
 
 
 def test_funky_spec_command_name(complgen_binary_path: Path):

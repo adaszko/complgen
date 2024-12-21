@@ -170,7 +170,6 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
         fi
 
         if [[ -v "match_anything_transitions[$state]" ]]; then
-            state=${{match_anything_transitions[$state]}}
             matched=1
             break
         fi
