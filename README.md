@@ -180,6 +180,7 @@ of invoking the completed command or is a nonterminal definition.
  * `[a]` matches zero or one occurrences of `a`.
  * `a...` matches one or more occurrences of `a`
  * `[a]...` matches zero or more occurrences of `a`.
+ * `(aaa | bbb || ccc)` shows `aaa` and `bbb` as candidates, and `ccc` only when current input matches neither `aaa` nor `bbb`.
 
 Use parentheses to group patterns:
 
