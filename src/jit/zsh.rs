@@ -210,7 +210,7 @@ pub fn write_zsh_completion_shell_code<W: Write>(
             }
         }
 
-        // An external command -- execute it and collect stdout lines as completions
+        // An external command -- execute it and collect stdout lines as candidates
         for cmd in group.iter().filter_map(|t| match t {
             Input::Command(cmd, ..) => Some(*cmd),
             Input::Nonterminal(
@@ -256,7 +256,8 @@ pub fn write_zsh_completion_shell_code<W: Write>(
         }) {
             let subdfa_id = id_from_dfa.get(subdfa).unwrap();
             writeln!(
-                output, r#"
+                output,
+                r#"
     {} complete {prefix_constant}
     completions_no_description_trailing_space+=("${{subword_completions_no_description_trailing_space[@]}}")
     completions_trailing_space+=("${{subword_completions_trailing_space[@]}}")
@@ -270,7 +271,7 @@ pub fn write_zsh_completion_shell_code<W: Write>(
             )?;
         }
         // An external command that calls compadd itself and return 0 exit code if there
-        // were some completions produced.  The exit code is used to declare a fallback
+        // were some candidates produced.  The exit code is used to declare a fallback
         // level complete, so it's important.
         for cmd in group.iter().filter_map(|t| match t {
             Input::Nonterminal(_, Some(Specialization { zsh: Some(cmd), .. }), ..) => Some(*cmd),

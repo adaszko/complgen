@@ -103,7 +103,7 @@ end
             )?;
         }
 
-        // An external command -- execute it and collect stdout lines as completions
+        // An external command -- execute it and collect stdout lines as candidates
         for cmd in group.iter().filter_map(|t| match t {
             Input::Command(cmd, ..) => Some(*cmd),
             Input::Nonterminal(

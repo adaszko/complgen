@@ -46,17 +46,17 @@ pub fn make_string_constant(s: &str) -> String {
 
 pub const MATCH_FN_NAME: &str = "__complgen_match";
 pub fn write_match_fn<W: Write>(output: &mut W) -> anyhow::Result<()> {
-    // Unzip completions from stdin into two arrays -- completions and descriptions
+    // Unzip candidates from stdin into two arrays -- candidates and descriptions
     writeln!(
         output,
         r#"function {MATCH_FN_NAME}
     set prefix $argv[1]
 
-    set completions
+    set candidates
     set descriptions
     while read c
         set a (string split --max 1 -- "	" $c)
-        set --append completions $a[1]
+        set --append candidates $a[1]
         if set --query a[2]
             set --append descriptions $a[2]
         else
@@ -64,7 +64,7 @@ pub fn write_match_fn<W: Write>(output: &mut W) -> anyhow::Result<()> {
         end
     end
 
-    if test -z "$completions"
+    if test -z "$candidates"
         return 1
     end
 
@@ -73,9 +73,9 @@ pub fn write_match_fn<W: Write>(output: &mut W) -> anyhow::Result<()> {
 
     set matches_case_sensitive
     set descriptions_case_sensitive
-    for i in (seq 1 (count $completions))
-        if string match --regex --quiet --entire -- $regex $completions[$i]
-            set --append matches_case_sensitive $completions[$i]
+    for i in (seq 1 (count $candidates))
+        if string match --regex --quiet --entire -- $regex $candidates[$i]
+            set --append matches_case_sensitive $candidates[$i]
             set --append descriptions_case_sensitive $descriptions[$i]
         end
     end
@@ -89,9 +89,9 @@ pub fn write_match_fn<W: Write>(output: &mut W) -> anyhow::Result<()> {
 
     set matches_case_insensitive
     set descriptions_case_insensitive
-    for i in (seq 1 (count $completions))
-        if string match --regex --quiet --ignore-case --entire -- $regex $completions[$i]
-            set --append matches_case_insensitive $completions[$i]
+    for i in (seq 1 (count $candidates))
+        if string match --regex --quiet --ignore-case --entire -- $regex $candidates[$i]
+            set --append matches_case_insensitive $candidates[$i]
             set --append descriptions_case_insensitive $descriptions[$i]
         end
     end

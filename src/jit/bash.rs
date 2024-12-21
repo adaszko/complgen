@@ -60,7 +60,7 @@ pub fn write_bash_completion_shell_code<W: Write>(
     writeln!(
         output,
         r#"__complgen_jit () {{
-    local -a completions=()
+    local -a candidates=()
     local -a matches=()"#
     )?;
 
@@ -85,12 +85,12 @@ pub fn write_bash_completion_shell_code<W: Write>(
         if !literals.is_empty() {
             writeln!(
                 output,
-                r#"    completions+=({})"#,
+                r#"    candidates+=({})"#,
                 itertools::join(literals.iter().map(|s| make_string_constant(s)), " ")
             )?;
         }
 
-        // An external command -- execute it and collect stdout lines as completions
+        // An external command -- execute it and collect stdout lines as candidates
         for cmd in group.iter().filter_map(|t| match t {
             Input::Command(cmd, ..) => Some(*cmd),
             Input::Nonterminal(
@@ -108,7 +108,7 @@ pub fn write_bash_completion_shell_code<W: Write>(
             let fn_name = make_external_command_fn_name(completed_command, *command_id);
             writeln!(
                 output,
-                r#"    readarray -t -O ${{#completions[@]}} completions < <({fn_name} {prefix_constant})"#
+                r#"    readarray -t -O ${{#candidates[@]}} candidates < <({fn_name} {prefix_constant})"#
             )?
         }
 
@@ -120,7 +120,7 @@ pub fn write_bash_completion_shell_code<W: Write>(
             let fn_name = make_subword_fn_name(completed_command, *subdfa_id);
             writeln!(
                 output,
-                r#"    readarray -t -O ${{#completions[@]}} completions < <({fn_name} complete {prefix_constant})"#
+                r#"    readarray -t -O ${{#candidates[@]}} candidates < <({fn_name} complete {prefix_constant})"#
             )?
         }
         for cmd in group.iter().filter_map(|t| match t {
@@ -137,17 +137,17 @@ pub fn write_bash_completion_shell_code<W: Write>(
             let fn_name = make_external_command_fn_name(completed_command, *command_id);
             writeln!(
                 output,
-                r#"    readarray -t -O ${{#completions[@]}} completions < <({fn_name} {prefix_constant})"#
+                r#"    readarray -t -O ${{#candidates[@]}} candidates < <({fn_name} {prefix_constant})"#
             )?
         }
 
         if entered_prefix.is_empty() {
-            writeln!(output, r#"    matches=("${{completions[@]}}")"#)?;
+            writeln!(output, r#"    matches=("${{candidates[@]}}")"#)?;
         } else {
-            // Filter `completions` by `entered_prefix`, respecting `ignore_case`
+            // Filter `candidates` by `entered_prefix`, respecting `ignore_case`
             writeln!(
                 output,
-                r#"    readarray -t matches < <(printf "%s\n" "${{completions[@]}}" | {MATCH_FN_NAME} "$ignore_case" {prefix_constant})"#
+                r#"    readarray -t matches < <(printf "%s\n" "${{candidates[@]}}" | {MATCH_FN_NAME} "$ignore_case" {prefix_constant})"#
             )?;
         }
 

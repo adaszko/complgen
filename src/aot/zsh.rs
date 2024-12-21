@@ -205,7 +205,7 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
          eval "declare initializer=\${{${{commands_name}}[$subword_state]}}"
          eval "declare -a transitions=($initializer)"
          for command_id in "${{transitions[@]}}"; do
-             local completions=()
+             local candidates=()
              local output=$(_{command}_cmd_${{command_id}} "$matched_prefix")
              local -a command_completions=("${{(@f)output}}")
              for line in ${{command_completions[@]}}; do
@@ -229,8 +229,8 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
          eval "declare -a transitions=($initializer)"
          for command_id in "${{transitions[@]}}"; do
              local output=$(_{command}_cmd_${{command_id}} "$matched_prefix")
-             local -a completions=("${{(@f)output}}")
-             for line in ${{completions[@]}}; do
+             local -a candidates=("${{(@f)output}}")
+             for line in ${{candidates[@]}}; do
                  if [[ $line = "${{completed_prefix}}"* ]]; then
                      line="$matched_prefix$line"
                      local parts=(${{(@s:	:)line}})

@@ -195,7 +195,7 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
     local matched_prefix="${{word:0:$char_index}}"
     local completed_prefix="${{word:$char_index}}"
 
-    local -a completions=()
+    local -a candidates=()
     local -a matches=()
     local ignore_case=$(bind -v | grep completion-ignore-case | cut -d' ' -f3)
     for (( subword_fallback_level=0; subword_fallback_level <= max_fallback_level; subword_fallback_level++ )) {{
@@ -203,26 +203,17 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
         eval "declare -a transitions=(\${{$literal_transitions_name[$state]}})"
         for literal_id in "${{transitions[@]}}"; do
             local literal=${{literals[$literal_id]}}
-            completions+=("$matched_prefix$literal")
+            candidates+=("$matched_prefix$literal")
         done
-        if [[ ${{#completions[@]}} -gt 0 ]]; then
-            readarray -t matches < <(printf "%s\n" "${{completions[@]}}" | {MATCH_FN_NAME} "$ignore_case" "$matched_prefix$completed_prefix")
+        if [[ ${{#candidates[@]}} -gt 0 ]]; then
+            readarray -t matches < <(printf "%s\n" "${{candidates[@]}}" | {MATCH_FN_NAME} "$ignore_case" "$matched_prefix$completed_prefix")
         fi
 
         eval "declare commands_name=commands_level_${{subword_fallback_level}}"
         eval "declare -a transitions=(\${{$commands_name[$state]}})"
         for command_id in "${{transitions[@]}}"; do
-            readarray -t completions < <(_{command}_cmd_$command_id "$matched_prefix" | cut -f1)
-            for item in "${{completions[@]}}"; do
-                matches+=("$matched_prefix$item")
-            done
-        done
-
-        eval "declare specialized_commands_name=specialized_commands_level_$subword_fallback_level"
-        eval "declare -a transitions=(\${{$specialized_commands_name[$state]}})"
-        for command_id in "${{transitions[@]}}"; do
-            readarray -t completions < <(_{command}_cmd_$command_id "$prefix" | cut -f1)
-            for item in "${{completions[@]}}"; do
+            readarray -t candidates < <(_{command}_cmd_$command_id "$matched_prefix" | cut -f1)
+            for item in "${{candidates[@]}}"; do
                 matches+=("$matched_prefix$item")
             done
         done
@@ -426,7 +417,7 @@ fi
         buffer,
         r#"
     if [[ $(type -t _get_comp_words_by_ref) != function ]]; then
-        echo _get_comp_words_by_ref: function not defined.  Make sure the bash-completions system package is installed
+        echo _get_comp_words_by_ref: function not defined.  Make sure the bash-candidates system package is installed
         return 1
     fi
 
@@ -626,7 +617,7 @@ fi
     write!(
         buffer,
         r#"
-    local -a completions=()
+    local -a candidates=()
     local -a matches=()
     local ignore_case=$(bind -v | grep completion-ignore-case | cut -d' ' -f3)
     local max_fallback_level={max_fallback_level}
@@ -636,10 +627,10 @@ fi
         eval "declare -a transitions=(\${{$literal_transitions_name[$state]}})"
         for literal_id in "${{transitions[@]}}"; do
             local literal="${{literals[$literal_id]}}"
-            completions+=("$literal ")
+            candidates+=("$literal ")
         done
-        if [[ ${{#completions[@]}} -gt 0 ]]; then
-            readarray -t matches < <(printf "%s\n" "${{completions[@]}}" | {MATCH_FN_NAME} "$ignore_case" "$prefix")
+        if [[ ${{#candidates[@]}} -gt 0 ]]; then
+            readarray -t matches < <(printf "%s\n" "${{candidates[@]}}" | {MATCH_FN_NAME} "$ignore_case" "$prefix")
         fi
 
         eval "declare subword_transitions_name=subword_transitions_level_${{fallback_level}}"
@@ -651,18 +642,9 @@ fi
         eval "declare commands_name=commands_level_${{fallback_level}}"
         eval "declare -a transitions=(\${{$commands_name[$state]}})"
         for command_id in "${{transitions[@]}}"; do
-            readarray -t completions < <(_{command}_cmd_$command_id "$prefix" | cut -f1)
-            if [[ ${{#completions[@]}} -gt 0 ]]; then
-                readarray -t -O "${{#matches[@]}}" matches < <(printf "%s\n" "${{completions[@]}}" | {MATCH_FN_NAME} "$ignore_case" "$prefix")
-            fi
-        done
-
-        eval "declare specialized_commands_name=specialized_commands_level_${{fallback_level}}"
-        eval "declare -a transitions=(\${{$specialized_commands_name[$state]}})"
-        for command_id in "${{transitions[@]}}"; do
-            readarray -t completions < <(_{command}_cmd_"${{command_id}}" "$prefix" | cut -f1)
-            if [[ ${{#completions[@]}} -gt 0 ]]; then
-                readarray -t -O "${{#matches[@]}}" matches < <(printf "%s\n" "${{completions[@]}}" | {MATCH_FN_NAME} "$ignore_case" "$prefix")
+            readarray -t candidates < <(_{command}_cmd_$command_id "$prefix" | cut -f1)
+            if [[ ${{#candidates[@]}} -gt 0 ]]; then
+                readarray -t -O "${{#matches[@]}}" matches < <(printf "%s\n" "${{candidates[@]}}" | {MATCH_FN_NAME} "$ignore_case" "$prefix")
             fi
         done
 
