@@ -343,36 +343,44 @@ pub fn make_id_from_command_map(dfa: &DFA) -> IndexMap<Ustr, usize> {
     let mut result: IndexMap<Ustr, usize> = Default::default();
 
     let mut unallocated_id = 0;
-    for cmd in dfa.iter_command_transitions().map(|(_, cmd)| cmd) {
-        result.entry(cmd).or_insert_with(|| {
-            let id = unallocated_id;
-            unallocated_id += 1;
-            id
-        });
-    }
 
-    for cmd in dfa.iter_subword_command_transitions() {
-        result.entry(cmd).or_insert_with(|| {
-            let id = unallocated_id;
-            unallocated_id += 1;
-            id
-        });
-    }
+    for input in dfa.iter_inputs() {
+        let mut cmds: Vec<Ustr> = Default::default();
 
-    for cmd in dfa.iter_bash_command_transitions() {
-        result.entry(cmd).or_insert_with(|| {
-            let id = unallocated_id;
-            unallocated_id += 1;
-            id
-        });
-    }
+        match input {
+            Input::Nonterminal(
+                _,
+                Some(Specialization {
+                    bash: Some(cmd), ..
+                }),
+                ..,
+            ) => cmds.push(*cmd),
+            Input::Command(cmd, ..) => cmds.push(*cmd),
+            Input::Subword(subdfa, ..) => {
+                for input in subdfa.as_ref().iter_inputs() {
+                    match input {
+                        Input::Nonterminal(
+                            _,
+                            Some(Specialization {
+                                bash: Some(cmd), ..
+                            }),
+                            _,
+                        ) => cmds.push(*cmd),
+                        Input::Command(cmd, ..) => cmds.push(*cmd),
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
 
-    for cmd in dfa.get_bash_subword_command_transitions() {
-        result.entry(cmd).or_insert_with(|| {
-            let id = unallocated_id;
-            unallocated_id += 1;
-            id
-        });
+        for cmd in cmds {
+            result.entry(cmd).or_insert_with(|| {
+                let id = unallocated_id;
+                unallocated_id += 1;
+                id
+            });
+        }
     }
 
     result
