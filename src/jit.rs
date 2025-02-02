@@ -3,14 +3,14 @@ use crate::StateId;
 use hashbrown::HashMap;
 use ustr::{Ustr, UstrMap};
 
-use crate::grammar::DFARef;
+use crate::grammar::{DFARef, Shell};
 use crate::{dfa::DFA, regex::Input};
 
 pub mod bash;
 pub mod fish;
 pub mod zsh;
 
-pub fn get_match_final_state(dfa: &DFA, words: &[&str]) -> Option<StateId> {
+pub fn get_match_final_state(dfa: &DFA, words: &[&str], shell: Shell) -> Option<StateId> {
     // Match words up to `completed_word_index`
     let mut word_index = 0;
     let mut state = dfa.starting_state;
@@ -27,7 +27,7 @@ pub fn get_match_final_state(dfa: &DFA, words: &[&str]) -> Option<StateId> {
 
         for (transition_input, to) in dfa.iter_transitions_from(state) {
             if let Input::Subword(dfa, ..) = transition_input {
-                if dfa.as_ref().accepts_str(words[word_index]) {
+                if dfa.as_ref().accepts_str(words[word_index], shell) {
                     word_index += 1;
                     state = to;
                     continue 'outer;
@@ -36,7 +36,7 @@ pub fn get_match_final_state(dfa: &DFA, words: &[&str]) -> Option<StateId> {
         }
 
         for (transition_input, to) in dfa.iter_transitions_from(state) {
-            if transition_input.matches_anything() {
+            if transition_input.matches_anything(shell) {
                 word_index += 1;
                 state = to;
                 continue 'outer;
@@ -49,8 +49,8 @@ pub fn get_match_final_state(dfa: &DFA, words: &[&str]) -> Option<StateId> {
     Some(state)
 }
 
-pub fn get_transitions(dfa: &DFA, words_before_cursor: &[&str]) -> Vec<Input> {
-    let Some(state) = get_match_final_state(dfa, words_before_cursor) else {
+pub fn get_transitions(dfa: &DFA, words_before_cursor: &[&str], shell: Shell) -> Vec<Input> {
+    let Some(state) = get_match_final_state(dfa, words_before_cursor, shell) else {
         return vec![];
     };
     let inputs = dfa

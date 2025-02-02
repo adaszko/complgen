@@ -5,6 +5,7 @@ use std::{cmp::Ordering, collections::BTreeSet, hash::Hash, io::Write, rc::Rc};
 use roaring::{MultiOps, RoaringBitmap};
 use ustr::{ustr, Ustr, UstrSet};
 
+use crate::grammar::Shell;
 use crate::StateId;
 use crate::{
     grammar::{DFARef, Specialization},
@@ -690,7 +691,7 @@ impl DFA {
         do_minimize(self)
     }
 
-    pub fn accepts_str(&self, mut input: &str) -> bool {
+    pub fn accepts_str(&self, mut input: &str, shell: Shell) -> bool {
         let mut current_state = self.starting_state;
         'outer: while !input.is_empty() {
             for (transition_input, to) in self.iter_transitions_from(current_state) {
@@ -705,7 +706,7 @@ impl DFA {
             }
 
             for (transition_input, to) in self.iter_transitions_from(current_state) {
-                if transition_input.matches_anything() {
+                if transition_input.matches_anything(shell) {
                     current_state = to;
                     break 'outer;
                 }
@@ -716,15 +717,26 @@ impl DFA {
         self.accepting_states.contains(current_state.into())
     }
 
-    pub fn get_any_ambiguous_state(&self) -> Option<Vec<Input>> {
+    /// Best-effort only!  This isn't able to detect ambiguities arising from use of overlapping shell
+    /// regexes!
+    pub fn find_ambiguous_transition(&self) -> Option<Vec<Input>> {
         for (_, tos) in &self.transitions {
-            let matching_anything: Vec<Input> = tos
-                .iter()
-                .filter(|(input, _)| input.matches_anything())
-                .map(|(input, _)| input.clone())
-                .collect();
-            if matching_anything.len() >= 2 {
-                return Some(matching_anything);
+            let mut ambiguous_inputs: Vec<Input> = Default::default();
+            for (input, _) in tos {
+                match input {
+                    Input::Literal(..) => {}
+                    Input::Nonterminal(..) => ambiguous_inputs.push(input.clone()),
+                    Input::Subword(dfaref, _) => {
+                        if let Some(inputs) = dfaref.as_ref().find_ambiguous_transition() {
+                            return Some(inputs);
+                        }
+                    }
+                    Input::Command(_, None, _) => ambiguous_inputs.push(input.clone()),
+                    Input::Command(_, Some(..), _) => {}
+                }
+            }
+            if ambiguous_inputs.len() >= 2 {
+                return Some(ambiguous_inputs);
             }
         }
         None
@@ -979,14 +991,19 @@ impl DFA {
         states
     }
 
-    pub fn iter_match_anything_transitions(&self) -> impl Iterator<Item = (StateId, StateId)> + '_ {
-        self.iter_transitions().filter_map(|(from, input, to)| {
-            if input.matches_anything() {
-                Some((from, to))
-            } else {
-                None
-            }
-        })
+    pub fn iter_match_anything_transitions(
+        &self,
+        shell: Shell,
+    ) -> impl Iterator<Item = (StateId, StateId)> + '_ {
+        self.iter_transitions()
+            .filter_map(move |(from, input, to)| {
+                // XXX Likely wrong
+                if input.matches_anything(shell) {
+                    Some((from, to))
+                } else {
+                    None
+                }
+            })
     }
 
     pub fn get_subwords(&self, first_id: usize) -> IndexMap<DFARef, usize> {
@@ -1055,7 +1072,7 @@ mod tests {
     }
 
     impl DFA {
-        pub fn accepts(&self, inputs: &[&str]) -> Result<bool, TestCaseError> {
+        pub fn accepts(&self, inputs: &[&str], shell: Shell) -> Result<bool, TestCaseError> {
             let mut input_index = 0;
             let mut current_state = self.starting_state;
             'outer: loop {
@@ -1075,7 +1092,7 @@ mod tests {
 
                 for (transition_input, to) in self.iter_transitions_from(current_state) {
                     if let Input::Subword(dfa, ..) = transition_input {
-                        if dfa.as_ref().accepts_str(inputs[input_index]) {
+                        if dfa.as_ref().accepts_str(inputs[input_index], shell) {
                             input_index += 1;
                             current_state = to;
                             continue 'outer;
@@ -1085,7 +1102,7 @@ mod tests {
 
                 let anys: Vec<(Input, StateId)> = self
                     .iter_transitions_from(current_state)
-                    .filter(|(input, _)| input.matches_anything())
+                    .filter(|(input, _)| input.matches_anything(shell))
                     .map(|(k, v)| (k.clone(), v))
                     .collect();
                 // It's ambiguous which transition to take if there are two transitions
@@ -1093,7 +1110,7 @@ mod tests {
                 prop_assume!(anys.len() <= 1);
 
                 for (transition_input, to) in anys {
-                    if transition_input.matches_anything() {
+                    if transition_input.matches_anything(shell) {
                         input_index += 1;
                         current_state = to;
                         continue 'outer;
@@ -1154,7 +1171,7 @@ mod tests {
                 let s: &str = s;
                 s
             }).collect();
-            prop_assert!(dfa.accepts(&input)?);
+            prop_assert!(dfa.accepts(&input, Shell::Bash)?);
         }
 
         #[test]
@@ -1169,9 +1186,9 @@ mod tests {
                 let s: &str = s;
                 s
             }).collect();
-            prop_assert!(dfa.accepts(&input)?);
+            prop_assert!(dfa.accepts(&input, Shell::Bash)?);
             let minimal_dfa = dfa.minimize();
-            prop_assert!(minimal_dfa.accepts(&input)?);
+            prop_assert!(minimal_dfa.accepts(&input, Shell::Bash)?);
         }
     }
 
@@ -1268,9 +1285,9 @@ mod tests {
                 s
             })
             .collect();
-        assert!(dfa.accepts(&input).unwrap());
+        assert!(dfa.accepts(&input, Shell::Bash).unwrap());
         let minimal_dfa = dfa.minimize();
-        assert!(minimal_dfa.accepts(&input).unwrap());
+        assert!(minimal_dfa.accepts(&input, Shell::Bash).unwrap());
     }
 
     #[test]
@@ -1303,9 +1320,9 @@ mod tests {
                 s
             })
             .collect();
-        assert!(dfa.accepts(&input).unwrap());
+        assert!(dfa.accepts(&input, Shell::Bash).unwrap());
         let minimal_dfa = dfa.minimize();
-        assert!(minimal_dfa.accepts(&input).unwrap());
+        assert!(minimal_dfa.accepts(&input, Shell::Bash).unwrap());
     }
 
     #[test]
@@ -1341,8 +1358,8 @@ mod tests {
                 s
             })
             .collect();
-        assert!(dfa.accepts(&input).unwrap());
+        assert!(dfa.accepts(&input, Shell::Bash).unwrap());
         let minimal_dfa = dfa.minimize();
-        assert!(minimal_dfa.accepts(&input).unwrap());
+        assert!(minimal_dfa.accepts(&input, Shell::Bash).unwrap());
     }
 }

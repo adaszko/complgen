@@ -113,6 +113,23 @@ pub struct CmdRegexDecl {
     pub zsh: Option<Ustr>,
 }
 
+#[derive(Copy, Clone)]
+pub enum Shell {
+    Bash,
+    Fish,
+    Zsh,
+}
+
+impl CmdRegexDecl {
+    pub fn matches_anything(&self, shell: Shell) -> bool {
+        match shell {
+            Shell::Bash => self.bash.is_none(),
+            Shell::Fish => self.fish.is_none(),
+            Shell::Zsh => self.zsh.is_none(),
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Specialization {
     pub bash: Option<Ustr>,

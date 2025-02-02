@@ -1,7 +1,7 @@
 use std::io::Write;
 
 use crate::dfa::DFA;
-use crate::grammar::Specialization;
+use crate::grammar::{Shell, Specialization};
 use crate::regex::Input;
 use crate::{Result, StateId};
 use hashbrown::HashMap;
@@ -94,7 +94,7 @@ fn write_lookup_tables<W: Write>(
 
     writeln!(buffer, r#"    local -A {prefix}match_anything_transitions"#)?;
     let match_anything_transitions = itertools::join(
-        dfa.iter_match_anything_transitions()
+        dfa.iter_match_anything_transitions(Shell::Zsh)
             .into_iter()
             .map(|(from, to)| format!("[{}]={}", from + 1, to + 1)),
         " ",

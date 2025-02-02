@@ -8,7 +8,7 @@ use crate::{
         make_id_from_command_map, make_string_constant, write_generic_subword_fn, write_subword_fn,
     },
     dfa::DFA,
-    grammar::Specialization,
+    grammar::{Shell, Specialization},
     regex::Input,
 };
 
@@ -51,7 +51,7 @@ pub fn write_zsh_completion_shell_code<W: Write>(
 ) -> anyhow::Result<()> {
     let prefix_constant = make_string_constant(entered_prefix);
 
-    let mut transitions = get_transitions(&dfa, &words_before_cursor);
+    let mut transitions = get_transitions(&dfa, &words_before_cursor, Shell::Zsh);
     transitions.sort_unstable_by_key(|input| input.get_fallback_level());
 
     let id_from_cmd = make_id_from_command_map(dfa);

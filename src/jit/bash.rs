@@ -9,7 +9,7 @@ use crate::{
         write_subword_fn, MATCH_FN_NAME,
     },
     dfa::DFA,
-    grammar::Specialization,
+    grammar::{Shell, Specialization},
     regex::Input,
 };
 
@@ -28,7 +28,7 @@ pub fn write_bash_completion_shell_code<W: Write>(
 ) -> anyhow::Result<()> {
     let prefix_constant = make_string_constant(entered_prefix);
 
-    let mut transitions = get_transitions(&dfa, &words_before_cursor);
+    let mut transitions = get_transitions(&dfa, &words_before_cursor, Shell::Bash);
     transitions.sort_unstable_by_key(|input| input.get_fallback_level());
 
     write_match_fn(output)?;

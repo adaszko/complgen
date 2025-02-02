@@ -1,7 +1,7 @@
 use std::io::Write;
 
 use crate::dfa::DFA;
-use crate::grammar::Specialization;
+use crate::grammar::{Shell, Specialization};
 use crate::regex::Input;
 use crate::{Result, StateId};
 use hashbrown::HashMap;
@@ -198,7 +198,7 @@ fn write_subword_lookup_tables<W: Write>(
     writeln!(buffer)?;
 
     let match_anything_transitions: Vec<(StateId, StateId)> =
-        dfa.iter_match_anything_transitions().collect();
+        dfa.iter_match_anything_transitions(Shell::Fish).collect();
     let match_anything_transitions_from = itertools::join(
         match_anything_transitions
             .iter()
@@ -550,7 +550,7 @@ fn write_lookup_tables<W: Write>(
     writeln!(buffer)?;
 
     let match_anything_transitions: Vec<(StateId, StateId)> =
-        dfa.iter_match_anything_transitions().collect();
+        dfa.iter_match_anything_transitions(Shell::Fish).collect();
     let match_anything_transitions_from = itertools::join(
         match_anything_transitions
             .iter()

@@ -7,7 +7,7 @@ use bumpalo::Bump;
 use roaring::RoaringBitmap;
 use ustr::{Ustr, UstrMap};
 
-use crate::grammar::{CmdRegexDecl, DFARef, Expr, Specialization, SubwordCompilationPhase};
+use crate::grammar::{CmdRegexDecl, DFARef, Expr, Shell, Specialization, SubwordCompilationPhase};
 
 pub type Position = u32;
 
@@ -20,12 +20,13 @@ pub enum Input {
 }
 
 impl Input {
-    pub fn matches_anything(&self) -> bool {
+    pub fn matches_anything(&self, shell: Shell) -> bool {
         match self {
             Self::Literal(..) => false,
             Self::Subword(..) => false,
             Self::Nonterminal(..) => true,
-            Self::Command(..) => true,
+            Self::Command(_, None, _) => true,
+            Self::Command(_, Some(regex), _) => regex.matches_anything(shell),
         }
     }
 

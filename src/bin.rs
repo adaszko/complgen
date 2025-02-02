@@ -14,7 +14,7 @@ use complgen::jit::zsh::write_zsh_completion_shell_code;
 
 use complgen::dfa::DFA;
 use complgen::regex::AugmentedRegex;
-use complgen::Error;
+use complgen::{check_dfa_ambiguity, Error};
 
 #[derive(clap::Parser)]
 struct Cli {
@@ -65,7 +65,7 @@ struct CompleteBashArgs {
 }
 
 #[derive(clap::Subcommand)]
-enum Shell {
+enum TargetShell {
     Bash(CompleteBashArgs),
     Fish(CompleteShellArgs),
     Zsh(CompleteShellArgs),
@@ -85,7 +85,7 @@ struct JitArgs {
     usage_file_path: String,
 
     #[clap(subcommand)]
-    shell: Shell,
+    shell: TargetShell,
 }
 
 #[derive(clap::Args)]
@@ -164,16 +164,7 @@ fn check(args: &CheckArgs) -> anyhow::Result<()> {
     let arena = Bump::new();
     let regex = AugmentedRegex::from_expr(&validated.expr, &validated.specializations, &arena);
     let dfa = DFA::from_regex(&regex);
-    if let Some(inputs) = dfa.get_any_ambiguous_state() {
-        eprintln!("Error: Final DFA contains ambiguous transitions.");
-        eprintln!(
-            "A sequence of shell words leading to the ambiguity: {:?}",
-            inputs
-        );
-        eprintln!("They arise when there's a need to match a shell word against the output of more than one external shell command.");
-        eprintln!("The grammar needs to be modified to match against at most one external command output to avoid ambiguities.");
-        exit(1);
-    }
+    check_dfa_ambiguity(&dfa);
     Ok(())
 }
 
@@ -201,9 +192,9 @@ fn jit(args: &JitArgs) -> anyhow::Result<()> {
     }
 
     let (prefix, words) = match &args.shell {
-        Shell::Bash(a) => (&a.prefix, &a.words),
-        Shell::Fish(a) => (&a.prefix, &a.words),
-        Shell::Zsh(a) => (&a.prefix, &a.words),
+        TargetShell::Bash(a) => (&a.prefix, &a.words),
+        TargetShell::Fish(a) => (&a.prefix, &a.words),
+        TargetShell::Zsh(a) => (&a.prefix, &a.words),
     };
 
     let words_before_cursor: Vec<&str> = words.iter().map(|s| s.as_ref()).collect();
@@ -211,7 +202,7 @@ fn jit(args: &JitArgs) -> anyhow::Result<()> {
     let word = prefix.as_deref().unwrap_or("");
     let mut stdout = std::io::stdout();
     match args.shell {
-        Shell::Bash(ref bash_args) => {
+        TargetShell::Bash(ref bash_args) => {
             // Bash behaves weirdly depending on wheter a completion contains a special character
             // from $COMP_WORDBREAKS or not.  If it does, it is necessary to strip from a
             // completion string a longest prefix up to and including the last such special
@@ -238,7 +229,7 @@ fn jit(args: &JitArgs) -> anyhow::Result<()> {
                 args.test.is_some(),
             )?;
         }
-        Shell::Fish(_) => {
+        TargetShell::Fish(_) => {
             write_fish_completion_shell_code(
                 &validated.command,
                 &dfa,
@@ -248,7 +239,7 @@ fn jit(args: &JitArgs) -> anyhow::Result<()> {
                 args.test.is_some(),
             )?;
         }
-        Shell::Zsh(_) => {
+        TargetShell::Zsh(_) => {
             write_zsh_completion_shell_code(
                 &validated.command,
                 &dfa,
@@ -322,21 +313,12 @@ fn aot(args: &AotArgs) -> anyhow::Result<()> {
     log::debug!("Minimizing DFA");
     let dfa = dfa.minimize();
 
-    if let Some(inputs) = dfa.get_any_ambiguous_state() {
-        eprintln!("Error: Final DFA contains ambiguous transitions.");
-        eprintln!(
-            "A sequence of shell words leading to the ambiguity: {:?}",
-            inputs
-        );
-        eprintln!("They arise when there's a need to match a shell word against the output of more than one external shell command.");
-        eprintln!("The grammar needs to be modified to match against at most one external command output to avoid ambiguities.");
-        exit(1);
-    }
-
     if let Some(dot_file_path) = &args.dfa_dot {
         let mut dot_file = get_file_or_stdout(dot_file_path)?;
         dfa.to_dot(&mut dot_file).context(dot_file_path.clone())?;
     }
+
+    check_dfa_ambiguity(&dfa);
 
     if let Some(path) = &args.bash_script {
         log::debug!("Writing Bash completion script");

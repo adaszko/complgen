@@ -1,6 +1,7 @@
 use std::io::Write;
 
 use crate::dfa::DFA;
+use crate::grammar::Shell;
 use crate::grammar::Specialization;
 use crate::regex::Input;
 use crate::Result;
@@ -117,7 +118,7 @@ fn write_lookup_tables<W: Write>(
     }
 
     let match_anything_transitions = itertools::join(
-        dfa.iter_match_anything_transitions()
+        dfa.iter_match_anything_transitions(Shell::Bash)
             .into_iter()
             .map(|(from, to)| format!("[{from}]={to}")),
         " ",
