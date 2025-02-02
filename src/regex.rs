@@ -7,7 +7,7 @@ use bumpalo::Bump;
 use roaring::RoaringBitmap;
 use ustr::{Ustr, UstrMap};
 
-use crate::grammar::{DFARef, Expr, Specialization, SubwordCompilationPhase};
+use crate::grammar::{CmdRegexDecl, DFARef, Expr, Specialization, SubwordCompilationPhase};
 
 pub type Position = u32;
 
@@ -16,7 +16,7 @@ pub enum Input {
     Literal(Ustr, Option<Ustr>, usize), // literal, optional description, fallback level
     Subword(DFARef, usize),
     Nonterminal(Ustr, Option<Specialization>, usize), // name, specialization, fallback level
-    Command(Ustr, usize),                             // command, fallback level
+    Command(Ustr, Option<CmdRegexDecl>, usize),       // command, fallback level
 }
 
 impl Input {
@@ -34,7 +34,7 @@ impl Input {
             Self::Literal(_, _, level) => *level,
             Self::Subword(_, level) => *level,
             Self::Nonterminal(_, _, level) => *level,
-            Self::Command(_, level) => *level,
+            Self::Command(_, _, level) => *level,
         }
     }
 }
@@ -45,7 +45,7 @@ impl std::fmt::Display for Input {
             Self::Subword(subword, fallback_level) => write!(f, r#"{subword:?}:{fallback_level}"#),
             Self::Literal(literal, _, fallback_level) => write!(f, r#"{literal}:{fallback_level}"#),
             Self::Nonterminal(nonterminal, ..) => write!(f, r#"{nonterminal}"#),
-            Self::Command(command, _) => write!(f, r#"{command}"#),
+            Self::Command(command, ..) => write!(f, r#"{command}"#),
         }
     }
 }
@@ -273,12 +273,12 @@ fn do_from_expr<'a>(
             symbols.insert(input);
             result
         }
-        Expr::Command(code, _, fallback_level, ..) => {
+        Expr::Command(code, cmd_regex_decl, fallback_level, ..) => {
             let result = AugmentedRegexNode::Command(
                 *code,
                 Position::try_from(input_from_position.len()).unwrap(),
             );
-            let input = Input::Command(*code, *fallback_level);
+            let input = Input::Command(*code, *cmd_regex_decl, *fallback_level);
             input_from_position.push(input.clone());
             symbols.insert(input);
             result

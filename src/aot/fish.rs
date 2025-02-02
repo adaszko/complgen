@@ -382,13 +382,14 @@ pub fn write_subword_fn<W: Write>(
                     .or_default()
                     .push(literal_id);
             }
-            Input::Command(cmd, fallback_level) => {
+            Input::Command(cmd, None, fallback_level) => {
                 let command_id = *id_from_cmd.get(cmd).unwrap();
                 fallback_commands[*fallback_level]
                     .entry(from)
                     .or_default()
                     .push(command_id);
             }
+            Input::Command(_, Some(..), _) => todo!(),
             Input::Nonterminal(
                 _,
                 Some(Specialization {
@@ -808,7 +809,8 @@ end
                     .or_default()
                     .push(subword_id);
             }
-            Input::Command(cmd, fallback_level) => {
+            Input::Command(cmd, _, fallback_level) => {
+                // TODO Handle nontail command here
                 let command_id = *id_from_cmd.get(cmd).unwrap();
                 fallback_commands[*fallback_level]
                     .entry(from)
