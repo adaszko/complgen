@@ -56,7 +56,8 @@ pub fn write_zsh_completion_shell_code<W: Write>(
 
     let id_from_cmd = make_id_from_command_map(dfa);
 
-    for (cmd, id) in &id_from_cmd {
+    for cmd in &id_from_cmd {
+        let id = id_from_cmd.get_index_of(cmd).unwrap();
         write!(
             output,
             r#"{} () {{
@@ -64,7 +65,7 @@ pub fn write_zsh_completion_shell_code<W: Write>(
 }}
 
 "#,
-            make_external_command_fn_name(completed_command, *id)
+            make_external_command_fn_name(completed_command, id)
         )?;
     }
 
@@ -224,8 +225,8 @@ pub fn write_zsh_completion_shell_code<W: Write>(
             ) => Some(*cmd),
             _ => None,
         }) {
-            let command_id = id_from_cmd.get(&cmd).unwrap();
-            let fn_name = make_external_command_fn_name(completed_command, *command_id);
+            let command_id = id_from_cmd.get_index_of(&cmd).unwrap();
+            let fn_name = make_external_command_fn_name(completed_command, command_id);
             if entered_prefix.is_empty() {
                 writeln!(output, r#"    local lines=("${{(@f)$({fn_name})}}")"#)?;
             } else {

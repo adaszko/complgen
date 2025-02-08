@@ -33,7 +33,8 @@ pub fn write_fish_completion_shell_code<W: Write>(
     transitions.sort_unstable_by_key(|input| input.get_fallback_level());
 
     let id_from_cmd = make_id_from_command_map(dfa);
-    for (cmd, id) in &id_from_cmd {
+    for cmd in &id_from_cmd {
+        let id = id_from_cmd.get_index_of(cmd).unwrap();
         write!(
             output,
             r#"function {}
@@ -42,7 +43,7 @@ pub fn write_fish_completion_shell_code<W: Write>(
 end
 
 "#,
-            make_external_command_fn_name(completed_command, *id)
+            make_external_command_fn_name(completed_command, id)
         )?;
     }
 
@@ -117,8 +118,8 @@ end
             ) => Some(*cmd),
             _ => None,
         }) {
-            let command_id = id_from_cmd.get(&cmd).unwrap();
-            let fn_name = make_external_command_fn_name(completed_command, *command_id);
+            let command_id = id_from_cmd.get_index_of(&cmd).unwrap();
+            let fn_name = make_external_command_fn_name(completed_command, command_id);
             writeln!(
                 output,
                 r#"    set --append candidates ({fn_name} {prefix_constant})"#,
@@ -146,8 +147,8 @@ end
             ) => Some(*cmd),
             _ => None,
         }) {
-            let command_id = id_from_cmd.get(&cmd).unwrap();
-            let fn_name = make_external_command_fn_name(completed_command, *command_id);
+            let command_id = id_from_cmd.get_index_of(&cmd).unwrap();
+            let fn_name = make_external_command_fn_name(completed_command, command_id);
             writeln!(
                 output,
                 r#"    set --append candidates ({fn_name} {prefix_constant})"#,

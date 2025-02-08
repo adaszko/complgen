@@ -5,7 +5,7 @@ use crate::grammar::{Shell, Specialization};
 use crate::regex::Input;
 use crate::{Result, StateId};
 use hashbrown::HashMap;
-use indexmap::IndexMap;
+use indexmap::IndexSet;
 use ustr::{ustr, Ustr};
 
 use super::get_max_fallback_level;
@@ -264,7 +264,7 @@ pub fn write_subword_fn<W: Write>(
     command: &str,
     id: usize,
     dfa: &DFA,
-    id_from_cmd: &IndexMap<Ustr, usize>,
+    id_from_cmd: &IndexSet<Ustr>,
 ) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
 
@@ -296,14 +296,14 @@ pub fn write_subword_fn<W: Write>(
                     .push(literal_id);
             }
             Input::Command(cmd, _, fallback_level) => {
-                let command_id = *id_from_cmd.get(cmd).unwrap();
+                let command_id = id_from_cmd.get_index_of(cmd).unwrap();
                 fallback_commands[*fallback_level]
                     .entry(from)
                     .or_default()
                     .push(command_id);
             }
             Input::Nonterminal(_, Some(Specialization { zsh: Some(cmd), .. }), fallback_level) => {
-                let specialized_id = *id_from_cmd.get(cmd).unwrap();
+                let specialized_id = id_from_cmd.get_index_of(cmd).unwrap();
                 fallback_specialized[*fallback_level]
                     .entry(from)
                     .or_default()
@@ -380,43 +380,35 @@ pub fn write_subword_fn<W: Write>(
     Ok(())
 }
 
-pub fn make_id_from_command_map(dfa: &DFA) -> IndexMap<Ustr, usize> {
-    let mut result: IndexMap<Ustr, usize> = Default::default();
-
-    let mut unallocated_id = 0;
+pub fn make_id_from_command_map(dfa: &DFA) -> IndexSet<Ustr> {
+    let mut id_from_cmd: IndexSet<Ustr> = Default::default();
 
     for input in dfa.iter_inputs() {
-        let mut cmds: Vec<Ustr> = Default::default();
-
         match input {
             Input::Nonterminal(_, Some(Specialization { zsh: Some(cmd), .. }), ..) => {
-                cmds.push(*cmd)
+                id_from_cmd.insert(*cmd);
             }
-            Input::Command(cmd, ..) => cmds.push(*cmd),
+            Input::Command(cmd, ..) => {
+                id_from_cmd.insert(*cmd);
+            }
             Input::Subword(subdfa, ..) => {
                 for input in subdfa.as_ref().iter_inputs() {
                     match input {
                         Input::Nonterminal(_, Some(Specialization { zsh: Some(cmd), .. }), _) => {
-                            cmds.push(*cmd)
+                            id_from_cmd.insert(*cmd);
                         }
-                        Input::Command(cmd, ..) => cmds.push(*cmd),
+                        Input::Command(cmd, ..) => {
+                            id_from_cmd.insert(*cmd);
+                        }
                         _ => {}
                     }
                 }
             }
             _ => {}
         }
-
-        for cmd in cmds {
-            result.entry(cmd).or_insert_with(|| {
-                let id = unallocated_id;
-                unallocated_id += 1;
-                id
-            });
-        }
     }
 
-    result
+    id_from_cmd
 }
 
 pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
@@ -427,7 +419,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     )?;
 
     let id_from_cmd = make_id_from_command_map(dfa);
-    for (cmd, id) in &id_from_cmd {
+    for cmd in &id_from_cmd {
+        let id = id_from_cmd.get_index_of(cmd).unwrap();
         write!(
             buffer,
             r#"_{command}_cmd_{id} () {{
@@ -575,7 +568,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                     .push(subword_id);
             }
             Input::Command(cmd, None, fallback_level) => {
-                let command_id = *id_from_cmd.get(cmd).unwrap();
+                let command_id = id_from_cmd.get_index_of(cmd).unwrap();
                 fallback_commands[*fallback_level]
                     .entry(from)
                     .or_default()
@@ -583,7 +576,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             }
             Input::Command(_, Some(..), _) => todo!(),
             Input::Nonterminal(_, Some(Specialization { zsh: Some(cmd), .. }), fallback_level) => {
-                let specialized_id = *id_from_cmd.get(cmd).unwrap();
+                let specialized_id = id_from_cmd.get_index_of(cmd).unwrap();
                 fallback_specialized[*fallback_level]
                     .entry(from)
                     .or_default()

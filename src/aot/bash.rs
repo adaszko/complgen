@@ -7,7 +7,7 @@ use crate::regex::Input;
 use crate::Result;
 use crate::StateId;
 use hashbrown::HashMap;
-use indexmap::IndexMap;
+use indexmap::IndexSet;
 use ustr::{ustr, Ustr};
 
 use super::get_max_fallback_level;
@@ -241,7 +241,7 @@ pub fn write_subword_fn<W: Write>(
     command: &str,
     id: usize,
     dfa: &DFA,
-    id_from_cmd: &IndexMap<Ustr, usize>,
+    id_from_cmd: &IndexSet<Ustr>,
 ) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
 
@@ -270,7 +270,7 @@ pub fn write_subword_fn<W: Write>(
                     .push(literal_id);
             }
             Input::Command(cmd, None, fallback_level) => {
-                let command_id = *id_from_cmd.get(cmd).unwrap();
+                let command_id = id_from_cmd.get_index_of(cmd).unwrap();
                 fallback_commands[*fallback_level]
                     .entry(from)
                     .or_default()
@@ -284,7 +284,7 @@ pub fn write_subword_fn<W: Write>(
                 }),
                 fallback_level,
             ) => {
-                let specialized_id = *id_from_cmd.get(cmd).unwrap();
+                let specialized_id = id_from_cmd.get_index_of(cmd).unwrap();
                 fallback_commands[*fallback_level]
                     .entry(from)
                     .or_default()
@@ -339,14 +339,11 @@ pub fn write_subword_fn<W: Write>(
     Ok(())
 }
 
-pub fn make_id_from_command_map(dfa: &DFA) -> IndexMap<Ustr, usize> {
-    let mut result: IndexMap<Ustr, usize> = Default::default();
-
-    let mut unallocated_id = 0;
+pub fn make_id_from_command_map(dfa: &DFA) -> IndexSet<Ustr> {
+    // IndexSet's internal index is used for storing command id
+    let mut id_from_cmd: IndexSet<Ustr> = Default::default();
 
     for input in dfa.iter_inputs() {
-        let mut cmds: Vec<Ustr> = Default::default();
-
         match input {
             Input::Nonterminal(
                 _,
@@ -354,8 +351,12 @@ pub fn make_id_from_command_map(dfa: &DFA) -> IndexMap<Ustr, usize> {
                     bash: Some(cmd), ..
                 }),
                 ..,
-            ) => cmds.push(*cmd),
-            Input::Command(cmd, ..) => cmds.push(*cmd),
+            ) => {
+                id_from_cmd.insert(*cmd);
+            }
+            Input::Command(cmd, ..) => {
+                id_from_cmd.insert(*cmd);
+            }
             Input::Subword(subdfa, ..) => {
                 for input in subdfa.as_ref().iter_inputs() {
                     match input {
@@ -365,25 +366,21 @@ pub fn make_id_from_command_map(dfa: &DFA) -> IndexMap<Ustr, usize> {
                                 bash: Some(cmd), ..
                             }),
                             _,
-                        ) => cmds.push(*cmd),
-                        Input::Command(cmd, ..) => cmds.push(*cmd),
+                        ) => {
+                            id_from_cmd.insert(*cmd);
+                        }
+                        Input::Command(cmd, ..) => {
+                            id_from_cmd.insert(*cmd);
+                        }
                         _ => {}
                     }
                 }
             }
             _ => {}
         }
-
-        for cmd in cmds {
-            result.entry(cmd).or_insert_with(|| {
-                let id = unallocated_id;
-                unallocated_id += 1;
-                id
-            });
-        }
     }
 
-    result
+    id_from_cmd
 }
 
 pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
@@ -400,7 +397,8 @@ fi
     write_match_fn(buffer)?;
 
     let id_from_cmd = make_id_from_command_map(dfa);
-    for (cmd, id) in &id_from_cmd {
+    for cmd in &id_from_cmd {
+        let id = id_from_cmd.get_index_of(cmd).unwrap();
         write!(
             buffer,
             r#"_{command}_cmd_{id} () {{
@@ -539,6 +537,9 @@ fi
     let mut fallback_commands: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
     fallback_commands.resize_with(max_fallback_level + 1, Default::default);
 
+    let mut fallback_nontails: Vec<HashMap<StateId, Vec<(usize, usize)>>> = Default::default();
+    fallback_nontails.resize_with(max_fallback_level + 1, Default::default);
+
     for (from, input, _) in dfa.iter_transitions() {
         match input {
             Input::Literal(lit, descr, fallback_level) => {
@@ -558,13 +559,12 @@ fi
                     .push(subword_id);
             }
             Input::Command(cmd, None, fallback_level) => {
-                let command_id = *id_from_cmd.get(cmd).unwrap();
+                let command_id = id_from_cmd.get_index_of(cmd).unwrap();
                 fallback_commands[*fallback_level]
                     .entry(from)
                     .or_default()
                     .push(command_id);
             }
-            Input::Command(_, Some(..), _) => todo!(),
             Input::Nonterminal(
                 _,
                 Some(Specialization {
@@ -572,7 +572,7 @@ fi
                 }),
                 fallback_level,
             ) => {
-                let specialized_id = *id_from_cmd.get(cmd).unwrap();
+                let specialized_id = id_from_cmd.get_index_of(cmd).unwrap();
                 fallback_commands[*fallback_level]
                     .entry(from)
                     .or_default()
