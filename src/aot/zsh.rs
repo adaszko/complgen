@@ -275,9 +275,6 @@ pub fn write_subword_fn<W: Write>(
     let mut fallback_literals: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
     fallback_literals.resize_with(max_fallback_level + 1, Default::default);
 
-    let mut fallback_subwords: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    fallback_subwords.resize_with(max_fallback_level + 1, Default::default);
-
     let mut fallback_commands: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
     fallback_commands.resize_with(max_fallback_level + 1, Default::default);
 

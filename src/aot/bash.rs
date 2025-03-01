@@ -1,6 +1,7 @@
 use std::io::Write;
 
 use crate::dfa::DFA;
+use crate::grammar::CmdRegexDecl;
 use crate::grammar::Shell;
 use crate::grammar::Specialization;
 use crate::regex::Input;
@@ -67,6 +68,7 @@ pub fn write_match_fn<W: Write>(buffer: &mut W) -> Result<()> {
 fn write_lookup_tables<W: Write>(
     buffer: &mut W,
     dfa: &DFA,
+    id_from_regex: &IndexSet<Ustr>,
 ) -> Result<HashMap<(Ustr, Ustr), usize>> {
     let all_literals: Vec<(usize, Ustr, Ustr)> = dfa
         .get_all_literals()
@@ -87,34 +89,60 @@ fn write_lookup_tables<W: Write>(
     );
     writeln!(buffer, r#"    declare -a literals=({literals})"#)?;
 
+    let regexes: String = itertools::join(
+        id_from_regex
+            .iter()
+            .map(|regex| make_string_constant(regex)),
+        " ",
+    );
+    writeln!(buffer, r#"    declare -a regexes=({regexes})"#)?;
+
     writeln!(buffer, r#"    declare -A literal_transitions=()"#)?;
+    writeln!(buffer, r#"    declare -A nontail_transitions=()"#)?;
     for state in dfa.get_all_states() {
         let literal_transitions =
             dfa.get_literal_transitions_from(StateId::try_from(state).unwrap());
-        if literal_transitions.is_empty() {
-            continue;
-        }
-        let literal_transitions: Vec<(usize, StateId)> = literal_transitions
-            .into_iter()
-            .map(|(input, description, to)| {
-                (
-                    *literal_id_from_input_description
-                        .get(&(input, description))
-                        .unwrap(),
-                    to,
-                )
-            })
-            .collect();
-        let state_transitions: String = itertools::join(
-            literal_transitions
+        if !literal_transitions.is_empty() {
+            let literal_transitions: Vec<(usize, StateId)> = literal_transitions
                 .into_iter()
-                .map(|(input, to)| format!("[{}]={}", input, to)),
-            " ",
-        );
-        writeln!(
-            buffer,
-            r#"    literal_transitions[{state}]="({state_transitions})""#
-        )?;
+                .map(|(literal, description, to)| {
+                    (
+                        *literal_id_from_input_description
+                            .get(&(literal, description))
+                            .unwrap(),
+                        to,
+                    )
+                })
+                .collect();
+            let state_literal_transitions: String = itertools::join(
+                literal_transitions
+                    .into_iter()
+                    .map(|(literal_id, to)| format!("[{}]={}", literal_id, to)),
+                " ",
+            );
+            writeln!(
+                buffer,
+                r#"    literal_transitions[{state}]="({state_literal_transitions})""#
+            )?;
+        }
+
+        let nontail_transitions = dfa.get_nontail_transitions_from(state as StateId);
+        if !nontail_transitions.is_empty() {
+            let nontail_command_transitions: Vec<(usize, StateId)> = nontail_transitions
+                .into_iter()
+                .map(|(regex, to)| (id_from_regex.get_index_of(&regex).unwrap(), to))
+                .collect();
+            let state_nontail_transitions: String = itertools::join(
+                nontail_command_transitions
+                    .into_iter()
+                    .map(|(regex_id, to)| format!("[{regex_id}]={to}")),
+                " ",
+            );
+            writeln!(
+                buffer,
+                r#"    nontail_transitions[{state}]="({state_nontail_transitions})""#
+            )?;
+        }
     }
 
     let match_anything_transitions = itertools::join(
@@ -162,10 +190,31 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
                         state=${{state_transitions[$literal_id]}}
                         char_index=$((char_index + literal_len))
                         literal_matched=1
+                        break
                     fi
                 fi
             done
             if [[ $literal_matched -ne 0 ]]; then
+                continue
+            fi
+        fi
+
+        if [[ -v "nontail_transitions[$state]" ]]; then
+            declare -A state_nontails
+            eval "state_nontails=${{nontail_transitions[$state]}}"
+            local nontail_matched=0
+            for regex_id in "${{!state_nontails[@]}}"; do
+                local regex="(${{regexes[$regex_id]}})(.*)"
+                if [[ ${{subword}} =~ $regex && -n ${{BASH_REMATCH[1]}} ]]; then
+                    match="${{BASH_REMATCH[1]}}"
+                    match_len=${{#match}}
+                    char_index=$((char_index + match_len))
+                    state=${{state_nontails[$regex_id]}}
+                    nontail_matched=1
+                    break
+                fi
+            done
+            if [[ $nontail_matched -ne 0 ]]; then
                 continue
             fi
         fi
@@ -218,6 +267,15 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
             done
         done
 
+        eval "declare nontail_commands_name=nontail_commands_level_${{subword_fallback_level}}"
+        eval "declare -a transitions=(\${{$nontail_commands_name[$state]}})"
+        for command_id in "${{transitions[@]}}"; do
+            readarray -t candidates < <(_{command}_cmd_$command_id "$matched_prefix" | cut -f1)
+            for item in "${{candidates[@]}}"; do
+                matches+=("$matched_prefix$item")
+            done
+        done
+
         if [[ ${{#matches[@]}} -gt 0 ]]; then
             printf '%s\n' "${{matches[@]}}"
             break
@@ -242,21 +300,22 @@ pub fn write_subword_fn<W: Write>(
     id: usize,
     dfa: &DFA,
     id_from_cmd: &IndexSet<Ustr>,
+    id_from_regex: &IndexSet<Ustr>,
 ) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
 
-    let literal_id_from_input_description = write_lookup_tables(buffer, dfa)?;
+    let literal_id_from_input_description = write_lookup_tables(buffer, dfa, id_from_regex)?;
 
     let max_fallback_level = get_max_fallback_level(dfa).unwrap();
 
     let mut fallback_literals: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
     fallback_literals.resize_with(max_fallback_level + 1, Default::default);
 
-    let mut fallback_subwords: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    fallback_subwords.resize_with(max_fallback_level + 1, Default::default);
-
     let mut fallback_commands: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
     fallback_commands.resize_with(max_fallback_level + 1, Default::default);
+
+    let mut fallback_nontails: Vec<HashMap<StateId, Vec<(usize, usize)>>> = Default::default();
+    fallback_nontails.resize_with(max_fallback_level + 1, Default::default);
 
     for (from, input, _) in dfa.iter_transitions() {
         match input {
@@ -276,7 +335,21 @@ pub fn write_subword_fn<W: Write>(
                     .or_default()
                     .push(command_id);
             }
-            Input::Command(_, Some(..), _) => todo!(),
+            Input::Command(
+                cmd,
+                Some(CmdRegexDecl {
+                    bash: Some(bash_regex),
+                    ..
+                }),
+                fallback_level,
+            ) => {
+                let cmd_id = id_from_cmd.get_index_of(cmd).unwrap();
+                let regex_id = id_from_regex.get_index_of(bash_regex).unwrap();
+                fallback_nontails[*fallback_level]
+                    .entry(from)
+                    .or_default()
+                    .push((cmd_id, regex_id));
+            }
             Input::Nonterminal(
                 _,
                 Some(Specialization {
@@ -305,6 +378,35 @@ pub fn write_subword_fn<W: Write>(
         writeln!(
             buffer,
             r#"    declare -A literal_transitions_level_{level}=({initializer})"#
+        )?;
+    }
+
+    for (level, transitions) in fallback_nontails.iter().enumerate() {
+        let commands_initializer = itertools::join(
+            transitions.iter().map(|(from_state, nontail_transitions)| {
+                let joined =
+                    itertools::join(nontail_transitions.iter().map(|(cmd_id, _)| cmd_id), " ");
+                format!(r#"[{from_state}]="{joined}""#)
+            }),
+            " ",
+        );
+        writeln!(
+            buffer,
+            r#"    declare -A nontail_commands_level_{level}=({commands_initializer})"#
+        )?;
+        let regexes_initializer = itertools::join(
+            transitions.iter().map(|(from_state, nontail_transitions)| {
+                let joined = itertools::join(
+                    nontail_transitions.iter().map(|(_, regex_id)| regex_id),
+                    " ",
+                );
+                format!(r#"[{from_state}]="{joined}""#)
+            }),
+            " ",
+        );
+        writeln!(
+            buffer,
+            r#"    declare -A nontail_regexes_level_{level}=({regexes_initializer})"#
         )?;
     }
 
@@ -339,9 +441,11 @@ pub fn write_subword_fn<W: Write>(
     Ok(())
 }
 
-pub fn make_id_from_command_map(dfa: &DFA) -> IndexSet<Ustr> {
+pub fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
     // IndexSet's internal index is used for storing command id
     let mut id_from_cmd: IndexSet<Ustr> = Default::default();
+
+    let mut id_from_regex: IndexSet<Ustr> = Default::default();
 
     for input in dfa.iter_inputs() {
         match input {
@@ -354,8 +458,15 @@ pub fn make_id_from_command_map(dfa: &DFA) -> IndexSet<Ustr> {
             ) => {
                 id_from_cmd.insert(*cmd);
             }
-            Input::Command(cmd, ..) => {
+            Input::Command(cmd, regex, ..) => {
                 id_from_cmd.insert(*cmd);
+                if let Some(CmdRegexDecl {
+                    bash: Some(bash_regex),
+                    ..
+                }) = regex
+                {
+                    id_from_regex.insert(*bash_regex);
+                }
             }
             Input::Subword(subdfa, ..) => {
                 for input in subdfa.as_ref().iter_inputs() {
@@ -369,8 +480,15 @@ pub fn make_id_from_command_map(dfa: &DFA) -> IndexSet<Ustr> {
                         ) => {
                             id_from_cmd.insert(*cmd);
                         }
-                        Input::Command(cmd, ..) => {
+                        Input::Command(cmd, regex, ..) => {
                             id_from_cmd.insert(*cmd);
+                            if let Some(CmdRegexDecl {
+                                bash: Some(bash_regex),
+                                ..
+                            }) = regex
+                            {
+                                id_from_regex.insert(*bash_regex);
+                            }
                         }
                         _ => {}
                     }
@@ -380,7 +498,7 @@ pub fn make_id_from_command_map(dfa: &DFA) -> IndexSet<Ustr> {
         }
     }
 
-    id_from_cmd
+    (id_from_cmd, id_from_regex)
 }
 
 pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
@@ -396,15 +514,14 @@ fi
 
     write_match_fn(buffer)?;
 
-    let id_from_cmd = make_id_from_command_map(dfa);
+    let (id_from_cmd, id_from_regex) = make_id_from_command_map(dfa);
     for cmd in &id_from_cmd {
         let id = id_from_cmd.get_index_of(cmd).unwrap();
-        write!(
+        writeln!(
             buffer,
             r#"_{command}_cmd_{id} () {{
     {cmd}
 }}
-
 "#
         )?;
     }
@@ -414,7 +531,14 @@ fi
         write_generic_subword_fn(buffer, command)?;
     }
     for (dfa, id) in &id_from_dfa {
-        write_subword_fn(buffer, command, *id, dfa.as_ref(), &id_from_cmd)?;
+        write_subword_fn(
+            buffer,
+            command,
+            *id,
+            dfa.as_ref(),
+            &id_from_cmd,
+            &id_from_regex,
+        )?;
         writeln!(buffer)?;
     }
 
@@ -433,7 +557,7 @@ fi
 "#
     )?;
 
-    let literal_id_from_input_description = write_lookup_tables(buffer, dfa)?;
+    let literal_id_from_input_description = write_lookup_tables(buffer, dfa, &id_from_regex)?;
 
     writeln!(buffer, r#"    declare -A subword_transitions"#)?;
     for state in dfa.get_all_states() {
@@ -564,6 +688,21 @@ fi
                     .entry(from)
                     .or_default()
                     .push(command_id);
+            }
+            Input::Command(
+                cmd,
+                Some(CmdRegexDecl {
+                    bash: Some(bash_regex),
+                    ..
+                }),
+                fallback_level,
+            ) => {
+                let cmd_id = id_from_cmd.get_index_of(cmd).unwrap();
+                let regex_id = id_from_regex.get_index_of(bash_regex).unwrap();
+                fallback_nontails[*fallback_level]
+                    .entry(from)
+                    .or_default()
+                    .push((cmd_id, regex_id));
             }
             Input::Nonterminal(
                 _,

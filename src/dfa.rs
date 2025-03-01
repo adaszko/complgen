@@ -5,7 +5,7 @@ use std::{cmp::Ordering, collections::BTreeSet, hash::Hash, io::Write, rc::Rc};
 use roaring::{MultiOps, RoaringBitmap};
 use ustr::{ustr, Ustr};
 
-use crate::grammar::Shell;
+use crate::grammar::{CmdRegexDecl, Shell};
 use crate::StateId;
 use crate::{
     grammar::DFARef,
@@ -767,6 +767,31 @@ impl DFA {
                 Input::Subword(..) => None,
                 Input::Nonterminal(..) => None,
                 Input::Command(..) => None,
+            })
+            .collect();
+        transitions
+    }
+
+    pub fn get_nontail_transitions_from(&self, from: StateId) -> Vec<(Ustr, StateId)> {
+        let map = match self.transitions.get(&from) {
+            Some(map) => map,
+            None => return vec![],
+        };
+        let transitions: Vec<(Ustr, StateId)> = map
+            .iter()
+            .filter_map(|(input, to)| match input {
+                Input::Command(
+                    _,
+                    Some(CmdRegexDecl {
+                        bash: Some(regex), ..
+                    }),
+                    ..,
+                ) => Some((*regex, *to)),
+                Input::Command(_, None, _) => None,
+                Input::Command(_, Some(CmdRegexDecl { bash: None, .. }), _) => None,
+                Input::Literal(..) => None,
+                Input::Subword(..) => None,
+                Input::Nonterminal(..) => None,
             })
             .collect();
         transitions

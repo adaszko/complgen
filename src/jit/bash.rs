@@ -9,7 +9,7 @@ use crate::{
         write_subword_fn, MATCH_FN_NAME,
     },
     dfa::DFA,
-    grammar::{Shell, Specialization},
+    grammar::{CmdRegexDecl, Shell, Specialization},
     regex::Input,
 };
 
@@ -33,11 +33,11 @@ pub fn write_bash_completion_shell_code<W: Write>(
 
     write_match_fn(output)?;
 
-    let id_from_cmd = make_id_from_command_map(dfa);
+    let (id_from_cmd, id_from_regex) = make_id_from_command_map(dfa);
 
     for cmd in &id_from_cmd {
         let id = id_from_cmd.get_index_of(cmd).unwrap();
-        write!(
+        writeln!(
             output,
             r#"{} () {{
     {cmd}
@@ -52,7 +52,14 @@ pub fn write_bash_completion_shell_code<W: Write>(
         write_generic_subword_fn(output, completed_command)?;
     }
     for (dfa, id) in &id_from_dfa {
-        write_subword_fn(output, completed_command, *id, dfa.as_ref(), &id_from_cmd)?;
+        write_subword_fn(
+            output,
+            completed_command,
+            *id,
+            dfa.as_ref(),
+            &id_from_cmd,
+            &id_from_regex,
+        )?;
         writeln!(output)?;
     }
 
@@ -91,6 +98,50 @@ pub fn write_bash_completion_shell_code<W: Write>(
             )?;
         }
 
+        // A subword
+        for subdfa in group.iter().filter_map(|t| match t {
+            Input::Subword(subdfa, ..) => Some(subdfa),
+            _ => None,
+        }) {
+            let subdfa_id = id_from_dfa.get(subdfa).unwrap();
+            let fn_name = make_subword_fn_name(completed_command, *subdfa_id);
+            writeln!(
+                output,
+                r#"    readarray -t -O ${{#candidates[@]}} candidates < <({fn_name} complete {prefix_constant})"#
+            )?
+        }
+
+        // A nontail external command -- execute it and capture portions of output lines that match
+        // the regex.  If any of the capture is non-null, we have a match, otherwise fall back
+        for (cmd, regex) in group.iter().filter_map(|t| match t {
+            Input::Command(
+                cmd,
+                Some(CmdRegexDecl {
+                    bash: Some(regex), ..
+                }),
+                ..,
+            ) => Some((*cmd, *regex)),
+            _ => None,
+        }) {
+            let command_id = id_from_cmd.get_index_of(&cmd).unwrap();
+            let fn_name = make_external_command_fn_name(completed_command, command_id);
+            writeln!(
+                output,
+                r#"
+    local regex={regex}
+    {fn_name} {prefix_constant} | while read line; do
+        if [[ $line =~ $regex && -n ${{BASH_REMATCH[1]}} ]]; then
+            candidates+("${{BASH_REMATCH[1]}}")
+        fi
+    done
+"#
+            )?;
+            writeln!(
+                output,
+                r#"    readarray -t -O ${{#candidates[@]}} candidates < <({fn_name} {prefix_constant})"#
+            )?
+        }
+
         // An external command -- execute it and collect stdout lines as candidates
         for cmd in group.iter().filter_map(|t| match t {
             Input::Command(cmd, ..) => Some(*cmd),
@@ -113,17 +164,7 @@ pub fn write_bash_completion_shell_code<W: Write>(
             )?
         }
 
-        for subdfa in group.iter().filter_map(|t| match t {
-            Input::Subword(subdfa, ..) => Some(subdfa),
-            _ => None,
-        }) {
-            let subdfa_id = id_from_dfa.get(subdfa).unwrap();
-            let fn_name = make_subword_fn_name(completed_command, *subdfa_id);
-            writeln!(
-                output,
-                r#"    readarray -t -O ${{#candidates[@]}} candidates < <({fn_name} complete {prefix_constant})"#
-            )?
-        }
+        // A specialized external command -- execute it and collect stdout lines as candidates
         for cmd in group.iter().filter_map(|t| match t {
             Input::Nonterminal(
                 _,
@@ -177,6 +218,8 @@ pub fn write_bash_completion_shell_code<W: Write>(
     if test_mode {
         return Ok(());
     }
+
+    writeln!(output)?;
 
     // Call the generated shell function.
     writeln!(output, r#"__complgen_jit"#)?;
