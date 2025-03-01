@@ -1,11 +1,13 @@
-use std::io::Write;
 use regex::Regex;
-
+use std::io::Write;
 
 pub fn scrape<W: Write>(input: &str, output: &mut W) -> crate::Result<()> {
-    let short_long_opt_triangle_arg_descr = Regex::new(r#"^\s*(-\S),\s*(--\S+) \[<([^>]+)>\]\s+(.+)$"#).unwrap();
-    let short_long_triangle_arg_descr = Regex::new(r#"^\s*(-\S),\s*(--\S+) <([^>]+)>\s+(.+)$"#).unwrap();
-    let short_long_arg_descr = Regex::new(r#"^\s*(-\S),\s*(--\S+)=(\p{Uppercase}+)\s+(.+)$"#).unwrap();
+    let short_long_opt_triangle_arg_descr =
+        Regex::new(r#"^\s*(-\S),\s*(--\S+) \[<([^>]+)>\]\s+(.+)$"#).unwrap();
+    let short_long_triangle_arg_descr =
+        Regex::new(r#"^\s*(-\S),\s*(--\S+) <([^>]+)>\s+(.+)$"#).unwrap();
+    let short_long_arg_descr =
+        Regex::new(r#"^\s*(-\S),\s*(--\S+)=(\p{Uppercase}+)\s+(.+)$"#).unwrap();
     let short_long_descr = Regex::new(r#"^\s*(-\S),\s*(--\S+)\s+(.+)$"#).unwrap();
     let long_arg_descr = Regex::new(r#"^\s*(--\S+)=(\p{Uppercase}+)\s+(.+)$"#).unwrap();
     let long_triangle_arg_descr = Regex::new(r#"^\s*(--\S+) <([^>]+)>\s+(.+)$"#).unwrap();
@@ -14,8 +16,10 @@ pub fn scrape<W: Write>(input: &str, output: &mut W) -> crate::Result<()> {
     let long_descr = Regex::new(r#"^\s*(--\S+)\s+(.+)$"#).unwrap();
     let short_triangle_arg_descr = Regex::new(r#"^\s*(-\S)\s*<([^>]+)>\s+(.+)$"#).unwrap();
     let short_descr = Regex::new(r#"^\s*(-\S)\s+(.+)$"#).unwrap();
+    let continued_descr = Regex::new(r#"^(\s*)(.+)$"#).unwrap();
 
-    for line in input.lines() {
+    let mut iter = itertools::put_back(input.lines());
+    while let Some(line) = iter.next() {
         if let Some(caps) = short_long_opt_triangle_arg_descr.captures(line) {
             let short = caps.get(1).unwrap().as_str();
             let long = caps.get(2).unwrap().as_str();
@@ -55,7 +59,23 @@ pub fn scrape<W: Write>(input: &str, output: &mut W) -> crate::Result<()> {
             let long = caps.get(1).unwrap().as_str();
             let arg = format!("<{}>", caps.get(2).unwrap().as_str());
             let descr = caps.get(3).unwrap().as_str();
-            writeln!(output, r#" | {long}={arg} "{descr}""#)?;
+            let mut descr_lines: Vec<&str> = vec![descr];
+            let non_descr_len = line.len() - descr.len();
+            while let Some(l) = iter.next() {
+                if let Some(c) = continued_descr.captures(l) {
+                    if c.get(1).unwrap().len() == non_descr_len {
+                        descr_lines.push(c.get(2).unwrap().as_str());
+                    } else {
+                        iter.put_back(l);
+                        break;
+                    }
+                } else {
+                    iter.put_back(l);
+                    break;
+                }
+            }
+            let description = itertools::join(descr_lines, " ");
+            writeln!(output, r#" | {long}={arg} "{description}""#)?;
             continue;
         }
 
@@ -86,7 +106,23 @@ pub fn scrape<W: Write>(input: &str, output: &mut W) -> crate::Result<()> {
         if let Some(caps) = long_descr.captures(line) {
             let long = caps.get(1).unwrap().as_str();
             let descr = caps.get(2).unwrap().as_str();
-            writeln!(output, r#" | {long} "{descr}""#)?;
+            let mut descr_lines: Vec<&str> = vec![descr];
+            let non_descr_len = line.len() - descr.len();
+            while let Some(l) = iter.next() {
+                if let Some(c) = continued_descr.captures(l) {
+                    if c.get(1).unwrap().len() == non_descr_len {
+                        descr_lines.push(c.get(2).unwrap().as_str());
+                    } else {
+                        iter.put_back(l);
+                        break;
+                    }
+                } else {
+                    iter.put_back(l);
+                    break;
+                }
+            }
+            let description = itertools::join(descr_lines, " ");
+            writeln!(output, r#" | {long} "{description}""#)?;
             continue;
         }
 
@@ -109,7 +145,6 @@ pub fn scrape<W: Write>(input: &str, output: &mut W) -> crate::Result<()> {
     Ok(())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -122,65 +157,123 @@ mod tests {
 
     #[test]
     fn short_long_descr() {
-        const INPUT: &str = r#"-E, --extended-regexp     PATTERNS are extended regular expressions"#;
+        const INPUT: &str =
+            r#"-E, --extended-regexp     PATTERNS are extended regular expressions"#;
         let output = do_scrape(INPUT);
-        assert_eq!(output, r#" | (-E | --extended-regexp) "PATTERNS are extended regular expressions"
-"#);
+        assert_eq!(
+            output,
+            r#" | (-E | --extended-regexp) "PATTERNS are extended regular expressions"
+"#
+        );
     }
 
     #[test]
     fn short_long_arg_descr() {
         const INPUT: &str = r#"-e, --regexp=PATTERNS     use PATTERNS for matching"#;
         let output = do_scrape(INPUT);
-        assert_eq!(output, r#" | (-e <PATTERNS> | --regexp=<PATTERNS>) "use PATTERNS for matching"
-"#);
+        assert_eq!(
+            output,
+            r#" | (-e <PATTERNS> | --regexp=<PATTERNS>) "use PATTERNS for matching"
+"#
+        );
     }
 
     #[test]
     fn long_descr() {
         const INPUT: &str = "--list                List installed commands";
         let output = do_scrape(INPUT);
-        assert_eq!(output, r#" | --list "List installed commands"
-"#);
+        assert_eq!(
+            output,
+            r#" | --list "List installed commands"
+"#
+        );
     }
 
     #[test]
     fn short_triangle_arg_descr() {
-        const INPUT: &str = "  -C <DIRECTORY>            Change to DIRECTORY before doing anything (nightly-only)";
+        const INPUT: &str =
+            "  -C <DIRECTORY>            Change to DIRECTORY before doing anything (nightly-only)";
         let output = do_scrape(INPUT);
-        assert_eq!(output, r#" | (-C <DIRECTORY>) "Change to DIRECTORY before doing anything (nightly-only)"
-"#);
+        assert_eq!(
+            output,
+            r#" | (-C <DIRECTORY>) "Change to DIRECTORY before doing anything (nightly-only)"
+"#
+        );
     }
 
     #[test]
     fn long_triangle_arg_descr() {
         const INPUT: &str = "      --explain <CODE>      Run `rustc --explain CODE`";
         let output = do_scrape(INPUT);
-        assert_eq!(output, r#" | (--explain <CODE>) "Run `rustc --explain CODE`"
-"#);
+        assert_eq!(
+            output,
+            r#" | (--explain <CODE>) "Run `rustc --explain CODE`"
+"#
+        );
     }
 
     #[test]
     fn long_opt_triangle_arg_descr() {
         const INPUT: &str = "      --bin [<NAME>]            Build only the specified binary";
         let output = do_scrape(INPUT);
-        assert_eq!(output, r#" | (--bin [<NAME>]) "Build only the specified binary"
-"#);
+        assert_eq!(
+            output,
+            r#" | (--bin [<NAME>]) "Build only the specified binary"
+"#
+        );
     }
 
     #[test]
     fn short_long_opt_triangle_arg_descr() {
-        const INPUT: &str = "  -p, --package [<SPEC>]        Package to build (see `cargo help pkgid`)";
+        const INPUT: &str =
+            "  -p, --package [<SPEC>]        Package to build (see `cargo help pkgid`)";
         let output = do_scrape(INPUT);
-        assert_eq!(output, r#" | (-p [<SPEC>] | --package [<SPEC>]) "Package to build (see `cargo help pkgid`)"
-"#);
+        assert_eq!(
+            output,
+            r#" | (-p [<SPEC>] | --package [<SPEC>]) "Package to build (see `cargo help pkgid`)"
+"#
+        );
     }
 
     #[test]
     fn short_long_triangle_arg_descr() {
-        const INPUT: &str = "  -j, --jobs <N>                Number of parallel jobs, defaults to # of CPUs.";
+        const INPUT: &str =
+            "  -j, --jobs <N>                Number of parallel jobs, defaults to # of CPUs.";
         let output = do_scrape(INPUT);
-        assert_eq!(output, r#" | (-j <N> | --jobs <N>) "Number of parallel jobs, defaults to # of CPUs."
-"#);
+        assert_eq!(
+            output,
+            r#" | (-j <N> | --jobs <N>) "Number of parallel jobs, defaults to # of CPUs."
+"#
+        );
+    }
+
+    #[test]
+    fn long_arg_multiline_descr() {
+        const INPUT: &str = "
+      --quoting-style=WORD   use quoting style WORD for entry names:
+                             literal, locale, shell, shell-always,
+                             shell-escape, shell-escape-always, c, escape
+                             (overrides QUOTING_STYLE environment variable)
+";
+        let output = do_scrape(INPUT);
+        assert_eq!(
+            output,
+            r#" | --quoting-style=<WORD> "use quoting style WORD for entry names: literal, locale, shell, shell-always, shell-escape, shell-escape-always, c, escape (overrides QUOTING_STYLE environment variable)"
+"#
+        );
+    }
+
+    #[test]
+    fn long_multiline_descr() {
+        const INPUT: &str = "
+          --allow-untrusted     Install packages with untrusted signature or no
+                                signature
+";
+        let output = do_scrape(INPUT);
+        assert_eq!(
+            output,
+            r#" | --allow-untrusted "Install packages with untrusted signature or no signature"
+"#
+        );
     }
 }
