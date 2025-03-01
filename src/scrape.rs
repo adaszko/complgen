@@ -1,5 +1,30 @@
+use itertools::PutBack;
 use regex::Regex;
 use std::io::Write;
+
+fn take_lines_while_descr<'a>(
+    iter: &mut PutBack<impl Iterator<Item = &'a str>>,
+    line: &str,
+    descr_first_line: &'a str,
+    continued_descr_rx: &Regex,
+) -> String {
+    let mut descr_lines: Vec<&'a str> = vec![descr_first_line];
+    let non_descr_len = line.len() - descr_first_line.len();
+    while let Some(l) = iter.next() {
+        if let Some(c) = continued_descr_rx.captures(l) {
+            if c.get(1).unwrap().len() == non_descr_len {
+                descr_lines.push(c.get(2).unwrap().as_str());
+            } else {
+                iter.put_back(l);
+                break;
+            }
+        } else {
+            iter.put_back(l);
+            break;
+        }
+    }
+    itertools::join(descr_lines, " ")
+}
 
 pub fn scrape<W: Write>(input: &str, output: &mut W) -> crate::Result<()> {
     let short_long_opt_triangle_arg_descr =
@@ -16,7 +41,7 @@ pub fn scrape<W: Write>(input: &str, output: &mut W) -> crate::Result<()> {
     let long_descr = Regex::new(r#"^\s*(--\S+)\s+(.+)$"#).unwrap();
     let short_triangle_arg_descr = Regex::new(r#"^\s*(-\S)\s*<([^>]+)>\s+(.+)$"#).unwrap();
     let short_descr = Regex::new(r#"^\s*(-\S)\s+(.+)$"#).unwrap();
-    let continued_descr = Regex::new(r#"^(\s*)(.+)$"#).unwrap();
+    let continued_descr_rx = Regex::new(r#"^(\s*)(.+)$"#).unwrap();
 
     let mut iter = itertools::put_back(input.lines());
     while let Some(line) = iter.next() {
@@ -59,23 +84,8 @@ pub fn scrape<W: Write>(input: &str, output: &mut W) -> crate::Result<()> {
             let long = caps.get(1).unwrap().as_str();
             let arg = format!("<{}>", caps.get(2).unwrap().as_str());
             let descr = caps.get(3).unwrap().as_str();
-            let mut descr_lines: Vec<&str> = vec![descr];
-            let non_descr_len = line.len() - descr.len();
-            while let Some(l) = iter.next() {
-                if let Some(c) = continued_descr.captures(l) {
-                    if c.get(1).unwrap().len() == non_descr_len {
-                        descr_lines.push(c.get(2).unwrap().as_str());
-                    } else {
-                        iter.put_back(l);
-                        break;
-                    }
-                } else {
-                    iter.put_back(l);
-                    break;
-                }
-            }
-            let description = itertools::join(descr_lines, " ");
-            writeln!(output, r#" | {long}={arg} "{description}""#)?;
+            let description = take_lines_while_descr(&mut iter, line, descr, &continued_descr_rx);
+            writeln!(output, r#" | {long}={arg} "{description}""#,)?;
             continue;
         }
 
@@ -106,22 +116,7 @@ pub fn scrape<W: Write>(input: &str, output: &mut W) -> crate::Result<()> {
         if let Some(caps) = long_descr.captures(line) {
             let long = caps.get(1).unwrap().as_str();
             let descr = caps.get(2).unwrap().as_str();
-            let mut descr_lines: Vec<&str> = vec![descr];
-            let non_descr_len = line.len() - descr.len();
-            while let Some(l) = iter.next() {
-                if let Some(c) = continued_descr.captures(l) {
-                    if c.get(1).unwrap().len() == non_descr_len {
-                        descr_lines.push(c.get(2).unwrap().as_str());
-                    } else {
-                        iter.put_back(l);
-                        break;
-                    }
-                } else {
-                    iter.put_back(l);
-                    break;
-                }
-            }
-            let description = itertools::join(descr_lines, " ");
+            let description = take_lines_while_descr(&mut iter, line, descr, &continued_descr_rx);
             writeln!(output, r#" | {long} "{description}""#)?;
             continue;
         }
