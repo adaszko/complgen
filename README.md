@@ -17,9 +17,8 @@ scripts require only the target shell to be present and can be distributed on th
 $ cat hello.usage
 hello --color=(always | never | auto);
 $ complgen aot --bash-script hello.bash hello.usage
-$ bash
-$$ source hello.bash
-$$ hello --color <TAB>
+$ source hello.bash
+$ hello --color=<TAB>
 always auto never
 ```
 
@@ -31,10 +30,10 @@ always auto never
 
 ```sh
 $ cat hello.usage
-mygrep --color=(always | never | auto);
+hello --color=(always | never | auto);
 $ complgen aot --fish-script hello.fish hello.usage
 $ source hello.fish
-$ hello --color=
+$ hello --color=<TAB>
 --color=always  --color=auto  --color=never
 ```
 
@@ -45,11 +44,11 @@ $ hello --color=
 <details>
 
 ```sh
-➜ cat hello.usage
+% cat hello.usage
 hello --color=(always | never | auto);
-➜ complgen aot --zsh-script _hello hello.usage
-➜ source _hello
-➜ hello --color=                                                                                                                                                                                                                                                       [~/repos/complgen]
+% complgen aot --zsh-script _hello hello.usage
+% source _hello
+% hello --color=<TAB>
 always
 auto
 never
