@@ -1,3 +1,0 @@
-hello [--version | --help] <USER>;
-
-<USER> ::= {{{ cat /etc/passwd | grep -v '^#' | cut -d: -f1 }}}
