@@ -3,6 +3,7 @@ use std::{borrow::Borrow, debug_assert, rc::Rc};
 use bumpalo::Bump;
 use itertools::Itertools;
 use nom::{
+    Finish, IResult, Parser,
     branch::alt,
     bytes::complete::{escaped_transform, is_not, tag, take_till, take_until, take_while1},
     character::complete::{char, multispace1, one_of},
@@ -10,11 +11,10 @@ use nom::{
     error::context,
     multi::{fold_many0, many0},
     sequence::preceded,
-    Finish, IResult, Parser,
 };
 
 use crate::{Error, Result};
-use ustr::{ustr, Ustr, UstrMap, UstrSet};
+use ustr::{Ustr, UstrMap, UstrSet, ustr};
 
 use crate::{dfa::DFA, regex::AugmentedRegex};
 
@@ -891,6 +891,8 @@ fn make_specializations_map(statements: &[Statement]) -> Result<UstrMap<Speciali
     Ok(specializations)
 }
 
+/// Used in subword mode, when we know there won't be any sub-DFAs needed, just one big one.
+/// Substitutes Expr::Subword with Expr to make AST simpler to process.
 fn flatten_expr(expr: Rc<Expr>) -> Rc<Expr> {
     match expr.as_ref() {
         Expr::Terminal(..) | Expr::Nonterminal(..) | Expr::Command(..) => Rc::clone(&expr),
@@ -990,55 +992,76 @@ fn compile_subword_exprs(expr: Rc<Expr>, specs: &UstrMap<Specialization>) -> Rc<
             let regex = AugmentedRegex::from_expr(&subword_expr, specs, &arena);
             let dfa = DFA::from_regex(&regex);
             let dfa = dfa.minimize();
-            Rc::new(Expr::Subword(SubwordCompilationPhase::DFA(DFARef::new(dfa)), *fallback_level))
-        },
+            Rc::new(Expr::Subword(
+                SubwordCompilationPhase::DFA(DFARef::new(dfa)),
+                *fallback_level,
+            ))
+        }
         Expr::Terminal(..) | Expr::Nonterminal(..) | Expr::Command(..) => Rc::clone(&expr),
         Expr::Sequence(children) => {
-            let new_children: Vec<Rc<Expr>> = children.iter().map(|e| compile_subword_exprs(Rc::clone(e), specs)).collect();
-            if children.iter().zip_eq(new_children.iter()).all(|(left, right)| Rc::ptr_eq(left, right)) {
+            let new_children: Vec<Rc<Expr>> = children
+                .iter()
+                .map(|e| compile_subword_exprs(Rc::clone(e), specs))
+                .collect();
+            if children
+                .iter()
+                .zip_eq(new_children.iter())
+                .all(|(left, right)| Rc::ptr_eq(left, right))
+            {
                 Rc::clone(&expr)
-            }
-            else {
+            } else {
                 Rc::new(Expr::Sequence(new_children))
             }
-        },
+        }
         Expr::Alternative(children) => {
-            let new_children: Vec<Rc<Expr>> = children.iter().map(|e| compile_subword_exprs(Rc::clone(e), specs)).collect();
-            if children.iter().zip_eq(new_children.iter()).all(|(left, right)| Rc::ptr_eq(left, right)) {
+            let new_children: Vec<Rc<Expr>> = children
+                .iter()
+                .map(|e| compile_subword_exprs(Rc::clone(e), specs))
+                .collect();
+            if children
+                .iter()
+                .zip_eq(new_children.iter())
+                .all(|(left, right)| Rc::ptr_eq(left, right))
+            {
                 Rc::clone(&expr)
-            }
-            else {
+            } else {
                 Rc::new(Expr::Alternative(new_children))
             }
-        },
+        }
         Expr::Optional(child) => {
             let new_child = compile_subword_exprs(Rc::clone(child), specs);
             if Rc::ptr_eq(child, &new_child) {
                 Rc::clone(&expr)
-            }
-            else {
+            } else {
                 Rc::new(Expr::Optional(new_child))
             }
-        },
+        }
         Expr::Many1(child) => {
             let new_child = compile_subword_exprs(Rc::clone(child), specs);
             if Rc::ptr_eq(child, &new_child) {
                 Rc::clone(&expr)
-            }
-            else {
+            } else {
                 Rc::new(Expr::Many1(new_child))
             }
-        },
-        Expr::DistributiveDescription(..) => unreachable!("DistributiveDescription Expr type should have been erased by the time subwords are being compiled"),
+        }
+        Expr::DistributiveDescription(..) => unreachable!(
+            "DistributiveDescription Expr type should have been erased by the time subwords are being compiled"
+        ),
         Expr::Fallback(children) => {
-            let new_children: Vec<Rc<Expr>> = children.iter().map(|e| compile_subword_exprs(Rc::clone(e), specs)).collect();
-            if children.iter().zip_eq(new_children.iter()).all(|(left, right)| Rc::ptr_eq(left, right)) {
+            let new_children: Vec<Rc<Expr>> = children
+                .iter()
+                .map(|e| compile_subword_exprs(Rc::clone(e), specs))
+                .collect();
+            if children
+                .iter()
+                .zip_eq(new_children.iter())
+                .all(|(left, right)| Rc::ptr_eq(left, right))
+            {
                 Rc::clone(&expr)
-            }
-            else {
+            } else {
                 Rc::new(Expr::Fallback(new_children))
             }
-        },
+        }
     }
 }
 
@@ -1247,7 +1270,7 @@ fn check_subword(
                 ))
             } else {
                 Err(Error::CommandAtNonTailPosition(*cmd, span.clone()))
-            }
+            };
         }
         Expr::Command(_, Some(..), _, _) => {}
         Expr::Nonterminal(nonterm, _, diagnostic_span) => {
@@ -1553,14 +1576,21 @@ fn resolve_nonterminals(
                 SubwordCompilationPhase::Expr(e) => Rc::clone(e),
                 SubwordCompilationPhase::DFA(..) => unreachable!(),
             };
-            let new_child = resolve_nonterminals(Rc::clone(&child), vars, specializations, unused_nonterminals);
+            let new_child = resolve_nonterminals(
+                Rc::clone(&child),
+                vars,
+                specializations,
+                unused_nonterminals,
+            );
             if Rc::ptr_eq(&child, &new_child) {
                 Rc::clone(&expr)
+            } else {
+                Rc::new(Expr::Subword(
+                    SubwordCompilationPhase::Expr(new_child),
+                    *fallback_level,
+                ))
             }
-            else {
-                Rc::new(Expr::Subword(SubwordCompilationPhase::Expr(new_child), *fallback_level))
-            }
-        },
+        }
         Expr::Nonterminal(name, ..) => {
             if specializations.contains_key(name) {
                 // Specialized nonterminals are resolved when the target shell is known, not earlier.
@@ -1570,17 +1600,20 @@ fn resolve_nonterminals(
                 Some(replacement) => {
                     unused_nonterminals.remove(name);
                     Rc::clone(replacement)
-                },
-                None => {
-                    Rc::clone(&expr)
-                },
+                }
+                None => Rc::clone(&expr),
             }
-        },
+        }
         Expr::Sequence(children) => {
             let mut new_children: Vec<Rc<Expr>> = Default::default();
             let mut any_child_replaced = false;
             for child in children {
-                let new_child = resolve_nonterminals(Rc::clone(child), vars, specializations, unused_nonterminals);
+                let new_child = resolve_nonterminals(
+                    Rc::clone(child),
+                    vars,
+                    specializations,
+                    unused_nonterminals,
+                );
                 if !Rc::ptr_eq(child, &new_child) {
                     any_child_replaced = true;
                 }
@@ -1591,12 +1624,17 @@ fn resolve_nonterminals(
             } else {
                 Rc::clone(&expr)
             }
-        },
+        }
         Expr::Alternative(children) => {
             let mut new_children: Vec<Rc<Expr>> = Default::default();
             let mut any_child_replaced = false;
             for child in children {
-                let new_child = resolve_nonterminals(Rc::clone(child), vars, specializations, unused_nonterminals);
+                let new_child = resolve_nonterminals(
+                    Rc::clone(child),
+                    vars,
+                    specializations,
+                    unused_nonterminals,
+                );
                 if !Rc::ptr_eq(child, &new_child) {
                     any_child_replaced = true;
                 }
@@ -1607,31 +1645,38 @@ fn resolve_nonterminals(
             } else {
                 Rc::clone(&expr)
             }
-        },
+        }
         Expr::Optional(child) => {
-            let new_child = resolve_nonterminals(Rc::clone(child), vars, specializations, unused_nonterminals);
+            let new_child =
+                resolve_nonterminals(Rc::clone(child), vars, specializations, unused_nonterminals);
             if Rc::ptr_eq(child, &new_child) {
                 Rc::clone(&expr)
-            }
-            else {
+            } else {
                 Rc::new(Expr::Optional(new_child))
             }
-        },
+        }
         Expr::Many1(child) => {
-            let new_child = resolve_nonterminals(Rc::clone(child), vars, specializations, unused_nonterminals);
+            let new_child =
+                resolve_nonterminals(Rc::clone(child), vars, specializations, unused_nonterminals);
             if Rc::ptr_eq(child, &new_child) {
                 Rc::clone(&expr)
-            }
-            else {
+            } else {
                 Rc::new(Expr::Many1(new_child))
             }
-        },
-        Expr::DistributiveDescription(..) => unreachable!("Expr::DistributiveDescription should have been erased by the time nonterminals are being resolved"),
+        }
+        Expr::DistributiveDescription(..) => unreachable!(
+            "Expr::DistributiveDescription should have been erased by the time nonterminals are being resolved"
+        ),
         Expr::Fallback(children) => {
             let mut new_children: Vec<Rc<Expr>> = Default::default();
             let mut any_child_replaced = false;
             for child in children {
-                let new_child = resolve_nonterminals(Rc::clone(child), vars, specializations, unused_nonterminals);
+                let new_child = resolve_nonterminals(
+                    Rc::clone(child),
+                    vars,
+                    specializations,
+                    unused_nonterminals,
+                );
                 if !Rc::ptr_eq(child, &new_child) {
                     any_child_replaced = true;
                 }
@@ -1642,41 +1687,47 @@ fn resolve_nonterminals(
             } else {
                 Rc::clone(&expr)
             }
-        },
+        }
     }
 }
 
 fn do_get_expression_nonterminals(expr: Rc<Expr>, deps: &mut UstrSet) {
     match expr.as_ref() {
-        Expr::Terminal(..) | Expr::Command(..) => {},
+        Expr::Terminal(..) | Expr::Command(..) => {}
         Expr::Subword(subexpr, ..) => {
             let subexpr = match subexpr {
                 SubwordCompilationPhase::Expr(e) => Rc::clone(e),
                 SubwordCompilationPhase::DFA(..) => unreachable!(),
             };
             do_get_expression_nonterminals(Rc::clone(&subexpr), deps);
-        },
+        }
         Expr::Nonterminal(varname, ..) => {
             deps.insert(*varname);
-        },
+        }
         Expr::Sequence(children) => {
             for child in children {
                 do_get_expression_nonterminals(Rc::clone(child), deps);
             }
-        },
+        }
         Expr::Alternative(children) => {
             for child in children {
                 do_get_expression_nonterminals(Rc::clone(child), deps);
             }
-        },
-        Expr::Optional(child) => { do_get_expression_nonterminals(Rc::clone(child), deps); }
-        Expr::Many1(child) => { do_get_expression_nonterminals(Rc::clone(child), deps); }
-        Expr::DistributiveDescription(..) => unreachable!("Expr::DistributiveDescription should have been erased by the time nonterminals are being collected"),
+        }
+        Expr::Optional(child) => {
+            do_get_expression_nonterminals(Rc::clone(child), deps);
+        }
+        Expr::Many1(child) => {
+            do_get_expression_nonterminals(Rc::clone(child), deps);
+        }
+        Expr::DistributiveDescription(..) => unreachable!(
+            "Expr::DistributiveDescription should have been erased by the time nonterminals are being collected"
+        ),
         Expr::Fallback(children) => {
             for child in children {
                 do_get_expression_nonterminals(Rc::clone(child), deps);
             }
-        },
+        }
     }
 }
 
