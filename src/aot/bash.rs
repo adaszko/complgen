@@ -548,7 +548,7 @@ fi
         buffer,
         r#"
     if [[ $(type -t _get_comp_words_by_ref) != function ]]; then
-        echo _get_comp_words_by_ref: function not defined.  Make sure the bash-candidates system package is installed
+        echo _get_comp_words_by_ref: function not defined.  Make sure the bash-completion system package is installed
         return 1
     fi
 
