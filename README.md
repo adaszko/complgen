@@ -67,7 +67,7 @@ completion script.  Since it's just an optimization, it is intended for heavy co
 ## Installation
 
 ```sh
-cargo install --git https://github.com/adaszko/complgen complgen
+cargo install --git https://github.com/adaszko/complgen --tag v0.3.0 complgen
 ```
 
 ## Syntax
