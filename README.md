@@ -58,12 +58,6 @@ never
 directories listed in `$fpath` variable.
 </details>
 
-### Just-in-Time Mode (for advanced users)
-
-This mode bypasses writing to a file and thus reduces the number of required manual steps needed to use a
-completion script.  Since it's just an optimization, it is intended for heavy complgen users and is covered in
-[a separate document](ADVANCED.md).
-
 ## Installation
 
 ```sh

@@ -1,7 +1,3 @@
-complgen jit "Emit completions on stdout" <PATH> (bash [--comp-wordbreaks=<COMP_WORDBREAKS>] | fish | zsh) [<JIT-OPTION>] --;
-<JIT-OPTION> ::= --prefix=<PREFIX>
-               ;
-
 complgen aot "Write autocompletions shell script file" <AOT-OPTION>... <PATH>;
 <AOT-OPTION> ::= (--bash-script <PATH>) "Write Bash completion script"
                | (--fish-script <PATH>) "Write Fish completion script"
@@ -18,4 +14,4 @@ complgen help <COMPLGEN_COMMAND>;
 
 complgen version "Show version and exit";
 
-<COMPLGEN_COMMAND> ::= complete | aot | check | scrape | help;
+<COMPLGEN_COMMAND> ::= aot | check | scrape | help;

@@ -52,43 +52,6 @@ def temp_file_with_contents(contents: str) -> Generator[Path, None, None]:
         yield Path(f.name)
 
 
-@contextlib.contextmanager
-def gen_bash_jit_completions_script_path(
-    complgen_binary_path: Path,
-    grammar: str,
-    words_before_cursor: list[str] = [],
-    last_incomplete_word: Optional[str] = None,
-) -> Generator[Path, None, None]:
-    comp_wordbreaks = """ "'><=;|&(:"""
-    args = [
-        complgen_binary_path,
-        "jit",
-        "--test",
-        "dummy",
-        "-",
-        "bash",
-        "--comp-wordbreaks",
-        comp_wordbreaks,
-    ]
-    if last_incomplete_word is not None:
-        args += ["--prefix={}".format(last_incomplete_word)]
-    args += ["--"]
-    args += words_before_cursor
-    process = subprocess.run(
-        args,
-        input=grammar.encode(),
-        stdout=subprocess.PIPE,
-        stderr=sys.stderr,
-        check=True,
-    )
-    completion_script = process.stdout.decode()
-    contents = """source {}\n{}""".format(
-        get_bash_completion_sh_path(), completion_script
-    )
-    with temp_file_with_contents(contents) as script_path:
-        yield script_path
-
-
 def get_sorted_bash_completions(completions_file_path: Path, input: str) -> list[str]:
     bash_process = subprocess.run(
         ["bash", "--noprofile", "--rcfile", completions_file_path, "-i"],
@@ -134,41 +97,6 @@ def get_sorted_fish_completions(
     parsed = fish_completions_from_stdout(completions)
     parsed.sort(key=lambda pair: pair[0])
     return parsed
-
-
-def get_sorted_jit_fish_completions(
-    complgen_binary_path: Path,
-    grammar: str,
-    words_before_cursor: list[str] = [],
-    prefix: Optional[str] = None,
-) -> list[tuple[str, str]]:
-    with gen_fish_jit_completion_script_path(
-        complgen_binary_path, grammar, words_before_cursor, prefix
-    ) as completions_file_path:
-        input = f"__complgen_jit {prefix}" if prefix else "__complgen_jit"
-        return get_sorted_fish_completions(completions_file_path, input)
-
-
-@contextlib.contextmanager
-def gen_fish_jit_completion_script_path(
-    complgen_binary_path: Path,
-    grammar: str,
-    words_before_cursor: list[str],
-    prefix: Optional[str],
-) -> Generator[Path, None, None]:
-    prefix_args = ["--prefix={}".format(prefix)] if prefix is not None else []
-    words = ["--"] + words_before_cursor if words_before_cursor else []
-    fish_script = subprocess.run(
-        [complgen_binary_path, "jit", "--test", "dummy", "-", "fish"]
-        + prefix_args
-        + words,
-        input=grammar.encode(),
-        stdout=subprocess.PIPE,
-        stderr=sys.stderr,
-        check=True,
-    ).stdout
-    with temp_file_with_contents(fish_script.decode()) as f:
-        yield f
 
 
 @contextlib.contextmanager

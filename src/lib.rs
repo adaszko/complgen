@@ -6,7 +6,6 @@ use ustr::Ustr;
 pub mod aot;
 pub mod dfa;
 pub mod grammar;
-pub mod jit;
 pub mod regex;
 pub mod scrape;
 

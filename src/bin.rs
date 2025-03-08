@@ -7,10 +7,7 @@ use anyhow::Context;
 use bumpalo::Bump;
 use clap::Parser;
 
-use complgen::grammar::{Grammar, ValidGrammar, to_railroad_diagram, to_railroad_diagram_file};
-use complgen::jit::bash::write_bash_completion_shell_code;
-use complgen::jit::fish::write_completion_script;
-use complgen::jit::zsh::write_zsh_completion_shell_code;
+use complgen::grammar::{Grammar, ValidGrammar, to_railroad_diagram_file};
 
 use complgen::dfa::DFA;
 use complgen::regex::AugmentedRegex;
@@ -27,9 +24,6 @@ enum Mode {
     #[command(about = "Do not complete -- only check a grammar file for errors")]
     Check(CheckArgs),
 
-    #[command(about = "Emit completions on stdout")]
-    Jit(JitArgs),
-
     #[command(about = "Write autocompletions shell script file")]
     Aot(AotArgs),
 
@@ -43,49 +37,6 @@ enum Mode {
 #[derive(clap::Args)]
 struct CheckArgs {
     usage_file_path: String,
-}
-
-#[derive(clap::Args)]
-struct CompleteShellArgs {
-    #[arg(long)]
-    prefix: Option<String>,
-
-    words: Vec<String>,
-}
-
-#[derive(clap::Args)]
-struct CompleteBashArgs {
-    #[arg(long)]
-    comp_wordbreaks: Option<String>,
-
-    #[arg(long)]
-    prefix: Option<String>,
-
-    words: Vec<String>,
-}
-
-#[derive(clap::Subcommand)]
-enum TargetShell {
-    Bash(CompleteBashArgs),
-    Fish(CompleteShellArgs),
-    Zsh(CompleteShellArgs),
-}
-
-#[derive(clap::Args)]
-struct JitArgs {
-    #[clap(long)]
-    railroad_svg: Option<String>,
-
-    #[clap(long)]
-    dfa_dot: Option<String>,
-
-    #[clap(long)]
-    test: Option<String>,
-
-    usage_file_path: String,
-
-    #[clap(subcommand)]
-    shell: TargetShell,
 }
 
 #[derive(clap::Args)]
@@ -173,92 +124,6 @@ fn check(args: &CheckArgs) -> anyhow::Result<()> {
     let regex = AugmentedRegex::from_expr(&validated.expr, &validated.specializations, &arena);
     let dfa = DFA::from_regex(&regex);
     check_dfa_ambiguity(&dfa);
-    Ok(())
-}
-
-fn jit(args: &JitArgs) -> anyhow::Result<()> {
-    let mut input_file =
-        get_file_or_stdin(&args.usage_file_path).context(args.usage_file_path.to_owned())?;
-    let mut input: String = Default::default();
-    input_file.read_to_string(&mut input)?;
-    let grammar = handle_parse_error(&input)?;
-
-    if let Some(railroad_svg_path) = &args.railroad_svg {
-        let mut railroad_svg = get_file_or_stdout(railroad_svg_path)?;
-        to_railroad_diagram(&grammar, &mut railroad_svg)?;
-    }
-
-    let validated = handle_validation_error(grammar, &input)?;
-
-    let arena = Bump::new();
-    let regex = AugmentedRegex::from_expr(&validated.expr, &validated.specializations, &arena);
-    let dfa = DFA::from_regex(&regex);
-
-    if let Some(dot_file_path) = &args.dfa_dot {
-        let mut dot_file = get_file_or_stdout(dot_file_path)?;
-        dfa.to_dot(&mut dot_file).context(dot_file_path.clone())?;
-    }
-
-    let (prefix, words) = match &args.shell {
-        TargetShell::Bash(a) => (&a.prefix, &a.words),
-        TargetShell::Fish(a) => (&a.prefix, &a.words),
-        TargetShell::Zsh(a) => (&a.prefix, &a.words),
-    };
-
-    let words_before_cursor: Vec<&str> = words.iter().map(|s| s.as_ref()).collect();
-
-    let word = prefix.as_deref().unwrap_or("");
-    let mut stdout = std::io::stdout();
-    match args.shell {
-        TargetShell::Bash(ref bash_args) => {
-            // Bash behaves weirdly depending on wheter a completion contains a special character
-            // from $COMP_WORDBREAKS or not.  If it does, it is necessary to strip from a
-            // completion string a longest prefix up to and including the last such special
-            // character.
-
-            let comp_wordbreaks: Vec<char> = bash_args
-                .comp_wordbreaks
-                .as_deref()
-                .unwrap_or("")
-                .chars()
-                .collect();
-            let superfluous_prefix = match word.rfind(comp_wordbreaks.as_slice()) {
-                Some(pos) => &word[..=pos],
-                None => "",
-            };
-
-            write_bash_completion_shell_code(
-                &validated.command,
-                &dfa,
-                &words_before_cursor,
-                word,
-                superfluous_prefix,
-                &mut stdout,
-                args.test.is_some(),
-            )?;
-        }
-        TargetShell::Fish(_) => {
-            write_completion_script(
-                &validated.command,
-                &dfa,
-                &words_before_cursor,
-                word,
-                &mut stdout,
-                args.test.is_some(),
-            )?;
-        }
-        TargetShell::Zsh(_) => {
-            write_zsh_completion_shell_code(
-                &validated.command,
-                &dfa,
-                &words_before_cursor,
-                word,
-                &mut stdout,
-                &args.test,
-            )?;
-        }
-    }
-
     Ok(())
 }
 
@@ -379,7 +244,6 @@ fn main() -> anyhow::Result<()> {
     let args = Cli::parse();
     match args.mode {
         Mode::Check(args) => check(&args)?,
-        Mode::Jit(args) => jit(&args)?,
         Mode::Aot(args) => aot(&args)?,
         Mode::Scrape => scrape()?,
         Mode::Version => {
