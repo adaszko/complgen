@@ -5,7 +5,7 @@ scripts require only the target shell to be present and can be distributed on th
 
 ## Demo
 
-[![asciicast](https://asciinema.org/a/SAH1uGqgwBEhyRV7G6Zasu45y.svg)](https://asciinema.org/a/SAH1uGqgwBEhyRV7G6Zasu45y)
+![demo](https://github.com/adaszko/complgen/blob/cbd65c446de049f81217062e021b74adb4541253/complgen.gif)
 
 ## Usage
 
