@@ -1,15 +1,15 @@
 use std::io::Write;
 
 use slice_group_by::GroupBy;
-use ustr::{ustr, Ustr};
+use ustr::{Ustr, ustr};
 
 use crate::{
     aot::fish::{
-        make_id_from_command_map, make_string_constant, validate_command_name,
-        write_generic_subword_fn, write_match_fn, write_subword_fn, MATCH_FN_NAME,
+        MATCH_FN_NAME, make_id_from_command_map, make_string_constant, validate_command_name,
+        write_generic_subword_fn, write_match_fn, write_subword_fn,
     },
     dfa::DFA,
-    grammar::{Shell, Specialization},
+    grammar::{CmdRegexDecl, Shell, Specialization},
     regex::Input,
 };
 
@@ -17,7 +17,7 @@ use super::{
     get_subword_transitions, get_transitions, make_external_command_fn_name, make_subword_fn_name,
 };
 
-pub fn write_fish_completion_shell_code<W: Write>(
+pub fn write_completion_script<W: Write>(
     completed_command: &str,
     dfa: &DFA,
     words_before_cursor: &[&str],
@@ -32,7 +32,7 @@ pub fn write_fish_completion_shell_code<W: Write>(
     let mut transitions = get_transitions(&dfa, &words_before_cursor, Shell::Bash);
     transitions.sort_unstable_by_key(|input| input.get_fallback_level());
 
-    let id_from_cmd = make_id_from_command_map(dfa);
+    let (id_from_cmd, id_from_regex) = make_id_from_command_map(dfa);
     for cmd in &id_from_cmd {
         let id = id_from_cmd.get_index_of(cmd).unwrap();
         write!(
@@ -54,7 +54,14 @@ end
         writeln!(output)?;
     }
     for (dfa, id) in &id_from_dfa {
-        write_subword_fn(output, completed_command, *id, dfa.as_ref(), &id_from_cmd)?;
+        write_subword_fn(
+            output,
+            completed_command,
+            *id,
+            dfa.as_ref(),
+            &id_from_cmd,
+            &id_from_regex,
+        )?;
         writeln!(output)?;
     }
 
@@ -90,6 +97,7 @@ end
             }
         }
 
+        // Literals
         if !literals.is_empty() {
             writeln!(
                 output,
@@ -97,6 +105,8 @@ end
                 itertools::join(literals.iter().map(|c| make_string_constant(c)), " ")
             )?;
         }
+
+        // Literals with description
         for (literal, description) in literals_with_description {
             writeln!(
                 output,
@@ -104,15 +114,53 @@ end
             )?;
         }
 
-        // An external command -- execute it and collect stdout lines as candidates
+        // Subwords
+        for subdfa in group.iter().filter_map(|t| match t {
+            Input::Subword(subdfa, ..) => Some(subdfa),
+            _ => None,
+        }) {
+            let subdfa_id = id_from_dfa.get(subdfa).unwrap();
+            writeln!(
+                output,
+                r#"    set --append candidates ({} complete {prefix_constant})"#,
+                make_subword_fn_name(completed_command, *subdfa_id)
+            )?;
+        }
+
+        // A nontail external command -- execute it and capture portions of output lines that match
+        // the regex.  If any of the capture is non-null, we have a match, otherwise fall back
+        for (cmd, regex) in group.iter().filter_map(|t| match t {
+            Input::Command(
+                cmd,
+                Some(CmdRegexDecl {
+                    fish: Some(regex), ..
+                }),
+                ..,
+            ) => Some((*cmd, *regex)),
+            _ => None,
+        }) {
+            let command_id = id_from_cmd.get_index_of(&cmd).unwrap();
+            let fn_name = make_external_command_fn_name(completed_command, command_id);
+            writeln!(
+                output,
+                r#"
+    set regex {regex}
+    for line in ({fn_name} {prefix_constant})
+        string match --regex --quiet "^(?<match>$regex).*" -- $line
+        if test -n "$match"
+            set --append candidates $match
+        end
+    end
+"#
+            )?;
+        }
+
+        // A specialized external command
         for cmd in group.iter().filter_map(|t| match t {
-            Input::Command(cmd, ..) => Some(*cmd),
             Input::Nonterminal(
                 _,
                 Some(Specialization {
-                    fish: None,
-                    generic: Some(cmd),
-                    ..
+                    fish: Some(cmd), ..
                 }),
                 ..,
             ) => Some(*cmd),
@@ -126,22 +174,15 @@ end
             )?;
         }
 
-        for subdfa in group.iter().filter_map(|t| match t {
-            Input::Subword(subdfa, ..) => Some(subdfa),
-            _ => None,
-        }) {
-            let subdfa_id = id_from_dfa.get(subdfa).unwrap();
-            writeln!(
-                output,
-                r#"    set --append candidates ({} complete {prefix_constant})"#,
-                make_subword_fn_name(completed_command, *subdfa_id)
-            )?;
-        }
+        // An external command -- execute it and collect stdout lines as candidates
         for cmd in group.iter().filter_map(|t| match t {
+            Input::Command(cmd, None, ..) => Some(*cmd),
             Input::Nonterminal(
                 _,
                 Some(Specialization {
-                    fish: Some(cmd), ..
+                    fish: None,
+                    generic: Some(cmd),
+                    ..
                 }),
                 ..,
             ) => Some(*cmd),

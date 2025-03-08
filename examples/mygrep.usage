@@ -2,7 +2,7 @@ mygrep [<OPTION>]... [--] <PATTERNS> [<PATH>]...;
 
 <OPTION> ::= (--extended-regexp || -E)                                                      "PATTERNS are extended regular expressions"
            | (--fixed-strings || -F)                                                        "PATTERNS are strings"
-           | (--basic-regexp || -G)                                                          "PATTERNS are basic regular expressions"
+           | (--basic-regexp || -G)                                                         "PATTERNS are basic regular expressions"
            | (--perl-regexp || -P)                                                          "PATTERNS are Perl regular expressions"
            | (--regexp=<PATTERNS> || -e <PATTERNS>)                                         "use PATTERNS for matching"
            | (--file=<PATH> || -f <PATH>)                                                   "take PATTERNS from FILE"

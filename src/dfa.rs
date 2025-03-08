@@ -3,10 +3,10 @@ use indexmap::{IndexMap, IndexSet};
 use std::{cmp::Ordering, collections::BTreeSet, hash::Hash, io::Write, rc::Rc};
 
 use roaring::{MultiOps, RoaringBitmap};
-use ustr::{ustr, Ustr};
+use ustr::{Ustr, ustr};
 
-use crate::grammar::{CmdRegexDecl, Shell};
 use crate::StateId;
+use crate::grammar::{CmdRegexDecl, Shell};
 use crate::{
     grammar::DFARef,
     regex::{AugmentedRegex, Input, Position},
@@ -596,7 +596,11 @@ fn do_to_dot<W: Write>(
             match input {
                 Input::Literal(..) | Input::Nonterminal(..) | Input::Command(..) => {
                     let label = format!("{}", input).replace('\"', "\\\"");
-                    writeln!(output, "{indentation}_{identifiers_prefix}{} -> _{identifiers_prefix}{} [label=\"{}\"];", from, to, label)?;
+                    writeln!(
+                        output,
+                        "{indentation}_{identifiers_prefix}{} -> _{identifiers_prefix}{} [label=\"{}\"];",
+                        from, to, label
+                    )?;
                 }
                 Input::Subword(subdfa, ..) => {
                     let subdfa_id = *id_from_dfa.get(subdfa).unwrap();
@@ -772,7 +776,7 @@ impl DFA {
         transitions
     }
 
-    pub fn get_nontail_transitions_from(&self, from: StateId) -> Vec<(Ustr, StateId)> {
+    pub fn get_bash_nontail_transitions_from(&self, from: StateId) -> Vec<(Ustr, StateId)> {
         let map = match self.transitions.get(&from) {
             Some(map) => map,
             None => return vec![],
@@ -789,6 +793,56 @@ impl DFA {
                 ) => Some((*regex, *to)),
                 Input::Command(_, None, _) => None,
                 Input::Command(_, Some(CmdRegexDecl { bash: None, .. }), _) => None,
+                Input::Literal(..) => None,
+                Input::Subword(..) => None,
+                Input::Nonterminal(..) => None,
+            })
+            .collect();
+        transitions
+    }
+
+    pub fn get_fish_nontail_transitions_from(&self, from: StateId) -> Vec<(Ustr, StateId)> {
+        let map = match self.transitions.get(&from) {
+            Some(map) => map,
+            None => return vec![],
+        };
+        let transitions: Vec<(Ustr, StateId)> = map
+            .iter()
+            .filter_map(|(input, to)| match input {
+                Input::Command(
+                    _,
+                    Some(CmdRegexDecl {
+                        fish: Some(regex), ..
+                    }),
+                    ..,
+                ) => Some((*regex, *to)),
+                Input::Command(_, None, _) => None,
+                Input::Command(_, Some(CmdRegexDecl { fish: None, .. }), _) => None,
+                Input::Literal(..) => None,
+                Input::Subword(..) => None,
+                Input::Nonterminal(..) => None,
+            })
+            .collect();
+        transitions
+    }
+
+    pub fn get_zsh_nontail_transitions_from(&self, from: StateId) -> Vec<(Ustr, StateId)> {
+        let map = match self.transitions.get(&from) {
+            Some(map) => map,
+            None => return vec![],
+        };
+        let transitions: Vec<(Ustr, StateId)> = map
+            .iter()
+            .filter_map(|(input, to)| match input {
+                Input::Command(
+                    _,
+                    Some(CmdRegexDecl {
+                        zsh: Some(regex), ..
+                    }),
+                    ..,
+                ) => Some((*regex, *to)),
+                Input::Command(_, None, _) => None,
+                Input::Command(_, Some(CmdRegexDecl { zsh: None, .. }), _) => None,
                 Input::Literal(..) => None,
                 Input::Subword(..) => None,
                 Input::Nonterminal(..) => None,
@@ -895,8 +949,8 @@ impl DFA {
 mod tests {
     use std::rc::Rc;
 
-    use crate::grammar::tests::arb_expr_match;
     use crate::grammar::Expr;
+    use crate::grammar::tests::arb_expr_match;
     use crate::regex::AugmentedRegex;
     use Expr::*;
 
@@ -904,7 +958,7 @@ mod tests {
 
     use bumpalo::Bump;
     use proptest::prelude::*;
-    use ustr::{ustr as u, UstrMap};
+    use ustr::{UstrMap, ustr as u};
 
     impl Transition {
         fn new(from: StateId, input: &str, to: StateId) -> Self {

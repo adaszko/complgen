@@ -111,7 +111,7 @@ def test_jit_specializes_for_bash(complgen_binary_path: Path):
         assert get_sorted_bash_completions(completion_script, input) == sorted(["bash"])
 
 
-def test_jit_nontail_alternative(complgen_binary_path: Path):
+def test_jit_nontail_matching_alternative(complgen_binary_path: Path):
     GRAMMAR = """cmd <LEFT> | right; <LEFT> ::= {{{ echo left }}}@bash"left";"""
     with gen_bash_jit_completions_script_path(
         complgen_binary_path, GRAMMAR, last_incomplete_word="rig"
@@ -122,7 +122,7 @@ def test_jit_nontail_alternative(complgen_binary_path: Path):
         )
 
 
-def test_jit_nontail_fallback(complgen_binary_path: Path):
+def test_jit_nontail_matching_fallback(complgen_binary_path: Path):
     GRAMMAR = """cmd <LEFT> || right; <LEFT> ::= {{{ echo left }}}@bash"left";"""
     with gen_bash_jit_completions_script_path(
         complgen_binary_path, GRAMMAR, last_incomplete_word="rig"
@@ -133,7 +133,7 @@ def test_jit_nontail_fallback(complgen_binary_path: Path):
         )
 
 
-def test_jit_nontail_subword(complgen_binary_path: Path):
+def test_jit_nontail_matching_subword(complgen_binary_path: Path):
     GRAMMAR = """cmd <PREFIX><SUFFIX>; <PREFIX> ::= {{{ echo prefix }}}@bash"prefix"; <SUFFIX> ::= {{{ echo suffix }}}@bash"suffix";"""
     with gen_bash_jit_completions_script_path(
         complgen_binary_path, GRAMMAR, last_incomplete_word="prefix"
@@ -141,6 +141,28 @@ def test_jit_nontail_subword(complgen_binary_path: Path):
         input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_bash_completions(completion_script, input) == sorted(
             ["prefixsuffix"]
+        )
+
+
+def test_jit_nontail_completion(complgen_binary_path: Path):
+    GRAMMAR = """cmd {{{ echo left }}}@bash"left";"""
+    with gen_bash_jit_completions_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completion_script:
+        input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(completion_script, input) == sorted(
+            ["left"]
+        )
+
+
+def test_jit_nontail_completion_subword(complgen_binary_path: Path):
+    GRAMMAR = """cmd left{{{ echo right }}}@bash"right";"""
+    with gen_bash_jit_completions_script_path(
+        complgen_binary_path, GRAMMAR, last_incomplete_word="left"
+    ) as completion_script:
+        input = r'''COMP_WORDS=(cmd); COMP_CWORD=1; __complgen_jit; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(completion_script, input) == sorted(
+            ["leftright"]
         )
 
 

@@ -34,7 +34,7 @@ pub enum Error {
     NonCommandSpecialization(Ustr, Option<Ustr>),
 
     #[error("Commands are only allowed at a tail position to avoid ambiguities")]
-    CommandAtNonTailPosition(Ustr, ChicSpan),
+    NontailCommand(Ustr, ChicSpan),
 
     #[error("UTF-8 conversion error")]
     FromUtf8Error(#[from] FromUtf8Error),
@@ -57,8 +57,12 @@ pub fn check_dfa_ambiguity(dfa: &DFA) {
             "Ambiguous transition requires matching against: {:?}",
             inputs
         );
-        eprintln!("They arise when there's a need to match a shell word against the output of more than one external shell command.");
-        eprintln!("The grammar needs to be modified to match against at most one external command output to avoid ambiguities.");
+        eprintln!(
+            "They arise when there's a need to match a shell word against the output of more than one external shell command."
+        );
+        eprintln!(
+            "The grammar needs to be modified to match against at most one external command output to avoid ambiguities."
+        );
         exit(1);
     }
 }

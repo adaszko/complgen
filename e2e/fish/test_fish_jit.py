@@ -71,22 +71,36 @@ def test_jit_specializes_for_fish(complgen_binary_path: Path):
     )
 
 
-def test_nontail_alternative(complgen_binary_path: Path):
-    GRAMMAR = """cmd <LEFT> | right; <LEFT> ::= {{{ echo left }}}@fish"left";"""
+def test_jit_nontail_matching_alternative(complgen_binary_path: Path):
+    GRAMMAR = """cmd {{{ echo left }}}@fish"left" | right;"""
     assert get_sorted_jit_fish_completions(
         complgen_binary_path, GRAMMAR, prefix="rig"
-    ) == sorted([("fish", "")])
+    ) == sorted([("right", "")])
 
 
-def test_nontail_fallback(complgen_binary_path: Path):
-    GRAMMAR = """cmd <LEFT> || right; <LEFT> ::= {{{ echo left }}}@fish"left";"""
+def test_jit_nontail_matching_fallback(complgen_binary_path: Path):
+    GRAMMAR = """cmd {{{ echo left }}}@fish"left" || right;"""
     assert get_sorted_jit_fish_completions(
         complgen_binary_path, GRAMMAR, prefix="rig"
-    ) == sorted([("fish", "")])
+    ) == sorted([("right", "")])
 
 
-def test_nontail_subword(complgen_binary_path: Path):
-    GRAMMAR = """cmd <LEFT>right; <LEFT> ::= {{{ echo left }}}@fish"left";"""
+def test_jit_nontail_matching_subword(complgen_binary_path: Path):
+    GRAMMAR = """cmd {{{ echo left }}}@fish"left"right;"""
+    assert get_sorted_jit_fish_completions(
+        complgen_binary_path, GRAMMAR, prefix="left"
+    ) == sorted([("leftright", "")])
+
+
+def test_jit_nontail_completion(complgen_binary_path: Path):
+    GRAMMAR = """cmd {{{ echo left }}}@fish"left";"""
+    assert get_sorted_jit_fish_completions(
+        complgen_binary_path, GRAMMAR
+    ) == sorted([("left", "")])
+
+
+def test_jit_nontail_completion_subword(complgen_binary_path: Path):
+    GRAMMAR = """cmd {{{ echo left }}}@fish"left"right;"""
     assert get_sorted_jit_fish_completions(
         complgen_binary_path, GRAMMAR, prefix="left"
     ) == sorted([("leftright", "")])

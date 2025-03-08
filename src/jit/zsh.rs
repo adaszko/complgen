@@ -1,14 +1,14 @@
 use std::io::Write;
 
 use slice_group_by::GroupBy;
-use ustr::{ustr, Ustr, UstrMap};
+use ustr::{Ustr, UstrMap, ustr};
 
 use crate::{
     aot::zsh::{
         make_id_from_command_map, make_string_constant, write_generic_subword_fn, write_subword_fn,
     },
     dfa::DFA,
-    grammar::{Shell, Specialization},
+    grammar::{CmdRegexDecl, Shell, Specialization},
     regex::Input,
 };
 
@@ -54,7 +54,7 @@ pub fn write_zsh_completion_shell_code<W: Write>(
     let mut transitions = get_transitions(&dfa, &words_before_cursor, Shell::Zsh);
     transitions.sort_unstable_by_key(|input| input.get_fallback_level());
 
-    let id_from_cmd = make_id_from_command_map(dfa);
+    let (id_from_cmd, id_from_regex) = make_id_from_command_map(dfa);
 
     for cmd in &id_from_cmd {
         let id = id_from_cmd.get_index_of(cmd).unwrap();
@@ -75,7 +75,14 @@ pub fn write_zsh_completion_shell_code<W: Write>(
         write_generic_subword_fn(output, completed_command)?;
     }
     for (dfa, id) in &id_from_dfa {
-        write_subword_fn(output, completed_command, *id, dfa.as_ref(), &id_from_cmd)?;
+        write_subword_fn(
+            output,
+            completed_command,
+            *id,
+            dfa.as_ref(),
+            &id_from_cmd,
+            &id_from_regex,
+        )?;
         writeln!(output)?;
     }
 
@@ -211,9 +218,83 @@ pub fn write_zsh_completion_shell_code<W: Write>(
             }
         }
 
+        for subdfa in group.iter().filter_map(|t| match t {
+            Input::Subword(subdfa, ..) => Some(subdfa),
+            _ => None,
+        }) {
+            let subdfa_id = id_from_dfa.get(subdfa).unwrap();
+            writeln!(
+                output,
+                r#"
+    {} complete {prefix_constant}
+    completions_no_description_trailing_space+=("${{subword_completions_no_description_trailing_space[@]}}")
+    completions_trailing_space+=("${{subword_completions_trailing_space[@]}}")
+    completions_no_trailing_space+=("${{subword_completions_no_trailing_space[@]}}")
+    suffixes_no_trailing_space+=("${{subword_suffixes_no_trailing_space[@]}}")
+    suffixes_trailing_space+=("${{subword_suffixes_trailing_space[@]}}")
+    descriptions_trailing_space+=("${{subword_descriptions_trailing_space[@]}}")
+    descriptions_no_trailing_space+=("${{subword_descriptions_no_trailing_space[@]}}")
+"#,
+                make_subword_fn_name(completed_command, *subdfa_id)
+            )?;
+        }
+
+        // An external command that calls compadd itself and return 0 exit code if there
+        // were some candidates produced.  The exit code is used to declare a fallback
+        // level complete, so it's important.
+        for cmd in group.iter().filter_map(|t| match t {
+            Input::Nonterminal(_, Some(Specialization { zsh: Some(cmd), .. }), ..) => Some(*cmd),
+            _ => None,
+        }) {
+            let command_id = id_from_specialized_command.get(&cmd).unwrap();
+            let fn_name = make_specialized_external_command_fn_name(completed_command, *command_id);
+            writeln!(output, r#"    {}"#, fn_name)?;
+            writeln!(
+                output,
+                r#"    [[ $? -eq 0 ]] && matches+=(fallback_level_matched)"#
+            )?;
+        }
+
+        // A nontail external command -- execute it and capture portions of output lines that match
+        // the regex.  If any of the capture is non-null, we have a match, otherwise fall back
+        for (cmd, regex) in group.iter().filter_map(|t| match t {
+            Input::Command(
+                cmd,
+                Some(CmdRegexDecl {
+                    zsh: Some(regex), ..
+                }),
+                ..,
+            ) => Some((*cmd, *regex)),
+            _ => None,
+        }) {
+            let command_id = id_from_cmd.get_index_of(&cmd).unwrap();
+            let fn_name = make_external_command_fn_name(completed_command, command_id);
+            writeln!(output, r#"local regex="^({regex}).*""#)?;
+
+            if entered_prefix.is_empty() {
+                writeln!(output, r#"    local lines=("${{(@f)$({fn_name})}}")"#)?;
+            } else {
+                writeln!(
+                    output,
+                    r#"    local lines=("${{(@f)$({fn_name} {entered_prefix})}}")"#
+                )?;
+            }
+
+            writeln!(
+                output,
+                r#"
+    for line in ${{lines[@]}}; do
+        if [[ ${{line}} =~ $regex && -n ${{match[1]}} ]]; then
+            completions_no_description_trailing_space+=("${{line}}")
+        fi
+    done
+"#
+            )?;
+        }
+
         // An external command -- execute it and collect stdout lines as candidates
         for cmd in group.iter().filter_map(|t| match t {
-            Input::Command(cmd, ..) => Some(*cmd),
+            Input::Command(cmd, None, ..) => Some(*cmd),
             Input::Nonterminal(
                 _,
                 Some(Specialization {
@@ -248,42 +329,6 @@ pub fn write_zsh_completion_shell_code<W: Write>(
         fi
     done
 "#
-            )?;
-        }
-
-        for subdfa in group.iter().filter_map(|t| match t {
-            Input::Subword(subdfa, ..) => Some(subdfa),
-            _ => None,
-        }) {
-            let subdfa_id = id_from_dfa.get(subdfa).unwrap();
-            writeln!(
-                output,
-                r#"
-    {} complete {prefix_constant}
-    completions_no_description_trailing_space+=("${{subword_completions_no_description_trailing_space[@]}}")
-    completions_trailing_space+=("${{subword_completions_trailing_space[@]}}")
-    completions_no_trailing_space+=("${{subword_completions_no_trailing_space[@]}}")
-    suffixes_no_trailing_space+=("${{subword_suffixes_no_trailing_space[@]}}")
-    suffixes_trailing_space+=("${{subword_suffixes_trailing_space[@]}}")
-    descriptions_trailing_space+=("${{subword_descriptions_trailing_space[@]}}")
-    descriptions_no_trailing_space+=("${{subword_descriptions_no_trailing_space[@]}}")
-"#,
-                make_subword_fn_name(completed_command, *subdfa_id)
-            )?;
-        }
-        // An external command that calls compadd itself and return 0 exit code if there
-        // were some candidates produced.  The exit code is used to declare a fallback
-        // level complete, so it's important.
-        for cmd in group.iter().filter_map(|t| match t {
-            Input::Nonterminal(_, Some(Specialization { zsh: Some(cmd), .. }), ..) => Some(*cmd),
-            _ => None,
-        }) {
-            let command_id = id_from_specialized_command.get(&cmd).unwrap();
-            let fn_name = make_specialized_external_command_fn_name(completed_command, *command_id);
-            writeln!(output, r#"    {}"#, fn_name)?;
-            writeln!(
-                output,
-                r#"    [[ $? -eq 0 ]] && matches+=(fallback_level_matched)"#
             )?;
         }
 
@@ -338,6 +383,8 @@ pub fn write_zsh_completion_shell_code<W: Write>(
     }
     writeln!(output, r#"    return 0"#)?;
     writeln!(output, r#"}}"#)?;
+
+    writeln!(output)?;
 
     if let Some(test_cmd) = test_cmd {
         writeln!(output, r#"compdef __complgen_jit {test_cmd}"#)?;

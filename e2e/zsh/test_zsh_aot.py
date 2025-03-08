@@ -126,24 +126,38 @@ def test_specializes_for_zsh(complgen_binary_path: Path):
     )
 
 
-def test_nontail_alternative(complgen_binary_path: Path):
+def test_nontail_matching_alternative(complgen_binary_path: Path):
     GRAMMAR = """cmd <LEFT> | right; <LEFT> ::= {{{ echo left }}}@zsh"left";"""
     assert get_sorted_aot_completions(
         complgen_binary_path, GRAMMAR, "cmd rig"
     ) == sorted(["right"])
 
 
-def test_nontail_fallback(complgen_binary_path: Path):
+def test_nontail_matching_fallback(complgen_binary_path: Path):
     GRAMMAR = """cmd <LEFT> || right; <LEFT> ::= {{{ echo left }}}@zsh"left";"""
     assert get_sorted_aot_completions(
         complgen_binary_path, GRAMMAR, "cmd rig"
     ) == sorted(["right"])
 
 
-def test_nontail_subword(complgen_binary_path: Path):
+def test_nontail_matching_subword(complgen_binary_path: Path):
     GRAMMAR = """cmd <LEFT>right; <LEFT> ::= {{{ echo left }}}@zsh"left";"""
     assert get_sorted_aot_completions(
-        complgen_binary_path, GRAMMAR, "cmd rig"
+        complgen_binary_path, GRAMMAR, "cmd left"
+    ) == sorted(["leftright right"])
+
+
+def test_nontail_completion(complgen_binary_path: Path):
+    GRAMMAR = """cmd {{{ echo left }}}@zsh"left";"""
+    assert get_sorted_aot_completions(
+        complgen_binary_path, GRAMMAR, "cmd "
+    ) == sorted(["left"])
+
+
+def test_nontail_completion_subword(complgen_binary_path: Path):
+    GRAMMAR = """cmd left{{{ echo right }}}@zsh"right";"""
+    assert get_sorted_aot_completions(
+        complgen_binary_path, GRAMMAR, "cmd left"
     ) == sorted(["leftright"])
 
 

@@ -5,8 +5,8 @@ use ustr::Ustr;
 
 use crate::{
     aot::bash::{
-        make_id_from_command_map, make_string_constant, write_generic_subword_fn, write_match_fn,
-        write_subword_fn, MATCH_FN_NAME,
+        MATCH_FN_NAME, make_id_from_command_map, make_string_constant, write_generic_subword_fn,
+        write_match_fn, write_subword_fn,
     },
     dfa::DFA,
     grammar::{CmdRegexDecl, Shell, Specialization},
@@ -144,7 +144,7 @@ pub fn write_bash_completion_shell_code<W: Write>(
 
         // An external command -- execute it and collect stdout lines as candidates
         for cmd in group.iter().filter_map(|t| match t {
-            Input::Command(cmd, ..) => Some(*cmd),
+            Input::Command(cmd, None, ..) => Some(*cmd),
             Input::Nonterminal(
                 _,
                 Some(Specialization {

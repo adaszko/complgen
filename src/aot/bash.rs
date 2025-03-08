@@ -1,15 +1,15 @@
 use std::io::Write;
 
+use crate::Result;
+use crate::StateId;
 use crate::dfa::DFA;
 use crate::grammar::CmdRegexDecl;
 use crate::grammar::Shell;
 use crate::grammar::Specialization;
 use crate::regex::Input;
-use crate::Result;
-use crate::StateId;
 use hashbrown::HashMap;
 use indexmap::IndexSet;
-use ustr::{ustr, Ustr};
+use ustr::{Ustr, ustr};
 
 use super::get_max_fallback_level;
 
@@ -126,7 +126,7 @@ fn write_lookup_tables<W: Write>(
             )?;
         }
 
-        let nontail_transitions = dfa.get_nontail_transitions_from(state as StateId);
+        let nontail_transitions = dfa.get_bash_nontail_transitions_from(state as StateId);
         if !nontail_transitions.is_empty() {
             let nontail_command_transitions: Vec<(usize, StateId)> = nontail_transitions
                 .into_iter()
@@ -204,7 +204,7 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
             eval "state_nontails=${{nontail_transitions[$state]}}"
             local nontail_matched=0
             for regex_id in "${{!state_nontails[@]}}"; do
-                local regex="(${{regexes[$regex_id]}})(.*)"
+                local regex="(${{regexes[$regex_id]}}).*"
                 if [[ ${{subword}} =~ $regex && -n ${{BASH_REMATCH[1]}} ]]; then
                     match="${{BASH_REMATCH[1]}}"
                     match_len=${{#match}}
@@ -763,6 +763,21 @@ fi
         )?;
     }
 
+    for (level, transitions) in fallback_nontails.iter().enumerate() {
+        let initializer = itertools::join(
+            transitions.iter().map(|(from_state, command_ids)| {
+                let joined_command_ids =
+                    itertools::join(command_ids.iter().map(|(cmd_id, _)| cmd_id), " ");
+                format!(r#"[{from_state}]="{joined_command_ids}""#)
+            }),
+            " ",
+        );
+        writeln!(
+            buffer,
+            r#"    declare -A nontail_commands_level_{level}=({initializer})"#
+        )?;
+    }
+
     write!(
         buffer,
         r#"
@@ -789,6 +804,15 @@ fi
         done
 
         eval "declare commands_name=commands_level_${{fallback_level}}"
+        eval "declare -a transitions=(\${{$commands_name[$state]}})"
+        for command_id in "${{transitions[@]}}"; do
+            readarray -t candidates < <(_{command}_cmd_$command_id "$prefix" | cut -f1)
+            if [[ ${{#candidates[@]}} -gt 0 ]]; then
+                readarray -t -O "${{#matches[@]}}" matches < <(printf "%s\n" "${{candidates[@]}}" | {MATCH_FN_NAME} "$ignore_case" "$prefix")
+            fi
+        done
+
+        eval "declare commands_name=nontail_commands_level_${{fallback_level}}"
         eval "declare -a transitions=(\${{$commands_name[$state]}})"
         for command_id in "${{transitions[@]}}"; do
             readarray -t candidates < <(_{command}_cmd_$command_id "$prefix" | cut -f1)
