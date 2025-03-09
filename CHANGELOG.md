@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+ - Breaking: Tail commands detection is more precise now, resulting in more rejected grammars (that would have previously been silently ambiguous)
  - Bash: Bug in `prefix{{{ shell command }}}` case
 
 ## 0.3.0
