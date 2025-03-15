@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
  - Breaking: Tail commands detection is more precise now, resulting in more rejected grammars (that would have previously been silently ambiguous)
+ - Breaking: Two adjacent literals used in subword context are now rejected as an error as this may lead to surprising behavior (https://github.com/adaszko/complgen/issues/63)
  - Bash: Bug in `prefix{{{ shell command }}}` case
 
 ## 0.3.0

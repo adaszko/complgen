@@ -1546,6 +1546,8 @@ impl ValidGrammar {
             &mut unused_nonterminals,
         );
 
+        check_subword_spaces(Rc::clone(&expr))?;
+
         let expr = propagate_fallback_levels(expr);
 
         let undefined_nonterminals = {
@@ -1564,6 +1566,96 @@ impl ValidGrammar {
             unused_nonterminals,
         };
         Ok(g)
+    }
+}
+
+fn expr_get_head(expr: Rc<Expr>) -> Rc<Expr> {
+    match expr.as_ref() {
+        Expr::Terminal(..) => expr,
+        Expr::NontermRef(..) => expr,
+        Expr::Command(..) => expr,
+        Expr::Alternative(..) => expr,
+        Expr::Fallback(..) => expr,
+        Expr::Optional(..) => expr,
+        Expr::Many1(..) => expr,
+        Expr::Sequence(children) => expr_get_head(children.first().unwrap().clone()),
+        Expr::Subword(..) => unreachable!(),
+        Expr::DistributiveDescription(..) => unreachable!("wrong compilation phases order"),
+    }
+}
+
+fn expr_get_tail(expr: Rc<Expr>) -> Rc<Expr> {
+    match expr.as_ref() {
+        Expr::Terminal(..) => expr,
+        Expr::NontermRef(..) => expr,
+        Expr::Command(..) => expr,
+        Expr::Alternative(..) => expr,
+        Expr::Fallback(..) => expr,
+        Expr::Optional(..) => expr,
+        Expr::Many1(..) => expr,
+        Expr::Sequence(children) => expr_get_head(children.last().unwrap().clone()),
+        Expr::Subword(..) => unreachable!(),
+        Expr::DistributiveDescription(..) => unreachable!("wrong compilation phases order"),
+    }
+}
+
+fn check_subword_spaces(expr: Rc<Expr>) -> Result<()> {
+    do_check_subword_spaces(expr, false)
+}
+
+/// Disallows spaces in subword expressions, e.g.
+///
+/// aerc :<COMMAND>;
+/// <COMMAND> ::= quit -f;
+///
+/// On deeply nested <NONTERM>s, this can lead to [surprising spaces
+/// removal](https://github.com/adaszko/complgen/issues/63) so forbid it completely.
+fn do_check_subword_spaces(expr: Rc<Expr>, within_subword: bool) -> Result<()> {
+    match expr.as_ref() {
+        Expr::Sequence(children) if within_subword => {
+            // Error out on two adjacent Expr::Terminal()s
+            for pair in children.windows(2) {
+                let [left, right] = pair else { unreachable!() };
+                match (
+                    expr_get_tail(Rc::clone(&left)).as_ref(),
+                    expr_get_head(Rc::clone(&right)).as_ref(),
+                ) {
+                    (Expr::Terminal(..), Expr::Terminal(..)) => return Err(Error::SubwordSpaces()),
+                    _ => {}
+                }
+            }
+            Ok(())
+        }
+        Expr::Sequence(children) => {
+            for child in children {
+                do_check_subword_spaces(Rc::clone(&child), within_subword)?;
+            }
+            Ok(())
+        }
+        Expr::Terminal(..) => Ok(()),
+        Expr::NontermRef(..) => Ok(()),
+        Expr::Command(..) => Ok(()),
+        Expr::Subword(SubwordCompilationPhase::Expr(child), ..) => {
+            do_check_subword_spaces(Rc::clone(&child), true)
+        }
+        Expr::Subword(SubwordCompilationPhase::DFA(..), ..) => {
+            unreachable!("wrong compilation phases order")
+        }
+        Expr::Alternative(children) => {
+            for child in children {
+                do_check_subword_spaces(Rc::clone(&child), within_subword)?;
+            }
+            Ok(())
+        }
+        Expr::Fallback(children) => {
+            for child in children {
+                do_check_subword_spaces(Rc::clone(&child), within_subword)?;
+            }
+            Ok(())
+        }
+        Expr::Optional(child) => do_check_subword_spaces(Rc::clone(&child), within_subword),
+        Expr::Many1(child) => do_check_subword_spaces(Rc::clone(&child), within_subword),
+        Expr::DistributiveDescription(..) => unreachable!("wrong compilation phases order"),
     }
 }
 
