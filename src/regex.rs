@@ -241,7 +241,7 @@ fn do_from_expr<'a>(
     input_from_position: &mut Vec<Input>,
 ) -> AugmentedRegexNode<'a> {
     match e {
-        Expr::Terminal(term, description, level) => {
+        Expr::Terminal(term, description, level, _) => {
             let result = AugmentedRegexNode::Terminal(
                 *term,
                 *level,

@@ -955,8 +955,8 @@ impl DFA {
 mod tests {
     use std::rc::Rc;
 
-    use crate::grammar::Expr;
     use crate::grammar::tests::arb_expr_match;
+    use crate::grammar::{ChicSpan, Expr};
     use crate::regex::AugmentedRegex;
     use Expr::*;
 
@@ -1049,7 +1049,7 @@ mod tests {
     #[test]
     fn minimal_example() {
         use ustr::ustr;
-        let expr = Terminal(ustr("foo"), None, 0);
+        let expr = Terminal(ustr("foo"), None, 0, ChicSpan::Dummy);
         let arena = Bump::new();
         let specs = UstrMap::default();
         let regex = AugmentedRegex::from_expr(&expr, &specs, &arena);
@@ -1150,11 +1150,11 @@ mod tests {
         let (expr, input) = (
             Alternative(vec![
                 Rc::new(Many1(Rc::new(Alternative(vec![
-                    Rc::new(Terminal(u("--quux"), None, 0)),
+                    Rc::new(Terminal(u("--quux"), None, 0, ChicSpan::Dummy)),
                     Rc::new(Sequence(vec![
                         Rc::new(Optional(Rc::new(Sequence(vec![
                             Rc::new(Many1(Rc::new(Many1(Rc::new(Alternative(vec![
-                                Rc::new(Terminal(u("--baz"), None, 0)),
+                                Rc::new(Terminal(u("--baz"), None, 0, ChicSpan::Dummy)),
                                 Rc::new(NontermRef(
                                     u("FILE"),
                                     0,
@@ -1165,7 +1165,7 @@ mod tests {
                         ])))),
                         Rc::new(Sequence(vec![
                             Rc::new(NontermRef(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
-                            Rc::new(Terminal(u("foo"), None, 0)),
+                            Rc::new(Terminal(u("foo"), None, 0, ChicSpan::Dummy)),
                         ])),
                     ])),
                 ])))),
@@ -1236,14 +1236,10 @@ mod tests {
             Sequence(vec![
                 Rc::new(Sequence(vec![
                     Rc::new(Alternative(vec![
-                        Rc::new(Many1(Rc::new(Many1(Rc::new(Terminal(
-                            u("--baz"),
-                            None,
-                            0,
-                        )))))),
+                        Rc::new(Many1(Rc::new(Many1(Rc::new(Terminal(u("--baz"), None, 0, ChicSpan::Dummy)))))),
                         Rc::new(NontermRef(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
                     ])),
-                    Rc::new(Terminal(u("--baz"), None, 0)),
+                    Rc::new(Terminal(u("--baz"), None, 0, ChicSpan::Dummy)),
                 ])),
                 Rc::new(Many1(Rc::new(Alternative(vec![
                     Rc::new(NontermRef(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),

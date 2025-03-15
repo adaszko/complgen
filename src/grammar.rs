@@ -71,7 +71,7 @@ impl std::fmt::Debug for SubwordCompilationPhase {
 #[derive(Clone, PartialEq)]
 pub enum Expr {
     /// `--help`
-    Terminal(Ustr, Option<Ustr>, usize), // terminal, optional description, fallback level
+    Terminal(Ustr, Option<Ustr>, usize, ChicSpan), // terminal, optional description, fallback level
 
     /// `--option=argument`
     Subword(SubwordCompilationPhase, usize),
@@ -144,11 +144,11 @@ impl std::fmt::Debug for Expr {
             Self::Subword(subword, level) => {
                 f.write_fmt(format_args!(r#"Rc::new(Subword({subword:?}, {level}))"#))
             }
-            Expr::Terminal(term, Some(descr), level) => f.write_fmt(format_args!(
+            Expr::Terminal(term, Some(descr), level, ..) => f.write_fmt(format_args!(
                 r#"Rc::new(Terminal(ustr("{term}"), Some(ustr("{}"))), {level})"#,
                 descr
             )),
-            Expr::Terminal(term, None, level) => f.write_fmt(format_args!(
+            Expr::Terminal(term, None, level, ..) => f.write_fmt(format_args!(
                 r#"Rc::new(Terminal(ustr("{term}"), None, {level}))"#
             )),
             Expr::NontermRef(nonterm, level, _) => f.write_fmt(format_args!(
@@ -431,10 +431,15 @@ fn description(input: Span) -> IResult<Span, String> {
 }
 
 fn terminal_opt_description_expr(input: Span) -> IResult<Span, Expr> {
-    let (input, term) = terminal(input)?;
-    let (input, descr) = opt(preceded(multiblanks0, description))(input)?;
-    let expr = Expr::Terminal(ustr(&term), descr.map(|span| ustr(&span)), 0);
-    Ok((input, expr))
+    let (after, term) = terminal(input)?;
+    let (after, descr) = opt(preceded(multiblanks0, description))(after)?;
+    let expr = Expr::Terminal(
+        ustr(&term),
+        descr.map(|span| ustr(&span)),
+        0,
+        ChicSpan::new(input, after),
+    );
+    Ok((after, expr))
 }
 
 fn nonterm(input: Span) -> IResult<Span, Span> {
@@ -1076,8 +1081,8 @@ fn do_distribute_descriptions(expr: Rc<Expr>, description: &mut Option<Ustr>) ->
                 new_child
             }
         }
-        Expr::Terminal(term, None, level) if description.is_some() => {
-            let result = Rc::new(Expr::Terminal(*term, *description, *level));
+        Expr::Terminal(term, None, level, span) if description.is_some() => {
+            let result = Rc::new(Expr::Terminal(*term, *description, *level, span.clone()));
             *description = None; // spend it
             result
         }
@@ -1167,8 +1172,13 @@ fn distribute_descriptions(expr: Rc<Expr>) -> Rc<Expr> {
 /// Propagate fallback levels of fallback alternatives down to literals.
 fn do_propagate_fallback_levels(expr: Rc<Expr>, fallback_level: usize) -> Rc<Expr> {
     match expr.as_ref() {
-        Expr::Terminal(_, _, level) if *level == fallback_level => Rc::clone(&expr),
-        Expr::Terminal(term, descr, _) => Rc::new(Expr::Terminal(*term, *descr, fallback_level)),
+        Expr::Terminal(_, _, level, _) if *level == fallback_level => Rc::clone(&expr),
+        Expr::Terminal(term, descr, _, _) => Rc::new(Expr::Terminal(
+            *term,
+            *descr,
+            fallback_level,
+            ChicSpan::Dummy,
+        )),
         Expr::Fallback(children) => {
             let new_children: Vec<Rc<Expr>> = children
                 .iter()
@@ -1987,7 +1997,9 @@ pub mod tests {
 
     fn arb_literal(inputs: Rc<Vec<Ustr>>) -> BoxedStrategy<Rc<Expr>> {
         (0..inputs.len())
-            .prop_map(move |index| Rc::new(Terminal(ustr(&inputs[index]), None, 0)))
+            .prop_map(move |index| {
+                Rc::new(Terminal(ustr(&inputs[index]), None, 0, ChicSpan::Dummy))
+            })
             .boxed()
     }
 
@@ -2101,7 +2113,7 @@ pub mod tests {
 
     pub fn do_arb_match(e: Rc<Expr>, rng: &mut TestRng, max_width: usize, output: &mut Vec<Ustr>) {
         match e.as_ref() {
-            Terminal(s, _, _) => output.push(*s),
+            Terminal(s, _, _, _) => output.push(*s),
             Subword(sw, ..) => {
                 let e = match sw {
                     SubwordCompilationPhase::Expr(e) => e,
@@ -2175,7 +2187,7 @@ pub mod tests {
             e,
             Expr::Subword(
                 SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
-                    Rc::new(Terminal(ustr("--color="), None, 0)),
+                    Rc::new(Terminal(ustr("--color="), None, 0, ChicSpan::Dummy)),
                     Rc::new(NontermRef(ustr("WHEN"), 0, ChicSpan::dummy()))
                 ]))),
                 0
@@ -2193,7 +2205,7 @@ pub mod tests {
             DistributiveDescription(
                 Rc::new(Subword(
                     SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
-                        Rc::new(Terminal(ustr("--color="), None, 0)),
+                        Rc::new(Terminal(ustr("--color="), None, 0, ChicSpan::Dummy)),
                         Rc::new(NontermRef(ustr("WHEN"), 0, ChicSpan::dummy()))
                     ]))),
                     0
@@ -2215,13 +2227,13 @@ pub mod tests {
                 Rc::new(Alternative(vec![
                     Rc::new(Subword(
                         SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
-                            Rc::new(Terminal(ustr("--color="), None, 0)),
+                            Rc::new(Terminal(ustr("--color="), None, 0, ChicSpan::Dummy)),
                             Rc::new(NontermRef(ustr("WHEN"), 0, ChicSpan::dummy()))
                         ]))),
                         0
                     )),
                     Rc::new(Sequence(vec![
-                        Rc::new(Terminal(ustr("--color"), None, 0)),
+                        Rc::new(Terminal(ustr("--color"), None, 0, ChicSpan::Dummy)),
                         Rc::new(NontermRef(ustr("WHEN"), 0, ChicSpan::dummy()))
                     ]))
                 ])),
@@ -2235,7 +2247,7 @@ pub mod tests {
         const INPUT: &str = r#"foo.bar"#;
         let (s, e) = terminal_opt_description_expr(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
-        assert_eq!(e, Terminal(u("foo.bar"), None, 0));
+        assert_eq!(e, Terminal(u("foo.bar"), None, 0, ChicSpan::Dummy));
     }
 
     #[test]
@@ -2243,7 +2255,7 @@ pub mod tests {
         const INPUT: &str = r#"-f"#;
         let (s, e) = terminal_opt_description_expr(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
-        assert_eq!(e, Terminal(u("-f"), None, 0));
+        assert_eq!(e, Terminal(u("-f"), None, 0, ChicSpan::Dummy));
     }
 
     #[test]
@@ -2251,7 +2263,7 @@ pub mod tests {
         const INPUT: &str = r#"--foo"#;
         let (s, e) = terminal_opt_description_expr(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
-        assert_eq!(e, Terminal(u("--foo"), None, 0));
+        assert_eq!(e, Terminal(u("--foo"), None, 0, ChicSpan::Dummy));
     }
 
     #[test]
@@ -2335,10 +2347,10 @@ pub mod tests {
             e,
             Alternative(vec![
                 Rc::new(Sequence(vec![
-                    Rc::new(Terminal(u("a"), None, 0)),
-                    Rc::new(Terminal(u("b"), None, 0))
+                    Rc::new(Terminal(u("a"), None, 0, ChicSpan::Dummy)),
+                    Rc::new(Terminal(u("b"), None, 0, ChicSpan::Dummy))
                 ])),
-                Rc::new(Terminal(u("c"), None, 0))
+                Rc::new(Terminal(u("c"), None, 0, ChicSpan::Dummy))
             ])
         );
     }
@@ -2351,10 +2363,10 @@ pub mod tests {
         assert_eq!(
             e,
             Sequence(vec![
-                Rc::new(Terminal(u("a"), None, 0)),
+                Rc::new(Terminal(u("a"), None, 0, ChicSpan::Dummy)),
                 Rc::new(Alternative(vec![
-                    Rc::new(Terminal(u("b"), None, 0)),
-                    Rc::new(Terminal(u("c"), None, 0))
+                    Rc::new(Terminal(u("b"), None, 0, ChicSpan::Dummy)),
+                    Rc::new(Terminal(u("c"), None, 0, ChicSpan::Dummy))
                 ])),
             ])
         );
@@ -2369,7 +2381,7 @@ pub mod tests {
             v,
             Statement::CallVariant {
                 head: u("foo"),
-                expr: Rc::new(Terminal(u("bar"), None, 0))
+                expr: Rc::new(Terminal(u("bar"), None, 0, ChicSpan::Dummy))
             }
         );
     }
@@ -2387,11 +2399,11 @@ foo baz;
                 statements: vec![
                     Statement::CallVariant {
                         head: u("foo"),
-                        expr: Rc::new(Terminal(u("bar"), None, 0))
+                        expr: Rc::new(Terminal(u("bar"), None, 0, ChicSpan::Dummy))
                     },
                     Statement::CallVariant {
                         head: u("foo"),
-                        expr: Rc::new(Terminal(u("baz"), None, 0))
+                        expr: Rc::new(Terminal(u("baz"), None, 0, ChicSpan::Dummy))
                     }
                 ],
             }
@@ -2408,20 +2420,25 @@ foo baz;
             vec![Statement::CallVariant {
                 head: u("darcs"),
                 expr: Rc::new(Sequence(vec![
-                    Rc::new(Terminal(u("help"), None, 0)),
+                    Rc::new(Terminal(u("help"), None, 0, ChicSpan::Dummy)),
                     Rc::new(Many1(Rc::new(Alternative(vec![
                         Rc::new(Alternative(vec![
-                            Rc::new(Terminal(u("-v"), None, 0)),
-                            Rc::new(Terminal(u("--verbose"), None, 0))
+                            Rc::new(Terminal(u("-v"), None, 0, ChicSpan::Dummy)),
+                            Rc::new(Terminal(u("--verbose"), None, 0, ChicSpan::Dummy))
                         ])),
                         Rc::new(Alternative(vec![
-                            Rc::new(Terminal(u("-q"), None, 0)),
-                            Rc::new(Terminal(u("--quiet"), None, 0))
+                            Rc::new(Terminal(u("-q"), None, 0, ChicSpan::Dummy)),
+                            Rc::new(Terminal(u("--quiet"), None, 0, ChicSpan::Dummy))
                         ])),
                     ],)),)),
                     Rc::new(Optional(Rc::new(Sequence(vec![
                         Rc::new(NontermRef(u("DARCS_COMMAND"), 0, ChicSpan::dummy())),
-                        Rc::new(Optional(Rc::new(Terminal(u("DARCS_SUBCOMMAND"), None, 0)))),
+                        Rc::new(Optional(Rc::new(Terminal(
+                            u("DARCS_SUBCOMMAND"),
+                            None,
+                            0,
+                            ChicSpan::Dummy
+                        )))),
                     ])))),
                 ]))
             },],
@@ -2500,7 +2517,7 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
                     symbol: u("OPTION"),
                     shell: None,
                     expr: Rc::new(Sequence(vec![
-                        Rc::new(Terminal(ustr("--color"), None, 0)),
+                        Rc::new(Terminal(ustr("--color"), None, 0, ChicSpan::Dummy)),
                         Rc::new(NontermRef(ustr("WHEN"), 0, ChicSpan::dummy()))
                     ]))
                 },
@@ -2508,9 +2525,9 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
                     symbol: u("WHEN"),
                     shell: None,
                     expr: Rc::new(Alternative(vec![
-                        Rc::new(Terminal(ustr("always"), None, 0)),
-                        Rc::new(Terminal(ustr("never"), None, 0)),
-                        Rc::new(Terminal(ustr("auto"), None, 0))
+                        Rc::new(Terminal(ustr("always"), None, 0, ChicSpan::Dummy)),
+                        Rc::new(Terminal(ustr("never"), None, 0, ChicSpan::Dummy)),
+                        Rc::new(Terminal(ustr("auto"), None, 0, ChicSpan::Dummy))
                     ]))
                 },
             ],
@@ -2544,10 +2561,10 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
                     symbol: u("OPTION"),
                     shell: None,
                     expr: Rc::new(Alternative(vec![
-                        Rc::new(Terminal(u("--extended-regexp"), None, 0)),
-                        Rc::new(Terminal(u("--fixed-strings"), None, 0)),
-                        Rc::new(Terminal(u("--basic-regexp"), None, 0)),
-                        Rc::new(Terminal(u("--perl-regexp"), None, 0)),
+                        Rc::new(Terminal(u("--extended-regexp"), None, 0, ChicSpan::Dummy)),
+                        Rc::new(Terminal(u("--fixed-strings"), None, 0, ChicSpan::Dummy)),
+                        Rc::new(Terminal(u("--basic-regexp"), None, 0, ChicSpan::Dummy)),
+                        Rc::new(Terminal(u("--perl-regexp"), None, 0, ChicSpan::Dummy)),
                     ]))
                 },],
             }
@@ -2595,9 +2612,9 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
             (
                 u("WHEN"),
                 Rc::new(Alternative(vec![
-                    Rc::new(Terminal(u("always"), None, 0)),
-                    Rc::new(Terminal(u("never"), None, 0)),
-                    Rc::new(Terminal(u("auto"), None, 0)),
+                    Rc::new(Terminal(u("always"), None, 0, ChicSpan::Dummy)),
+                    Rc::new(Terminal(u("never"), None, 0, ChicSpan::Dummy)),
+                    Rc::new(Terminal(u("auto"), None, 0, ChicSpan::Dummy)),
                 ])),
             ),
             (
@@ -2607,7 +2624,7 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
             (
                 u("OPTION"),
                 Rc::new(Sequence(vec![
-                    Rc::new(Terminal(u("--color"), None, 0)),
+                    Rc::new(Terminal(u("--color"), None, 0, ChicSpan::Dummy)),
                     Rc::new(NontermRef(u("FOO"), 0, ChicSpan::dummy())),
                 ])),
             ),
@@ -2632,7 +2649,7 @@ cargo [+{{{ rustup toolchain list | cut -d' ' -f1 }}}] [<OPTIONS>] [<COMMAND>];
                 expr: Rc::new(Sequence(vec![
                     Rc::new(Optional(Rc::new(Subword(
                         SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
-                            Rc::new(Terminal(ustr("+"), None, 0)),
+                            Rc::new(Terminal(ustr("+"), None, 0, ChicSpan::Dummy)),
                             Rc::new(Command(
                                 ustr("rustup toolchain list | cut -d' ' -f1"),
                                 None,
@@ -2672,21 +2689,21 @@ grep --color=<WHEN> --version;
                     expr: Rc::new(Sequence(vec![
                         Rc::new(Subword(
                             SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
-                                Rc::new(Terminal(ustr("--color="), None, 0)),
+                                Rc::new(Terminal(ustr("--color="), None, 0, ChicSpan::Dummy)),
                                 Rc::new(NontermRef(ustr("WHEN"), 0, ChicSpan::dummy()))
                             ]))),
                             0
                         )),
-                        Rc::new(Terminal(ustr("--version"), None, 0))
+                        Rc::new(Terminal(ustr("--version"), None, 0, ChicSpan::Dummy))
                     ])),
                 },
                 Statement::NonterminalDefinition {
                     symbol: ustr("WHEN"),
                     shell: None,
                     expr: Rc::new(Alternative(vec![
-                        Rc::new(Terminal(ustr("always"), None, 0)),
-                        Rc::new(Terminal(ustr("never"), None, 0)),
-                        Rc::new(Terminal(ustr("auto"), None, 0))
+                        Rc::new(Terminal(ustr("always"), None, 0, ChicSpan::Dummy)),
+                        Rc::new(Terminal(ustr("never"), None, 0, ChicSpan::Dummy)),
+                        Rc::new(Terminal(ustr("auto"), None, 0, ChicSpan::Dummy))
                     ]))
                 },
             ],
@@ -2705,11 +2722,11 @@ grep --color=(always | never | auto);
                 head: ustr("grep"),
                 expr: Rc::new(Subword(
                     SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
-                        Rc::new(Terminal(ustr("--color="), None, 0)),
+                        Rc::new(Terminal(ustr("--color="), None, 0, ChicSpan::Dummy)),
                         Rc::new(Alternative(vec![
-                            Rc::new(Terminal(ustr("always"), None, 0)),
-                            Rc::new(Terminal(ustr("never"), None, 0)),
-                            Rc::new(Terminal(ustr("auto"), None, 0))
+                            Rc::new(Terminal(ustr("always"), None, 0, ChicSpan::Dummy)),
+                            Rc::new(Terminal(ustr("never"), None, 0, ChicSpan::Dummy)),
+                            Rc::new(Terminal(ustr("auto"), None, 0, ChicSpan::Dummy))
                         ]))
                     ]))),
                     0
@@ -2734,7 +2751,7 @@ strace -e <EXPR>;
             CallVariant {
                 head: ustr("strace"),
                 expr: Rc::new(Sequence(vec![
-                    Rc::new(Terminal(ustr("-e"), None, 0)),
+                    Rc::new(Terminal(ustr("-e"), None, 0, ChicSpan::Dummy)),
                     Rc::new(NontermRef(ustr("EXPR"), 0, ChicSpan::dummy()))
                 ])),
             }
@@ -2748,12 +2765,17 @@ strace -e <EXPR>;
                     SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
                         Rc::new(Optional(Rc::new(Sequence(vec![
                             Rc::new(NontermRef(ustr("qualifier"), 0, ChicSpan::dummy())),
-                            Rc::new(Terminal(ustr("="), None, 0))
+                            Rc::new(Terminal(ustr("="), None, 0, ChicSpan::Dummy))
                         ])))),
-                        Rc::new(Optional(Rc::new(Terminal(ustr("!"), None, 0)))),
+                        Rc::new(Optional(Rc::new(Terminal(
+                            ustr("!"),
+                            None,
+                            0,
+                            ChicSpan::Dummy
+                        )))),
                         Rc::new(NontermRef(ustr("value"), 0, ChicSpan::dummy())),
                         Rc::new(Many1(Rc::new(Optional(Rc::new(Sequence(vec![
-                            Rc::new(Terminal(ustr(","), None, 0)),
+                            Rc::new(Terminal(ustr(","), None, 0, ChicSpan::Dummy)),
                             Rc::new(NontermRef(ustr("value"), 0, ChicSpan::dummy()))
                         ]))))))
                     ]))),
@@ -2767,10 +2789,10 @@ strace -e <EXPR>;
                 symbol: ustr("qualifier"),
                 shell: None,
                 expr: Rc::new(Alternative(vec![
-                    Rc::new(Terminal(ustr("trace"), None, 0)),
-                    Rc::new(Terminal(ustr("read"), None, 0)),
-                    Rc::new(Terminal(ustr("write"), None, 0)),
-                    Rc::new(Terminal(ustr("fault"), None, 0))
+                    Rc::new(Terminal(ustr("trace"), None, 0, ChicSpan::Dummy)),
+                    Rc::new(Terminal(ustr("read"), None, 0, ChicSpan::Dummy)),
+                    Rc::new(Terminal(ustr("write"), None, 0, ChicSpan::Dummy)),
+                    Rc::new(Terminal(ustr("fault"), None, 0, ChicSpan::Dummy))
                 ])),
             }
         );
@@ -2780,9 +2802,9 @@ strace -e <EXPR>;
                 symbol: ustr("value"),
                 shell: None,
                 expr: Rc::new(Alternative(vec![
-                    Rc::new(Terminal(ustr("%file"), None, 0)),
-                    Rc::new(Terminal(ustr("file"), None, 0)),
-                    Rc::new(Terminal(ustr("all"), None, 0))
+                    Rc::new(Terminal(ustr("%file"), None, 0, ChicSpan::Dummy)),
+                    Rc::new(Terminal(ustr("file"), None, 0, ChicSpan::Dummy)),
+                    Rc::new(Terminal(ustr("all"), None, 0, ChicSpan::Dummy))
                 ])),
             }
         );
@@ -2805,12 +2827,12 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
                 head: ustr("lsof"),
                 expr: Rc::new(Subword(
                     SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
-                        Rc::new(Terminal(ustr("-s"), None, 0)),
+                        Rc::new(Terminal(ustr("-s"), None, 0, ChicSpan::Dummy)),
                         Rc::new(NontermRef(ustr("PROTOCOL"), 0, ChicSpan::dummy())),
-                        Rc::new(Terminal(ustr(":"), None, 0)),
+                        Rc::new(Terminal(ustr(":"), None, 0, ChicSpan::Dummy)),
                         Rc::new(NontermRef(ustr("STATE-SPEC"), 0, ChicSpan::dummy())),
                         Rc::new(Many1(Rc::new(Optional(Rc::new(Sequence(vec![
-                            Rc::new(Terminal(ustr(","), None, 0)),
+                            Rc::new(Terminal(ustr(","), None, 0, ChicSpan::Dummy)),
                             Rc::new(NontermRef(ustr("STATE-SPEC"), 0, ChicSpan::dummy()))
                         ]))))))
                     ]))),
@@ -2824,8 +2846,8 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
                 symbol: ustr("PROTOCOL"),
                 shell: None,
                 expr: Rc::new(Alternative(vec![
-                    Rc::new(Terminal(ustr("TCP"), None, 0)),
-                    Rc::new(Terminal(ustr("UDP"), None, 0))
+                    Rc::new(Terminal(ustr("TCP"), None, 0, ChicSpan::Dummy)),
+                    Rc::new(Terminal(ustr("UDP"), None, 0, ChicSpan::Dummy))
                 ])),
             }
         );
@@ -2836,7 +2858,12 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
                 shell: None,
                 expr: Rc::new(Subword(
                     SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
-                        Rc::new(Optional(Rc::new(Terminal(ustr("^"), None, 0)))),
+                        Rc::new(Optional(Rc::new(Terminal(
+                            ustr("^"),
+                            None,
+                            0,
+                            ChicSpan::Dummy
+                        )))),
                         Rc::new(NontermRef(ustr("STATE"), 0, ChicSpan::dummy()))
                     ]))),
                     0
@@ -2849,8 +2876,8 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
                 symbol: ustr("STATE"),
                 shell: None,
                 expr: Rc::new(Alternative(vec![
-                    Rc::new(Terminal(ustr("LISTEN"), None, 0)),
-                    Rc::new(Terminal(ustr("CLOSED"), None, 0))
+                    Rc::new(Terminal(ustr("LISTEN"), None, 0, ChicSpan::Dummy)),
+                    Rc::new(Terminal(ustr("CLOSED"), None, 0, ChicSpan::Dummy))
                 ])),
             }
         );
@@ -2871,7 +2898,7 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
                     expr: Rc::new(Sequence(vec![
                         Rc::new(Optional(Rc::new(Subword(
                             SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
-                                Rc::new(Terminal(ustr("+"), None, 0)),
+                                Rc::new(Terminal(ustr("+"), None, 0, ChicSpan::Dummy)),
                                 Rc::new(NontermRef(ustr("toolchain"), 0, ChicSpan::dummy()))
                             ]))),
                             0
@@ -2928,7 +2955,8 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
             Terminal(
                 ustr("--extended-regexp"),
                 Some(ustr("PATTERNS are extended regular expressions")),
-                0
+                0,
+                ChicSpan::Dummy
             )
         );
     }
@@ -2944,7 +2972,8 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
                 Rc::new(Terminal(
                     ustr("--context"),
                     Some(ustr("print NUM lines of output context")),
-                    0
+                    0,
+                    ChicSpan::Dummy
                 )),
                 Rc::new(NontermRef(ustr("NUM"), 0, ChicSpan::dummy()))
             ])
@@ -2964,7 +2993,8 @@ grep --extended-regexp "PATTERNS are extended regular expressions";
                 expr: Rc::new(Terminal(
                     ustr("--extended-regexp"),
                     Some(ustr("PATTERNS are extended regular expressions")),
-                    0
+                    0,
+                    ChicSpan::Dummy
                 ))
             }],
         );
@@ -2991,7 +3021,12 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
             g.statements,
             vec![Statement::CallVariant {
                 head: u("foo.sh"),
-                expr: Rc::new(Optional(Rc::new(Terminal(ustr("-h"), None, 0)))),
+                expr: Rc::new(Optional(Rc::new(Terminal(
+                    ustr("-h"),
+                    None,
+                    0,
+                    ChicSpan::Dummy
+                )))),
             },]
         );
     }
@@ -3059,14 +3094,15 @@ ls <FILE>;
         assert_eq!(
             distributed,
             Rc::new(Sequence(vec![
-                Rc::new(Terminal(ustr("mygrep"), None, 0)),
+                Rc::new(Terminal(ustr("mygrep"), None, 0, ChicSpan::Dummy)),
                 Rc::new(Alternative(vec![
                     Rc::new(Subword(
                         SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
                             Rc::new(Terminal(
                                 ustr("--color="),
                                 Some(ustr("use markers to highlight the matching strings")),
-                                0
+                                0,
+                                ChicSpan::Dummy
                             )),
                             Rc::new(NontermRef(ustr("WHEN"), 0, ChicSpan::dummy()))
                         ]))),
@@ -3076,7 +3112,8 @@ ls <FILE>;
                         Rc::new(Terminal(
                             ustr("--color"),
                             Some(ustr("use markers to highlight the matching strings")),
-                            0
+                            0,
+                            ChicSpan::Dummy
                         )),
                         Rc::new(NontermRef(ustr("WHEN"), 0, ChicSpan::dummy()))
                     ]))
@@ -3095,8 +3132,8 @@ ls <FILE>;
             distributed,
             Rc::new(Alternative(vec![
                 Rc::new(Sequence(vec![
-                    Rc::new(Terminal(ustr("mygrep"), None, 0)),
-                    Rc::new(Terminal(ustr("--help"), None, 0))
+                    Rc::new(Terminal(ustr("mygrep"), None, 0, ChicSpan::Dummy)),
+                    Rc::new(Terminal(ustr("--help"), None, 0, ChicSpan::Dummy))
                 ])),
                 Rc::new(Alternative(vec![
                     Rc::new(Subword(
@@ -3104,7 +3141,8 @@ ls <FILE>;
                             Rc::new(Terminal(
                                 ustr("--color="),
                                 Some(ustr("use markers to highlight the matching strings")),
-                                0
+                                0,
+                                ChicSpan::Dummy
                             )),
                             Rc::new(NontermRef(ustr("WHEN"), 0, ChicSpan::dummy()))
                         ]))),
@@ -3114,7 +3152,8 @@ ls <FILE>;
                         Rc::new(Terminal(
                             ustr("--color"),
                             Some(ustr("use markers to highlight the matching strings")),
-                            0
+                            0,
+                            ChicSpan::Dummy
                         )),
                         Rc::new(NontermRef(ustr("WHEN"), 0, ChicSpan::dummy()))
                     ]))
@@ -3132,16 +3171,17 @@ ls <FILE>;
         assert_eq!(
             distributed,
             Rc::new(Sequence(vec![
-                Rc::new(Terminal(ustr("mygrep"), None, 0)),
+                Rc::new(Terminal(ustr("mygrep"), None, 0, ChicSpan::Dummy)),
                 Rc::new(Alternative(vec![
-                    Rc::new(Terminal(ustr("--help"), None, 0)),
+                    Rc::new(Terminal(ustr("--help"), None, 0, ChicSpan::Dummy)),
                     Rc::new(Alternative(vec![
                         Rc::new(Subword(
                             SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
                                 Rc::new(Terminal(
                                     ustr("--color="),
                                     Some(ustr("use markers to highlight the matching strings")),
-                                    0
+                                    0,
+                                    ChicSpan::Dummy
                                 )),
                                 Rc::new(NontermRef(ustr("WHEN"), 0, ChicSpan::dummy()))
                             ]))),
@@ -3151,7 +3191,8 @@ ls <FILE>;
                             Rc::new(Terminal(
                                 ustr("--color"),
                                 Some(ustr("use markers to highlight the matching strings")),
-                                0
+                                0,
+                                ChicSpan::Dummy
                             )),
                             Rc::new(NontermRef(ustr("WHEN"), 0, ChicSpan::dummy()))
                         ]))
@@ -3169,10 +3210,10 @@ ls <FILE>;
         assert_eq!(
             e,
             Sequence(vec![
-                Rc::new(Terminal(ustr("cmd"), None, 0)),
+                Rc::new(Terminal(ustr("cmd"), None, 0, ChicSpan::Dummy)),
                 Rc::new(Fallback(vec![
-                    Rc::new(Terminal(ustr("foo"), None, 0)),
-                    Rc::new(Terminal(ustr("bar"), None, 0))
+                    Rc::new(Terminal(ustr("foo"), None, 0, ChicSpan::Dummy)),
+                    Rc::new(Terminal(ustr("bar"), None, 0, ChicSpan::Dummy))
                 ]))
             ])
         );
@@ -3188,7 +3229,7 @@ ls <FILE>;
             Subword(
                 SubwordCompilationPhase::Expr(Rc::new(Sequence(vec![
                     Rc::new(Command(ustr("git tag"), None, 0, ChicSpan::dummy())),
-                    Rc::new(Terminal(ustr(".."), None, 0)),
+                    Rc::new(Terminal(ustr(".."), None, 0, ChicSpan::Dummy)),
                     Rc::new(Command(ustr("git tag"), None, 0, ChicSpan::dummy()))
                 ]))),
                 0
@@ -3271,8 +3312,8 @@ duf -hide-fs <FS>[,<FS>]...;
         assert_eq!(
             e,
             Sequence(vec![
-                Rc::new(Terminal(ustr("cmd"), None, 0)),
-                Rc::new(Terminal(ustr("foo"), None, 0)),
+                Rc::new(Terminal(ustr("cmd"), None, 0, ChicSpan::Dummy)),
+                Rc::new(Terminal(ustr("foo"), None, 0, ChicSpan::Dummy)),
             ])
         );
     }
@@ -3285,7 +3326,7 @@ duf -hide-fs <FS>[,<FS>]...;
         assert_eq!(
             e,
             Sequence(vec![
-                Rc::new(Terminal(ustr("cmd"), None, 0)),
+                Rc::new(Terminal(ustr("cmd"), None, 0, ChicSpan::Dummy)),
                 Rc::new(Command(
                     ustr("echo foo"),
                     Some(CmdRegexDecl {
