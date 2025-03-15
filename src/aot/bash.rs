@@ -204,7 +204,7 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
             eval "state_nontails=${{nontail_transitions[$state]}}"
             local nontail_matched=0
             for regex_id in "${{!state_nontails[@]}}"; do
-                local regex="(${{regexes[$regex_id]}}).*"
+                local regex="^(${{regexes[$regex_id]}}).*"
                 if [[ ${{subword}} =~ $regex && -n ${{BASH_REMATCH[1]}} ]]; then
                     match="${{BASH_REMATCH[1]}}"
                     match_len=${{#match}}

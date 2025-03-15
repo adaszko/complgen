@@ -153,6 +153,20 @@ def test_nontail_completion_subword(complgen_binary_path: Path):
         assert get_sorted_bash_completions(path, input) == sorted(["leftright"])
 
 
+def test_nontail_completion_truncates_to_regex(complgen_binary_path: Path):
+    GRAMMAR = """cmd {{{ echo leftspam }}}@bash"left";"""
+    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
+        input = r'''COMP_WORDS=(cmd left); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(["left"])
+
+
+def test_nontail_completion_subword_truncates_to_regex(complgen_binary_path: Path):
+    GRAMMAR = """cmd left{{{ echo rightspam }}}@bash"right";"""
+    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
+        input = r'''COMP_WORDS=(cmd left); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(["leftright"])
+
+
 def test_mycargo(complgen_binary_path: Path):
     GRAMMAR = r"""
 mycargo test <TESTNAME>;

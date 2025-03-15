@@ -175,8 +175,8 @@ part will be visible.  All external commands nonetheless need to take care as to
 
 ### Bypassing tail restriction
 
-`complgen` will error out if you place `{{{ ... }}}` at a position where it's a subject of matching (as
-opposed to completing).  It is still possible to overcome that restriction by providing a regular expression
+`complgen` will error out if you place `{{{ ... }}}` at a position where it's a subject to matching (as
+opposed to completing).  It is possible to overcome that restriction by providing a regular expression
 matching the command output:
 
 ```

@@ -161,6 +161,20 @@ def test_nontail_completion_subword(complgen_binary_path: Path):
     ) == sorted(["leftright"])
 
 
+def test_nontail_completion_truncates_to_regex(complgen_binary_path: Path):
+    GRAMMAR = """cmd {{{ echo leftspam }}}@zsh"left";"""
+    assert get_sorted_aot_completions(
+        complgen_binary_path, GRAMMAR, "cmd "
+    ) == sorted(["left"])
+
+
+def test_nontail_completion_subword_truncates_to_regex(complgen_binary_path: Path):
+    GRAMMAR = """cmd left{{{ echo rightspam }}}@zsh"right";"""
+    assert get_sorted_aot_completions(
+        complgen_binary_path, GRAMMAR, "cmd left"
+    ) == sorted(["leftright"])
+
+
 def test_mycargo(complgen_binary_path: Path):
     GRAMMAR = r"""
 cargo [+<toolchain>] [<COMMAND>];

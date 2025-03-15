@@ -50,7 +50,6 @@ fn write_lookup_tables<W: Write>(
         " ",
     );
     writeln!(buffer, r#"    declare -a {prefix}literals=({literals})"#)?;
-    writeln!(buffer)?;
 
     let regexes: String = itertools::join(
         id_from_regex
@@ -60,7 +59,7 @@ fn write_lookup_tables<W: Write>(
     );
     writeln!(buffer, r#"    declare -a {prefix}regexes=({regexes})"#)?;
 
-    writeln!(buffer, r#"    declare -A {prefix}descriptions"#)?;
+    writeln!(buffer, r#"    declare -A {prefix}descriptions=()"#)?;
     for (id, _, description) in all_literals.iter() {
         if description.is_empty() {
             continue;
@@ -68,10 +67,8 @@ fn write_lookup_tables<W: Write>(
         let quoted = make_string_constant(description);
         writeln!(buffer, r#"    {prefix}descriptions[{id}]={quoted}"#)?;
     }
-    writeln!(buffer)?;
 
-    writeln!(buffer, r#"    declare -A {prefix}literal_transitions"#)?;
-    writeln!(buffer, r#"    declare -A {prefix}nontail_transitions"#)?;
+    writeln!(buffer, r#"    declare -A {prefix}literal_transitions=()"#)?;
     for state in dfa.get_all_states() {
         let literal_transitions =
             dfa.get_literal_transitions_from(StateId::try_from(state).unwrap());
@@ -99,7 +96,10 @@ fn write_lookup_tables<W: Write>(
                 state + 1
             )?;
         }
+    }
 
+    writeln!(buffer, r#"    declare -A {prefix}nontail_transitions=()"#)?;
+    for state in dfa.get_all_states() {
         let nontail_transitions = dfa.get_zsh_nontail_transitions_from(state as StateId);
         if !nontail_transitions.is_empty() {
             let nontail_command_transitions: Vec<(usize, StateId)> = nontail_transitions
@@ -120,8 +120,6 @@ fn write_lookup_tables<W: Write>(
         }
     }
 
-    writeln!(buffer)?;
-
     let match_anything_transitions = itertools::join(
         dfa.iter_match_anything_transitions(Shell::Zsh)
             .into_iter()
@@ -137,7 +135,7 @@ fn write_lookup_tables<W: Write>(
 }
 
 pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<()> {
-    writeln!(
+    write!(
         buffer,
         r#"_{command}_subword () {{
     declare mode=$1
@@ -159,8 +157,7 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
         declare subword=${{word:$char_index}}
 
         if [[ -v "subword_literal_transitions[$subword_state]" ]]; then
-            declare -A state_transitions
-            eval "state_transitions=${{subword_literal_transitions[$subword_state]}}"
+            eval "declare -A state_transitions=${{subword_literal_transitions[$subword_state]}}"
 
             declare literal_matched=0
             for ((literal_id = 1; literal_id <= $#subword_literals; literal_id++)); do
@@ -180,12 +177,11 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
         fi
 
         if [[ -v "subword_nontail_transitions[$subword_state]" ]]; then
-            declare -A state_nontails
-            eval "state_nontails=${{subword_nontail_transitions[$subword_state]}}"
+            eval "declare -A state_nontails=${{subword_nontail_transitions[$subword_state]}}"
 
             declare nontail_matched=0
             for regex_id in "${{(k)state_nontails}}"; do
-                declare regex="(${{subword_regexes[$regex_id]}}).*"
+                declare regex="^(${{subword_regexes[$regex_id]}}).*"
                 if [[ ${{subword}} =~ $regex && -n ${{match[1]}} ]]; then
                     match="${{match[1]}}"
                     match_len=${{#match}}
@@ -593,7 +589,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     let literal_id_from_input_description = write_lookup_tables(buffer, dfa, "", &id_from_regex)?;
 
     writeln!(buffer)?;
-    writeln!(buffer, r#"    declare -A subword_transitions"#)?;
+    writeln!(buffer, r#"    declare -A subword_transitions=()"#)?;
     for state in dfa.get_all_states() {
         let subword_transitions = dfa.get_subword_transitions_from(state.try_into().unwrap());
         if subword_transitions.is_empty() {
@@ -619,8 +615,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     declare word_index=2
     while [[ $word_index -lt $CURRENT ]]; do
         if [[ -v "literal_transitions[$state]" ]]; then
-            declare -A state_transitions
-            eval "state_transitions=${{literal_transitions[$state]}}"
+            eval "declare -A state_transitions=${{literal_transitions[$state]}}"
 
             declare word=${{words[$word_index]}}
             declare word_matched=0
@@ -646,11 +641,10 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         buffer,
         r#"
         if [[ -v "nontail_transitions[$state]" ]]; then
-            declare -A state_nontails
-            eval "state_nontails=${{nontail_transitions[$state]}}"
+            eval "declare -A state_nontails=${{nontail_transitions[$state]}}"
             declare nontail_matched=0
             for regex_id in "${{(k)state_nontails}}"; do
-                declare regex="(${{regexes[$regex_id]}}).*"
+                declare regex="^(${{regexes[$regex_id]}}).*"
                 if [[ ${{subword}} =~ $regex && -n ${{match[1]}} ]]; then
                     match="${{match[1]}}"
                     match_len=${{#match}}
@@ -672,8 +666,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             buffer,
             r#"
         if [[ -v "subword_transitions[$state]" ]]; then
-            declare -A state_transitions
-            eval "state_transitions=${{subword_transitions[$state]}}"
+            eval "declare -A state_transitions=${{subword_transitions[$state]}}"
 
             declare subword_matched=0
             for subword_id in ${{(k)state_transitions}}; do
@@ -692,7 +685,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         )?;
     }
 
-    write!(
+    writeln!(
         buffer,
         r#"
         if [[ -v "match_anything_transitions[$state]" ]]; then
