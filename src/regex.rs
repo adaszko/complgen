@@ -264,7 +264,7 @@ fn do_from_expr<'a>(
             symbols.insert(input);
             result
         }
-        Expr::Nonterminal(name, fallback_level, _) => {
+        Expr::NontermRef(name, fallback_level, _) => {
             let result = AugmentedRegexNode::Nonterminal(
                 Position::try_from(input_from_position.len()).unwrap(),
             );

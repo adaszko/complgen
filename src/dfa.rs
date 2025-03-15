@@ -1155,21 +1155,21 @@ mod tests {
                         Rc::new(Optional(Rc::new(Sequence(vec![
                             Rc::new(Many1(Rc::new(Many1(Rc::new(Alternative(vec![
                                 Rc::new(Terminal(u("--baz"), None, 0)),
-                                Rc::new(Nonterminal(
+                                Rc::new(NontermRef(
                                     u("FILE"),
                                     0,
                                     crate::grammar::ChicSpan::dummy(),
                                 )),
                             ])))))),
-                            Rc::new(Nonterminal(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
+                            Rc::new(NontermRef(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
                         ])))),
                         Rc::new(Sequence(vec![
-                            Rc::new(Nonterminal(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
+                            Rc::new(NontermRef(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
                             Rc::new(Terminal(u("foo"), None, 0)),
                         ])),
                     ])),
                 ])))),
-                Rc::new(Nonterminal(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
+                Rc::new(NontermRef(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
             ]),
             [
                 u("--quux"),
@@ -1200,10 +1200,10 @@ mod tests {
         let (expr, input) = (
             Alternative(vec![
                 Rc::new(Many1(Rc::new(Sequence(vec![
-                    Rc::new(Nonterminal(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
-                    Rc::new(Nonterminal(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
+                    Rc::new(NontermRef(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
+                    Rc::new(NontermRef(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
                 ])))),
-                Rc::new(Nonterminal(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
+                Rc::new(NontermRef(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
             ]),
             [
                 u("anything"),
@@ -1241,13 +1241,13 @@ mod tests {
                             None,
                             0,
                         )))))),
-                        Rc::new(Nonterminal(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
+                        Rc::new(NontermRef(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
                     ])),
                     Rc::new(Terminal(u("--baz"), None, 0)),
                 ])),
                 Rc::new(Many1(Rc::new(Alternative(vec![
-                    Rc::new(Nonterminal(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
-                    Rc::new(Nonterminal(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
+                    Rc::new(NontermRef(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
+                    Rc::new(NontermRef(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
                 ])))),
             ]),
             [u("anything"), u("--baz"), u("anything"), u("anything")],
