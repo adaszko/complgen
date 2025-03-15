@@ -37,8 +37,8 @@ pub enum Error {
     #[error("Commands are only allowed at a tail position to avoid ambiguities")]
     NontailCommand(Ustr, ChicSpan),
 
-    #[error("Two adjacent terminals in a subword expression")]
-    SubwordSpaces(),
+    #[error("Two adjacent terminals in a subword expression: {:?}", .0)]
+    SubwordSpaces(Vec<ChicSpan>),
 
     #[error("UTF-8 conversion error")]
     FromUtf8Error(#[from] FromUtf8Error),
