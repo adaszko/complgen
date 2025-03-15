@@ -3,11 +3,13 @@ use grammar::ChicSpan;
 use std::{process::exit, string::FromUtf8Error};
 use ustr::Ustr;
 
-pub mod aot;
+pub mod bash;
 pub mod dfa;
+pub mod fish;
 pub mod grammar;
 pub mod regex;
 pub mod scrape;
+pub mod zsh;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {

@@ -199,14 +199,14 @@ fn aot(args: &AotArgs) -> anyhow::Result<()> {
         log::debug!("Writing Bash completion script");
         let script_file = get_file_or_stdout(path)?;
         let mut writer = BufWriter::new(script_file);
-        complgen::aot::bash::write_completion_script(&mut writer, &validated.command, &dfa)?;
+        complgen::bash::write_completion_script(&mut writer, &validated.command, &dfa)?;
     }
 
     if let Some(path) = &args.fish_script {
         log::debug!("Writing Fish completion script");
         let script_file = get_file_or_stdout(path)?;
         let mut writer = BufWriter::new(script_file);
-        complgen::aot::fish::write_completion_script(&mut writer, &validated.command, &dfa)?;
+        complgen::fish::write_completion_script(&mut writer, &validated.command, &dfa)?;
     }
 
     if let Some(path) = &args.zsh_script {
@@ -221,7 +221,7 @@ fn aot(args: &AotArgs) -> anyhow::Result<()> {
         }
         let script_file = get_file_or_stdout(path)?;
         let mut writer = BufWriter::new(script_file);
-        complgen::aot::zsh::write_completion_script(&mut writer, &validated.command, &dfa)?;
+        complgen::zsh::write_completion_script(&mut writer, &validated.command, &dfa)?;
     }
 
     Ok(())

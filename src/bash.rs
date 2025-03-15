@@ -11,8 +11,6 @@ use hashbrown::HashMap;
 use indexmap::IndexSet;
 use ustr::{Ustr, ustr};
 
-use super::get_max_fallback_level;
-
 // Bash array indexes start at 0.
 // Associative arrays are local by default.
 // Bash uses *dynamic* scoping for local variables (!)
@@ -306,7 +304,7 @@ pub fn write_subword_fn<W: Write>(
 
     let literal_id_from_input_description = write_lookup_tables(buffer, dfa, id_from_regex)?;
 
-    let max_fallback_level = get_max_fallback_level(dfa).unwrap();
+    let max_fallback_level = dfa.get_max_fallback_level().unwrap();
 
     let mut fallback_literals: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
     fallback_literals.resize_with(max_fallback_level + 1, Default::default);
@@ -650,7 +648,7 @@ fi
 
     //////////////////////////////// Completion ///////////////////////////////////
 
-    let max_fallback_level = get_max_fallback_level(dfa).unwrap();
+    let max_fallback_level = dfa.get_max_fallback_level().unwrap();
 
     let mut fallback_literals: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
     fallback_literals.resize_with(max_fallback_level + 1, Default::default);

@@ -9,8 +9,6 @@ use indexmap::IndexSet;
 use itertools::Itertools;
 use ustr::{Ustr, ustr};
 
-use super::get_max_fallback_level;
-
 // * array indices start at 1 in fish, not 0 (!)
 // * --local limits the scope of a varible to the innermost block (!), not the function (!).  That
 //   includes things like an if block.  Therefore the prevalent use of --local in this module is
@@ -421,7 +419,7 @@ pub fn write_subword_fn<W: Write>(
         write_subword_lookup_tables(buffer, dfa, id_from_regex)?;
     writeln!(buffer)?;
 
-    let max_fallback_level = get_max_fallback_level(dfa).unwrap();
+    let max_fallback_level = dfa.get_max_fallback_level().unwrap();
 
     let mut fallback_literals: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
     fallback_literals.resize_with(max_fallback_level + 1, Default::default);
@@ -949,7 +947,7 @@ end
 
     //////////////////////////////// Completion ///////////////////////////////////
 
-    let max_fallback_level = get_max_fallback_level(dfa).unwrap();
+    let max_fallback_level = dfa.get_max_fallback_level().unwrap();
 
     let mut fallback_literals: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
     fallback_literals.resize_with(max_fallback_level + 1, Default::default);

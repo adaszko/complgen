@@ -926,6 +926,12 @@ impl DFA {
         result
     }
 
+    pub fn get_max_fallback_level(&self) -> Option<usize> {
+        self.iter_inputs()
+            .map(|input| input.get_fallback_level())
+            .max()
+    }
+
     pub fn to_dot<W: Write>(&self, output: &mut W) -> std::result::Result<(), std::io::Error> {
         writeln!(output, "digraph nfa {{")?;
         writeln!(output, "\trankdir=LR;")?;
