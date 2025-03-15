@@ -437,15 +437,15 @@ fn terminal_opt_description_expr(input: Span) -> IResult<Span, Expr> {
     Ok((input, expr))
 }
 
-fn nonterminal(input: Span) -> IResult<Span, Span> {
+fn nonterm(input: Span) -> IResult<Span, Span> {
     let (input, _) = char('<')(input)?;
     let (input, name) = is_not(">")(input)?;
     let (input, _) = char('>')(input)?;
     Ok((input, name))
 }
 
-fn nonterminal_expr(input: Span) -> IResult<Span, Expr> {
-    let (after, nonterm) = context("nonterminal", nonterminal)(input)?;
+fn nonterm_expr(input: Span) -> IResult<Span, Expr> {
+    let (after, nonterm) = context("nonterminal", nonterm)(input)?;
     let diagnostic_span = ChicSpan::new(input, after);
     Ok((
         after,
@@ -541,7 +541,7 @@ fn many1_tag(input: Span) -> IResult<Span, ()> {
 
 fn unary_expr(input: Span) -> IResult<Span, Expr> {
     let (input, e) = alt((
-        nonterminal_expr,
+        nonterm_expr,
         optional_expr,
         parenthesized_expr,
         nontail_command_expr,
@@ -681,7 +681,7 @@ fn call_variant(input: Span) -> IResult<Span, Statement> {
     Ok((input, production))
 }
 
-fn specialized_nonterminal(input: Span) -> IResult<Span, (Span, Span)> {
+fn nonterm_specialization(input: Span) -> IResult<Span, (Span, Span)> {
     let (input, _) = char('<')(input)?;
     let (input, name) = is_not(">@")(input)?;
     let (input, _) = char('@')(input)?;
@@ -690,18 +690,18 @@ fn specialized_nonterminal(input: Span) -> IResult<Span, (Span, Span)> {
     Ok((input, (name, shell)))
 }
 
-fn optionally_specialized_nonterminal(input: Span) -> IResult<Span, (Span, Option<Span>)> {
-    if let Ok((input, (name, shell))) = specialized_nonterminal(input) {
+fn nonterm_def(input: Span) -> IResult<Span, (Span, Option<Span>)> {
+    if let Ok((input, (name, shell))) = nonterm_specialization(input) {
         return Ok((input, (name, Some(shell))));
     }
-    if let Ok((input, name)) = nonterminal(input) {
+    if let Ok((input, name)) = nonterm(input) {
         return Ok((input, (name, None)));
     }
     fail(input)
 }
 
-fn nonterminal_definition(input: Span) -> IResult<Span, Statement> {
-    let (input, (name, shell)) = optionally_specialized_nonterminal(input)?;
+fn nonterm_def_statement(input: Span) -> IResult<Span, Statement> {
+    let (input, (name, shell)) = nonterm_def(input)?;
     let (input, _) = multiblanks0(input)?;
     let (input, _) = tag("::=")(input)?;
     let (input, _) = multiblanks0(input)?;
@@ -719,7 +719,7 @@ fn nonterminal_definition(input: Span) -> IResult<Span, Statement> {
 }
 
 fn statement(input: Span) -> IResult<Span, Statement> {
-    let (input, stmt) = alt((call_variant, nonterminal_definition))(input)?;
+    let (input, stmt) = alt((call_variant, nonterm_def_statement))(input)?;
     let (input, _) = multiblanks0(input)?;
     Ok((input, stmt))
 }
@@ -2165,7 +2165,7 @@ pub mod tests {
     #[test]
     fn parses_symbol() {
         const INPUT: &str = "<FILE>";
-        let (s, e) = nonterminal_expr(Span::new(INPUT)).unwrap();
+        let (s, e) = nonterm_expr(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
         assert_eq!(e, NontermRef(u("FILE"), 0, ChicSpan::dummy()));
     }
@@ -2907,7 +2907,7 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
     #[test]
     fn parses_nonterminal_shell_specific() {
         const INPUT: &str = r#"<FILE@bash>"#;
-        let (s, (nonterm, shell)) = specialized_nonterminal(Span::new(INPUT)).unwrap();
+        let (s, (nonterm, shell)) = nonterm_specialization(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
         assert_eq!(nonterm.into_fragment(), "FILE");
         assert_eq!(shell.into_fragment(), "bash");
