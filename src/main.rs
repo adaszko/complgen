@@ -97,7 +97,7 @@ fn handle_validation_error(g: Grammar, input: &str) -> anyhow::Result<ValidGramm
                     input.lines().nth(line_start).unwrap(),
                     "",
                 )
-                .help("Either try moving the command into tail position")
+                .help("Either try moving the command into tail position (i.e. last branch of | or ||; end of a subword)")
                 .help("or output the suffix from the external command")
                 .help(r#"or specify regex the output needs to match via @SHELL"..." construct"#);
             eprintln!("{}:{}:{}", line_start, start, error.to_string());
