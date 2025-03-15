@@ -38,7 +38,7 @@ pub enum Error {
     NontailCommand(Ustr, ChicSpan),
 
     #[error("Two adjacent terminals in a subword expression: {:?}", .0)]
-    SubwordSpaces(Vec<ChicSpan>),
+    SubwordSpaces(ChicSpan, ChicSpan, Vec<ChicSpan>),
 
     #[error("UTF-8 conversion error")]
     FromUtf8Error(#[from] FromUtf8Error),

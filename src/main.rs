@@ -7,7 +7,7 @@ use anyhow::Context;
 use bumpalo::Bump;
 use clap::Parser;
 
-use complgen::grammar::{Grammar, ValidGrammar, to_railroad_diagram_file};
+use complgen::grammar::{ChicSpan, Grammar, ValidGrammar, to_railroad_diagram_file};
 
 use complgen::dfa::DFA;
 use complgen::regex::AugmentedRegex;
@@ -105,6 +105,66 @@ fn handle_validation_error(g: Grammar, input: &str) -> anyhow::Result<ValidGramm
         }
         Err(Error::NontailCommand(_, complgen::grammar::ChicSpan::Dummy)) => {
             unreachable!()
+        }
+        Err(Error::SubwordSpaces(
+            ChicSpan::Significant {
+                line_start: left_line_start,
+                start: left_start,
+                end: left_end,
+            },
+            ChicSpan::Significant {
+                line_start: right_line_start,
+                end: right_end,
+                start: right_start,
+            },
+            trace,
+        )) => {
+            let error = chic::Error::new(
+                "Adjacent literals in expression used in a subword context.  First one:",
+            )
+            .error(
+                left_line_start,
+                left_start,
+                left_end,
+                input.lines().nth(left_line_start).unwrap(),
+                "",
+            )
+            ;
+            eprintln!("{}:{}:{}", left_line_start, left_start, error.to_string());
+
+            let right_error = chic::Error::new("Second one:").error(
+                right_line_start,
+                right_start,
+                right_end,
+                input.lines().nth(right_line_start).unwrap(),
+                "",
+            ).help("Join the adjacent literals into one as spaces are invalid in a subword context");
+            eprintln!(
+                "{}:{}:{}",
+                right_line_start,
+                right_start,
+                right_error.to_string()
+            );
+
+            for t in trace {
+                let ChicSpan::Significant {
+                    line_start,
+                    start,
+                    end,
+                } = t
+                else {
+                    unreachable!()
+                };
+                let e = chic::Error::new("Referenced in a subword context at").error(
+                    line_start,
+                    start,
+                    end,
+                    input.lines().nth(line_start).unwrap(),
+                    "",
+                );
+                eprintln!("{}:{}:{}", line_start, start, e.to_string());
+            }
+            exit(1);
         }
         Err(e) => {
             eprintln!("{}", e.to_string());

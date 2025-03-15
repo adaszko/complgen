@@ -146,3 +146,4 @@ def test_subword_spaces_allowed(complgen_binary_path: Path):
 
     r = complgen_check(complgen_binary_path, """cmd foo((bar)...);""")
     assert r.returncode == 0
+    assert r.stderr == snapshot('Two adjacent terminals in a subword expression\n')

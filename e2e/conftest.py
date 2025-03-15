@@ -4,7 +4,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
-from typing import Generator, Optional
+from typing import Generator
 
 import pytest
 
@@ -137,11 +137,12 @@ def gen_grammar_zsh_capture_script_path(
 ) -> Generator[Path, None, None]:
     completion_script = subprocess.run(
         [complgen_binary_path, "aot", "--zsh-script", "-", "-"],
-        input=grammar.encode(),
+        input=grammar,
         stdout=subprocess.PIPE,
         stderr=sys.stderr,
         check=True,
-    ).stdout.decode()
+        text=True,
+    ).stdout
     with gen_zsh_capture_script_path(completion_script) as path:
         yield path
 

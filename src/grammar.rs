@@ -315,6 +315,7 @@ impl PartialEq for ChicSpan {
 
 impl ChicSpan {
     fn new(before: Span, after: Span) -> Self {
+        // XXX Doesn't handle tabs
         Self::Significant {
             line_start: before.location_line() as usize - 1,
             start: before.get_column() - 1,
@@ -1645,8 +1646,12 @@ fn do_check_subword_spaces(
                     expr_get_tail(Rc::clone(&left)).as_ref(),
                     expr_get_head(Rc::clone(&right)).as_ref(),
                 ) {
-                    (Expr::Terminal(..), Expr::Terminal(..)) => {
-                        return Err(Error::SubwordSpaces(nonterm_expn_trace.to_owned()));
+                    (Expr::Terminal(_, _, _, left_span), Expr::Terminal(_, _, _, right_span)) => {
+                        return Err(Error::SubwordSpaces(
+                            left_span.to_owned(),
+                            right_span.to_owned(),
+                            nonterm_expn_trace.to_owned(),
+                        ));
                     }
                     _ => {}
                 }
