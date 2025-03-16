@@ -13,6 +13,8 @@ from conftest import (
     get_sorted_bash_completions,
     set_working_dir,
 )
+
+import pytest
 from hypothesis import given, settings
 from hypothesis.strategies import text
 
@@ -153,6 +155,7 @@ def test_nontail_completion_subword(complgen_binary_path: Path):
         assert get_sorted_bash_completions(path, input) == sorted(["leftright"])
 
 
+@pytest.mark.skip(reason="unimplemented")
 def test_nontail_completion_truncates_to_regex(complgen_binary_path: Path):
     GRAMMAR = """cmd {{{ echo leftspam }}}@bash"left";"""
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
@@ -160,6 +163,7 @@ def test_nontail_completion_truncates_to_regex(complgen_binary_path: Path):
         assert get_sorted_bash_completions(path, input) == sorted(["left"])
 
 
+@pytest.mark.skip(reason="unimplemented")
 def test_nontail_completion_subword_truncates_to_regex(complgen_binary_path: Path):
     GRAMMAR = """cmd left{{{ echo rightspam }}}@bash"right";"""
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:

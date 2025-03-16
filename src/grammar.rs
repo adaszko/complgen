@@ -1380,19 +1380,36 @@ fn do_ensure_commands_tail_only(
         }
         Expr::Command(_, Some(..), _, _) => {}
 
+        // Nonterminal has a defintion => descent into the definition
+        Expr::NontermRef(nonterm, _, diagnostic_span)
+            if nonterminal_definitions.contains_key(nonterm) =>
+        {
+            let expr = nonterminal_definitions.get(nonterm).unwrap();
+            do_ensure_commands_tail_only(
+                Rc::clone(&expr),
+                nonterminal_definitions,
+                specializations,
+                is_valid_position,
+                Some(diagnostic_span),
+            )?;
+        }
+
+        // Nonterminal isn't defined but is at a valid position => All good.
+        Expr::NontermRef(..) if is_valid_position => {}
+
+        // Nonterminal isn't defined, is at an invalid position, and has a defined specialization
+        // => Error out.
+        Expr::NontermRef(nonterm, _, diagnostic_span) if specializations.contains_key(nonterm) => {
+            return Err(Error::NontailCommand(*nonterm, diagnostic_span.clone()));
+        }
+
+        // Nonterminal isn't defined, is at an invalid position, doesn't have a defined
+        // specialization => It's an undefined variable so error out.
         Expr::NontermRef(nonterm, _, diagnostic_span) => {
-            if !is_valid_position && specializations.contains_key(nonterm) {
-                return Err(Error::NontailCommand(*nonterm, diagnostic_span.clone()));
-            }
-            if let Some(expr) = nonterminal_definitions.get(nonterm) {
-                do_ensure_commands_tail_only(
-                    Rc::clone(&expr),
-                    nonterminal_definitions,
-                    specializations,
-                    is_valid_position,
-                    Some(diagnostic_span),
-                )?;
-            }
+            return Err(Error::NontailUndefNonterm(
+                *nonterm,
+                diagnostic_span.clone(),
+            ));
         }
 
         Expr::Alternative(children) => {
@@ -1419,8 +1436,20 @@ fn do_ensure_commands_tail_only(
                 )?;
             }
         }
-        Expr::Sequence(children) => {
+        Expr::Sequence(children) if is_valid_position => {
             for child in children {
+                do_ensure_commands_tail_only(
+                    Rc::clone(&child),
+                    nonterminal_definitions,
+                    specializations,
+                    is_valid_position,
+                    overriding_span,
+                )?;
+            }
+        }
+        Expr::Sequence(children) => {
+            for (index, child) in children.iter().enumerate() {
+                let is_valid_position = index > 0;
                 do_ensure_commands_tail_only(
                     Rc::clone(&child),
                     nonterminal_definitions,

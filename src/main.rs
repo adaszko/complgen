@@ -103,6 +103,27 @@ fn handle_validation_error(g: Grammar, input: &str) -> anyhow::Result<ValidGramm
             eprintln!("{}:{}:{}", line_start, start, error.to_string());
             exit(1);
         }
+        Err(Error::NontailUndefNonterm(
+            _,
+            complgen::grammar::ChicSpan::Significant {
+                line_start,
+                start,
+                end,
+            },
+        )) => {
+            let error = chic::Error::new("Undefined nonterminals are only allowed at tail position")
+                .error(
+                    line_start,
+                    start,
+                    end,
+                    input.lines().nth(line_start).unwrap(),
+                    "",
+                )
+                .help("Either try moving the command into tail position (i.e. last branch of | or ||; end of a subword)")
+                .help("or supply its definition via ::=");
+            eprintln!("{}:{}:{}", line_start, start, error.to_string());
+            exit(1);
+        }
         Err(Error::NontailCommand(_, complgen::grammar::ChicSpan::Dummy)) => {
             unreachable!()
         }
@@ -128,8 +149,7 @@ fn handle_validation_error(g: Grammar, input: &str) -> anyhow::Result<ValidGramm
                 left_end,
                 input.lines().nth(left_line_start).unwrap(),
                 "",
-            )
-            ;
+            );
             eprintln!("{}:{}:{}", left_line_start, left_start, error.to_string());
 
             let right_error = chic::Error::new("Second one:").error(

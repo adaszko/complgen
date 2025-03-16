@@ -37,6 +37,9 @@ pub enum Error {
     #[error("Commands are only allowed at a tail position to avoid ambiguities")]
     NontailCommand(Ustr, ChicSpan),
 
+    #[error("Undefined nonterminal at a non-tail position")]
+    NontailUndefNonterm(Ustr, ChicSpan),
+
     #[error("Two adjacent terminals in a subword expression: {:?}", .0)]
     SubwordSpaces(ChicSpan, ChicSpan, Vec<ChicSpan>),
 
@@ -56,16 +59,9 @@ pub type StateId = u16;
 
 pub fn check_dfa_ambiguity(dfa: &DFA) {
     if let Some(inputs) = dfa.find_ambiguous_transition() {
-        eprintln!("Error: Final DFA contains ambiguous transition(s).");
         eprintln!(
-            "Ambiguous transition requires matching against: {:?}",
+            "Error: Final DFA contains ambiguous transition(s): {:?}",
             inputs
-        );
-        eprintln!(
-            "They arise when there's a need to match a shell word against the output of more than one external shell command."
-        );
-        eprintln!(
-            "The grammar needs to be modified to match against at most one external command output to avoid ambiguities."
         );
         exit(1);
     }

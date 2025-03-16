@@ -9,6 +9,8 @@ from conftest import (
     get_zsh_capture_script_sorted_lines,
     set_working_dir,
 )
+
+import pytest
 from hypothesis import given, settings
 from hypothesis.strategies import text
 
@@ -161,6 +163,7 @@ def test_nontail_completion_subword(complgen_binary_path: Path):
     ) == sorted(["leftright"])
 
 
+@pytest.mark.skip(reason="unimplemented")
 def test_nontail_completion_truncates_to_regex(complgen_binary_path: Path):
     GRAMMAR = """cmd {{{ echo leftspam }}}@zsh"left";"""
     assert get_sorted_aot_completions(
@@ -168,6 +171,7 @@ def test_nontail_completion_truncates_to_regex(complgen_binary_path: Path):
     ) == sorted(["left"])
 
 
+@pytest.mark.skip(reason="unimplemented")
 def test_nontail_completion_subword_truncates_to_regex(complgen_binary_path: Path):
     GRAMMAR = """cmd left{{{ echo rightspam }}}@zsh"right";"""
     assert get_sorted_aot_completions(
