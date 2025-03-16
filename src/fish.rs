@@ -340,7 +340,7 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
 "#
     )?;
 
-    ////////////////// Completion /////////////////////////
+    // /////////////// Completion /////////////////////////
 
     write!(
         buffer,
@@ -945,7 +945,7 @@ end
 
     writeln!(buffer)?;
 
-    //////////////////////////////// Completion ///////////////////////////////////
+    // ///////////////////////////// Completion ///////////////////////////////////
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap();
 

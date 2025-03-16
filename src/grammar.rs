@@ -70,35 +70,35 @@ impl std::fmt::Debug for SubwordCompilationPhase {
 // Can't use an arena here until proptest supports non-owned types: https://github.com/proptest-rs/proptest/issues/9
 #[derive(Clone, PartialEq)]
 pub enum Expr {
-    /// `--help`
+    // `--help`
     Terminal(Ustr, Option<Ustr>, usize, ChicSpan), // terminal, optional description, fallback level
 
-    /// `--option=argument`
+    // `--option=argument`
     Subword(SubwordCompilationPhase, usize),
 
-    /// `<PATH>`, `<DIRECTORY>`, etc.
+    // `<PATH>`, `<DIRECTORY>`, etc.
     NontermRef(Ustr, usize, ChicSpan), // name, fallback level
 
-    /// `{{{ ls }}}`
-    /// or
-    /// `{{{ ls }}}@bash"foo"@fish"bar"`
+    // `{{{ ls }}}`
+    // or
+    // `{{{ ls }}}@bash"foo"@fish"bar"`
     Command(Ustr, Option<CmdRegexDecl>, usize, ChicSpan), // command, [regex], fallback level
 
-    /// `foo bar`
+    // `foo bar`
     Sequence(Vec<Rc<Expr>>),
 
-    /// `foo | bar`
+    // `foo | bar`
     Alternative(Vec<Rc<Expr>>),
 
-    /// `[EXPR]`
+    // `[EXPR]`
     Optional(Rc<Expr>),
 
     // `EXPR...`
     Many1(Rc<Expr>),
 
-    /// `(b | build) "Compile the current package"` means the description applies to both `b` and
-    /// `build`. `(b build) "Compile the current package"` means means the description applies just
-    /// to `b` (i.e. the first literal)
+    // `(b | build) "Compile the current package"` means the description applies to both `b` and
+    // `build`. `(b build) "Compile the current package"` means means the description applies just
+    // to `b` (i.e. the first literal)
     DistributiveDescription(Rc<Expr>, Ustr),
 
     // `foo || bar`
@@ -897,8 +897,8 @@ fn make_specializations_map(statements: &[Statement]) -> Result<UstrMap<Speciali
     Ok(specializations)
 }
 
-/// Used in subword mode, when we know there won't be any sub-DFAs needed, just one big one.
-/// Substitutes Expr::Subword with Expr to make AST simpler to process.
+// Used in subword mode, when we know there won't be any sub-DFAs needed, just one big one.
+// Substitutes Expr::Subword with Expr to make AST simpler to process.
 fn flatten_expr(expr: Rc<Expr>) -> Rc<Expr> {
     match expr.as_ref() {
         Expr::Terminal(..) | Expr::NontermRef(..) | Expr::Command(..) => Rc::clone(&expr),
@@ -1071,7 +1071,7 @@ fn compile_subword_exprs(expr: Rc<Expr>, specs: &UstrMap<Specialization>) -> Rc<
     }
 }
 
-/// Move descriptions to their corresponding terminals.
+// Move descriptions to their corresponding terminals.
 fn do_distribute_descriptions(expr: Rc<Expr>, description: &mut Option<Ustr>) -> Rc<Expr> {
     match expr.as_ref() {
         Expr::DistributiveDescription(child, descr) => {
@@ -1170,7 +1170,7 @@ fn distribute_descriptions(expr: Rc<Expr>) -> Rc<Expr> {
     do_distribute_descriptions(expr, &mut description)
 }
 
-/// Propagate fallback levels of fallback alternatives down to literals.
+// Propagate fallback levels of fallback alternatives down to literals.
 fn do_propagate_fallback_levels(expr: Rc<Expr>, fallback_level: usize) -> Rc<Expr> {
     match expr.as_ref() {
         Expr::Terminal(_, _, level, _) if *level == fallback_level => Rc::clone(&expr),
@@ -1616,13 +1616,13 @@ fn check_subword_spaces(expr: Rc<Expr>, nonterms: &UstrMap<Rc<Expr>>) -> Result<
     do_check_subword_spaces(expr, nonterms, &mut nonterm_expn_trace, false)
 }
 
-/// Disallows spaces in subword expressions, e.g.
-///
-/// aerc :<COMMAND>;
-/// <COMMAND> ::= quit -f;
-///
-/// On deeply nested <NONTERM>s, this can lead to [surprising spaces
-/// removal](https://github.com/adaszko/complgen/issues/63) so forbid it completely.
+// Disallows spaces in subword expressions, e.g.
+//
+// aerc :<COMMAND>;
+// <COMMAND> ::= quit -f;
+//
+// On deeply nested <NONTERM>s, this can lead to [surprising spaces
+// removal](https://github.com/adaszko/complgen/issues/63) so forbid it completely.
 fn do_check_subword_spaces(
     expr: Rc<Expr>,
     nonterms: &UstrMap<Rc<Expr>>,

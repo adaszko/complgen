@@ -3,10 +3,10 @@ use indexmap::{IndexMap, IndexSet};
 use std::{cmp::Ordering, collections::BTreeSet, hash::Hash, io::Write, rc::Rc};
 
 use roaring::{MultiOps, RoaringBitmap};
-use ustr::{Ustr, ustr};
+use ustr::{ustr, Ustr};
 
-use crate::StateId;
 use crate::grammar::{CmdRegexDecl, Shell};
+use crate::StateId;
 use crate::{
     grammar::DFARef,
     regex::{AugmentedRegex, Input, Position},
@@ -675,8 +675,8 @@ impl DFA {
         self.accepting_states.contains(current_state.into())
     }
 
-    /// Best-effort only!  This isn't able to detect ambiguities arising from use of overlapping shell
-    /// regexes!
+    // Best-effort only!  This isn't able to detect ambiguities arising from use of overlapping shell
+    // regexes!
     pub fn find_ambiguous_transition(&self) -> Option<Vec<Input>> {
         for (_, tos) in &self.transitions {
             let mut ambiguous_inputs: Vec<Input> = Default::default();
@@ -964,7 +964,7 @@ mod tests {
 
     use bumpalo::Bump;
     use proptest::prelude::*;
-    use ustr::{UstrMap, ustr as u};
+    use ustr::{ustr as u, UstrMap};
 
     impl Transition {
         fn new(from: StateId, input: &str, to: StateId) -> Self {
@@ -1236,7 +1236,12 @@ mod tests {
             Sequence(vec![
                 Rc::new(Sequence(vec![
                     Rc::new(Alternative(vec![
-                        Rc::new(Many1(Rc::new(Many1(Rc::new(Terminal(u("--baz"), None, 0, ChicSpan::Dummy)))))),
+                        Rc::new(Many1(Rc::new(Many1(Rc::new(Terminal(
+                            u("--baz"),
+                            None,
+                            0,
+                            ChicSpan::Dummy,
+                        )))))),
                         Rc::new(NontermRef(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
                     ])),
                     Rc::new(Terminal(u("--baz"), None, 0, ChicSpan::Dummy)),

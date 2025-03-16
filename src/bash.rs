@@ -231,7 +231,7 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
 "#
     )?;
 
-    ////////////////// Completion /////////////////////////
+    // /////////////// Completion /////////////////////////
 
     // TODO Implement a way to determine if a transition within a subword is a final one so that a
     // trailing space can be added
@@ -646,7 +646,7 @@ fi
 "#
     )?;
 
-    //////////////////////////////// Completion ///////////////////////////////////
+    // ///////////////////////////// Completion ///////////////////////////////////
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap();
 
