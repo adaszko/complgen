@@ -1,7 +1,16 @@
+import glob
 import subprocess
 from pathlib import Path
 
 from inline_snapshot import snapshot
+
+
+def complgen_check_path(complgen_binary_path: Path, path: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [complgen_binary_path, "check", path],
+        capture_output=True,
+        text=True,
+    )
 
 
 def complgen_check(complgen_binary_path: Path, grammar: str) -> subprocess.CompletedProcess:
@@ -146,3 +155,9 @@ def test_subword_spaces_allowed(complgen_binary_path: Path):
 
     r = complgen_check(complgen_binary_path, """cmd foo((bar)...);""")
     assert r.returncode == 0
+
+
+def test_examples(complgen_binary_path: Path, examples_directory_path: Path):
+    for usage_file_path in glob.glob(str(examples_directory_path / "*.usage")):
+        r = complgen_check_path(complgen_binary_path, usage_file_path)
+        assert r.returncode == 0

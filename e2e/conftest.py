@@ -16,9 +16,9 @@ def cargo_manifest_path() -> Path:
 
 
 @pytest.fixture(scope="session")
-def usage_directory_path() -> Path:
+def examples_directory_path() -> Path:
     this_file = Path(__file__)
-    return this_file.parent.parent / "usage"
+    return this_file.parent.parent / "examples"
 
 
 @pytest.fixture(scope="session")
