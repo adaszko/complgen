@@ -1,6 +1,5 @@
-use dfa::DFA;
 use grammar::ChicSpan;
-use std::{process::exit, string::FromUtf8Error};
+use std::string::FromUtf8Error;
 use ustr::Ustr;
 
 pub mod bash;
@@ -56,13 +55,3 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub type StateId = u16;
-
-pub fn check_dfa_ambiguity(dfa: &DFA) {
-    if let Some(inputs) = dfa.find_ambiguous_transition() {
-        eprintln!(
-            "Error: Final DFA contains ambiguous transition(s): {:?}",
-            inputs
-        );
-        exit(1);
-    }
-}

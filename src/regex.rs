@@ -43,10 +43,10 @@ impl Input {
 impl std::fmt::Display for Input {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Subword(subword, fallback_level) => write!(f, r#"{subword:?}:{fallback_level}"#),
-            Self::Literal(literal, _, fallback_level) => write!(f, r#"{literal}:{fallback_level}"#),
-            Self::Nonterminal(nonterminal, ..) => write!(f, r#"{nonterminal}"#),
-            Self::Command(command, ..) => write!(f, r#"{command}"#),
+            Self::Subword(subword, _) => write!(f, r#"{subword:?}"#),
+            Self::Literal(literal, ..) => write!(f, r#"{literal}"#),
+            Self::Nonterminal(nonterminal, ..) => write!(f, r#"<{nonterminal}>"#),
+            Self::Command(command, ..) => write!(f, r#"{{{{{{ {command} }}}}}}"#),
         }
     }
 }

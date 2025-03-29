@@ -9,9 +9,9 @@ use clap::Parser;
 
 use complgen::grammar::{ChicSpan, Grammar, ValidGrammar, to_railroad_diagram_file};
 
+use complgen::Error;
 use complgen::dfa::DFA;
 use complgen::regex::AugmentedRegex;
-use complgen::{Error, check_dfa_ambiguity};
 
 #[derive(clap::Parser)]
 struct Cli {
@@ -203,7 +203,9 @@ fn check(args: &CheckArgs) -> anyhow::Result<()> {
     let arena = Bump::new();
     let regex = AugmentedRegex::from_expr(&validated.expr, &validated.specializations, &arena);
     let dfa = DFA::from_regex(&regex);
-    check_dfa_ambiguity(&dfa);
+    if dfa.is_ambiguous(validated.command) {
+        exit(1);
+    };
     Ok(())
 }
 
@@ -273,7 +275,7 @@ fn aot(args: &AotArgs) -> anyhow::Result<()> {
         dfa.to_dot(&mut dot_file).context(dot_file_path.clone())?;
     }
 
-    check_dfa_ambiguity(&dfa);
+    dfa.is_ambiguous(validated.command);
 
     if let Some(path) = &args.bash_script {
         log::debug!("Writing Bash completion script");

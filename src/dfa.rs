@@ -3,10 +3,10 @@ use indexmap::{IndexMap, IndexSet};
 use std::{cmp::Ordering, collections::BTreeSet, hash::Hash, io::Write, rc::Rc};
 
 use roaring::{MultiOps, RoaringBitmap};
-use ustr::{ustr, Ustr};
+use ustr::{Ustr, ustr};
 
-use crate::grammar::{CmdRegexDecl, Shell};
 use crate::StateId;
+use crate::grammar::{CmdRegexDecl, Shell};
 use crate::{
     grammar::DFARef,
     regex::{AugmentedRegex, Input, Position},
@@ -27,26 +27,6 @@ pub struct DFA {
     pub transitions: IndexMap<StateId, IndexMap<Input, StateId>>,
     pub accepting_states: RoaringBitmap,
     pub input_symbols: Rc<IndexSet<Input>>,
-}
-
-impl std::hash::Hash for DFA {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.starting_state.hash(state);
-
-        for (from, tos) in &self.transitions {
-            for (input, to) in tos {
-                (from, input, to).hash(state);
-            }
-        }
-
-        for elem in &self.accepting_states {
-            elem.hash(state);
-        }
-
-        for elem in self.input_symbols.iter() {
-            elem.hash(state);
-        }
-    }
 }
 
 // Reference:
@@ -677,27 +657,68 @@ impl DFA {
 
     // Best-effort only!  This isn't able to detect ambiguities arising from use of overlapping shell
     // regexes!
-    pub fn find_ambiguous_transition(&self) -> Option<Vec<Input>> {
-        for (_, tos) in &self.transitions {
-            let mut ambiguous_inputs: Vec<Input> = Default::default();
-            for (input, _) in tos {
-                match input {
-                    Input::Literal(..) => {}
-                    Input::Nonterminal(..) => ambiguous_inputs.push(input.clone()),
-                    Input::Subword(dfaref, _) => {
-                        if let Some(inputs) = dfaref.as_ref().find_ambiguous_transition() {
-                            return Some(inputs);
-                        }
-                    }
-                    Input::Command(_, None, _) => ambiguous_inputs.push(input.clone()),
-                    Input::Command(_, Some(..), _) => {}
+    pub fn do_check_dfa_ambiguity(
+        &self,
+        command: Ustr,
+        state: StateId,
+        visited: &mut RoaringBitmap,
+        path: &mut Vec<Input>,
+        is_ambiguous: &mut bool,
+    ) {
+        let mut ambiguous_inputs: Vec<Input> = Default::default();
+        for (input, _) in self.iter_transitions_from(state) {
+            match &input {
+                Input::Literal(..) => {}
+                Input::Nonterminal(..) => ambiguous_inputs.push(input.clone()),
+                Input::Subword(dfaref, _) => {
+                    let subdfa = dfaref.as_ref();
+                    subdfa.do_check_dfa_ambiguity(
+                        command,
+                        subdfa.starting_state,
+                        visited,
+                        path,
+                        is_ambiguous,
+                    );
                 }
-            }
-            if ambiguous_inputs.len() >= 2 {
-                return Some(ambiguous_inputs);
+                Input::Command(_, None, _) => ambiguous_inputs.push(input.clone()),
+                Input::Command(_, Some(..), _) => {}
             }
         }
-        None
+        if ambiguous_inputs.len() > 1 {
+            *is_ambiguous = true;
+            let path_disp = itertools::join(path.iter().map(|p| format!("{}", p)), " ");
+            let amb_disp = format!(
+                "({})",
+                itertools::join(ambiguous_inputs.iter().map(|p| format!("{}", p)), " | ")
+            );
+            if path_disp.is_empty() {
+                eprintln!(r#"Ambiguity: "{command} ⇥" {amb_disp}"#);
+            } else {
+                eprintln!(r#"Ambiguity: "{command} {path_disp} ⇥" {amb_disp}"#);
+            }
+        }
+        for (input, to) in self.iter_transitions_from(state) {
+            if !visited.contains(to as u32) {
+                visited.insert(to as u32);
+                path.push(input.clone());
+                self.do_check_dfa_ambiguity(command, to, visited, path, is_ambiguous);
+                path.pop();
+            }
+        }
+    }
+
+    pub fn is_ambiguous(&self, command: Ustr) -> bool {
+        let mut visited: RoaringBitmap = Default::default();
+        let mut path: Vec<Input> = Default::default();
+        let mut is_ambiguous = false;
+        self.do_check_dfa_ambiguity(
+            command,
+            self.starting_state,
+            &mut visited,
+            &mut path,
+            &mut is_ambiguous,
+        );
+        is_ambiguous
     }
 
     pub fn iter_inputs(&self) -> impl Iterator<Item = &Input> + '_ {
@@ -964,7 +985,7 @@ mod tests {
 
     use bumpalo::Bump;
     use proptest::prelude::*;
-    use ustr::{ustr as u, UstrMap};
+    use ustr::{UstrMap, ustr as u};
 
     impl Transition {
         fn new(from: StateId, input: &str, to: StateId) -> Self {

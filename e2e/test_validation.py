@@ -204,4 +204,4 @@ aerc [<OPTION>]... foo;
 def test_bug4(complgen_binary_path: Path):
     r = complgen_check(complgen_binary_path, """darcs [<INITIALIZATION>] <COMMAND>;""")
     assert r.returncode == 1
-    assert r.stderr == snapshot('Error: Final DFA contains ambiguous transition(s): [Nonterminal(u!("INITIALIZATION"), None, 0), Nonterminal(u!("COMMAND"), None, 0)]\n')
+    assert r.stderr == snapshot('Ambiguity: "darcs ⇥" (<INITIALIZATION> | <COMMAND>)\n')
