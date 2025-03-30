@@ -162,7 +162,6 @@ def test_nontail_completion_truncates_to_regex(complgen_binary_path: Path):
         assert get_sorted_bash_completions(path, input) == sorted(["left"])
 
 
-@pytest.mark.skip(reason="unimplemented")
 def test_nontail_completion_subword_truncates_to_regex(complgen_binary_path: Path):
     GRAMMAR = """cmd left{{{ echo rightspam }}}@bash"right";"""
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
