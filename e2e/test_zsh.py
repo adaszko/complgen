@@ -163,7 +163,6 @@ def test_nontail_completion_subword(complgen_binary_path: Path):
     ) == sorted(["leftright"])
 
 
-@pytest.mark.skip(reason="unimplemented")
 def test_nontail_completion_truncates_to_regex(complgen_binary_path: Path):
     GRAMMAR = """cmd {{{ echo leftspam }}}@zsh"left";"""
     assert get_sorted_aot_completions(

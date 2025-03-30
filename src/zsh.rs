@@ -819,12 +819,11 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     }
 
     for (level, transitions) in fallback_nontails.iter().enumerate() {
-        let initializer = itertools::join(
+        let commands_initializer = itertools::join(
             transitions.iter().map(|(from_state, command_ids)| {
-                let joined_command_ids =
-                    itertools::join(command_ids.iter().map(|(cmd_id, _)| cmd_id), " ");
+                let joined_ids = itertools::join(command_ids.iter().map(|(cmd_id, _)| cmd_id), " ");
                 format!(
-                    r#"[{from_state_zsh}]="{joined_command_ids}""#,
+                    r#"[{from_state_zsh}]="{joined_ids}""#,
                     from_state_zsh = from_state + 1
                 )
             }),
@@ -832,7 +831,23 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         );
         writeln!(
             buffer,
-            r#"    declare -A nontail_commands_level_{level}=({initializer})"#
+            r#"    declare -A nontail_commands_level_{level}=({commands_initializer})"#
+        )?;
+
+        let regexes_initializer = itertools::join(
+            transitions.iter().map(|(from_state, command_ids)| {
+                let joined_ids =
+                    itertools::join(command_ids.iter().map(|(_, regex_id)| regex_id + 1), " ");
+                format!(
+                    r#"[{from_state_zsh}]="{joined_ids}""#,
+                    from_state_zsh = from_state + 1
+                )
+            }),
+            " ",
+        );
+        writeln!(
+            buffer,
+            r#"    declare -A nontail_regexes_level_{level}=({regexes_initializer})"#
         )?;
     }
 
@@ -914,19 +929,28 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         done
 
         declare commands_name=nontail_commands_level_${{fallback_level}}
-        eval "declare initializer=\${{${{commands_name}}[$state]}}"
-        eval "declare -a transitions=($initializer)"
-        for command_id in "${{transitions[@]}}"; do
+        eval "declare command_initializer=\${{${{commands_name}}[$state]}}"
+        eval "declare -a command_transitions=($command_initializer)"
+        declare regexes_name=nontail_regexes_level_${{fallback_level}}
+        eval "declare regexes_initializer=\${{${{regexes_name}}[$state]}}"
+        eval "declare -a regexes_transitions=($regexes_initializer)"
+        for (( i=1; i <= ${{#command_transitions[@]}}; i++ )); do
+            declare command_id=${{command_transitions[$i]}}
+            declare regex_id=${{regexes_transitions[$i]}}
+            declare regex="^(${{regexes[$regex_id]}}).*"
             declare output=$(_{command}_cmd_${{command_id}} "${{words[$CURRENT]}}")
             declare -a command_completions=("${{(@f)output}}")
             for line in ${{command_completions[@]}}; do
                 declare parts=(${{(@s:	:)line}})
-                if [[ -v "parts[2]" ]]; then
-                    completions_trailing_space+=("${{parts[1]}}")
-                    suffixes_trailing_space+=("${{parts[1]}}")
-                    descriptions_trailing_space+=("${{parts[2]}}")
-                else
-                    completions_no_description_trailing_space+=("${{parts[1]}}")
+                if [[ ${{parts[1]}} =~ $regex && -n ${{match[1]}} ]]; then
+                    parts[1]=${{match[1]}}
+                    if [[ -v "parts[2]" ]]; then
+                        completions_trailing_space+=("${{parts[1]}}")
+                        suffixes_trailing_space+=("${{parts[1]}}")
+                        descriptions_trailing_space+=("${{parts[2]}}")
+                    else
+                        completions_no_description_trailing_space+=("${{parts[1]}}")
+                    fi
                 fi
             done
         done
