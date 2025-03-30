@@ -226,95 +226,103 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
     subword_descriptions_no_trailing_space=()
 
     for (( subword_fallback_level=0; subword_fallback_level <= subword_max_fallback_level; subword_fallback_level++ )) {{
-         declare literal_transitions_name=subword_literal_transitions_level_${{subword_fallback_level}}
-         eval "declare initializer=\${{${{literal_transitions_name}}[$subword_state]}}"
-         eval "declare -a transitions=($initializer)"
-         for literal_id in "${{transitions[@]}}"; do
-             declare literal=${{subword_literals[$literal_id]}}
-             if [[ $literal = "${{completed_prefix}}"* ]]; then
-                 declare completion="$matched_prefix$literal"
-                 if [[ -v "subword_descriptions[$literal_id]" ]]; then
-                     subword_completions_no_trailing_space+=("${{completion}}")
-                     subword_suffixes_no_trailing_space+=("${{completion}}")
-                     subword_descriptions_no_trailing_space+=("${{subword_descriptions[$literal_id]}}")
-                 else
-                     subword_completions_no_trailing_space+=("${{completion}}")
-                     subword_suffixes_no_trailing_space+=("${{literal}}")
-                     subword_descriptions_no_trailing_space+=('')
-                 fi
-             fi
-         done
+        declare literal_transitions_name=subword_literal_transitions_level_${{subword_fallback_level}}
+        eval "declare initializer=\${{${{literal_transitions_name}}[$subword_state]}}"
+        eval "declare -a transitions=($initializer)"
+        for literal_id in "${{transitions[@]}}"; do
+            declare literal=${{subword_literals[$literal_id]}}
+            if [[ $literal = "${{completed_prefix}}"* ]]; then
+                declare completion="$matched_prefix$literal"
+                if [[ -v "subword_descriptions[$literal_id]" ]]; then
+                    subword_completions_no_trailing_space+=("${{completion}}")
+                    subword_suffixes_no_trailing_space+=("${{completion}}")
+                    subword_descriptions_no_trailing_space+=("${{subword_descriptions[$literal_id]}}")
+                else
+                    subword_completions_no_trailing_space+=("${{completion}}")
+                    subword_suffixes_no_trailing_space+=("${{literal}}")
+                    subword_descriptions_no_trailing_space+=('')
+                fi
+            fi
+        done
 
-         declare commands_name=subword_nontail_commands_level_${{subword_fallback_level}}
-         eval "declare initializer=\${{${{commands_name}}[$subword_state]}}"
-         eval "declare -a transitions=($initializer)"
-         for command_id in "${{transitions[@]}}"; do
-             declare candidates=()
-             declare output=$(_{command}_cmd_${{command_id}} "$matched_prefix")
-             declare -a command_completions=("${{(@f)output}}")
-             for line in ${{command_completions[@]}}; do
-                 if [[ $line = "${{completed_prefix}}"* ]]; then
-                     declare parts=(${{(@s:	:)line}})
-                     if [[ -v "parts[2]" ]]; then
-                         declare completion=$matched_prefix${{parts[1]}}
-                         subword_completions_trailing_space+=("${{completion}}")
-                         subword_suffixes_trailing_space+=("${{parts[1]}}")
-                         subword_descriptions_trailing_space+=("${{parts[2]}}")
-                     else
-                         line="$matched_prefix$line"
-                         subword_completions_no_description_trailing_space+=("$line")
-                     fi
-                 fi
-             done
-         done
+        declare commands_name=subword_nontail_commands_level_${{subword_fallback_level}}
+        eval "declare commands_initializer=\${{${{commands_name}}[$subword_state]}}"
+        eval "declare -a command_transitions=($commands_initializer)"
+        declare regexes_name=subword_nontail_regexes_level_${{subword_fallback_level}}
+        eval "declare regexes_initializer=\${{${{regexes_name}}[$subword_state]}}"
+        eval "declare -a regexes_transitions=($regexes_initializer)"
+        for (( i=1; i <= ${{#command_transitions[@]}}; i++ )); do
+            declare command_id=${{command_transitions[$i]}}
+            declare regex_id=${{regexes_transitions[$i]}}
+            declare regex="^(${{subword_regexes[$regex_id]}}).*"
+            declare candidates=()
+            declare output=$(_{command}_cmd_${{command_id}} "$matched_prefix")
+            declare -a command_completions=("${{(@f)output}}")
+            for line in ${{command_completions[@]}}; do
+                if [[ $line = "${{completed_prefix}}"* ]]; then
+                    declare parts=(${{(@s:	:)line}})
+                    if [[ ${{parts[1]}} =~ $regex && -n ${{match[1]}} ]]; then
+                        parts[1]=${{match[1]}}
+                        if [[ -v "parts[2]" ]]; then
+                            declare completion=$matched_prefix${{parts[1]}}
+                            subword_completions_trailing_space+=("${{completion}}")
+                            subword_suffixes_trailing_space+=("${{parts[1]}}")
+                            subword_descriptions_trailing_space+=("${{parts[2]}}")
+                        else
+                            subword_completions_no_description_trailing_space+=("$matched_prefix${{parts[1]}}")
+                        fi
+                    fi
+                fi
+            done
+        done
 
-         declare commands_name=subword_commands_level_${{subword_fallback_level}}
-         eval "declare initializer=\${{${{commands_name}}[$subword_state]}}"
-         eval "declare -a transitions=($initializer)"
-         for command_id in "${{transitions[@]}}"; do
-             declare candidates=()
-             declare output=$(_{command}_cmd_${{command_id}} "$matched_prefix")
-             declare -a command_completions=("${{(@f)output}}")
-             for line in ${{command_completions[@]}}; do
-                 if [[ $line = "${{completed_prefix}}"* ]]; then
-                     declare parts=(${{(@s:	:)line}})
-                     if [[ -v "parts[2]" ]]; then
-                         declare completion=$matched_prefix${{parts[1]}}
-                         subword_completions_trailing_space+=("${{completion}}")
-                         subword_suffixes_trailing_space+=("${{parts[1]}}")
-                         subword_descriptions_trailing_space+=("${{parts[2]}}")
-                     else
-                         line="$matched_prefix$line"
-                         subword_completions_no_description_trailing_space+=("$line")
-                     fi
-                 fi
-             done
-         done
+        declare commands_name=subword_commands_level_${{subword_fallback_level}}
+        eval "declare initializer=\${{${{commands_name}}[$subword_state]}}"
+        eval "declare -a transitions=($initializer)"
+        for command_id in "${{transitions[@]}}"; do
+            declare candidates=()
+            declare output=$(_{command}_cmd_${{command_id}} "$matched_prefix")
+            declare -a command_completions=("${{(@f)output}}")
+            for line in ${{command_completions[@]}}; do
+                if [[ $line = "${{completed_prefix}}"* ]]; then
+                    declare parts=(${{(@s:	:)line}})
+                    if [[ -v "parts[2]" ]]; then
+                        declare completion=$matched_prefix${{parts[1]}}
+                        subword_completions_trailing_space+=("${{completion}}")
+                        subword_suffixes_trailing_space+=("${{parts[1]}}")
+                        subword_descriptions_trailing_space+=("${{parts[2]}}")
+                    else
+                        line="$matched_prefix$line"
+                        subword_completions_no_description_trailing_space+=("$line")
+                    fi
+                fi
+            done
+        done
 
-         declare specialized_commands_name=subword_specialized_commands_level_${{subword_fallback_level}}
-         eval "declare initializer=\${{${{specialized_commands_name}}[$subword_state]}}"
-         eval "declare -a transitions=($initializer)"
-         for command_id in "${{transitions[@]}}"; do
-             declare output=$(_{command}_cmd_${{command_id}} "$matched_prefix")
-             declare -a candidates=("${{(@f)output}}")
-             for line in ${{candidates[@]}}; do
-                 if [[ $line = "${{completed_prefix}}"* ]]; then
-                     line="$matched_prefix$line"
-                     declare parts=(${{(@s:	:)line}})
-                     if [[ -v "parts[2]" ]]; then
-                         subword_completions_trailing_space+=("${{parts[1]}}")
-                         subword_suffixes_trailing_space+=("${{parts[1]}}")
-                         subword_descriptions_trailing_space+=("${{parts[2]}}")
-                     else
-                         subword_completions_no_description_trailing_space+=("$line")
-                     fi
-                 fi
-             done
-         done
+        declare specialized_commands_name=subword_specialized_commands_level_${{subword_fallback_level}}
+        eval "declare initializer=\${{${{specialized_commands_name}}[$subword_state]}}"
+        eval "declare -a transitions=($initializer)"
+        for command_id in "${{transitions[@]}}"; do
+            declare output=$(_{command}_cmd_${{command_id}} "$matched_prefix")
+            declare -a candidates=("${{(@f)output}}")
+            for line in ${{candidates[@]}}; do
+                if [[ $line = "${{completed_prefix}}"* ]]; then
+                    line="$matched_prefix$line"
+                    declare parts=(${{(@s:	:)line}})
+                    if [[ -v "parts[2]" ]]; then
+                        subword_completions_trailing_space+=("${{parts[1]}}")
+                        subword_suffixes_trailing_space+=("${{parts[1]}}")
+                        subword_descriptions_trailing_space+=("${{parts[2]}}")
+                    else
+                        subword_completions_no_description_trailing_space+=("$line")
+                    fi
+                fi
+            done
+        done
 
-         if [[ ${{#subword_completions_no_description_trailing_space}} -gt 0 || ${{#subword_completions_trailing_space}} -gt 0 || ${{#subword_completions_no_trailing_space}} -gt 0 ]]; then
-             break
-         fi
+        if [[ ${{#subword_completions_no_description_trailing_space}} -gt 0 || ${{#subword_completions_trailing_space}} -gt 0 || ${{#subword_completions_no_trailing_space}} -gt 0 ]]; then
+            break
+        fi
     }}
     return 0
 }}
@@ -451,10 +459,9 @@ pub fn write_subword_fn<W: Write>(
     for (level, transitions) in fallback_nontails.iter().enumerate() {
         let commands_initializer = itertools::join(
             transitions.iter().map(|(from_state, nontails)| {
-                let joined_command_ids =
-                    itertools::join(nontails.iter().map(|(cmd_id, _)| cmd_id), " ");
+                let joined_ids = itertools::join(nontails.iter().map(|(cmd_id, _)| cmd_id), " ");
                 format!(
-                    r#"[{from_state_zsh}]="{joined_command_ids}""#,
+                    r#"[{from_state_zsh}]="{joined_ids}""#,
                     from_state_zsh = from_state + 1
                 )
             }),
@@ -465,13 +472,12 @@ pub fn write_subword_fn<W: Write>(
             r#"    declare -A subword_nontail_commands_level_{level}=({commands_initializer})"#
         )?;
 
-        // XXX Unused yet
         let regexes_initializer = itertools::join(
             transitions.iter().map(|(from_state, nontails)| {
-                let joined_regex_ids =
-                    itertools::join(nontails.iter().map(|(_, regex_id)| regex_id), " ");
+                let joined_ids =
+                    itertools::join(nontails.iter().map(|(_, regex_id)| regex_id + 1), " ");
                 format!(
-                    r#"[{from_state_zsh}]="{joined_regex_ids}""#,
+                    r#"[{from_state_zsh}]="{joined_ids}""#,
                     from_state_zsh = from_state + 1
                 )
             }),
