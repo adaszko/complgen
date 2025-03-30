@@ -762,17 +762,28 @@ fi
     }
 
     for (level, transitions) in fallback_nontails.iter().enumerate() {
-        let initializer = itertools::join(
-            transitions.iter().map(|(from_state, command_ids)| {
-                let joined_command_ids =
-                    itertools::join(command_ids.iter().map(|(cmd_id, _)| cmd_id), " ");
-                format!(r#"[{from_state}]="{joined_command_ids}""#)
+        let commands_initializer = itertools::join(
+            transitions.iter().map(|(from_state, ids)| {
+                let joined_ids = itertools::join(ids.iter().map(|(cmd_id, _)| cmd_id), " ");
+                format!(r#"[{from_state}]="{joined_ids}""#)
             }),
             " ",
         );
         writeln!(
             buffer,
-            r#"    declare -A nontail_commands_level_{level}=({initializer})"#
+            r#"    declare -A nontail_commands_level_{level}=({commands_initializer})"#
+        )?;
+
+        let regexes_initializer = itertools::join(
+            transitions.iter().map(|(from_state, ids)| {
+                let joined_ids = itertools::join(ids.iter().map(|(_, regex_id)| regex_id), " ");
+                format!(r#"[{from_state}]="{joined_ids}""#)
+            }),
+            " ",
+        );
+        writeln!(
+            buffer,
+            r#"    declare -A nontail_regexes_level_{level}=({regexes_initializer})"#
         )?;
     }
 
@@ -811,9 +822,21 @@ fi
         done
 
         eval "declare commands_name=nontail_commands_level_${{fallback_level}}"
-        eval "declare -a transitions=(\${{$commands_name[$state]}})"
-        for command_id in "${{transitions[@]}}"; do
-            readarray -t candidates < <(_{command}_cmd_$command_id "$prefix" | cut -f1)
+        eval "declare -a command_transitions=(\${{$commands_name[$state]}})"
+        eval "declare regexes_name=nontail_regexes_level_${{fallback_level}}"
+        eval "declare -a regexes_transitions=(\${{$regexes_name[$state]}})"
+        for (( i = 0; i < ${{#command_transitions[@]}}; i++ )); do
+            local command_id=${{command_transitions[$i]}}
+            local regex_id=${{regexes_transitions[$i]}}
+            local regex="^(${{regexes[$regex_id]}}).*"
+            readarray -t output < <(_{command}_cmd_$command_id "$prefix" | cut -f1)
+            declare -a candidates=()
+            for line in ${{output[@]}}; do
+                if [[ ${{line}} =~ $regex && -n ${{BASH_REMATCH[1]}} ]]; then
+                    match="${{BASH_REMATCH[1]}}"
+                    candidates+=("$match")
+                fi
+            done
             if [[ ${{#candidates[@]}} -gt 0 ]]; then
                 readarray -t -O "${{#matches[@]}}" matches < <(printf "%s\n" "${{candidates[@]}}" | {MATCH_FN_NAME} "$ignore_case" "$prefix")
             fi
