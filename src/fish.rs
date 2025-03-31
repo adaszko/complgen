@@ -17,6 +17,7 @@ use ustr::{Ustr, ustr};
 // * Metaprogramming:
 //   1) $$var_name (https://fishshell.com/docs/current/language.html#dereferencing-variables)
 //   2) printf [...] | source
+// * echo foo:$bar prints nothing if $bar expands to an empty string (!)
 
 // TODO Optimization: Do not emit __complgen_match if there's just one fallback level as it's
 // unnecessary in that case.
@@ -379,6 +380,25 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
             end
         end
 
+        set name subword_nontail_command_froms_level_$fallback_level
+        set commands $$name
+        set index (contains --index -- "$subword_state" $commands)
+        if test -n "$index"
+            set name subword_nontail_commands_level_$fallback_level
+            set commands (string split ' ' $$name)
+            set function_id $commands[$index]
+            set function_name _{command}_cmd_$function_id
+            set name subword_nontail_regexes_level_$fallback_level
+            set rxs (string split ' ' $$name)
+            set rx $subword_regexes[$rxs[$index]]
+            for line in ($function_name "$COMP_WORDS[$COMP_CWORD]")
+                string match --regex --quiet "^(?<match>$rx).*" -- $line
+                if test -n "$match"
+                    set --append candidates (printf "%s%s\n" $matched_prefix $match)
+                end
+            end
+        end
+
         set froms_name subword_commands_from_level_$fallback_level
         set froms (string split ' ' $$froms_name)
         set index (contains --index -- "$subword_state" $froms)
@@ -509,7 +529,7 @@ pub fn write_subword_fn<W: Write>(
             .join(" ");
         writeln!(
             buffer,
-            r#"    set --global subword_nontail_commands_from_level_{level} {from_initializer}"#
+            r#"    set --global subword_nontail_command_froms_level_{level} {from_initializer}"#
         )?;
 
         let commands_initializer = transitions
@@ -531,7 +551,7 @@ pub fn write_subword_fn<W: Write>(
             .map(|(_, command_ids)| {
                 command_ids
                     .iter()
-                    .map(|(_, regex_id)| format!("{}", regex_id))
+                    .map(|(_, regex_id)| format!("{}", regex_id + 1))
                     .join(" ")
             })
             .join(" ");
@@ -958,6 +978,9 @@ end
     let mut fallback_commands: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
     fallback_commands.resize_with(max_fallback_level + 1, Default::default);
 
+    let mut fallback_nontails: Vec<HashMap<StateId, Vec<(usize, usize)>>> = Default::default();
+    fallback_nontails.resize_with(max_fallback_level + 1, Default::default);
+
     for (from, input, _) in dfa.iter_transitions() {
         match input {
             Input::Literal(lit, descr, fallback_level) => {
@@ -976,13 +999,27 @@ end
                     .or_default()
                     .push(subword_id);
             }
-            Input::Command(cmd, _, fallback_level) => {
-                // TODO Handle nontail command here
+            Input::Command(cmd, None, fallback_level) => {
                 let command_id = id_from_cmd.get_index_of(cmd).unwrap();
                 fallback_commands[*fallback_level]
                     .entry(from)
                     .or_default()
                     .push(command_id);
+            }
+            Input::Command(
+                cmd,
+                Some(CmdRegexDecl {
+                    fish: Some(fish_regex),
+                    ..
+                }),
+                fallback_level,
+            ) => {
+                let cmd_id = id_from_cmd.get_index_of(cmd).unwrap();
+                let regex_id = id_from_regex.get_index_of(fish_regex).unwrap();
+                fallback_nontails[*fallback_level]
+                    .entry(from)
+                    .or_default()
+                    .push((cmd_id, regex_id));
             }
             Input::Nonterminal(
                 _,
@@ -1064,6 +1101,51 @@ end
         }
     }
 
+    for (level, transitions) in fallback_nontails.iter().enumerate() {
+        let from_initializer = transitions
+            .iter()
+            .map(|(from_state, _)| from_state + 1)
+            .join(" ");
+        writeln!(
+            buffer,
+            r#"    set nontail_command_froms_level_{level} {from_initializer}"#
+        )?;
+
+        let commands_initializer = itertools::join(
+            transitions.iter().map(|(_, state_commands)| {
+                let joined_ids = itertools::join(
+                    state_commands
+                        .iter()
+                        .map(|(cmd_id, _)| format!("{}", cmd_id)),
+                    " ",
+                );
+                format!(r#""{}""#, joined_ids)
+            }),
+            " ",
+        );
+        writeln!(
+            buffer,
+            r#"    set nontail_commands_level_{level} {commands_initializer}"#
+        )?;
+
+        let regexes_initializer = itertools::join(
+            transitions.iter().map(|(_, state_commands)| {
+                let joined_ids = itertools::join(
+                    state_commands
+                        .iter()
+                        .map(|(_, regex_id)| format!("{}", regex_id + 1)),
+                    " ",
+                );
+                format!(r#""{}""#, joined_ids)
+            }),
+            " ",
+        );
+        writeln!(
+            buffer,
+            r#"    set nontail_regexes_level_{level} {regexes_initializer}"#
+        )?;
+    }
+
     if !fallback_commands.first().unwrap().is_empty() {
         for (level, transitions) in fallback_commands.iter().enumerate() {
             let from_initializer = transitions
@@ -1097,7 +1179,6 @@ end
     write!(
         buffer,
         r#"
-    set max_fallback_level {max_fallback_level}
     for fallback_level in (seq 0 {max_fallback_level})
         set candidates
         set froms_name literal_froms_level_$fallback_level
@@ -1150,6 +1231,32 @@ end
             set function_id $commands[$index]
             set function_name _{command}_cmd_$function_id
             set --append candidates ($function_name "$COMP_WORDS[$COMP_CWORD]")
+        end
+"#
+        )?;
+    }
+
+    if !fallback_nontails.first().unwrap().is_empty() {
+        write!(
+            buffer,
+            r#"
+        set name nontail_command_froms_level_$fallback_level
+        set commands $$name
+        set index (contains --index -- "$state" $commands)
+        if test -n "$index"
+            set name nontail_commands_level_$fallback_level
+            set commands (string split ' ' $$name)
+            set function_id $commands[$index]
+            set function_name _{command}_cmd_$function_id
+            set name nontail_regexes_level_$fallback_level
+            set rxs (string split ' ' $$name)
+            set rx $regexes[$rxs[$index]]
+            for line in ($function_name "$COMP_WORDS[$COMP_CWORD]")
+                string match --regex --quiet "^(?<match>$rx).*" -- $line
+                if test -n "$match"
+                    set --append candidates "$match"
+                end
+            end
         end
 "#
         )?;

@@ -186,7 +186,6 @@ def test_nontail_completion_subword(complgen_binary_path: Path):
         ]
 
 
-@pytest.mark.skip(reason="unimplemented")
 def test_nontail_completion_truncates_to_regex(complgen_binary_path: Path):
     GRAMMAR = """cmd {{{ echo leftspam }}}@fish"left";"""
     with gen_fish_aot_completion_script_path(
@@ -198,7 +197,6 @@ def test_nontail_completion_truncates_to_regex(complgen_binary_path: Path):
         ]
 
 
-@pytest.mark.skip(reason="unimplemented")
 def test_nontail_completion_subword_truncates_to_regex(complgen_binary_path: Path):
     GRAMMAR = """cmd {{{ echo leftspam }}}@fish"left"right;"""
     with gen_fish_aot_completion_script_path(
