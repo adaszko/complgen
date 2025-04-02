@@ -8,7 +8,7 @@ from inline_snapshot import snapshot
 
 def complgen_check_path(complgen_binary_path: Path, path: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [complgen_binary_path, "check", path],
+        [complgen_binary_path, path],
         capture_output=True,
         text=True,
     )
@@ -22,7 +22,7 @@ def test_examples(complgen_binary_path: Path, examples_directory_path: Path):
 
 
 def complgen_check(complgen_binary_path: Path, grammar: str) -> subprocess.CompletedProcess:
-    args = [complgen_binary_path, "check", "-"]
+    args = [complgen_binary_path, "-"]
     result = subprocess.run(
         args,
         input=grammar,
@@ -204,4 +204,7 @@ aerc [<OPTION>]... foo;
 def test_bug4(complgen_binary_path: Path):
     r = complgen_check(complgen_binary_path, """darcs [<INITIALIZATION>] <COMMAND>;""")
     assert r.returncode == 1
-    assert r.stderr == snapshot('Ambiguity: "darcs ⇥" (<INITIALIZATION> | <COMMAND>)\n')
+    assert r.stderr == snapshot("""\
+Warning: Undefined nonterminal(s): INITIALIZATION COMMAND
+Ambiguity: "darcs ⇥" (<INITIALIZATION> | <COMMAND>)
+""")

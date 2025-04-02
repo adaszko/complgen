@@ -104,7 +104,7 @@ def gen_fish_aot_completion_script_path(
     complgen_binary_path: Path, grammar: str
 ) -> Generator[Path, None, None]:
     fish_script = subprocess.run(
-        [complgen_binary_path, "aot", "--fish-script", "-", "-"],
+        [complgen_binary_path, "--fish", "-", "-"],
         input=grammar.encode(),
         stdout=subprocess.PIPE,
         stderr=sys.stderr,
@@ -136,7 +136,7 @@ def gen_grammar_zsh_capture_script_path(
     complgen_binary_path: Path, grammar: str
 ) -> Generator[Path, None, None]:
     completion_script = subprocess.run(
-        [complgen_binary_path, "aot", "--zsh-script", "-", "-"],
+        [complgen_binary_path, "--zsh", "-", "-"],
         input=grammar,
         stdout=subprocess.PIPE,
         stderr=sys.stderr,

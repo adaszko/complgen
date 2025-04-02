@@ -15,48 +15,28 @@ use complgen::regex::AugmentedRegex;
 
 #[derive(clap::Parser)]
 struct Cli {
-    #[clap(subcommand)]
-    mode: Mode,
-}
+    #[clap(long)]
+    scrape: bool,
 
-#[derive(clap::Subcommand)]
-enum Mode {
-    #[command(about = "Do not complete -- only check a grammar file for errors")]
-    Check(CheckArgs),
+    #[clap(long)]
+    version: bool,
 
-    #[command(about = "Write autocompletions shell script file")]
-    Aot(AotArgs),
-
-    #[command(about = "Read `cmd --help` output of another command and emit a grammar")]
-    Scrape,
-
-    #[command(about = "Show version and exit")]
-    Version,
-}
-
-#[derive(clap::Args)]
-struct CheckArgs {
-    usage_file_path: String,
-}
-
-#[derive(clap::Args)]
-struct AotArgs {
     usage_file_path: String,
 
     #[clap(long)]
-    bash_script: Option<String>,
+    bash: Option<String>,
 
     #[clap(long)]
-    fish_script: Option<String>,
+    fish: Option<String>,
 
     #[clap(long)]
-    zsh_script: Option<String>,
+    zsh: Option<String>,
 
     #[clap(long)]
-    dfa_dot: Option<String>,
+    dfa: Option<String>,
 
     #[clap(long)]
-    railroad_svg: Option<String>,
+    railroad: Option<String>,
 }
 
 fn get_file_or_stdin(path: &str) -> anyhow::Result<Box<dyn Read>> {
@@ -193,22 +173,6 @@ fn handle_validation_error(g: Grammar, input: &str) -> anyhow::Result<ValidGramm
     }
 }
 
-fn check(args: &CheckArgs) -> anyhow::Result<()> {
-    let mut input_file =
-        get_file_or_stdin(&args.usage_file_path).context(args.usage_file_path.to_owned())?;
-    let mut input: String = Default::default();
-    input_file.read_to_string(&mut input)?;
-    let grammar = handle_parse_error(&input)?;
-    let validated = handle_validation_error(grammar, &input)?;
-    let arena = Bump::new();
-    let regex = AugmentedRegex::from_expr(&validated.expr, &validated.specializations, &arena);
-    let dfa = DFA::from_regex(&regex);
-    if dfa.is_ambiguous(validated.command) {
-        exit(1);
-    };
-    Ok(())
-}
-
 fn get_file_or_stdout(path: &str) -> anyhow::Result<Box<dyn Write>> {
     let result: Box<dyn Write> = if path == "-" {
         Box::new(std::io::stdout())
@@ -218,20 +182,7 @@ fn get_file_or_stdout(path: &str) -> anyhow::Result<Box<dyn Write>> {
     Ok(result)
 }
 
-fn aot(args: &AotArgs) -> anyhow::Result<()> {
-    if let (None, None, None, None, None) = (
-        &args.railroad_svg,
-        &args.dfa_dot,
-        &args.bash_script,
-        &args.fish_script,
-        &args.zsh_script,
-    ) {
-        eprintln!(
-            "Please specify at least one of --railroad-svg, --dfa-dot, --bash-script, --fish-script, --zsh-script options"
-        );
-        std::process::exit(1);
-    }
-
+fn aot(args: &Cli) -> anyhow::Result<()> {
     let input = {
         let mut usage_file = get_file_or_stdin(&args.usage_file_path)?;
         let mut input = String::default();
@@ -243,7 +194,7 @@ fn aot(args: &AotArgs) -> anyhow::Result<()> {
 
     let grammar = handle_parse_error(&input)?;
 
-    if let Some(railroad_svg_path) = &args.railroad_svg {
+    if let Some(railroad_svg_path) = &args.railroad {
         to_railroad_diagram_file(&grammar, railroad_svg_path).context(railroad_svg_path.clone())?;
     }
 
@@ -270,28 +221,30 @@ fn aot(args: &AotArgs) -> anyhow::Result<()> {
     log::debug!("Minimizing DFA");
     let dfa = dfa.minimize();
 
-    if let Some(dot_file_path) = &args.dfa_dot {
+    if let Some(dot_file_path) = &args.dfa {
         let mut dot_file = get_file_or_stdout(dot_file_path)?;
         dfa.to_dot(&mut dot_file).context(dot_file_path.clone())?;
     }
 
-    dfa.is_ambiguous(validated.command);
+    if dfa.is_ambiguous(validated.command) {
+        exit(1);
+    };
 
-    if let Some(path) = &args.bash_script {
+    if let Some(path) = &args.bash {
         log::debug!("Writing Bash completion script");
         let script_file = get_file_or_stdout(path)?;
         let mut writer = BufWriter::new(script_file);
         complgen::bash::write_completion_script(&mut writer, &validated.command, &dfa)?;
     }
 
-    if let Some(path) = &args.fish_script {
+    if let Some(path) = &args.fish {
         log::debug!("Writing Fish completion script");
         let script_file = get_file_or_stdout(path)?;
         let mut writer = BufWriter::new(script_file);
         complgen::fish::write_completion_script(&mut writer, &validated.command, &dfa)?;
     }
 
-    if let Some(path) = &args.zsh_script {
+    if let Some(path) = &args.zsh {
         log::debug!("Writing Zsh completion script");
         let expected_name = format!("_{}", validated.command);
         if path != "-"
@@ -324,13 +277,15 @@ fn scrape() -> anyhow::Result<()> {
 fn main() -> anyhow::Result<()> {
     env_logger::init();
     let args = Cli::parse();
-    match args.mode {
-        Mode::Check(args) => check(&args)?,
-        Mode::Aot(args) => aot(&args)?,
-        Mode::Scrape => scrape()?,
-        Mode::Version => {
-            println!("{}", env!("COMPLGEN_VERSION"));
-        }
-    };
-    Ok(())
+
+    if args.version {
+        println!("{}", env!("COMPLGEN_VERSION"));
+        return Ok(());
+    }
+
+    if args.scrape {
+        return scrape();
+    }
+
+    aot(&args)
 }

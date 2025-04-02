@@ -1,7 +1,7 @@
 ## Value Proposition
 
 `complgen` generates completion scripts for bash/fish/zsh from a man-page/EBNF-like grammar.  The resulting
-scripts require only the target shell to be present.  See [examples](examples/).
+standalone scripts require only the target shell to be present.  See [examples](examples/).
 
 ## Demo
 
@@ -16,7 +16,7 @@ scripts require only the target shell to be present.  See [examples](examples/).
 ```sh
 $ cat hello.usage
 hello --color=(always | never | auto);
-$ complgen aot --bash-script hello.bash hello.usage
+$ complgen --bash hello.bash hello.usage
 $ source hello.bash
 $ hello --color=<TAB>
 always auto never
@@ -31,7 +31,7 @@ always auto never
 ```sh
 $ cat hello.usage
 hello --color=(always | never | auto);
-$ complgen aot --fish-script hello.fish hello.usage
+$ complgen --fish hello.fish hello.usage
 $ source hello.fish
 $ hello --color=<TAB>
 --color=always  --color=auto  --color=never
@@ -46,7 +46,7 @@ $ hello --color=<TAB>
 ```sh
 % cat hello.usage
 hello --color=(always | never | auto);
-% complgen aot --zsh-script _hello hello.usage
+% complgen --zsh _hello hello.usage
 % source _hello
 % hello --color=<TAB>
 always
@@ -72,7 +72,7 @@ Try piping through the `scrape` subcommand to quickly generate grammar skeleton 
 further, e.g.:
 
 ```
-$ grep --help | complgen scrape
+$ grep --help | complgen --scrape
  | (-E | --extended-regexp) "PATTERNS are extended regular expressions"
  | (-F | --fixed-strings) "PATTERNS are strings"
  | (-G | --basic-regexp) "PATTERNS are basic regular expressions"

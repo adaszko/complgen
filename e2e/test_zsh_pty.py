@@ -14,7 +14,7 @@ from conftest import set_working_dir
 
 
 def get_autoloaded_completion_output(complgen_binary_path: Path, grammar: str, cmd: str, input: bytes, working_dir: Path | None = None) -> list[str]:
-    completion_script = subprocess.run([complgen_binary_path, 'aot', '--zsh-script', '-', '-'], input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True).stdout.decode()
+    completion_script = subprocess.run([complgen_binary_path, '--zsh', '-', '-'], input=grammar.encode(), stdout=subprocess.PIPE, stderr=sys.stderr, check=True).stdout.decode()
     (pid, fd) = pty.fork()
     if pid == 0:
         # We're in the child
