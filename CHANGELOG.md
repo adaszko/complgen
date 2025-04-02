@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
  - Nontail-position commands
+ - Descriptions under fish and zsh are now deduplicated
 
 ### Fixed
 
