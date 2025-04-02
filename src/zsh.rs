@@ -5,7 +5,7 @@ use crate::grammar::{CmdRegexDecl, Shell, Specialization};
 use crate::regex::Input;
 use crate::{Result, StateId};
 use hashbrown::HashMap;
-use indexmap::IndexSet;
+use indexmap::{IndexMap, IndexSet};
 use ustr::{Ustr, ustr};
 
 // Array indexes in ZSH start from 1 (!)
@@ -49,6 +49,36 @@ fn write_lookup_tables<W: Write>(
     );
     writeln!(buffer, r#"    declare -a {prefix}literals=({literals})"#)?;
 
+    let descrs: IndexSet<Ustr> = all_literals
+        .iter()
+        .map(|(_, _, descr)| *descr)
+        .filter(|d| !d.is_empty())
+        .collect();
+    writeln!(buffer, r#"    declare -A {prefix}descrs=()"#)?;
+    for descr in &descrs {
+        if descr.is_empty() {
+            continue;
+        }
+        let id = descrs.get_index_of(descr).unwrap();
+        let quoted = make_string_constant(&descr);
+        writeln!(buffer, r#"    {prefix}descrs[{id}]={quoted}"#)?;
+    }
+
+    let descr_id_from_literal_id: IndexMap<usize, usize> = all_literals
+        .iter()
+        .filter_map(|(id, _, description)| descrs.get_index_of(description).map(|d| (*id, d)))
+        .collect();
+    let initializer = itertools::join(
+        descr_id_from_literal_id
+            .iter()
+            .map(|(literal_id, descr_id)| format!("[{literal_id}]={descr_id}")),
+        " ",
+    );
+    writeln!(
+        buffer,
+        r#"    declare -A {prefix}descr_id_from_literal_id=({initializer})"#
+    )?;
+
     let regexes: String = itertools::join(
         id_from_regex
             .iter()
@@ -56,15 +86,6 @@ fn write_lookup_tables<W: Write>(
         " ",
     );
     writeln!(buffer, r#"    declare -a {prefix}regexes=({regexes})"#)?;
-
-    writeln!(buffer, r#"    declare -A {prefix}descriptions=()"#)?;
-    for (id, _, description) in all_literals.iter() {
-        if description.is_empty() {
-            continue;
-        }
-        let quoted = make_string_constant(description);
-        writeln!(buffer, r#"    {prefix}descriptions[{id}]={quoted}"#)?;
-    }
 
     writeln!(buffer, r#"    declare -A {prefix}literal_transitions=()"#)?;
     for state in dfa.get_all_states() {
@@ -233,10 +254,11 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
             declare literal=${{subword_literals[$literal_id]}}
             if [[ $literal = "${{completed_prefix}}"* ]]; then
                 declare completion="$matched_prefix$literal"
-                if [[ -v "subword_descriptions[$literal_id]" ]]; then
+                if [[ -v "subword_descr_id_from_literal_id[$literal_id]" ]]; then
+                    declare descr_id=$subword_descr_id_from_literal_id[$literal_id]
                     subword_completions_no_trailing_space+=("${{completion}}")
                     subword_suffixes_no_trailing_space+=("${{completion}}")
-                    subword_descriptions_no_trailing_space+=("${{subword_descriptions[$literal_id]}}")
+                    subword_descriptions_no_trailing_space+=("${{subword_descrs[$descr_id]}}")
                 else
                     subword_completions_no_trailing_space+=("${{completion}}")
                     subword_suffixes_no_trailing_space+=("${{literal}}")
@@ -892,10 +914,11 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         eval "declare initializer=\${{${{literal_transitions_name}}[$state]}}"
         eval "declare -a transitions=($initializer)"
         for literal_id in "${{transitions[@]}}"; do
-            if [[ -v "descriptions[$literal_id]" ]]; then
+            if [[ -v "descr_id_from_literal_id[$literal_id]" ]]; then
+                declare descr_id=$descr_id_from_literal_id[$literal_id]
                 completions_trailing_space+=("${{literals[$literal_id]}}")
                 suffixes_trailing_space+=("${{literals[$literal_id]}}")
-                descriptions_trailing_space+=("${{descriptions[$literal_id]}}")
+                descriptions_trailing_space+=("${{descrs[$descr_id]}}")
             else
                 completions_no_description_trailing_space+=("${{literals[$literal_id]}}")
             fi
