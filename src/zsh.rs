@@ -225,7 +225,7 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
     subword_descriptions_trailing_space=()
     subword_descriptions_no_trailing_space=()
 
-    for (( subword_fallback_level=0; subword_fallback_level <= subword_max_fallback_level; subword_fallback_level++ )) {{
+    for (( subword_fallback_level=0; subword_fallback_level <= subword_max_fallback_level; subword_fallback_level++ )); do
         declare literal_transitions_name=subword_literal_transitions_level_${{subword_fallback_level}}
         eval "declare initializer=\${{${{literal_transitions_name}}[$subword_state]}}"
         eval "declare -a transitions=($initializer)"
@@ -323,7 +323,7 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
         if [[ ${{#subword_completions_no_description_trailing_space}} -gt 0 || ${{#subword_completions_trailing_space}} -gt 0 || ${{#subword_completions_no_trailing_space}} -gt 0 ]]; then
             break
         fi
-    }}
+    done
     return 0
 }}
 "#
@@ -575,24 +575,23 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     let id_from_dfa = dfa.get_subwords(1);
     if !id_from_dfa.is_empty() {
         write_generic_subword_fn(buffer, command)?;
-    }
-    for (dfa, id) in &id_from_dfa {
-        write_subword_fn(
-            buffer,
-            command,
-            *id,
-            dfa.as_ref(),
-            &id_from_cmd,
-            &id_from_regex,
-        )?;
-        writeln!(buffer)?;
+        for (dfa, id) in &id_from_dfa {
+            write_subword_fn(
+                buffer,
+                command,
+                *id,
+                dfa.as_ref(),
+                &id_from_cmd,
+                &id_from_regex,
+            )?;
+            writeln!(buffer)?;
+        }
     }
 
     writeln!(buffer, r#"_{command} () {{"#)?;
 
     let literal_id_from_input_description = write_lookup_tables(buffer, dfa, "", &id_from_regex)?;
 
-    writeln!(buffer)?;
     writeln!(buffer, r#"    declare -A subword_transitions=()"#)?;
     for state in dfa.get_all_states() {
         let subword_transitions = dfa.get_subword_transitions_from(state.try_into().unwrap());
@@ -878,7 +877,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         buffer,
         r#"
     declare max_fallback_level={max_fallback_level}
-    for (( fallback_level=0; fallback_level <= max_fallback_level; fallback_level++ )) {{
+    for (( fallback_level=0; fallback_level <= max_fallback_level; fallback_level++ )); do
         completions_no_description_trailing_space=()
         completions_no_description_no_trailing_space=()
         completions_trailing_space=()
@@ -1008,7 +1007,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             compadd -l -Q -S '' -a -d descriptions_no_trailing_space completions_no_trailing_space
             return 0
         fi
-    }}
+    done
 }}
 "#
     )?;

@@ -1,7 +1,7 @@
 ## Value Proposition
 
 `complgen` generates completion scripts for bash/fish/zsh from a man-page/EBNF-like grammar.  The resulting
-scripts require only the target shell to be present and can be distributed on their own.
+scripts require only the target shell to be present.  See [examples](examples/).
 
 ## Demo
 
