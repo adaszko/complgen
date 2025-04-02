@@ -5,7 +5,7 @@ use crate::grammar::{CmdRegexDecl, Shell, Specialization};
 use crate::regex::Input;
 use crate::{Result, StateId};
 use hashbrown::HashMap;
-use indexmap::IndexSet;
+use indexmap::{IndexMap, IndexSet};
 use itertools::Itertools;
 use ustr::{Ustr, ustr};
 
@@ -135,19 +135,47 @@ fn write_subword_lookup_tables<W: Write>(
     writeln!(buffer, r#"    set --global subword_literals {literals}"#)?;
     writeln!(buffer)?;
 
-    writeln!(buffer, r#"    set --global subword_descriptions"#)?;
-    for (id, _, description) in all_literals.iter() {
-        if description.is_empty() {
+    // Use dummy value as 0th element due to fish arrays starting at 1
+    let descrs: IndexSet<Ustr> = std::iter::once(ustr(""))
+        .chain(
+            all_literals
+                .iter()
+                .map(|(_, _, descr)| *descr)
+                .filter(|d| !d.is_empty()),
+        )
+        .collect();
+    writeln!(buffer, r#"    set --global subword_descrs"#)?;
+    for descr in &descrs {
+        if descr.is_empty() {
             continue;
         }
-        let quoted = make_string_constant(description);
-        writeln!(
-            buffer,
-            r#"    set --global subword_descriptions[{id}] {}"#,
-            quoted
-        )?;
+        let id = descrs.get_index_of(descr).unwrap();
+        let quoted = make_string_constant(&descr);
+        writeln!(buffer, r#"    set subword_descrs[{id}] {quoted}"#)?;
     }
-    writeln!(buffer)?;
+
+    let descr_id_from_literal_id: IndexMap<usize, usize> = all_literals
+        .iter()
+        .filter_map(|(id, _, description)| descrs.get_index_of(description).map(|d| (*id, d)))
+        .filter(|(_, d)| *d > 0)
+        .collect();
+    let descr_literal_ids = itertools::join(
+        descr_id_from_literal_id
+            .iter()
+            .map(|(literal_id, _)| format!("{literal_id}")),
+        " ",
+    );
+    writeln!(
+        buffer,
+        r#"    set --global subword_descr_literal_ids {descr_literal_ids}"#
+    )?;
+    let descr_ids = itertools::join(
+        descr_id_from_literal_id
+            .iter()
+            .map(|(_, descr_id)| format!("{descr_id}")),
+        " ",
+    );
+    writeln!(buffer, r#"    set --global subword_descr_ids {descr_ids}"#)?;
 
     let regexes: String = itertools::join(
         id_from_regex
@@ -372,8 +400,9 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
                         continue
                     end
                 end
-                if test -n "$subword_descriptions[$literal_id]"
-                    set --append candidates (printf '%s%s\t%s\n' $matched_prefix $subword_literals[$literal_id] $subword_descriptions[$literal_id])
+                set subword_descr_index (contains --index -- "$literal_id" $subword_descr_literal_ids)
+                if test -n "$subword_descr_index"
+                    set --append candidates (printf '%s%s\t%s\n' $matched_prefix $subword_literals[$literal_id] $subword_descrs[$subword_descr_ids[$subword_descr_index]])
                 else
                     set --append candidates (printf '%s%s\n' $matched_prefix $subword_literals[$literal_id])
                 end
@@ -624,15 +653,44 @@ fn write_lookup_tables<W: Write>(
     writeln!(buffer, r#"    set literals {literals}"#)?;
     writeln!(buffer)?;
 
-    writeln!(buffer, r#"    set descriptions"#)?;
-    for (id, _, description) in all_literals.iter() {
-        if description.is_empty() {
+    // Use dummy value as 0th element due to fish arrays starting at 1
+    let descrs: IndexSet<Ustr> = std::iter::once(ustr(""))
+        .chain(
+            all_literals
+                .iter()
+                .map(|(_, _, descr)| *descr)
+                .filter(|d| !d.is_empty()),
+        )
+        .collect();
+    writeln!(buffer, r#"    set descrs"#)?;
+    for descr in &descrs {
+        if descr.is_empty() {
             continue;
         }
-        let quoted = make_string_constant(description);
-        writeln!(buffer, r#"    set descriptions[{id}] {}"#, quoted)?;
+        let id = descrs.get_index_of(descr).unwrap();
+        let quoted = make_string_constant(&descr);
+        writeln!(buffer, r#"    set descrs[{id}] {quoted}"#)?;
     }
-    writeln!(buffer)?;
+
+    let descr_id_from_literal_id: IndexMap<usize, usize> = all_literals
+        .iter()
+        .filter_map(|(id, _, description)| descrs.get_index_of(description).map(|d| (*id, d)))
+        .filter(|(_, d)| *d > 0)
+        .collect();
+    let descr_literal_ids = itertools::join(
+        descr_id_from_literal_id
+            .iter()
+            .map(|(literal_id, _)| format!("{literal_id}")),
+        " ",
+    );
+    writeln!(buffer, r#"    set descr_literal_ids {descr_literal_ids}"#)?;
+    let descr_ids = itertools::join(
+        descr_id_from_literal_id
+            .iter()
+            .map(|(_, descr_id)| format!("{descr_id}")),
+        " ",
+    );
+    writeln!(buffer, r#"    set descr_ids {descr_ids}"#)?;
 
     let regexes: String = itertools::join(
         id_from_regex
@@ -1189,8 +1247,9 @@ end
             set input_assoc_values (string split '|' $$level_inputs_name)
             set state_inputs (string split ' ' $input_assoc_values[$index])
             for literal_id in $state_inputs
-                if test -n "$descriptions[$literal_id]"
-                    set --append candidates (printf '%s\t%s\n' $literals[$literal_id] $descriptions[$literal_id])
+                set descr_index (contains --index -- "$literal_id" $descr_literal_ids)
+                if test -n "$descr_index"
+                    set --append candidates (printf '%s\t%s\n' $literals[$literal_id] $descrs[$descr_ids[$descr_index]])
                 else
                     set --append candidates (printf '%s\n' $literals[$literal_id])
                 end
