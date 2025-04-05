@@ -5,7 +5,7 @@ standalone scripts require only the target shell to be present.  See [examples](
 
 ## Demo
 
-![demo](https://github.com/adaszko/complgen/blob/cbd65c446de049f81217062e021b74adb4541253/complgen.gif)
+![demo](https://github.com/adaszko/complgen/blob/demo/complgen.gif)
 
 ## Usage
 
