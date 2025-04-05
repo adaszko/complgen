@@ -62,16 +62,24 @@ fn handle_parse_error(input: &str) -> anyhow::Result<Grammar> {
 }
 
 fn handle_validation_error(g: Grammar, input: &str) -> anyhow::Result<ValidGrammar> {
-    match ValidGrammar::from_grammar(g) {
-        Ok(g) => Ok(g),
-        Err(Error::NontailCommand(
+    let e = match ValidGrammar::from_grammar(g) {
+        Ok(vg) => return Ok(vg),
+        Err(e) => e,
+    };
+    match e {
+        Error::VaryingCommandNames(cmds) => {
+            let joined = itertools::join(cmds.into_iter().map(|c| format!("{c}")), ", ");
+            eprintln!("Multiple commands specified: {joined}");
+            exit(1);
+        }
+        Error::NontailCommand(
             _,
             complgen::grammar::ChicSpan::Significant {
                 line_start,
                 start,
                 end,
             },
-        )) => {
+        ) => {
             let error = chic::Error::new("External commands are only allowed at tail position")
                 .error(
                     line_start,
@@ -86,14 +94,14 @@ fn handle_validation_error(g: Grammar, input: &str) -> anyhow::Result<ValidGramm
             eprintln!("{}:{}:{}", line_start, start, error.to_string());
             exit(1);
         }
-        Err(Error::NontailUndefNonterm(
+        Error::NontailUndefNonterm(
             _,
             complgen::grammar::ChicSpan::Significant {
                 line_start,
                 start,
                 end,
             },
-        )) => {
+        ) => {
             let error = chic::Error::new("Undefined nonterminals are only allowed at tail position")
                 .error(
                     line_start,
@@ -107,10 +115,10 @@ fn handle_validation_error(g: Grammar, input: &str) -> anyhow::Result<ValidGramm
             eprintln!("{}:{}:{}", line_start, start, error.to_string());
             exit(1);
         }
-        Err(Error::NontailCommand(_, complgen::grammar::ChicSpan::Dummy)) => {
+        Error::NontailCommand(_, complgen::grammar::ChicSpan::Dummy) => {
             unreachable!()
         }
-        Err(Error::SubwordSpaces(
+        Error::SubwordSpaces(
             ChicSpan::Significant {
                 line_start: left_line_start,
                 start: left_start,
@@ -122,7 +130,7 @@ fn handle_validation_error(g: Grammar, input: &str) -> anyhow::Result<ValidGramm
                 start: right_start,
             },
             trace,
-        )) => {
+        ) => {
             let error = chic::Error::new(
                 "Adjacent literals in expression used in a subword context.  First one:",
             )
@@ -169,7 +177,7 @@ fn handle_validation_error(g: Grammar, input: &str) -> anyhow::Result<ValidGramm
             }
             exit(1);
         }
-        Err(e) => {
+        e => {
             eprintln!("{}", e.to_string());
             exit(1);
         }

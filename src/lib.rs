@@ -15,7 +15,7 @@ pub enum Error {
     #[error("Grammar needs to contain at least one call variant, e.g. grep;")]
     MissingCallVariants,
 
-    #[error("One command is allowed in completions definition")]
+    #[error("Multiple commands: {:?}", .0)]
     VaryingCommandNames(Vec<Ustr>),
 
     #[error("Invalid command name: {}", .0)]
