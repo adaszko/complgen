@@ -1,17 +1,9 @@
-complgen aot "Write autocompletions shell script file" <AOT-OPTION>... <PATH>;
-<AOT-OPTION> ::= (--bash-script <PATH>) "Write Bash completion script"
-               | (--fish-script <PATH>) "Write Fish completion script"
-               | (--zsh-script <PATH>) "Write ZSH completion script"
-               | (--dfa-dot <PATH>) "Write computed DFA in a GraphViz format"
-               | (--railroad-svg <PATH>) "Write parsed grammar as a railroad diagram"
-               | (-h | --help) "Print help"
-               ;
-
-complgen check "Do not complete -- only check a grammar file for errors" [(-h | --help) "Print help"] <PATH>;
-
-complgen scrape "Read `cmd --help` output of another command and emit a grammar" [(-h | --help) "Print help"];
-complgen help <COMPLGEN_COMMAND>;
-
-complgen version "Show version and exit";
-
-<COMPLGEN_COMMAND> ::= aot | check | scrape | help;
+complgen <OPTION> <PATH>;
+<OPTION> ::= [(--bash <BASH>) "Write bash completion script"]
+             [(--fish <FISH>) "Write fish completion script"]
+             [(--zsh <ZSH>) "Write zsh completion script"]
+             [(--dfa <DFA>) "Dump resulting DFA as a GraphViz .dot format"]
+             [(--railroad <RAILROAD>) "Dump the parsed grammar as SVG railroad diagram"]
+         ;
+complgen --scrape "Read another program's --help output and generate a grammar SKELETON";
+complgen --version;

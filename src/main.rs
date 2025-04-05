@@ -3,7 +3,7 @@ use std::io::{BufWriter, Read, Write};
 use std::path::Path;
 use std::process::exit;
 
-use anyhow::Context;
+use anyhow::{Context, bail};
 use bumpalo::Bump;
 use clap::Parser;
 
@@ -15,27 +15,30 @@ use complgen::regex::AugmentedRegex;
 
 #[derive(clap::Parser)]
 struct Cli {
-    #[clap(long)]
+    #[clap(
+        long,
+        help = "Read another program's --help output and generate a grammar SKELETON"
+    )]
     scrape: bool,
 
-    #[clap(long)]
+    #[clap(long, help = "Show version and exit")]
     version: bool,
 
-    usage_file_path: String,
+    usage_file_path: Option<String>,
 
-    #[clap(long)]
+    #[clap(long, help = "Write bash completion script")]
     bash: Option<String>,
 
-    #[clap(long)]
+    #[clap(long, help = "Write fish completion script")]
     fish: Option<String>,
 
-    #[clap(long)]
+    #[clap(long, help = "Write zsh completion script")]
     zsh: Option<String>,
 
-    #[clap(long)]
+    #[clap(long, help = "Dump resulting DFA as a GraphViz .dot format")]
     dfa: Option<String>,
 
-    #[clap(long)]
+    #[clap(long, help = "Dump the parsed grammar as SVG railroad diagram")]
     railroad: Option<String>,
 }
 
@@ -183,12 +186,16 @@ fn get_file_or_stdout(path: &str) -> anyhow::Result<Box<dyn Write>> {
 }
 
 fn aot(args: &Cli) -> anyhow::Result<()> {
+    let Some(ref usage_file_path) = args.usage_file_path else {
+        bail!("Missing usage file path argument")
+    };
+
     let input = {
-        let mut usage_file = get_file_or_stdin(&args.usage_file_path)?;
+        let mut usage_file = get_file_or_stdin(&usage_file_path)?;
         let mut input = String::default();
         usage_file
             .read_to_string(&mut input)
-            .context(args.usage_file_path.to_owned())?;
+            .context(usage_file_path.to_owned())?;
         input
     };
 
