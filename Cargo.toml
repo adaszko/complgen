@@ -1,8 +1,8 @@
 [package]
 name = "complgen"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
-description = "A programming-language-agnostic shell completions generator"
+description = "Declarative bash/fish/zsh completions without writing shell scripts"
 
 [lib]
 name = "complgen"
