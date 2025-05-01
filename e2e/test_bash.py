@@ -310,3 +310,13 @@ def test_handles_special_characters(complgen_binary_path: Path, literal: str):
             r'''COMP_WORDS=(cmd); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
         )
         assert get_sorted_bash_completions(path, input) == sorted([literal + " "])
+
+
+def test_clashing_variants(complgen_binary_path: Path):
+    GRAMMAR = r"""
+mygit clone "Clone a repository into a new directory";
+mygit clone --bare;
+"""
+    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
+        input = r'''COMP_WORDS=(mygit clone --); COMP_CWORD=2; _mygit; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(["--bare"])
