@@ -11,7 +11,7 @@ use complgen::grammar::{ChicSpan, Grammar, ValidGrammar, to_railroad_diagram_fil
 
 use complgen::Error;
 use complgen::dfa::DFA;
-use complgen::regex::AugmentedRegex;
+use complgen::regex::Regex;
 
 #[derive(clap::Parser)]
 struct Cli {
@@ -228,7 +228,7 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
     let arena = Bump::new();
 
     log::debug!("Grammar -> Regex");
-    let regex = AugmentedRegex::from_expr(&validated.expr, &validated.specializations, &arena);
+    let regex = Regex::from_expr(&validated.expr, &validated.specializations, &arena);
 
     log::debug!("Regex -> DFA");
     let dfa = DFA::from_regex(&regex);

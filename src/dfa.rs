@@ -9,7 +9,7 @@ use crate::StateId;
 use crate::grammar::{CmdRegexDecl, Shell};
 use crate::{
     grammar::DFARef,
-    regex::{AugmentedRegex, Input, Position},
+    regex::{Regex, Input, Position},
 };
 
 // Every state in a DFA is formally defined to have a transition on *every* input symbol.  In
@@ -31,7 +31,7 @@ pub struct DFA {
 
 // Reference:
 //  * The Dragon Book: 3.9.5 Converting a Regular Expression Directly to a DFA
-fn dfa_from_regex(regex: &AugmentedRegex) -> DFA {
+fn dfa_from_regex(regex: &Regex) -> DFA {
     let mut unallocated_state_id = FIRST_STATE_ID;
     let combined_starting_state: BTreeSet<Position> = regex.firstpos();
     let combined_starting_state_id = unallocated_state_id;
@@ -621,7 +621,7 @@ fn do_get_subdfa_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)
 }
 
 impl DFA {
-    pub fn from_regex(regex: &AugmentedRegex) -> Self {
+    pub fn from_regex(regex: &Regex) -> Self {
         dfa_from_regex(regex)
     }
 
@@ -978,7 +978,7 @@ mod tests {
 
     use crate::grammar::tests::arb_expr_match;
     use crate::grammar::{ChicSpan, Expr};
-    use crate::regex::AugmentedRegex;
+    use crate::regex::Regex;
     use Expr::*;
 
     use super::*;
@@ -1073,7 +1073,7 @@ mod tests {
         let expr = Terminal(ustr("foo"), None, 0, ChicSpan::Dummy);
         let arena = Bump::new();
         let specs = UstrMap::default();
-        let regex = AugmentedRegex::from_expr(&expr, &specs, &arena);
+        let regex = Regex::from_expr(&expr, &specs, &arena);
         let dfa = DFA::from_regex(&regex);
         let transitions = dfa.get_transitions();
         assert_eq!(transitions, vec![Transition::new(1, "foo", 2)]);
@@ -1091,7 +1091,7 @@ mod tests {
             // println!("{:?}", input);
             let arena = Bump::new();
             let specs = UstrMap::default();
-            let regex = AugmentedRegex::from_expr(&expr, &specs, &arena);
+            let regex = Regex::from_expr(&expr, &specs, &arena);
             let dfa = DFA::from_regex(&regex);
             let input: Vec<&str> = input.iter().map(|s| {
                 let s: &str = s;
@@ -1106,7 +1106,7 @@ mod tests {
             println!("{:?}", input);
             let arena = Bump::new();
             let specs = UstrMap::default();
-            let regex = AugmentedRegex::from_expr(&expr, &specs, &arena);
+            let regex = Regex::from_expr(&expr, &specs, &arena);
             let dfa = DFA::from_regex(&regex);
             let input: Vec<&str> = input.iter().map(|s| {
                 let s: &str = s;
@@ -1202,7 +1202,7 @@ mod tests {
         );
         let arena = Bump::new();
         let specs = UstrMap::default();
-        let regex = AugmentedRegex::from_expr(&expr, &specs, &arena);
+        let regex = Regex::from_expr(&expr, &specs, &arena);
         let dfa = DFA::from_regex(&regex);
         let input: Vec<&str> = input
             .iter()
@@ -1237,7 +1237,7 @@ mod tests {
         );
         let arena = Bump::new();
         let specs = UstrMap::default();
-        let regex = AugmentedRegex::from_expr(&expr, &specs, &arena);
+        let regex = Regex::from_expr(&expr, &specs, &arena);
         let dfa = DFA::from_regex(&regex);
         let input: Vec<&str> = input
             .iter()
@@ -1276,7 +1276,7 @@ mod tests {
         );
         let arena = Bump::new();
         let specs = UstrMap::default();
-        let regex = AugmentedRegex::from_expr(&expr, &specs, &arena);
+        let regex = Regex::from_expr(&expr, &specs, &arena);
         let dfa = DFA::from_regex(&regex);
         let input: Vec<&str> = input
             .iter()

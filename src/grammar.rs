@@ -16,7 +16,7 @@ use nom::{
 use crate::{Error, Result};
 use ustr::{Ustr, UstrMap, UstrSet, ustr};
 
-use crate::{dfa::DFA, regex::AugmentedRegex};
+use crate::{dfa::DFA, regex::Regex};
 
 // A wrapper so that we use Rc::ptr_eq() for equality comparisons instead of comparing entire DFAs,
 // which is expensive.
@@ -995,7 +995,7 @@ fn compile_subword_exprs(expr: Rc<Expr>, specs: &UstrMap<Specialization>) -> Rc<
                 SubwordCompilationPhase::DFA(_) => unreachable!(),
             };
             let subword_expr = flatten_expr(subword_expr);
-            let regex = AugmentedRegex::from_expr(&subword_expr, specs, &arena);
+            let regex = Regex::from_expr(&subword_expr, specs, &arena);
             let dfa = DFA::from_regex(&regex);
             let dfa = dfa.minimize();
             Rc::new(Expr::Subword(
