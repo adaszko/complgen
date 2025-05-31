@@ -34,3 +34,6 @@ ustr = "0.9.0"
 
 [dev-dependencies]
 proptest = "1.1.0"
+
+[profile.dev]
+debug = "line-tables-only"
