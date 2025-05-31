@@ -7,7 +7,7 @@ use anyhow::{Context, bail};
 use bumpalo::Bump;
 use clap::Parser;
 
-use complgen::grammar::{ChicSpan, Grammar, ValidGrammar, to_railroad_diagram_file};
+use complgen::grammar::{ChicSpan, Grammar, Shell, ValidGrammar, to_railroad_diagram_file};
 
 use complgen::Error;
 use complgen::dfa::DFA;
@@ -17,7 +17,7 @@ use complgen::regex::Regex;
 struct Cli {
     #[clap(
         long,
-        help = "Read another program's --help output and generate a grammar SKELETON"
+        help = "Read another program's --help output and generate a grammar *skeleton*"
     )]
     scrape: bool,
 
@@ -26,19 +26,27 @@ struct Cli {
 
     usage_file_path: Option<String>,
 
-    #[clap(long, help = "Write bash completion script")]
+    #[clap(long, help = "Write bash completion script", name = "BASH_SCRIPT_PATH")]
     bash: Option<String>,
 
-    #[clap(long, help = "Write fish completion script")]
+    #[clap(long, help = "Write fish completion script", name = "FISH_SCRIPT_PATH")]
     fish: Option<String>,
 
-    #[clap(long, help = "Write zsh completion script")]
+    #[clap(long, help = "Write zsh completion script", name = "ZSH_SCRIPT_PATH")]
     zsh: Option<String>,
 
-    #[clap(long, help = "Dump resulting DFA as a GraphViz .dot format")]
+    #[clap(
+        long,
+        help = "Write DFA in GraphViz .dot format",
+        name = "DFA_DOT_PATH"
+    )]
     dfa: Option<String>,
 
-    #[clap(long, help = "Dump the parsed grammar as SVG railroad diagram")]
+    #[clap(
+        long,
+        help = "Write .usage grammar as a railroad diagram (SVG)",
+        name = "RAILROAD_SVG_PATH"
+    )]
     railroad: Option<String>,
 }
 
@@ -61,62 +69,12 @@ fn handle_parse_error(input: &str) -> anyhow::Result<Grammar> {
     }
 }
 
-fn handle_validation_error(g: Grammar, input: &str) -> anyhow::Result<ValidGrammar> {
-    let e = match ValidGrammar::from_grammar(g) {
-        Ok(vg) => return Ok(vg),
-        Err(e) => e,
-    };
+fn handle_validation_error(e: Error, input: &str) -> anyhow::Result<ValidGrammar> {
     match e {
         Error::VaryingCommandNames(cmds) => {
             let joined = itertools::join(cmds.into_iter().map(|c| format!("{c}")), ", ");
             eprintln!("Multiple commands specified: {joined}");
             exit(1);
-        }
-        Error::NontailCommand(
-            _,
-            complgen::grammar::ChicSpan::Significant {
-                line_start,
-                start,
-                end,
-            },
-        ) => {
-            let error = chic::Error::new("External commands are only allowed at tail position")
-                .error(
-                    line_start,
-                    start,
-                    end,
-                    input.lines().nth(line_start).unwrap(),
-                    "",
-                )
-                .help("Either try moving the command into tail position (i.e. last branch of | or ||; end of a subword)")
-                .help("or output the suffix from the external command")
-                .help(r#"or specify regex the output needs to match via @SHELL"..." construct"#);
-            eprintln!("{}:{}:{}", line_start, start, error.to_string());
-            exit(1);
-        }
-        Error::NontailUndefNonterm(
-            _,
-            complgen::grammar::ChicSpan::Significant {
-                line_start,
-                start,
-                end,
-            },
-        ) => {
-            let error = chic::Error::new("Undefined nonterminals are only allowed at tail position")
-                .error(
-                    line_start,
-                    start,
-                    end,
-                    input.lines().nth(line_start).unwrap(),
-                    "",
-                )
-                .help("Either try moving the command into tail position (i.e. last branch of | or ||; end of a subword)")
-                .help("or supply its definition via ::=");
-            eprintln!("{}:{}:{}", line_start, start, error.to_string());
-            exit(1);
-        }
-        Error::NontailCommand(_, complgen::grammar::ChicSpan::Dummy) => {
-            unreachable!()
         }
         Error::SubwordSpaces(
             ChicSpan::Significant {
@@ -213,22 +171,38 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
         to_railroad_diagram_file(&grammar, railroad_svg_path).context(railroad_svg_path.clone())?;
     }
 
-    let validated = handle_validation_error(grammar, &input)?;
+    let (shell, path) = match (&args.bash, &args.fish, &args.zsh) {
+        (Some(path), None, None) => (Shell::Bash, path),
+        (None, Some(path), None) => (Shell::Fish, path),
+        (None, None, Some(path)) => (Shell::Zsh, path),
+
+        _ => todo!(),
+    };
+
+    let validated = match ValidGrammar::from_grammar(grammar, shell) {
+        Ok(validated) => validated,
+        Err(e) => {
+            handle_validation_error(e, &input)?;
+            return Ok(());
+        }
+    };
 
     if !validated.undefined_nonterminals.is_empty() {
         let joined = itertools::join(validated.undefined_nonterminals, " ");
-        eprintln!("Warning: Undefined nonterminal(s): {}", joined);
+        eprintln!("warning: undefined nonterminal(s): {}", joined);
     }
 
     if !validated.unused_nonterminals.is_empty() {
         let joined = itertools::join(validated.unused_nonterminals, " ");
-        eprintln!("Warning: Unused nonterminal(s): {}", joined);
+        eprintln!("warning: unused nonterminal(s): {}", joined);
     }
 
     let arena = Bump::new();
 
     log::debug!("Grammar -> Regex");
-    let regex = Regex::from_expr(&validated.expr, &validated.specializations, &arena);
+    let regex = Regex::from_expr(&validated.expr, &validated.specializations, &arena)?;
+
+    regex.ensure_ambiguous_inputs_tail_only(shell)?;
 
     log::debug!("Regex -> DFA");
     let dfa = DFA::from_regex(&regex);
@@ -245,33 +219,27 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
         exit(1);
     };
 
-    if let Some(path) = &args.bash {
-        log::debug!("Writing Bash completion script");
-        let script_file = get_file_or_stdout(path)?;
-        let mut writer = BufWriter::new(script_file);
-        complgen::bash::write_completion_script(&mut writer, &validated.command, &dfa)?;
-    }
+    let script_file = get_file_or_stdout(path)?;
+    let mut writer = BufWriter::new(script_file);
 
-    if let Some(path) = &args.fish {
-        log::debug!("Writing Fish completion script");
-        let script_file = get_file_or_stdout(path)?;
-        let mut writer = BufWriter::new(script_file);
-        complgen::fish::write_completion_script(&mut writer, &validated.command, &dfa)?;
-    }
-
-    if let Some(path) = &args.zsh {
-        log::debug!("Writing Zsh completion script");
-        let expected_name = format!("_{}", validated.command);
-        if path != "-"
-            && Path::new(path).file_name().unwrap_or_default() != OsStr::new(&expected_name)
-        {
-            eprintln!(
-                "Warning: ZSH requires the output script to be named {expected_name:?} for autoloading to work"
-            );
+    match shell {
+        Shell::Bash => {
+            complgen::bash::write_completion_script(&mut writer, &validated.command, &dfa)?
         }
-        let script_file = get_file_or_stdout(path)?;
-        let mut writer = BufWriter::new(script_file);
-        complgen::zsh::write_completion_script(&mut writer, &validated.command, &dfa)?;
+        Shell::Fish => {
+            complgen::fish::write_completion_script(&mut writer, &validated.command, &dfa)?
+        }
+        Shell::Zsh => {
+            let expected_name = format!("_{}", validated.command);
+            if path != "-"
+                && Path::new(path).file_name().unwrap_or_default() != OsStr::new(&expected_name)
+            {
+                eprintln!(
+                    "warning: ZSH requires the output script to be named {expected_name:?} for autoloading to work"
+                );
+            }
+            complgen::zsh::write_completion_script(&mut writer, &validated.command, &dfa)?;
+        }
     }
 
     Ok(())

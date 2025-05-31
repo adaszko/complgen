@@ -9,7 +9,7 @@ use crate::StateId;
 use crate::grammar::{CmdRegexDecl, Shell};
 use crate::{
     grammar::DFARef,
-    regex::{Regex, Input, Position},
+    regex::{Input, Position, Regex},
 };
 
 // Every state in a DFA is formally defined to have a transition on *every* input symbol.  In
@@ -644,7 +644,7 @@ impl DFA {
             }
 
             for (transition_input, to) in self.iter_transitions_from(current_state) {
-                if transition_input.matches_anything(shell) {
+                if transition_input.is_ambiguous(shell) {
                     current_state = to;
                     break 'outer;
                 }
@@ -918,7 +918,7 @@ impl DFA {
         self.iter_transitions()
             .filter_map(move |(from, input, to)| {
                 // XXX Likely wrong
-                if input.matches_anything(shell) {
+                if input.is_ambiguous(shell) {
                     Some((from, to))
                 } else {
                     None
@@ -1028,7 +1028,7 @@ mod tests {
 
                 let anys: Vec<(Input, StateId)> = self
                     .iter_transitions_from(current_state)
-                    .filter(|(input, _)| input.matches_anything(shell))
+                    .filter(|(input, _)| input.is_ambiguous(shell))
                     .map(|(k, v)| (k.clone(), v))
                     .collect();
                 // It's ambiguous which transition to take if there are two transitions
@@ -1036,7 +1036,7 @@ mod tests {
                 prop_assume!(anys.len() <= 1);
 
                 for (transition_input, to) in anys {
-                    if transition_input.matches_anything(shell) {
+                    if transition_input.is_ambiguous(shell) {
                         input_index += 1;
                         current_state = to;
                         continue 'outer;
@@ -1073,7 +1073,7 @@ mod tests {
         let expr = Terminal(ustr("foo"), None, 0, ChicSpan::Dummy);
         let arena = Bump::new();
         let specs = UstrMap::default();
-        let regex = Regex::from_expr(&expr, &specs, &arena);
+        let regex = Regex::from_expr(&expr, &specs, &arena).unwrap();
         let dfa = DFA::from_regex(&regex);
         let transitions = dfa.get_transitions();
         assert_eq!(transitions, vec![Transition::new(1, "foo", 2)]);
@@ -1091,7 +1091,7 @@ mod tests {
             // println!("{:?}", input);
             let arena = Bump::new();
             let specs = UstrMap::default();
-            let regex = Regex::from_expr(&expr, &specs, &arena);
+            let regex = Regex::from_expr(&expr, &specs, &arena).unwrap();
             let dfa = DFA::from_regex(&regex);
             let input: Vec<&str> = input.iter().map(|s| {
                 let s: &str = s;
@@ -1106,7 +1106,7 @@ mod tests {
             println!("{:?}", input);
             let arena = Bump::new();
             let specs = UstrMap::default();
-            let regex = Regex::from_expr(&expr, &specs, &arena);
+            let regex = Regex::from_expr(&expr, &specs, &arena).unwrap();
             let dfa = DFA::from_regex(&regex);
             let input: Vec<&str> = input.iter().map(|s| {
                 let s: &str = s;
@@ -1202,7 +1202,7 @@ mod tests {
         );
         let arena = Bump::new();
         let specs = UstrMap::default();
-        let regex = Regex::from_expr(&expr, &specs, &arena);
+        let regex = Regex::from_expr(&expr, &specs, &arena).unwrap();
         let dfa = DFA::from_regex(&regex);
         let input: Vec<&str> = input
             .iter()
@@ -1237,7 +1237,7 @@ mod tests {
         );
         let arena = Bump::new();
         let specs = UstrMap::default();
-        let regex = Regex::from_expr(&expr, &specs, &arena);
+        let regex = Regex::from_expr(&expr, &specs, &arena).unwrap();
         let dfa = DFA::from_regex(&regex);
         let input: Vec<&str> = input
             .iter()
@@ -1276,7 +1276,7 @@ mod tests {
         );
         let arena = Bump::new();
         let specs = UstrMap::default();
-        let regex = Regex::from_expr(&expr, &specs, &arena);
+        let regex = Regex::from_expr(&expr, &specs, &arena).unwrap();
         let dfa = DFA::from_regex(&regex);
         let input: Vec<&str> = input
             .iter()

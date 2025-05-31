@@ -33,11 +33,8 @@ pub enum Error {
     #[error("Can only specialize external commands: {}@{:?}", .0, .1)]
     NonCommandSpecialization(Ustr, Option<Ustr>),
 
-    #[error("Commands are only allowed at a tail position to avoid ambiguities")]
-    NontailCommand(Ustr, ChicSpan),
-
-    #[error("Undefined nonterminal at a non-tail position")]
-    NontailUndefNonterm(Ustr, ChicSpan),
+    #[error("Ambiguity in matching")]
+    AmbiguousMatchable,
 
     #[error("Two adjacent terminals in a subword expression: {:?}", .0)]
     SubwordSpaces(ChicSpan, ChicSpan, Vec<ChicSpan>),
