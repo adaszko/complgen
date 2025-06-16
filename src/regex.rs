@@ -383,8 +383,8 @@ fn do_ensure_ambiguous_inputs_tail_only(
 
     let mut prev_ambiguous: Option<Input> = None;
     for inp in inputs {
-        if let Some(..) = prev_ambiguous {
-            return Err(Error::AmbiguousMatchable);
+        if let Some(prev_inp) = prev_ambiguous {
+            return Err(Error::AmbiguousMatchable(prev_inp, inp));
         }
         if inp.is_ambiguous(shell) {
             prev_ambiguous = Some(inp);
@@ -412,7 +412,7 @@ fn do_ensure_ambiguous_inputs_tail_only_subword(
     followpos: &BTreeMap<Position, RoaringBitmap>,
     input_from_position: &Vec<Input>,
     shell: Shell,
-    had_ambiguous: bool,
+    path_prev_ambiguous: Option<Input>,
     visited: &mut RoaringBitmap,
 ) -> Result<()> {
     let unvisited = firstpos - visited.clone();
@@ -424,17 +424,25 @@ fn do_ensure_ambiguous_inputs_tail_only_subword(
         let Some(follow) = followpos.get(&pos) else {
             return Ok(());
         };
-        let is_amb = input_from_position[pos as usize].is_ambiguous(shell);
-        if is_amb && had_ambiguous {
-            return Err(Error::AmbiguousMatchable);
-        }
+        let inp = input_from_position[pos as usize].clone();
+        let this_ambiguous = if inp.is_ambiguous(shell) {
+            Some(inp)
+        } else {
+            None
+        };
+        match (&path_prev_ambiguous, &this_ambiguous) {
+            (Some(prev_inp), Some(inp)) => {
+                return Err(Error::AmbiguousMatchable(prev_inp.clone(), inp.clone()));
+            }
+            _ => (),
+        };
         visited.insert(pos);
         return do_ensure_ambiguous_inputs_tail_only_subword(
             follow,
             followpos,
             input_from_position,
             shell,
-            had_ambiguous || is_amb,
+            path_prev_ambiguous.clone().or(this_ambiguous),
             visited,
         );
     }
@@ -445,12 +453,12 @@ fn do_ensure_ambiguous_inputs_tail_only_subword(
 
     let mut prev_ambiguous: Option<Input> = None;
     for inp in inputs {
-        if had_ambiguous {
-            return Err(Error::AmbiguousMatchable);
+        if let Some(ref prev_inp) = path_prev_ambiguous {
+            return Err(Error::AmbiguousMatchable(prev_inp.clone(), inp));
         }
 
-        if let Some(..) = prev_ambiguous {
-            return Err(Error::AmbiguousMatchable);
+        if let Some(prev_inp) = prev_ambiguous {
+            return Err(Error::AmbiguousMatchable(prev_inp, inp));
         }
         if inp.is_ambiguous(shell) {
             prev_ambiguous = Some(inp);
@@ -467,7 +475,7 @@ fn do_ensure_ambiguous_inputs_tail_only_subword(
             followpos,
             input_from_position,
             shell,
-            had_ambiguous || prev_ambiguous.is_some(),
+            path_prev_ambiguous.clone().or(prev_ambiguous.clone()),
             visited,
         )?;
     }
@@ -518,7 +526,7 @@ impl<'a> Regex<'a> {
             &self.root.followpos(),
             &self.input_from_position,
             shell,
-            false,
+            None,
             &mut visited,
         )
     }
@@ -627,7 +635,7 @@ mod tests {
     fn detects_nontail_command_alternative() {
         assert!(matches!(
             get_validated_grammar(r#"cmd ({{{ echo foo }}} | bar);"#),
-            Err(Error::AmbiguousMatchable)
+            Err(Error::AmbiguousMatchable(_, _))
         ));
     }
 
@@ -635,7 +643,7 @@ mod tests {
     fn detects_nontail_command_fallback() {
         assert!(matches!(
             get_validated_grammar(r#"cmd ({{{ echo foo }}} || bar);"#),
-            Err(Error::AmbiguousMatchable)
+            Err(Error::AmbiguousMatchable(_, _))
         ));
     }
 
@@ -643,7 +651,7 @@ mod tests {
     fn detects_nontail_command_subword() {
         assert!(matches!(
             get_validated_grammar(r#"cmd {{{ git tag }}}..{{{ git tag }}};"#),
-            Err(Error::AmbiguousMatchable)
+            Err(Error::AmbiguousMatchable(_, _))
         ));
         assert!(matches!(
             get_validated_grammar(r#"cmd --option={{{ echo foo }}};"#),
@@ -651,7 +659,7 @@ mod tests {
         ));
         assert!(matches!(
             get_validated_grammar(r#"cmd {{{ echo foo }}}{{{ echo bar }}};"#),
-            Err(Error::AmbiguousMatchable)
+            Err(Error::AmbiguousMatchable(_, _))
         ));
 
         // https://github.com/adaszko/complgen/issues/49
@@ -659,19 +667,19 @@ mod tests {
             get_validated_grammar(
                 r#"build <PLATFORM>-(amd64|arm64); <PLATFORM> ::= {{{ echo foo }}};"#
             ),
-            Err(Error::AmbiguousMatchable)
+            Err(Error::AmbiguousMatchable(_, _))
         ));
         assert!(matches!(
             get_validated_grammar(
                 r#"build <PLATFORM>[-(amd64|arm64)]; <PLATFORM> ::= {{{ echo foo }}};"#
             ),
-            Err(Error::AmbiguousMatchable)
+            Err(Error::AmbiguousMatchable(_, _))
         ));
 
         // https://github.com/adaszko/complgen/issues/53
         assert!(matches!(
             get_validated_grammar(r#"cmd <DUMMY>,<DUMMY>; <DUMMY@bash> ::= {{{ echo dummy }}};"#),
-            Err(Error::AmbiguousMatchable)
+            Err(Error::AmbiguousMatchable(_, _))
         ));
         assert!(matches!(
             get_validated_grammar(r#"cmd --option=<FOO>; <FOO@bash> ::= {{{ echo bash }}};"#),
@@ -684,7 +692,7 @@ duf -hide-fs <FS>[,<FS>]...;
 <FS@fish> ::= {{{ string split ' ' --fields 3 </proc/mounts | sort --unique }}};
 "#
             ),
-            Err(Error::AmbiguousMatchable)
+            Err(Error::AmbiguousMatchable(_, _))
         ));
     }
 }

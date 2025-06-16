@@ -1,4 +1,5 @@
 use grammar::ChicSpan;
+use regex::Input;
 use std::string::FromUtf8Error;
 use ustr::Ustr;
 
@@ -33,8 +34,8 @@ pub enum Error {
     #[error("Can only specialize external commands: {}@{:?}", .0, .1)]
     NonCommandSpecialization(Ustr, Option<Ustr>),
 
-    #[error("Ambiguity in matching")]
-    AmbiguousMatchable,
+    #[error("Ambiguity in matching: {:?} {:?}", .0, .1)]
+    AmbiguousMatchable(Input, Input),
 
     #[error("Two adjacent terminals in a subword expression: {:?}", .0)]
     SubwordSpaces(ChicSpan, ChicSpan, Vec<ChicSpan>),
