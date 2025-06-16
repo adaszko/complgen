@@ -818,8 +818,9 @@ pub fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
                     id_from_regex.insert(*fish_regex);
                 }
             }
-            Input::Subword(subdfa, ..) => {
-                for input in subdfa.as_ref().iter_inputs() {
+            Input::Subword(subdfaid, ..) => {
+                let subdfa = dfa.subdfa_interner.lookup(*subdfaid);
+                for input in subdfa.iter_inputs() {
                     match input {
                         Input::Nonterminal(
                             _,
@@ -884,15 +885,9 @@ end
         write_generic_subword_fn(buffer, command)?;
         writeln!(buffer)?;
     }
-    for (dfa, id) in &id_from_dfa {
-        write_subword_fn(
-            buffer,
-            command,
-            *id,
-            dfa.as_ref(),
-            &id_from_cmd,
-            &id_from_regex,
-        )?;
+    for (dfaid, id) in &id_from_dfa {
+        let dfa = dfa.subdfa_interner.lookup(*dfaid);
+        write_subword_fn(buffer, command, *id, dfa, &id_from_cmd, &id_from_regex)?;
         writeln!(buffer)?;
         writeln!(buffer)?;
     }

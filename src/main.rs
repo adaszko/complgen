@@ -205,7 +205,7 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
     regex.ensure_ambiguous_inputs_tail_only(shell)?;
 
     log::debug!("Regex -> DFA");
-    let dfa = DFA::from_regex(&regex);
+    let dfa = DFA::from_regex(&regex, validated.subdfa_interner);
 
     log::debug!("Minimizing DFA");
     let dfa = dfa.minimize();

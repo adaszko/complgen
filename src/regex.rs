@@ -8,14 +8,14 @@ use bumpalo::Bump;
 use roaring::RoaringBitmap;
 use ustr::{Ustr, UstrMap};
 
-use crate::grammar::{CmdRegexDecl, DFARef, Expr, Shell, Specialization, SubwordCompilationPhase};
+use crate::grammar::{CmdRegexDecl, DFAId, Expr, Shell, Specialization, SubwordCompilationPhase};
 
 pub type Position = u32;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Input {
     Literal(Ustr, Option<Ustr>, usize), // literal, optional description, fallback level
-    Subword(DFARef, usize),
+    Subword(DFAId, usize),
     Nonterminal(Ustr, Option<Specialization>, usize), // name, specialization, fallback level
     Command(Ustr, Option<CmdRegexDecl>, usize),       // command, fallback level
 }

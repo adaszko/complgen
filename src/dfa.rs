@@ -6,11 +6,8 @@ use roaring::{MultiOps, RoaringBitmap};
 use ustr::{Ustr, ustr};
 
 use crate::StateId;
-use crate::grammar::{CmdRegexDecl, Shell};
-use crate::{
-    grammar::DFARef,
-    regex::{Input, Position, Regex},
-};
+use crate::grammar::{CmdRegexDecl, DFAId, DFAInterner, Shell};
+use crate::regex::{Input, Position, Regex};
 
 // Every state in a DFA is formally defined to have a transition on *every* input symbol.  In
 // our applications that's not the case, so we add artificial transitions to a special, designated
@@ -27,11 +24,42 @@ pub struct DFA {
     pub transitions: IndexMap<StateId, IndexMap<Input, StateId>>,
     pub accepting_states: RoaringBitmap,
     pub input_symbols: Rc<IndexSet<Input>>,
+
+    pub subdfa_interner: DFAInterner,
+}
+
+impl PartialEq for DFA {
+    fn eq(&self, other: &Self) -> bool {
+        self.starting_state == other.starting_state
+            && self.transitions == other.transitions
+            && self.accepting_states == other.accepting_states
+            && self.input_symbols == other.input_symbols
+    }
+}
+
+impl Eq for DFA {}
+
+impl std::hash::Hash for DFA {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.starting_state.hash(state);
+        for (from, tos) in &self.transitions {
+            from.hash(state);
+            for to in tos {
+                to.hash(state);
+            }
+        }
+        for elem in &self.accepting_states {
+            elem.hash(state);
+        }
+        for sym in self.input_symbols.as_ref() {
+            sym.hash(state);
+        }
+    }
 }
 
 // Reference:
 //  * The Dragon Book: 3.9.5 Converting a Regular Expression Directly to a DFA
-fn dfa_from_regex(regex: &Regex) -> DFA {
+fn dfa_from_regex(regex: &Regex, subdfa_interner: DFAInterner) -> DFA {
     let mut unallocated_state_id = FIRST_STATE_ID;
     let combined_starting_state: BTreeSet<Position> = regex.firstpos();
     let combined_starting_state_id = unallocated_state_id;
@@ -92,6 +120,7 @@ fn dfa_from_regex(regex: &Regex) -> DFA {
         transitions: dtran,
         accepting_states,
         input_symbols: Rc::clone(&regex.input_symbols),
+        subdfa_interner,
     }
 }
 
@@ -354,7 +383,7 @@ fn find_bounds(
 //  * The Dragon Book: Minimizing the Number of states of a DFA
 //  * Engineering a Compiler, 3rd ed, 2.4.4 DFA to Minimal DFA
 //  * https://github.com/BurntSushi/regex-automata/blob/c61a6d0f19b013dc832755375709023dfb9d5a8f/src/dfa/minimize.rs#L87
-fn do_minimize(dfa: &DFA) -> DFA {
+fn do_minimize(dfa: DFA) -> DFA {
     let mut pool = SetInternPool::default();
     let mut partitions: HashSet<SetInternId> = {
         let dead_state_group = RoaringBitmap::from_iter([u32::from(DEAD_STATE_ID)]);
@@ -501,6 +530,7 @@ fn do_minimize(dfa: &DFA) -> DFA {
         transitions,
         accepting_states,
         input_symbols: Rc::clone(&dfa.input_symbols),
+        subdfa_interner: dfa.subdfa_interner,
     }
 }
 
@@ -553,7 +583,7 @@ fn do_to_dot<W: Write>(
 
     writeln!(output)?;
 
-    for (subdfa, subdfa_id) in &id_from_dfa {
+    for (subdfaid, subdfa_id) in &id_from_dfa {
         writeln!(
             output,
             "{indentation}subgraph cluster_{identifiers_prefix}{subdfa_id} {{"
@@ -562,9 +592,10 @@ fn do_to_dot<W: Write>(
         writeln!(output, "{indentation}\tcolor=grey91;")?;
         writeln!(output, "{indentation}\tstyle=filled;")?;
         let subdfa_identifiers_prefix = &format!("{subdfa_id}_");
+        let subdfa = dfa.subdfa_interner.lookup(*subdfaid);
         do_to_dot(
             output,
-            subdfa.as_ref(),
+            subdfa,
             subdfa_identifiers_prefix,
             recursion_level + 1,
         )?;
@@ -582,16 +613,16 @@ fn do_to_dot<W: Write>(
                         from, to, label
                     )?;
                 }
-                Input::Subword(subdfa, ..) => {
-                    let subdfa_id = *id_from_dfa.get(subdfa).unwrap();
+                Input::Subword(subdfaid, ..) => {
+                    let subdfa = dfa.subdfa_interner.lookup(*subdfaid);
+                    let subdfa_id = *id_from_dfa.get(subdfaid).unwrap();
                     let subdfa_identifiers_prefix = &format!("{subdfa_id}_");
                     writeln!(
                         output,
                         r#"{indentation}_{identifiers_prefix}{} -> _{subdfa_identifiers_prefix}{} [style="dashed"];"#,
-                        from,
-                        subdfa.as_ref().starting_state
+                        from, subdfa.starting_state
                     )?;
-                    for subdfa_accepting_state in &subdfa.as_ref().accepting_states {
+                    for subdfa_accepting_state in &subdfa.accepting_states {
                         writeln!(
                             output,
                             r#"{indentation}_{subdfa_identifiers_prefix}{} -> _{identifiers_prefix}{} [style="dashed"];"#,
@@ -621,11 +652,11 @@ fn do_get_subdfa_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)
 }
 
 impl DFA {
-    pub fn from_regex(regex: &Regex) -> Self {
-        dfa_from_regex(regex)
+    pub fn from_regex(regex: &Regex, subdfa_interner: DFAInterner) -> Self {
+        dfa_from_regex(regex, subdfa_interner)
     }
 
-    pub fn minimize(&self) -> Self {
+    pub fn minimize(self) -> Self {
         do_minimize(self)
     }
 
@@ -670,8 +701,8 @@ impl DFA {
             match &input {
                 Input::Literal(..) => {}
                 Input::Nonterminal(..) => ambiguous_inputs.push(input.clone()),
-                Input::Subword(dfaref, _) => {
-                    let subdfa = dfaref.as_ref();
+                Input::Subword(subdfaid, _) => {
+                    let subdfa = self.subdfa_interner.lookup(*subdfaid);
                     subdfa.do_check_dfa_ambiguity(
                         command,
                         subdfa.starting_state,
@@ -756,17 +787,18 @@ impl DFA {
             .collect()
     }
 
-    pub fn get_subword_command_transitions(&self) -> HashMap<DFARef, Vec<(StateId, Ustr)>> {
-        let mut subdfas: HashMap<DFARef, Vec<(StateId, Ustr)>> = Default::default();
+    pub fn get_subword_command_transitions(&self) -> HashMap<DFAId, Vec<(StateId, Ustr)>> {
+        let mut subdfas: HashMap<DFAId, Vec<(StateId, Ustr)>> = Default::default();
         for (_, tos) in &self.transitions {
             for (input, _) in tos {
                 match input {
-                    Input::Subword(subdfa, ..) => {
-                        if subdfas.contains_key(subdfa) {
+                    Input::Subword(subdfaid, ..) => {
+                        let subdfa = self.subdfa_interner.lookup(*subdfaid);
+                        if subdfas.contains_key(subdfaid) {
                             continue;
                         }
-                        let transitions = subdfas.entry(subdfa.clone()).or_default();
-                        do_get_subdfa_command_transitions(subdfa.as_ref(), transitions);
+                        let transitions = subdfas.entry(*subdfaid).or_default();
+                        do_get_subdfa_command_transitions(subdfa, transitions);
                         continue;
                     }
                     Input::Command(..) => continue,
@@ -872,12 +904,12 @@ impl DFA {
         transitions
     }
 
-    pub fn get_subword_transitions_from(&self, from: StateId) -> Vec<(DFARef, StateId)> {
+    pub fn get_subword_transitions_from(&self, from: StateId) -> Vec<(DFAId, StateId)> {
         let map = match self.transitions.get(&from) {
             Some(map) => map,
             None => return vec![],
         };
-        let transitions: Vec<(DFARef, StateId)> = map
+        let transitions: Vec<(DFAId, StateId)> = map
             .iter()
             .filter_map(|(input, to)| match input {
                 Input::Subword(dfa, ..) => Some((dfa.clone(), *to)),
@@ -926,9 +958,9 @@ impl DFA {
             })
     }
 
-    pub fn get_subwords(&self, first_id: usize) -> IndexMap<DFARef, usize> {
+    pub fn get_subwords(&self, first_id: usize) -> IndexMap<DFAId, usize> {
         let mut unallocated_id = first_id;
-        let mut result: IndexMap<DFARef, usize> = Default::default();
+        let mut result: IndexMap<DFAId, usize> = Default::default();
         for (_, tos) in &self.transitions {
             for (input, _) in tos {
                 let dfa = match input {
@@ -1017,8 +1049,9 @@ mod tests {
                 }
 
                 for (transition_input, to) in self.iter_transitions_from(current_state) {
-                    if let Input::Subword(dfa, ..) = transition_input {
-                        if dfa.as_ref().accepts_str(inputs[input_index], shell) {
+                    if let Input::Subword(dfaid, ..) = transition_input {
+                        let dfa = self.subdfa_interner.lookup(dfaid);
+                        if dfa.accepts_str(inputs[input_index], shell) {
                             input_index += 1;
                             current_state = to;
                             continue 'outer;
@@ -1074,7 +1107,7 @@ mod tests {
         let arena = Bump::new();
         let specs = UstrMap::default();
         let regex = Regex::from_expr(&expr, &specs, &arena).unwrap();
-        let dfa = DFA::from_regex(&regex);
+        let dfa = DFA::from_regex(&regex, DFAInterner::default());
         let transitions = dfa.get_transitions();
         assert_eq!(transitions, vec![Transition::new(1, "foo", 2)]);
         assert_eq!(dfa.accepting_states, RoaringBitmap::from_iter([2]));
@@ -1092,7 +1125,7 @@ mod tests {
             let arena = Bump::new();
             let specs = UstrMap::default();
             let regex = Regex::from_expr(&expr, &specs, &arena).unwrap();
-            let dfa = DFA::from_regex(&regex);
+            let dfa = DFA::from_regex(&regex, DFAInterner::default());
             let input: Vec<&str> = input.iter().map(|s| {
                 let s: &str = s;
                 s
@@ -1107,7 +1140,7 @@ mod tests {
             let arena = Bump::new();
             let specs = UstrMap::default();
             let regex = Regex::from_expr(&expr, &specs, &arena).unwrap();
-            let dfa = DFA::from_regex(&regex);
+            let dfa = DFA::from_regex(&regex, DFAInterner::default());
             let input: Vec<&str> = input.iter().map(|s| {
                 let s: &str = s;
                 s
@@ -1155,6 +1188,7 @@ mod tests {
                 transitions,
                 accepting_states,
                 input_symbols,
+                subdfa_interner: DFAInterner::default(),
             }
         };
         let minimized = dfa.minimize();
@@ -1203,7 +1237,7 @@ mod tests {
         let arena = Bump::new();
         let specs = UstrMap::default();
         let regex = Regex::from_expr(&expr, &specs, &arena).unwrap();
-        let dfa = DFA::from_regex(&regex);
+        let dfa = DFA::from_regex(&regex, DFAInterner::default());
         let input: Vec<&str> = input
             .iter()
             .map(|s| {
@@ -1238,7 +1272,7 @@ mod tests {
         let arena = Bump::new();
         let specs = UstrMap::default();
         let regex = Regex::from_expr(&expr, &specs, &arena).unwrap();
-        let dfa = DFA::from_regex(&regex);
+        let dfa = DFA::from_regex(&regex, DFAInterner::default());
         let input: Vec<&str> = input
             .iter()
             .map(|s| {
@@ -1277,7 +1311,7 @@ mod tests {
         let arena = Bump::new();
         let specs = UstrMap::default();
         let regex = Regex::from_expr(&expr, &specs, &arena).unwrap();
-        let dfa = DFA::from_regex(&regex);
+        let dfa = DFA::from_regex(&regex, DFAInterner::default());
         let input: Vec<&str> = input
             .iter()
             .map(|s| {

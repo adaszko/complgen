@@ -1,6 +1,7 @@
 use std::{borrow::Borrow, debug_assert, rc::Rc};
 
 use bumpalo::Bump;
+use hashbrown::HashMap;
 use itertools::Itertools;
 use nom::{
     Finish, IResult, Parser,
@@ -18,42 +19,50 @@ use ustr::{Ustr, UstrMap, UstrSet, ustr};
 
 use crate::{dfa::DFA, regex::Regex};
 
-// A wrapper so that we use Rc::ptr_eq() for equality comparisons instead of comparing entire DFAs,
-// which is expensive.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct DFAId(u32);
+
+impl From<u32> for DFAId {
+    fn from(value: u32) -> Self {
+        Self(value)
+    }
+}
+
 #[derive(Debug, Clone)]
-pub struct DFARef(Rc<DFA>);
+pub struct DFAInterner {
+    map: HashMap<DFA, u32>,
+    vec: Vec<DFA>,
+}
 
-impl DFARef {
-    pub fn new(dfa: DFA) -> Self {
-        Self(Rc::new(dfa))
+impl Default for DFAInterner {
+    fn default() -> Self {
+        Self {
+            map: HashMap::default(),
+            vec: Default::default(),
+        }
     }
 }
 
-impl AsRef<DFA> for DFARef {
-    fn as_ref(&self) -> &DFA {
-        self.0.as_ref()
+impl DFAInterner {
+    pub fn intern(&mut self, val: DFA) -> DFAId {
+        if let Some(&idx) = self.map.get(&val) {
+            return DFAId(idx);
+        }
+        let idx = self.map.len() as u32;
+        self.map.insert(val.clone(), idx);
+        self.vec.push(val);
+        DFAId::from(idx)
     }
-}
 
-impl PartialEq for DFARef {
-    fn eq(&self, other: &Self) -> bool {
-        Rc::ptr_eq(&self.0, &other.0)
-    }
-}
-
-impl Eq for DFARef {}
-
-impl std::hash::Hash for DFARef {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        let pointer_value: usize = self.0.as_ref() as *const _ as usize;
-        pointer_value.hash(state);
+    pub fn lookup(&self, idx: DFAId) -> &DFA {
+        &self.vec[idx.0 as usize]
     }
 }
 
 #[derive(Clone, PartialEq)]
 pub enum SubwordCompilationPhase {
     Expr(Rc<Expr>),
-    DFA(DFARef),
+    DFA(DFAId),
 }
 
 impl std::fmt::Debug for SubwordCompilationPhase {
@@ -749,6 +758,7 @@ pub struct ValidGrammar {
     pub specializations: UstrMap<Specialization>,
     pub undefined_nonterminals: UstrSet,
     pub unused_nonterminals: UstrSet,
+    pub subdfa_interner: DFAInterner,
 }
 
 fn make_specializations_map(statements: &[Statement]) -> Result<UstrMap<Specialization>> {
@@ -990,6 +1000,7 @@ fn compile_subword_exprs(
     expr: Rc<Expr>,
     specs: &UstrMap<Specialization>,
     shell: Shell,
+    subdfa_interner: &mut DFAInterner,
 ) -> Result<Rc<Expr>> {
     let retval = match expr.as_ref() {
         Expr::Subword(subword_expr, fallback_level) => {
@@ -1001,10 +1012,11 @@ fn compile_subword_exprs(
             let subword_expr = flatten_expr(subword_expr);
             let regex = Regex::from_expr(&subword_expr, specs, &arena).unwrap();
             regex.ensure_ambiguous_inputs_tail_only_subword(shell)?;
-            let dfa = DFA::from_regex(&regex);
+            let dfa = DFA::from_regex(&regex, DFAInterner::default());
             let dfa = dfa.minimize();
+            let subdfaid = subdfa_interner.intern(dfa);
             Rc::new(Expr::Subword(
-                SubwordCompilationPhase::DFA(DFARef::new(dfa)),
+                SubwordCompilationPhase::DFA(subdfaid),
                 *fallback_level,
             ))
         }
@@ -1012,7 +1024,7 @@ fn compile_subword_exprs(
         Expr::Sequence(children) => {
             let new_children: Vec<Rc<Expr>> = children
                 .iter()
-                .map(|e| compile_subword_exprs(Rc::clone(e), specs, shell))
+                .map(|e| compile_subword_exprs(Rc::clone(e), specs, shell, subdfa_interner))
                 .collect::<Result<_>>()?;
             if children
                 .iter()
@@ -1027,7 +1039,7 @@ fn compile_subword_exprs(
         Expr::Alternative(children) => {
             let new_children: Vec<Rc<Expr>> = children
                 .iter()
-                .map(|e| compile_subword_exprs(Rc::clone(e), specs, shell))
+                .map(|e| compile_subword_exprs(Rc::clone(e), specs, shell, subdfa_interner))
                 .collect::<Result<_>>()?;
             if children
                 .iter()
@@ -1040,7 +1052,7 @@ fn compile_subword_exprs(
             }
         }
         Expr::Optional(child) => {
-            let new_child = compile_subword_exprs(Rc::clone(child), specs, shell)?;
+            let new_child = compile_subword_exprs(Rc::clone(child), specs, shell, subdfa_interner)?;
             if Rc::ptr_eq(child, &new_child) {
                 Rc::clone(&expr)
             } else {
@@ -1048,7 +1060,7 @@ fn compile_subword_exprs(
             }
         }
         Expr::Many1(child) => {
-            let new_child = compile_subword_exprs(Rc::clone(child), specs, shell)?;
+            let new_child = compile_subword_exprs(Rc::clone(child), specs, shell, subdfa_interner)?;
             if Rc::ptr_eq(child, &new_child) {
                 Rc::clone(&expr)
             } else {
@@ -1061,7 +1073,7 @@ fn compile_subword_exprs(
         Expr::Fallback(children) => {
             let new_children: Vec<Rc<Expr>> = children
                 .iter()
-                .map(|e| compile_subword_exprs(Rc::clone(e), specs, shell))
+                .map(|e| compile_subword_exprs(Rc::clone(e), specs, shell, subdfa_interner))
                 .collect::<Result<_>>()?;
             if children
                 .iter()
@@ -1364,7 +1376,13 @@ impl ValidGrammar {
             nonterms
         };
 
-        let expr = compile_subword_exprs(Rc::clone(&expr), &specializations, shell)?;
+        let mut subdfa_interner = DFAInterner::default();
+        let expr = compile_subword_exprs(
+            Rc::clone(&expr),
+            &specializations,
+            shell,
+            &mut subdfa_interner,
+        )?;
 
         let g = ValidGrammar {
             command,
@@ -1372,6 +1390,7 @@ impl ValidGrammar {
             undefined_nonterminals,
             specializations,
             unused_nonterminals,
+            subdfa_interner,
         };
         Ok(g)
     }
