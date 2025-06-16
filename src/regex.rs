@@ -4,7 +4,6 @@ use indexmap::IndexSet;
 use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
-use bumpalo::Bump;
 use roaring::RoaringBitmap;
 use ustr::{Ustr, UstrMap};
 
@@ -53,19 +52,19 @@ impl std::fmt::Display for Input {
 }
 
 #[derive(Clone, PartialEq)]
-pub enum RegexNode<'a> {
+pub enum RegexNode {
     Epsilon,
     Subword(Position),
     Terminal(Ustr, usize, Position), // terminal, fallback level, position
     Nonterminal(Position),
     Command(Ustr, Position),
-    Cat(&'a RegexNode<'a>, &'a RegexNode<'a>),
-    Or(Vec<RegexNode<'a>>, bool), // is fallback
-    Star(&'a RegexNode<'a>),
+    Cat(usize, usize),
+    Or(Box<[usize]>, bool), // is fallback
+    Star(usize),
     EndMarker(Position),
 }
 
-impl<'a> std::fmt::Debug for RegexNode<'a> {
+impl std::fmt::Debug for RegexNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Subword(position) => f.write_fmt(format_args!(r#"Subword({position})"#)),
@@ -91,7 +90,7 @@ impl<'a> std::fmt::Debug for RegexNode<'a> {
     }
 }
 
-fn do_firstpos(re: &RegexNode, result: &mut BTreeSet<Position>) {
+fn do_firstpos(re: &RegexNode, arena: &[RegexNode], result: &mut BTreeSet<Position>) {
     match re {
         RegexNode::Epsilon => {}
         RegexNode::Subword(position) => {
@@ -107,20 +106,24 @@ fn do_firstpos(re: &RegexNode, result: &mut BTreeSet<Position>) {
             result.insert(*position);
         }
         RegexNode::Or(subregexes, _) => {
-            for subre in subregexes {
-                do_firstpos(subre, result);
+            for subreid in subregexes {
+                let subre = &arena[*subreid];
+                do_firstpos(subre, arena, result);
             }
         }
-        RegexNode::Cat(left, right) => {
-            if left.nullable() {
-                do_firstpos(left, result);
-                do_firstpos(right, result);
+        RegexNode::Cat(leftid, rightid) => {
+            let left = &arena[*leftid];
+            let right = &arena[*rightid];
+            if left.nullable(arena) {
+                do_firstpos(left, arena, result);
+                do_firstpos(right, arena, result);
             } else {
-                do_firstpos(left, result);
+                do_firstpos(left, arena, result);
             }
         }
-        RegexNode::Star(subregex) => {
-            do_firstpos(subregex, result);
+        RegexNode::Star(subregexid) => {
+            let subregex = &arena[*subregexid];
+            do_firstpos(subregex, arena, result);
         }
         RegexNode::EndMarker(position) => {
             result.insert(*position);
@@ -128,7 +131,7 @@ fn do_firstpos(re: &RegexNode, result: &mut BTreeSet<Position>) {
     }
 }
 
-fn do_lastpos(re: &RegexNode, result: &mut HashSet<Position>) {
+fn do_lastpos(re: &RegexNode, arena: &[RegexNode], result: &mut HashSet<Position>) {
     match re {
         RegexNode::Epsilon => {}
         RegexNode::Subword(position) => {
@@ -144,20 +147,24 @@ fn do_lastpos(re: &RegexNode, result: &mut HashSet<Position>) {
             result.insert(*position);
         }
         RegexNode::Or(subregexes, _) => {
-            for subre in subregexes {
-                do_lastpos(subre, result);
+            for subreid in subregexes {
+                let subre = &arena[*subreid];
+                do_lastpos(subre, arena, result);
             }
         }
-        RegexNode::Cat(left, right) => {
-            if right.nullable() {
-                do_lastpos(right, result);
-                do_lastpos(left, result);
+        RegexNode::Cat(leftid, rightid) => {
+            let left = &arena[*leftid];
+            let right = &arena[*rightid];
+            if right.nullable(arena) {
+                do_lastpos(right, arena, result);
+                do_lastpos(left, arena, result);
             } else {
-                do_lastpos(right, result);
+                do_lastpos(right, arena, result);
             }
         }
-        RegexNode::Star(subregex) => {
-            do_lastpos(subregex, result);
+        RegexNode::Star(subregexid) => {
+            let subregex = &arena[*subregexid];
+            do_lastpos(subregex, arena, result);
         }
         RegexNode::EndMarker(position) => {
             result.insert(*position);
@@ -165,7 +172,11 @@ fn do_lastpos(re: &RegexNode, result: &mut HashSet<Position>) {
     }
 }
 
-fn do_followpos(re: &RegexNode, result: &mut BTreeMap<Position, RoaringBitmap>) {
+fn do_followpos(
+    re: &RegexNode,
+    arena: &[RegexNode],
+    result: &mut BTreeMap<Position, RoaringBitmap>,
+) {
     match re {
         RegexNode::Epsilon => {}
         RegexNode::Subword(..) => {}
@@ -173,23 +184,27 @@ fn do_followpos(re: &RegexNode, result: &mut BTreeMap<Position, RoaringBitmap>) 
         RegexNode::Nonterminal(..) => {}
         RegexNode::Command(..) => {}
         RegexNode::Or(subregexes, _) => {
-            for subre in subregexes {
-                do_followpos(subre, result);
+            for subreid in subregexes {
+                let subre = &arena[*subreid];
+                do_followpos(subre, arena, result);
             }
         }
-        RegexNode::Cat(left, right) => {
-            do_followpos(left, result);
-            do_followpos(right, result);
-            let fp = right.firstpos();
-            for i in left.lastpos() {
+        RegexNode::Cat(leftid, rightid) => {
+            let left = &arena[*leftid];
+            let right = &arena[*rightid];
+            do_followpos(left, arena, result);
+            do_followpos(right, arena, result);
+            let fp = right.firstpos(arena);
+            for i in left.lastpos(arena) {
                 for j in &fp {
                     result.entry(i).or_default().insert(*j);
                 }
             }
         }
-        RegexNode::Star(subregex) => {
-            let first = subregex.firstpos();
-            let last = subregex.lastpos();
+        RegexNode::Star(subregexid) => {
+            let subregex = &arena[*subregexid];
+            let first = subregex.firstpos(arena);
+            let last = subregex.lastpos(arena);
             for i in last {
                 for j in &first {
                     result.entry(i).or_default().insert(*j);
@@ -200,36 +215,43 @@ fn do_followpos(re: &RegexNode, result: &mut BTreeMap<Position, RoaringBitmap>) 
     }
 }
 
-impl<'a> RegexNode<'a> {
-    fn nullable(&self) -> bool {
+impl RegexNode {
+    fn nullable(&self, arena: &[RegexNode]) -> bool {
         match self {
             RegexNode::Epsilon => true,
             RegexNode::Subword(..) => false,
             RegexNode::Terminal(..) => false,
             RegexNode::Nonterminal(..) => false,
             RegexNode::Command(..) => false,
-            RegexNode::Or(children, _) => children.iter().any(|child| child.nullable()),
-            RegexNode::Cat(left, right) => left.nullable() && right.nullable(),
+            RegexNode::Or(children, _) => children.iter().any(|child_id| {
+                let child = &arena[*child_id];
+                child.nullable(arena)
+            }),
+            RegexNode::Cat(leftid, rightid) => {
+                let left = &arena[*leftid];
+                let right = &arena[*rightid];
+                left.nullable(arena) && right.nullable(arena)
+            }
             RegexNode::Star(_) => true,
             RegexNode::EndMarker(_) => true,
         }
     }
 
-    pub fn firstpos(&self) -> BTreeSet<Position> {
+    pub fn firstpos(&self, arena: &[RegexNode]) -> BTreeSet<Position> {
         let mut result: BTreeSet<Position> = Default::default();
-        do_firstpos(self, &mut result);
+        do_firstpos(self, arena, &mut result);
         result
     }
 
-    fn lastpos(&self) -> HashSet<Position> {
+    fn lastpos(&self, arena: &[RegexNode]) -> HashSet<Position> {
         let mut result: HashSet<Position> = Default::default();
-        do_lastpos(self, &mut result);
+        do_lastpos(self, arena, &mut result);
         result
     }
 
-    pub fn followpos(&self) -> BTreeMap<Position, RoaringBitmap> {
+    pub fn followpos(&self, arena: &[RegexNode]) -> BTreeMap<Position, RoaringBitmap> {
         let mut result: BTreeMap<Position, RoaringBitmap> = Default::default();
-        do_followpos(self, &mut result);
+        do_followpos(self, arena, &mut result);
         result
     }
 }
@@ -237,10 +259,10 @@ impl<'a> RegexNode<'a> {
 fn do_from_expr<'a>(
     e: &Expr,
     specs: &UstrMap<Specialization>,
-    arena: &'a Bump,
+    arena: &mut Vec<RegexNode>,
     symbols: &mut IndexSet<Input>,
     input_from_position: &mut Vec<Input>,
-) -> RegexNode<'a> {
+) -> usize {
     match e {
         Expr::Terminal(term, description, level, _) => {
             let result = RegexNode::Terminal(
@@ -251,7 +273,12 @@ fn do_from_expr<'a>(
             let input = Input::Literal(*term, *description, *level);
             input_from_position.push(input.clone());
             symbols.insert(input);
-            result
+            let result_id = {
+                let id = arena.len();
+                arena.push(result);
+                id
+            };
+            result_id
         }
         Expr::Subword(subword, fallback_level) => {
             let result = RegexNode::Subword(Position::try_from(input_from_position.len()).unwrap());
@@ -262,7 +289,12 @@ fn do_from_expr<'a>(
             let input = Input::Subword(dfa.clone(), *fallback_level);
             input_from_position.push(input.clone());
             symbols.insert(input);
-            result
+            let result_id = {
+                let id = arena.len();
+                arena.push(result);
+                id
+            };
+            result_id
         }
         Expr::NontermRef(name, fallback_level, _) => {
             let result =
@@ -271,7 +303,12 @@ fn do_from_expr<'a>(
             let input = Input::Nonterminal(*name, specialization.copied(), *fallback_level);
             input_from_position.push(input.clone());
             symbols.insert(input);
-            result
+            let result_id = {
+                let id = arena.len();
+                arena.push(result);
+                id
+            };
+            result_id
         }
         Expr::Command(code, cmd_regex_decl, fallback_level, ..) => {
             let result = RegexNode::Command(
@@ -281,66 +318,100 @@ fn do_from_expr<'a>(
             let input = Input::Command(*code, *cmd_regex_decl, *fallback_level);
             input_from_position.push(input.clone());
             symbols.insert(input);
-            result
+            let result_id = {
+                let id = arena.len();
+                arena.push(result);
+                id
+            };
+            result_id
         }
         Expr::Sequence(subexprs) => {
-            let mut left_regex =
+            let mut left_regex_id =
                 do_from_expr(&subexprs[0], specs, arena, symbols, input_from_position);
             for right_expr in &subexprs[1..] {
-                let right_regex = arena.alloc(do_from_expr(
-                    right_expr,
-                    specs,
-                    arena,
-                    symbols,
-                    input_from_position,
-                ));
-                left_regex = RegexNode::Cat(arena.alloc(left_regex), right_regex);
+                let right_regex_id =
+                    do_from_expr(right_expr, specs, arena, symbols, input_from_position);
+                let left_regex = RegexNode::Cat(left_regex_id, right_regex_id);
+                left_regex_id = {
+                    let id = arena.len();
+                    arena.push(left_regex);
+                    id
+                };
             }
-            left_regex
+            left_regex_id
         }
         Expr::Alternative(subexprs) => {
-            let mut subregexes: Vec<RegexNode> = Default::default();
+            let mut subregexes: Vec<usize> = Default::default();
             for e in subexprs {
                 let subregex = do_from_expr(e, specs, arena, symbols, input_from_position);
                 subregexes.push(subregex);
             }
-            RegexNode::Or(subregexes, false)
+            let result = RegexNode::Or(subregexes.into_boxed_slice(), false);
+            let result_id = {
+                let id = arena.len();
+                arena.push(result);
+                id
+            };
+            result_id
         }
         Expr::Optional(subexpr) => {
             let subregex = do_from_expr(subexpr, specs, arena, symbols, input_from_position);
-            RegexNode::Or(vec![subregex, RegexNode::Epsilon], false)
+            let epsid = {
+                let id = arena.len();
+                arena.push(RegexNode::Epsilon);
+                id
+            };
+            let result = RegexNode::Or(Box::new([subregex, epsid]), false);
+            let result_id = {
+                let id = arena.len();
+                arena.push(result);
+                id
+            };
+            result_id
         }
         Expr::Many1(subexpr) => {
-            let subregex = arena.alloc(do_from_expr(
-                subexpr,
-                specs,
-                arena,
-                symbols,
-                input_from_position,
-            ));
-            let star = arena.alloc(RegexNode::Star(subregex));
-            RegexNode::Cat(subregex, star)
+            let subregex_id = do_from_expr(subexpr, specs, arena, symbols, input_from_position);
+            let star = RegexNode::Star(subregex_id);
+            let starid = {
+                let id = arena.len();
+                arena.push(star);
+                id
+            };
+            let result = RegexNode::Cat(subregex_id, starid);
+            let result_id = {
+                let id = arena.len();
+                arena.push(result);
+                id
+            };
+            result_id
         }
         Expr::DistributiveDescription(_, _) => unreachable!(
             "DistributiveDescription Expr type should have been erased before compilation to regex"
         ),
         Expr::Fallback(subexprs) => {
-            let mut subregexes: Vec<RegexNode> = Default::default();
+            let mut subregexes: Vec<usize> = Default::default();
             for e in subexprs {
                 let subregex = do_from_expr(e, specs, arena, symbols, input_from_position);
                 subregexes.push(subregex);
             }
-            RegexNode::Or(subregexes, true)
+            let result = RegexNode::Or(subregexes.into_boxed_slice(), true);
+            let result_id = {
+                let id = arena.len();
+                arena.push(result);
+                id
+            };
+            result_id
         }
     }
 }
 
 #[derive(Debug)]
-pub struct Regex<'a> {
-    pub root: RegexNode<'a>,
+pub struct Regex {
+    pub root: RegexNode,
     pub input_symbols: Rc<IndexSet<Input>>,
     pub input_from_position: Vec<Input>,
     pub endmarker_position: Position,
+    pub myarena: Vec<RegexNode>,
 }
 
 /*
@@ -482,26 +553,32 @@ fn do_ensure_ambiguous_inputs_tail_only_subword(
     Ok(())
 }
 
-impl<'a> Regex<'a> {
-    pub fn from_expr(e: &Expr, specs: &UstrMap<Specialization>, arena: &'a Bump) -> Result<Self> {
+impl Regex {
+    pub fn from_expr(e: &Expr, specs: &UstrMap<Specialization>) -> Result<Self> {
         let mut input_symbols: IndexSet<Input> = Default::default();
         let mut input_from_position: Vec<Input> = Default::default();
-        let regex = arena.alloc(do_from_expr(
+        let mut myarena: Vec<RegexNode> = Default::default();
+        let regex = do_from_expr(
             e,
             specs,
-            arena,
+            &mut myarena,
             &mut input_symbols,
             &mut input_from_position,
-        ));
+        );
         let endmarker_position = input_from_position.len() as Position;
-        let endmarker = arena.alloc(RegexNode::EndMarker(endmarker_position));
-        let root = RegexNode::Cat(regex, endmarker);
+        let endmarkerid = {
+            let id = myarena.len();
+            myarena.push(RegexNode::EndMarker(endmarker_position));
+            id
+        };
+        let root = RegexNode::Cat(regex, endmarkerid);
 
         let retval = Self {
             root,
             input_symbols: Rc::new(input_symbols),
             endmarker_position,
             input_from_position,
+            myarena,
         };
         Ok(retval)
     }
@@ -510,8 +587,8 @@ impl<'a> Regex<'a> {
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);
         do_ensure_ambiguous_inputs_tail_only(
-            &RoaringBitmap::from_iter(&self.root.firstpos()),
-            &self.root.followpos(),
+            &RoaringBitmap::from_iter(&self.root.firstpos(&self.myarena)),
+            &self.root.followpos(&self.myarena),
             &self.input_from_position,
             shell,
             &mut visited,
@@ -522,8 +599,8 @@ impl<'a> Regex<'a> {
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);
         do_ensure_ambiguous_inputs_tail_only_subword(
-            &RoaringBitmap::from_iter(&self.root.firstpos()),
-            &self.root.followpos(),
+            &RoaringBitmap::from_iter(&self.root.firstpos(&self.myarena)),
+            &self.root.followpos(&self.myarena),
             &self.input_from_position,
             shell,
             None,
@@ -532,11 +609,11 @@ impl<'a> Regex<'a> {
     }
 
     pub fn firstpos(&self) -> BTreeSet<Position> {
-        self.root.firstpos()
+        self.root.firstpos(&self.myarena)
     }
 
     pub fn followpos(&self) -> BTreeMap<Position, RoaringBitmap> {
-        self.root.followpos()
+        self.root.followpos(&self.myarena)
     }
 }
 
@@ -546,71 +623,92 @@ mod tests {
     use crate::{Error, Result};
     use ustr::ustr;
 
-    fn make_sample_star_regex(arena: &Bump) -> RegexNode {
-        RegexNode::Star(arena.alloc(RegexNode::Or(
-            vec![
-                RegexNode::Terminal(ustr("a"), 0, 1),
-                RegexNode::Terminal(ustr("b"), 0, 2),
-            ],
-            false,
-        )))
+    fn make_sample_star_regex(arena: &mut Vec<RegexNode>) -> usize {
+        let t1 = {
+            let id = arena.len();
+            arena.push(RegexNode::Terminal(ustr("a"), 0, 1));
+            id
+        };
+        let t2 = {
+            let id = arena.len();
+            arena.push(RegexNode::Terminal(ustr("b"), 0, 2));
+            id
+        };
+        let or_ = RegexNode::Or(Box::new([t1, t2]), false);
+        let or_id = {
+            let id = arena.len();
+            arena.push(or_);
+            id
+        };
+        let star = RegexNode::Star(or_id);
+        let star_id = {
+            let id = arena.len();
+            arena.push(star);
+            id
+        };
+        star_id
     }
 
-    fn make_sample_regex(arena: &Bump) -> RegexNode {
+    fn make_sample_regex(arena: &mut Vec<RegexNode>) -> RegexNode {
         // (a|b)*a
-        RegexNode::Cat(
-            arena.alloc(make_sample_star_regex(arena)),
-            arena.alloc(RegexNode::Terminal(ustr("a"), 0, 3)),
-        )
+        let t = {
+            let id = arena.len();
+            arena.push(RegexNode::Terminal(ustr("a"), 0, 3));
+            id
+        };
+        RegexNode::Cat(make_sample_star_regex(arena), t)
     }
 
     #[test]
     fn nullable() {
-        let arena = Bump::new();
-        let star_regex = make_sample_star_regex(&arena);
-        assert!(star_regex.nullable());
+        let mut arena = Default::default();
+        let star_regex_id = make_sample_star_regex(&mut arena);
+        let star_regex = &arena[star_regex_id];
+        assert!(star_regex.nullable(&arena));
 
-        let regex = make_sample_regex(&arena);
-        assert!(!regex.nullable());
+        let regex = make_sample_regex(&mut arena);
+        assert!(!regex.nullable(&arena));
     }
 
     #[test]
     fn firstpos() {
-        let arena = Bump::new();
-        let regex = make_sample_regex(&arena);
-        assert_eq!(regex.firstpos(), BTreeSet::from([1, 2, 3]));
+        let mut arena = Default::default();
+        let regex = make_sample_regex(&mut arena);
+        assert_eq!(regex.firstpos(&arena), BTreeSet::from([1, 2, 3]));
     }
 
     #[test]
     fn lastpos() {
-        let arena = Bump::new();
-        let regex = make_sample_regex(&arena);
-        assert_eq!(regex.lastpos(), HashSet::from([3]));
+        let mut arena = Default::default();
+        let regex = make_sample_regex(&mut arena);
+        assert_eq!(regex.lastpos(&arena), HashSet::from([3]));
     }
 
-    fn make_followpos_regex(arena: &Bump) -> RegexNode {
+    fn alloc(arena: &mut Vec<RegexNode>, node: RegexNode) -> usize {
+        let id = arena.len();
+        arena.push(node);
+        id
+    }
+
+    fn make_followpos_regex(arena: &mut Vec<RegexNode>) -> RegexNode {
         use RegexNode::*;
+
+        let c0 = make_sample_star_regex(arena);
+        let c1 = alloc(arena, Terminal(ustr("a"), 0, 3));
+        let c2 = alloc(arena, Cat(c0, c1));
+        let c3 = alloc(arena, Terminal(ustr("b"), 0, 4));
+        let c4 = alloc(arena, Cat(c2, c3));
+        let c5 = alloc(arena, Terminal(ustr("b"), 0, 5));
+
         // (a|b)*abb#
-        RegexNode::Cat(
-            arena.alloc(Cat(
-                arena.alloc(Cat(
-                    arena.alloc(Cat(
-                        arena.alloc(make_sample_star_regex(&arena)),
-                        arena.alloc(Terminal(ustr("a"), 0, 3)),
-                    )),
-                    arena.alloc(Terminal(ustr("b"), 0, 4)),
-                )),
-                arena.alloc(Terminal(ustr("b"), 0, 5)),
-            )),
-            arena.alloc(EndMarker(6)),
-        )
+        RegexNode::Cat(alloc(arena, Cat(c4, c5)), alloc(arena, EndMarker(6)))
     }
 
     #[test]
     fn followpos() {
-        let arena = Bump::new();
-        let regex = make_followpos_regex(&arena);
-        let fp = regex.followpos();
+        let mut arena = Default::default();
+        let regex = make_followpos_regex(&mut arena);
+        let fp = regex.followpos(&mut arena);
         assert_eq!(fp.get(&6), None);
         assert_eq!(fp.get(&5), Some(&RoaringBitmap::from_iter([6])));
         assert_eq!(fp.get(&4), Some(&RoaringBitmap::from_iter([5])));
@@ -624,9 +722,8 @@ mod tests {
             .map_err(|e| e.to_string())
             .unwrap();
         let validated = crate::grammar::ValidGrammar::from_grammar(g, Shell::Bash)?;
-        let arena = Bump::new();
         let specs = UstrMap::default();
-        let regex = Regex::from_expr(&validated.expr, &specs, &arena).unwrap();
+        let regex = Regex::from_expr(&validated.expr, &specs).unwrap();
         regex.ensure_ambiguous_inputs_tail_only(Shell::Bash)?;
         Ok(validated)
     }

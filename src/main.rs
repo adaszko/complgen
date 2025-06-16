@@ -4,7 +4,6 @@ use std::path::Path;
 use std::process::exit;
 
 use anyhow::{Context, bail};
-use bumpalo::Bump;
 use clap::Parser;
 
 use complgen::grammar::{ChicSpan, Grammar, Shell, ValidGrammar, to_railroad_diagram_file};
@@ -197,10 +196,8 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
         eprintln!("warning: unused nonterminal(s): {}", joined);
     }
 
-    let arena = Bump::new();
-
     log::debug!("Grammar -> Regex");
-    let regex = Regex::from_expr(&validated.expr, &validated.specializations, &arena)?;
+    let regex = Regex::from_expr(&validated.expr, &validated.specializations)?;
 
     regex.ensure_ambiguous_inputs_tail_only(shell)?;
 

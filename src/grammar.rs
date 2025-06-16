@@ -1,6 +1,5 @@
 use std::{borrow::Borrow, debug_assert, rc::Rc};
 
-use bumpalo::Bump;
 use hashbrown::HashMap;
 use itertools::Itertools;
 use nom::{
@@ -1004,13 +1003,12 @@ fn compile_subword_exprs(
 ) -> Result<Rc<Expr>> {
     let retval = match expr.as_ref() {
         Expr::Subword(subword_expr, fallback_level) => {
-            let arena = Bump::new();
             let subword_expr = match subword_expr {
                 SubwordCompilationPhase::Expr(e) => Rc::clone(e),
                 SubwordCompilationPhase::DFA(_) => unreachable!(),
             };
             let subword_expr = flatten_expr(subword_expr);
-            let regex = Regex::from_expr(&subword_expr, specs, &arena).unwrap();
+            let regex = Regex::from_expr(&subword_expr, specs).unwrap();
             regex.ensure_ambiguous_inputs_tail_only_subword(shell)?;
             let dfa = DFA::from_regex(&regex, DFAInterner::default());
             let dfa = dfa.minimize();

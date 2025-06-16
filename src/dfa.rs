@@ -1015,7 +1015,6 @@ mod tests {
 
     use super::*;
 
-    use bumpalo::Bump;
     use proptest::prelude::*;
     use ustr::{UstrMap, ustr as u};
 
@@ -1104,9 +1103,8 @@ mod tests {
     fn minimal_example() {
         use ustr::ustr;
         let expr = Terminal(ustr("foo"), None, 0, ChicSpan::Dummy);
-        let arena = Bump::new();
         let specs = UstrMap::default();
-        let regex = Regex::from_expr(&expr, &specs, &arena).unwrap();
+        let regex = Regex::from_expr(&expr, &specs).unwrap();
         let dfa = DFA::from_regex(&regex, DFAInterner::default());
         let transitions = dfa.get_transitions();
         assert_eq!(transitions, vec![Transition::new(1, "foo", 2)]);
@@ -1122,9 +1120,8 @@ mod tests {
         fn accepts_arb_expr_input_from_regex((expr, input) in arb_expr_match(Rc::new(TERMINALS.iter().map(|s| u(s)).collect()), Rc::new(NONTERMINALS.iter().map(|s| u(s)).collect()), 10, 3)) {
             // println!("{:?}", expr);
             // println!("{:?}", input);
-            let arena = Bump::new();
             let specs = UstrMap::default();
-            let regex = Regex::from_expr(&expr, &specs, &arena).unwrap();
+            let regex = Regex::from_expr(&expr, &specs).unwrap();
             let dfa = DFA::from_regex(&regex, DFAInterner::default());
             let input: Vec<&str> = input.iter().map(|s| {
                 let s: &str = s;
@@ -1137,9 +1134,8 @@ mod tests {
         fn minimized_dfa_equivalent_to_input_one((expr, input) in arb_expr_match(Rc::new(TERMINALS.iter().map(|s| u(s)).collect()), Rc::new(NONTERMINALS.iter().map(|s| u(s)).collect()), 10, 3)) {
             println!("{:?}", expr);
             println!("{:?}", input);
-            let arena = Bump::new();
             let specs = UstrMap::default();
-            let regex = Regex::from_expr(&expr, &specs, &arena).unwrap();
+            let regex = Regex::from_expr(&expr, &specs).unwrap();
             let dfa = DFA::from_regex(&regex, DFAInterner::default());
             let input: Vec<&str> = input.iter().map(|s| {
                 let s: &str = s;
@@ -1234,9 +1230,8 @@ mod tests {
                 u("foo"),
             ],
         );
-        let arena = Bump::new();
         let specs = UstrMap::default();
-        let regex = Regex::from_expr(&expr, &specs, &arena).unwrap();
+        let regex = Regex::from_expr(&expr, &specs).unwrap();
         let dfa = DFA::from_regex(&regex, DFAInterner::default());
         let input: Vec<&str> = input
             .iter()
@@ -1269,9 +1264,8 @@ mod tests {
                 u("anything"),
             ],
         );
-        let arena = Bump::new();
         let specs = UstrMap::default();
-        let regex = Regex::from_expr(&expr, &specs, &arena).unwrap();
+        let regex = Regex::from_expr(&expr, &specs).unwrap();
         let dfa = DFA::from_regex(&regex, DFAInterner::default());
         let input: Vec<&str> = input
             .iter()
@@ -1308,9 +1302,8 @@ mod tests {
             ]),
             [u("anything"), u("--baz"), u("anything"), u("anything")],
         );
-        let arena = Bump::new();
         let specs = UstrMap::default();
-        let regex = Regex::from_expr(&expr, &specs, &arena).unwrap();
+        let regex = Regex::from_expr(&expr, &specs).unwrap();
         let dfa = DFA::from_regex(&regex, DFAInterner::default());
         let input: Vec<&str> = input
             .iter()
