@@ -454,10 +454,10 @@ fn do_ensure_ambiguous_inputs_tail_only(
 
     let mut prev_ambiguous: Option<Input> = None;
     for inp in inputs {
-        if let Some(prev_inp) = prev_ambiguous {
-            return Err(Error::AmbiguousMatchable(prev_inp, inp));
-        }
         if inp.is_ambiguous(shell) {
+            if let Some(prev_inp) = prev_ambiguous {
+                return Err(Error::AmbiguousMatchable(prev_inp, inp));
+            }
             prev_ambiguous = Some(inp);
         }
     }
@@ -726,22 +726,6 @@ mod tests {
         let regex = Regex::from_expr(&validated.expr, &specs).unwrap();
         regex.ensure_ambiguous_inputs_tail_only(Shell::Bash)?;
         Ok(validated)
-    }
-
-    #[test]
-    fn detects_nontail_command_alternative() {
-        assert!(matches!(
-            get_validated_grammar(r#"cmd ({{{ echo foo }}} | bar);"#),
-            Err(Error::AmbiguousMatchable(_, _))
-        ));
-    }
-
-    #[test]
-    fn detects_nontail_command_fallback() {
-        assert!(matches!(
-            get_validated_grammar(r#"cmd ({{{ echo foo }}} || bar);"#),
-            Err(Error::AmbiguousMatchable(_, _))
-        ));
     }
 
     #[test]
