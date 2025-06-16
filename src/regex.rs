@@ -7,13 +7,23 @@ use std::rc::Rc;
 use roaring::RoaringBitmap;
 use ustr::{Ustr, UstrMap};
 
-use crate::grammar::{CmdRegexDecl, DFAId, Expr, Shell, Specialization, SubwordCompilationPhase};
+use crate::grammar::{
+    ChicSpan, CmdRegexDecl, DFAId, Expr, Shell, Specialization, SubwordCompilationPhase,
+};
 
 pub type Position = u32;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Literal {
+    pub literal: Ustr,
+    pub description: Option<Ustr>,
+    pub fallback_level: usize,
+    pub span: ChicSpan,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Input {
-    Literal(Ustr, Option<Ustr>, usize), // literal, optional description, fallback level
+    Literal(Literal), // literal, optional description, fallback level
     Subword(DFAId, usize),
     Nonterminal(Ustr, Option<Specialization>, usize), // name, specialization, fallback level
     Command(Ustr, Option<CmdRegexDecl>, usize),       // command, fallback level
@@ -22,7 +32,7 @@ pub enum Input {
 impl Input {
     pub fn is_ambiguous(&self, shell: Shell) -> bool {
         match self {
-            Self::Literal(..) => false,
+            Self::Literal(Literal { .. }) => false,
             Self::Subword(..) => false,
             Self::Nonterminal(..) => true,
             Self::Command(_, None, _) => true,
@@ -32,7 +42,12 @@ impl Input {
 
     pub fn get_fallback_level(&self) -> usize {
         match self {
-            Self::Literal(_, _, level) => *level,
+            Self::Literal(Literal {
+                literal: _,
+                description: _,
+                fallback_level: level,
+                ..
+            }) => *level,
             Self::Subword(_, level) => *level,
             Self::Nonterminal(_, _, level) => *level,
             Self::Command(_, _, level) => *level,
@@ -44,7 +59,7 @@ impl std::fmt::Display for Input {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Subword(subword, _) => write!(f, r#"{subword:?}"#),
-            Self::Literal(literal, ..) => write!(f, r#"{literal}"#),
+            Self::Literal(Literal { literal, .. }) => write!(f, r#"{literal}"#),
             Self::Nonterminal(nonterminal, ..) => write!(f, r#"<{nonterminal}>"#),
             Self::Command(command, ..) => write!(f, r#"{{{{{{ {command} }}}}}}"#),
         }
@@ -264,13 +279,18 @@ fn do_from_expr<'a>(
     input_from_position: &mut Vec<Input>,
 ) -> usize {
     match e {
-        Expr::Terminal(term, description, level, _) => {
+        Expr::Terminal(term, description, level, span) => {
             let result = RegexNode::Terminal(
                 *term,
                 *level,
                 Position::try_from(input_from_position.len()).unwrap(),
             );
-            let input = Input::Literal(*term, *description, *level);
+            let input = Input::Literal(Literal {
+                literal: *term,
+                description: *description,
+                fallback_level: *level,
+                span: span.clone(),
+            });
             input_from_position.push(input.clone());
             symbols.insert(input);
             let result_id = {

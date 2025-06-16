@@ -2,7 +2,7 @@ use std::io::Write;
 
 use crate::dfa::DFA;
 use crate::grammar::{CmdRegexDecl, Shell, Specialization};
-use crate::regex::Input;
+use crate::regex::{Input, Literal};
 use crate::{Result, StateId};
 use hashbrown::HashMap;
 use indexmap::{IndexMap, IndexSet};
@@ -385,7 +385,12 @@ pub fn write_subword_fn<W: Write>(
 
     for (from, input, _) in dfa.iter_transitions() {
         match input {
-            Input::Literal(lit, descr, fallback_level) => {
+            Input::Literal(Literal {
+                literal: lit,
+                description: descr,
+                fallback_level,
+                ..
+            }) => {
                 let literal_id = *literal_id_from_input_description
                     .get(&(*lit, (*descr).unwrap_or("".into())))
                     .unwrap();
@@ -740,7 +745,12 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
     for (from, input, _) in dfa.iter_transitions() {
         match input {
-            Input::Literal(lit, descr, fallback_level) => {
+            Input::Literal(Literal {
+                literal: lit,
+                description: descr,
+                fallback_level,
+                ..
+            }) => {
                 let literal_id = *literal_id_from_input_description
                     .get(&(*lit, (*descr).unwrap_or("".into())))
                     .unwrap();

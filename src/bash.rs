@@ -7,6 +7,7 @@ use crate::grammar::CmdRegexDecl;
 use crate::grammar::Shell;
 use crate::grammar::Specialization;
 use crate::regex::Input;
+use crate::regex::Literal;
 use hashbrown::HashMap;
 use indexmap::IndexSet;
 use ustr::{Ustr, ustr};
@@ -329,7 +330,12 @@ pub fn write_subword_fn<W: Write>(
 
     for (from, input, _) in dfa.iter_transitions() {
         match input {
-            Input::Literal(lit, descr, fallback_level) => {
+            Input::Literal(Literal {
+                literal: lit,
+                description: descr,
+                fallback_level,
+                ..
+            }) => {
                 let literal_id = *literal_id_from_input_description
                     .get(&(*lit, (*descr).unwrap_or("".into())))
                     .unwrap();
@@ -671,7 +677,12 @@ fi
 
     for (from, input, _) in dfa.iter_transitions() {
         match input {
-            Input::Literal(lit, descr, fallback_level) => {
+            Input::Literal(Literal {
+                literal: lit,
+                description: descr,
+                fallback_level,
+                ..
+            }) => {
                 let literal_id = *literal_id_from_input_description
                     .get(&(*lit, (*descr).unwrap_or("".into())))
                     .unwrap();
