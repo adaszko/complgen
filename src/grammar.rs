@@ -82,7 +82,7 @@ pub enum Expr {
     Terminal(Ustr, Option<Ustr>, usize, ChicSpan), // terminal, optional description, fallback level
 
     // `--option=argument`
-    Subword(SubwordCompilationPhase, usize),
+    Subword(SubwordCompilationPhase, usize, ChicSpan),
 
     // `<PATH>`, `<DIRECTORY>`, etc.
     NontermRef(Ustr, usize, ChicSpan), // name, fallback level
@@ -149,7 +149,7 @@ pub struct Specialization {
 impl std::fmt::Debug for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Subword(subword, level) => {
+            Self::Subword(subword, level, ..) => {
                 f.write_fmt(format_args!(r#"Rc::new(Subword({subword:?}, {level}))"#))
             }
             Expr::Terminal(term, Some(descr), level, ..) => f.write_fmt(format_args!(
@@ -571,11 +571,11 @@ fn unary_expr(input: Span) -> IResult<Span, Expr> {
 }
 
 fn subword_sequence_expr(input: Span) -> IResult<Span, Expr> {
-    let (mut input, left) = unary_expr(input)?;
+    let (mut after, left) = unary_expr(input)?;
     let mut factors: Vec<Expr> = vec![left];
-    while let Ok((rest, right)) = unary_expr(input) {
+    while let Ok((rest, right)) = unary_expr(after) {
         factors.push(right);
-        input = rest;
+        after = rest;
     }
     let result = if factors.len() == 1 {
         factors.into_iter().next().unwrap()
@@ -585,9 +585,10 @@ fn subword_sequence_expr(input: Span) -> IResult<Span, Expr> {
             .map(|e| flatten_expr(Rc::new(e)))
             .collect();
         let e = Expr::Sequence(flattened_factors);
-        Expr::Subword(SubwordCompilationPhase::Expr(Rc::new(e)), 0)
+        let span = ChicSpan::new(input, after);
+        Expr::Subword(SubwordCompilationPhase::Expr(Rc::new(e)), 0, span)
     };
-    Ok((input, result))
+    Ok((after, result))
 }
 
 fn subword_sequence_expr_opt_description(input: Span) -> IResult<Span, Expr> {
@@ -1002,7 +1003,7 @@ fn compile_subword_exprs(
     subdfa_interner: &mut DFAInterner,
 ) -> Result<Rc<Expr>> {
     let retval = match expr.as_ref() {
-        Expr::Subword(subword_expr, fallback_level) => {
+        Expr::Subword(subword_expr, fallback_level, span) => {
             let subword_expr = match subword_expr {
                 SubwordCompilationPhase::Expr(e) => Rc::clone(e),
                 SubwordCompilationPhase::DFA(_) => unreachable!(),
@@ -1016,6 +1017,7 @@ fn compile_subword_exprs(
             Rc::new(Expr::Subword(
                 SubwordCompilationPhase::DFA(subdfaid),
                 *fallback_level,
+                span.clone(),
             ))
         }
         Expr::Terminal(..) | Expr::NontermRef(..) | Expr::Command(..) => Rc::clone(&expr),
@@ -1151,7 +1153,7 @@ fn do_distribute_descriptions(expr: Rc<Expr>, description: &mut Option<Ustr>) ->
                 Rc::new(Expr::Many1(new_child))
             }
         }
-        Expr::Subword(SubwordCompilationPhase::Expr(child), fallback_level) => {
+        Expr::Subword(SubwordCompilationPhase::Expr(child), fallback_level, span) => {
             let new_child = do_distribute_descriptions(Rc::clone(&child), description);
             if Rc::ptr_eq(&child, &new_child) {
                 Rc::clone(&expr)
@@ -1159,6 +1161,7 @@ fn do_distribute_descriptions(expr: Rc<Expr>, description: &mut Option<Ustr>) ->
                 Rc::new(Expr::Subword(
                     SubwordCompilationPhase::Expr(new_child),
                     *fallback_level,
+                    span.clone(),
                 ))
             }
         }
@@ -1259,7 +1262,7 @@ fn do_propagate_fallback_levels(expr: Rc<Expr>, fallback_level: usize) -> Rc<Exp
                 Rc::new(Expr::Many1(new_child))
             }
         }
-        Expr::Subword(SubwordCompilationPhase::Expr(child), _) => {
+        Expr::Subword(SubwordCompilationPhase::Expr(child), _, span) => {
             let new_child = do_propagate_fallback_levels(Rc::clone(&child), fallback_level);
             if Rc::ptr_eq(&child, &new_child) {
                 Rc::clone(&expr)
@@ -1267,6 +1270,7 @@ fn do_propagate_fallback_levels(expr: Rc<Expr>, fallback_level: usize) -> Rc<Exp
                 Rc::new(Expr::Subword(
                     SubwordCompilationPhase::Expr(new_child),
                     fallback_level,
+                    span.clone(),
                 ))
             }
         }
@@ -1550,7 +1554,7 @@ fn resolve_nonterminals(
 ) -> Rc<Expr> {
     match expr.as_ref() {
         Expr::Terminal(..) | Expr::Command(..) => Rc::clone(&expr),
-        Expr::Subword(child, fallback_level) => {
+        Expr::Subword(child, fallback_level, span) => {
             let child = match child {
                 SubwordCompilationPhase::Expr(e) => Rc::clone(e),
                 SubwordCompilationPhase::DFA(..) => unreachable!(),
@@ -1567,6 +1571,7 @@ fn resolve_nonterminals(
                 Rc::new(Expr::Subword(
                     SubwordCompilationPhase::Expr(new_child),
                     *fallback_level,
+                    span.clone(),
                 ))
             }
         }
@@ -2063,7 +2068,8 @@ pub mod tests {
                     Rc::new(Terminal(ustr("--color="), None, 0, ChicSpan::Dummy)),
                     Rc::new(NontermRef(ustr("WHEN"), 0, ChicSpan::dummy()))
                 ]))),
-                0
+                0,
+                ChicSpan::Dummy,
             )
         );
     }
@@ -2081,7 +2087,8 @@ pub mod tests {
                         Rc::new(Terminal(ustr("--color="), None, 0, ChicSpan::Dummy)),
                         Rc::new(NontermRef(ustr("WHEN"), 0, ChicSpan::dummy()))
                     ]))),
-                    0
+                    0,
+                    ChicSpan::Dummy,
                 )),
                 ustr("use markers to highlight the matching strings")
             )
@@ -2103,7 +2110,8 @@ pub mod tests {
                             Rc::new(Terminal(ustr("--color="), None, 0, ChicSpan::Dummy)),
                             Rc::new(NontermRef(ustr("WHEN"), 0, ChicSpan::dummy()))
                         ]))),
-                        0
+                        0,
+                        ChicSpan::Dummy,
                     )),
                     Rc::new(Sequence(vec![
                         Rc::new(Terminal(ustr("--color"), None, 0, ChicSpan::Dummy)),
@@ -2530,7 +2538,8 @@ cargo [+{{{ rustup toolchain list | cut -d' ' -f1 }}}] [<OPTIONS>] [<COMMAND>];
                                 ChicSpan::dummy()
                             ))
                         ]))),
-                        0
+                        0,
+                        ChicSpan::Dummy,
                     )))),
                     Rc::new(Optional(Rc::new(NontermRef(
                         ustr("OPTIONS"),
@@ -2565,7 +2574,8 @@ grep --color=<WHEN> --version;
                                 Rc::new(Terminal(ustr("--color="), None, 0, ChicSpan::Dummy)),
                                 Rc::new(NontermRef(ustr("WHEN"), 0, ChicSpan::dummy()))
                             ]))),
-                            0
+                            0,
+                            ChicSpan::Dummy,
                         )),
                         Rc::new(Terminal(ustr("--version"), None, 0, ChicSpan::Dummy))
                     ])),
@@ -2602,7 +2612,8 @@ grep --color=(always | never | auto);
                             Rc::new(Terminal(ustr("auto"), None, 0, ChicSpan::Dummy))
                         ]))
                     ]))),
-                    0
+                    0,
+                    ChicSpan::Dummy,
                 )),
             },],
         );
@@ -2652,7 +2663,8 @@ strace -e <EXPR>;
                             Rc::new(NontermRef(ustr("value"), 0, ChicSpan::dummy()))
                         ]))))))
                     ]))),
-                    0
+                    0,
+                    ChicSpan::Dummy,
                 )),
             }
         );
@@ -2709,7 +2721,8 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
                             Rc::new(NontermRef(ustr("STATE-SPEC"), 0, ChicSpan::dummy()))
                         ]))))))
                     ]))),
-                    0
+                    0,
+                    ChicSpan::Dummy,
                 )),
             }
         );
@@ -2739,7 +2752,8 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
                         )))),
                         Rc::new(NontermRef(ustr("STATE"), 0, ChicSpan::dummy()))
                     ]))),
-                    0
+                    0,
+                    ChicSpan::Dummy,
                 )),
             }
         );
@@ -2774,7 +2788,8 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
                                 Rc::new(Terminal(ustr("+"), None, 0, ChicSpan::Dummy)),
                                 Rc::new(NontermRef(ustr("toolchain"), 0, ChicSpan::dummy()))
                             ]))),
-                            0
+                            0,
+                            ChicSpan::Dummy,
                         )))),
                         Rc::new(Optional(Rc::new(NontermRef(
                             ustr("OPTIONS"),
@@ -2979,7 +2994,8 @@ ls <FILE>;
                             )),
                             Rc::new(NontermRef(ustr("WHEN"), 0, ChicSpan::dummy()))
                         ]))),
-                        0
+                        0,
+                        ChicSpan::Dummy,
                     )),
                     Rc::new(Sequence(vec![
                         Rc::new(Terminal(
@@ -3019,7 +3035,8 @@ ls <FILE>;
                             )),
                             Rc::new(NontermRef(ustr("WHEN"), 0, ChicSpan::dummy()))
                         ]))),
-                        0
+                        0,
+                        ChicSpan::Dummy,
                     )),
                     Rc::new(Sequence(vec![
                         Rc::new(Terminal(
@@ -3058,7 +3075,8 @@ ls <FILE>;
                                 )),
                                 Rc::new(NontermRef(ustr("WHEN"), 0, ChicSpan::dummy()))
                             ]))),
-                            0
+                            0,
+                            ChicSpan::Dummy,
                         )),
                         Rc::new(Sequence(vec![
                             Rc::new(Terminal(
@@ -3105,7 +3123,8 @@ ls <FILE>;
                     Rc::new(Terminal(ustr(".."), None, 0, ChicSpan::Dummy)),
                     Rc::new(Command(ustr("git tag"), None, 0, ChicSpan::dummy()))
                 ]))),
-                0
+                0,
+                ChicSpan::Dummy,
             )
         );
     }

@@ -24,7 +24,11 @@ pub struct Literal {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Input {
     Literal(Literal), // literal, optional description, fallback level
-    Subword(DFAId, usize),
+    Subword {
+        subdfa: DFAId,
+        fallback_level: usize,
+        span: ChicSpan,
+    },
     Nonterminal(Ustr, Option<Specialization>, usize), // name, specialization, fallback level
     Command(Ustr, Option<CmdRegexDecl>, usize),       // command, fallback level
 }
@@ -33,7 +37,7 @@ impl Input {
     pub fn is_ambiguous(&self, shell: Shell) -> bool {
         match self {
             Self::Literal(Literal { .. }) => false,
-            Self::Subword(..) => false,
+            Self::Subword { .. } => false,
             Self::Nonterminal(..) => true,
             Self::Command(_, None, _) => true,
             Self::Command(_, Some(regex), _) => regex.matches_anything(shell),
@@ -48,7 +52,11 @@ impl Input {
                 fallback_level: level,
                 ..
             }) => *level,
-            Self::Subword(_, level) => *level,
+            Self::Subword {
+                subdfa: _,
+                fallback_level: level,
+                ..
+            } => *level,
             Self::Nonterminal(_, _, level) => *level,
             Self::Command(_, _, level) => *level,
         }
@@ -58,7 +66,9 @@ impl Input {
 impl std::fmt::Display for Input {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Subword(subword, _) => write!(f, r#"{subword:?}"#),
+            Self::Subword {
+                subdfa: subword, ..
+            } => write!(f, r#"{subword:?}"#),
             Self::Literal(Literal { literal, .. }) => write!(f, r#"{literal}"#),
             Self::Nonterminal(nonterminal, ..) => write!(f, r#"<{nonterminal}>"#),
             Self::Command(command, ..) => write!(f, r#"{{{{{{ {command} }}}}}}"#),
@@ -300,13 +310,17 @@ fn do_from_expr<'a>(
             };
             result_id
         }
-        Expr::Subword(subword, fallback_level) => {
+        Expr::Subword(subword, fallback_level, span) => {
             let result = RegexNode::Subword(Position::try_from(input_from_position.len()).unwrap());
             let dfa = match subword {
                 SubwordCompilationPhase::DFA(dfa) => dfa,
                 SubwordCompilationPhase::Expr(_) => unreachable!(),
             };
-            let input = Input::Subword(dfa.clone(), *fallback_level);
+            let input = Input::Subword {
+                subdfa: dfa.clone(),
+                fallback_level: *fallback_level,
+                span: span.clone(),
+            };
             input_from_position.push(input.clone());
             symbols.insert(input);
             let result_id = {

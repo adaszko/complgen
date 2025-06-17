@@ -484,7 +484,9 @@ pub fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
                     id_from_regex.insert(*bash_regex);
                 }
             }
-            Input::Subword(subdfaid, ..) => {
+            Input::Subword {
+                subdfa: subdfaid, ..
+            } => {
                 let subdfa = dfa.subdfa_interner.lookup(*subdfaid);
                 for input in subdfa.iter_inputs() {
                     match input {
@@ -691,7 +693,11 @@ fi
                     .or_default()
                     .push(literal_id);
             }
-            Input::Subword(dfa, fallback_level) => {
+            Input::Subword {
+                subdfa: dfa,
+                fallback_level,
+                ..
+            } => {
                 let subword_id = *id_from_dfa.get(dfa).unwrap();
                 fallback_subwords[*fallback_level]
                     .entry(from)

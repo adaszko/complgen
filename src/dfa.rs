@@ -613,7 +613,9 @@ fn do_to_dot<W: Write>(
                         from, to, label
                     )?;
                 }
-                Input::Subword(subdfaid, ..) => {
+                Input::Subword {
+                    subdfa: subdfaid, ..
+                } => {
                     let subdfa = dfa.subdfa_interner.lookup(*subdfaid);
                     let subdfa_id = *id_from_dfa.get(subdfaid).unwrap();
                     let subdfa_identifiers_prefix = &format!("{subdfa_id}_");
@@ -642,7 +644,7 @@ fn do_get_subdfa_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)
         for (input, _) in tos {
             let cmd = match input {
                 Input::Command(cmd, ..) => *cmd,
-                Input::Subword(..) => unreachable!(),
+                Input::Subword { .. } => unreachable!(),
                 Input::Nonterminal(..) => continue,
                 Input::Literal(Literal { .. }) => continue,
             };
@@ -701,7 +703,9 @@ impl DFA {
             match &input {
                 Input::Literal(Literal { .. }) => {}
                 Input::Nonterminal(..) => ambiguous_inputs.push(input.clone()),
-                Input::Subword(subdfaid, _) => {
+                Input::Subword {
+                    subdfa: subdfaid, ..
+                } => {
                     let subdfa = self.subdfa_interner.lookup(*subdfaid);
                     subdfa.do_check_dfa_ambiguity(
                         command,
@@ -784,7 +788,7 @@ impl DFA {
                     description,
                     ..
                 }) => Some((*input, *description)),
-                Input::Subword(..) => None,
+                Input::Subword { .. } => None,
                 Input::Nonterminal(..) => None,
                 Input::Command(..) => None,
             })
@@ -796,7 +800,9 @@ impl DFA {
         for (_, tos) in &self.transitions {
             for (input, _) in tos {
                 match input {
-                    Input::Subword(subdfaid, ..) => {
+                    Input::Subword {
+                        subdfa: subdfaid, ..
+                    } => {
                         let subdfa = self.subdfa_interner.lookup(*subdfaid);
                         if subdfas.contains_key(subdfaid) {
                             continue;
@@ -827,7 +833,7 @@ impl DFA {
                     description,
                     ..
                 }) => Some((*input, description.unwrap_or(ustr("")), *to)),
-                Input::Subword(..) => None,
+                Input::Subword { .. } => None,
                 Input::Nonterminal(..) => None,
                 Input::Command(..) => None,
             })
@@ -853,7 +859,7 @@ impl DFA {
                 Input::Command(_, None, _) => None,
                 Input::Command(_, Some(CmdRegexDecl { bash: None, .. }), _) => None,
                 Input::Literal(Literal { .. }) => None,
-                Input::Subword(..) => None,
+                Input::Subword { .. } => None,
                 Input::Nonterminal(..) => None,
             })
             .collect();
@@ -878,7 +884,7 @@ impl DFA {
                 Input::Command(_, None, _) => None,
                 Input::Command(_, Some(CmdRegexDecl { fish: None, .. }), _) => None,
                 Input::Literal(Literal { .. }) => None,
-                Input::Subword(..) => None,
+                Input::Subword { .. } => None,
                 Input::Nonterminal(..) => None,
             })
             .collect();
@@ -903,7 +909,7 @@ impl DFA {
                 Input::Command(_, None, _) => None,
                 Input::Command(_, Some(CmdRegexDecl { zsh: None, .. }), _) => None,
                 Input::Literal(Literal { .. }) => None,
-                Input::Subword(..) => None,
+                Input::Subword { .. } => None,
                 Input::Nonterminal(..) => None,
             })
             .collect();
@@ -918,7 +924,7 @@ impl DFA {
         let transitions: Vec<(DFAId, StateId)> = map
             .iter()
             .filter_map(|(input, to)| match input {
-                Input::Subword(dfa, ..) => Some((dfa.clone(), *to)),
+                Input::Subword { subdfa: dfa, .. } => Some((dfa.clone(), *to)),
                 Input::Literal(Literal { .. }) => None,
                 Input::Nonterminal(..) => None,
                 Input::Command(..) => None,
@@ -970,7 +976,7 @@ impl DFA {
         for (_, tos) in &self.transitions {
             for (input, _) in tos {
                 let dfa = match input {
-                    Input::Subword(dfa, ..) => dfa,
+                    Input::Subword { subdfa: dfa, .. } => dfa,
                     Input::Nonterminal(..) => continue,
                     Input::Command(..) => continue,
                     Input::Literal(Literal { .. }) => continue,
@@ -1059,7 +1065,7 @@ mod tests {
                 }
 
                 for (transition_input, to) in self.iter_transitions_from(current_state) {
-                    if let Input::Subword(dfaid, ..) = transition_input {
+                    if let Input::Subword { subdfa: dfaid, .. } = transition_input {
                         let dfa = self.subdfa_interner.lookup(dfaid);
                         if dfa.accepts_str(inputs[input_index], shell) {
                             input_index += 1;
