@@ -14,16 +14,13 @@ use crate::grammar::{
 pub type Position = u32;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Literal {
-    pub literal: Ustr,
-    pub description: Option<Ustr>,
-    pub fallback_level: usize,
-    pub span: ChicSpan,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Input {
-    Literal(Literal), // literal, optional description, fallback level
+    Literal {
+        literal: Ustr,
+        description: Option<Ustr>,
+        fallback_level: usize,
+        span: ChicSpan,
+    },
     Subword {
         subdfa: DFAId,
         fallback_level: usize,
@@ -34,19 +31,19 @@ pub enum Input {
         spec: Option<Specialization>,
         fallback_level: usize,
         span: ChicSpan,
-    }, // name, specialization, fallback level
+    },
     Command {
         cmd: Ustr,
         regex: Option<CmdRegexDecl>,
         fallback_level: usize,
         span: ChicSpan,
-    }, // command, fallback level
+    },
 }
 
 impl Input {
     pub fn is_ambiguous(&self, shell: Shell) -> bool {
         match self {
-            Self::Literal(Literal { .. }) => false,
+            Self::Literal { .. } => false,
             Self::Subword { .. } => false,
             Self::Nonterminal { .. } => true,
             Self::Command { regex: None, .. } => true,
@@ -58,14 +55,11 @@ impl Input {
 
     pub fn get_fallback_level(&self) -> usize {
         match self {
-            Self::Literal(Literal {
-                literal: _,
-                description: _,
+            Self::Literal {
                 fallback_level: level,
                 ..
-            }) => *level,
+            } => *level,
             Self::Subword {
-                subdfa: _,
                 fallback_level: level,
                 ..
             } => *level,
@@ -87,7 +81,7 @@ impl std::fmt::Display for Input {
             Self::Subword {
                 subdfa: subword, ..
             } => write!(f, r#"{subword:?}"#),
-            Self::Literal(Literal { literal, .. }) => write!(f, r#"{literal}"#),
+            Self::Literal { literal, .. } => write!(f, r#"{literal}"#),
             Self::Nonterminal {
                 nonterm: nonterminal,
                 ..
@@ -316,12 +310,12 @@ fn do_from_expr<'a>(
                 *level,
                 Position::try_from(input_from_position.len()).unwrap(),
             );
-            let input = Input::Literal(Literal {
+            let input = Input::Literal {
                 literal: *term,
                 description: *description,
                 fallback_level: *level,
                 span: span.clone(),
-            });
+            };
             input_from_position.push(input.clone());
             symbols.insert(input);
             let result_id = {

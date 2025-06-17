@@ -7,7 +7,7 @@ use ustr::{Ustr, ustr};
 
 use crate::StateId;
 use crate::grammar::{CmdRegexDecl, DFAId, DFAInterner, Shell};
-use crate::regex::{Input, Literal, Position, Regex};
+use crate::regex::{Input, Position, Regex};
 
 // Every state in a DFA is formally defined to have a transition on *every* input symbol.  In
 // our applications that's not the case, so we add artificial transitions to a special, designated
@@ -605,9 +605,7 @@ fn do_to_dot<W: Write>(
     for (from, tos) in &dfa.transitions {
         for (input, to) in tos {
             match input {
-                Input::Literal(Literal { .. })
-                | Input::Nonterminal { .. }
-                | Input::Command { .. } => {
+                Input::Literal { .. } | Input::Nonterminal { .. } | Input::Command { .. } => {
                     let label = format!("{}", input).replace('\"', "\\\"");
                     writeln!(
                         output,
@@ -648,7 +646,7 @@ fn do_get_subdfa_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)
                 Input::Command { cmd, .. } => *cmd,
                 Input::Subword { .. } => unreachable!(),
                 Input::Nonterminal { .. } => continue,
-                Input::Literal(Literal { .. }) => continue,
+                Input::Literal { .. } => continue,
             };
             result.push((*from, cmd));
         }
@@ -668,7 +666,7 @@ impl DFA {
         let mut current_state = self.starting_state;
         'outer: while !input.is_empty() {
             for (transition_input, to) in self.iter_transitions_from(current_state) {
-                if let Input::Literal(Literal { literal, .. }) = transition_input {
+                if let Input::Literal { literal, .. } = transition_input {
                     let s = literal.as_str();
                     if input.starts_with(s) {
                         input = &input[s.len()..];
@@ -703,7 +701,7 @@ impl DFA {
         let mut ambiguous_inputs: Vec<Input> = Default::default();
         for (input, _) in self.iter_transitions_from(state) {
             match &input {
-                Input::Literal(Literal { .. }) => {}
+                Input::Literal { .. } => {}
                 Input::Nonterminal { .. } => ambiguous_inputs.push(input.clone()),
                 Input::Subword {
                     subdfa: subdfaid, ..
@@ -787,11 +785,11 @@ impl DFA {
         self.input_symbols
             .iter()
             .filter_map(|input| match input {
-                Input::Literal(Literal {
+                Input::Literal {
                     literal: input,
                     description,
                     ..
-                }) => Some((*input, *description)),
+                } => Some((*input, *description)),
                 Input::Subword { .. } => None,
                 Input::Nonterminal { .. } => None,
                 Input::Command { .. } => None,
@@ -817,7 +815,7 @@ impl DFA {
                     }
                     Input::Command { .. } => continue,
                     Input::Nonterminal { .. } => continue,
-                    Input::Literal(Literal { .. }) => continue,
+                    Input::Literal { .. } => continue,
                 };
             }
         }
@@ -832,11 +830,11 @@ impl DFA {
         let transitions: Vec<(Ustr, Ustr, StateId)> = map
             .iter()
             .filter_map(|(input, to)| match input {
-                Input::Literal(Literal {
+                Input::Literal {
                     literal: input,
                     description,
                     ..
-                }) => Some((*input, description.unwrap_or(ustr("")), *to)),
+                } => Some((*input, description.unwrap_or(ustr("")), *to)),
                 Input::Subword { .. } => None,
                 Input::Nonterminal { .. } => None,
                 Input::Command { .. } => None,
@@ -866,7 +864,7 @@ impl DFA {
                     regex: Some(CmdRegexDecl { bash: None, .. }),
                     ..
                 } => None,
-                Input::Literal(Literal { .. }) => None,
+                Input::Literal { .. } => None,
                 Input::Subword { .. } => None,
                 Input::Nonterminal { .. } => None,
             })
@@ -895,7 +893,7 @@ impl DFA {
                     regex: Some(CmdRegexDecl { fish: None, .. }),
                     ..
                 } => None,
-                Input::Literal(Literal { .. }) => None,
+                Input::Literal { .. } => None,
                 Input::Subword { .. } => None,
                 Input::Nonterminal { .. } => None,
             })
@@ -924,7 +922,7 @@ impl DFA {
                     regex: Some(CmdRegexDecl { zsh: None, .. }),
                     ..
                 } => None,
-                Input::Literal(Literal { .. }) => None,
+                Input::Literal { .. } => None,
                 Input::Subword { .. } => None,
                 Input::Nonterminal { .. } => None,
             })
@@ -941,7 +939,7 @@ impl DFA {
             .iter()
             .filter_map(|(input, to)| match input {
                 Input::Subword { subdfa: dfa, .. } => Some((dfa.clone(), *to)),
-                Input::Literal(Literal { .. }) => None,
+                Input::Literal { .. } => None,
                 Input::Nonterminal { .. } => None,
                 Input::Command { .. } => None,
             })
@@ -995,7 +993,7 @@ impl DFA {
                     Input::Subword { subdfa: dfa, .. } => dfa,
                     Input::Nonterminal { .. } => continue,
                     Input::Command { .. } => continue,
-                    Input::Literal(Literal { .. }) => continue,
+                    Input::Literal { .. } => continue,
                 };
                 result.entry(dfa.clone()).or_insert_with(|| {
                     let save = unallocated_id;
@@ -1038,7 +1036,7 @@ mod tests {
 
     use crate::grammar::tests::arb_expr_match;
     use crate::grammar::{ChicSpan, Expr};
-    use crate::regex::{Literal, Regex};
+    use crate::regex::Regex;
     use Expr::*;
 
     use super::*;
@@ -1050,12 +1048,12 @@ mod tests {
         fn new(from: StateId, input: &str, to: StateId) -> Self {
             Self {
                 from,
-                input: Input::Literal(Literal {
+                input: Input::Literal {
                     literal: ustr::ustr(input),
                     description: None,
                     fallback_level: 0,
                     span: ChicSpan::Dummy,
-                }),
+                },
                 to,
             }
         }
@@ -1071,8 +1069,8 @@ mod tests {
                 }
 
                 for (transition_input, to) in self.iter_transitions_from(current_state) {
-                    if let Input::Literal(Literal { literal: s, .. }) = transition_input {
-                        if inputs[input_index] == s.as_str() {
+                    if let Input::Literal { literal, .. } = transition_input {
+                        if inputs[input_index] == literal.as_str() {
                             input_index += 1;
                             current_state = to;
                             continue 'outer;
@@ -1187,70 +1185,70 @@ mod tests {
             let starting_state = 0;
             let mut transitions: IndexMap<StateId, IndexMap<Input, StateId>> = Default::default();
             transitions.entry(0).or_default().insert(
-                Input::Literal(Literal {
+                Input::Literal {
                     literal: ustr("f"),
                     description: None,
                     fallback_level: 0,
                     span: ChicSpan::dummy(),
-                }),
+                },
                 1,
             );
             transitions.entry(1).or_default().insert(
-                Input::Literal(Literal {
+                Input::Literal {
                     literal: ustr("e"),
                     description: None,
                     fallback_level: 0,
                     span: ChicSpan::dummy(),
-                }),
+                },
                 2,
             );
             transitions.entry(1).or_default().insert(
-                Input::Literal(Literal {
+                Input::Literal {
                     literal: ustr("i"),
                     description: None,
                     fallback_level: 0,
                     span: ChicSpan::dummy(),
-                }),
+                },
                 4,
             );
             transitions.entry(2).or_default().insert(
-                Input::Literal(Literal {
+                Input::Literal {
                     literal: ustr("e"),
                     description: None,
                     fallback_level: 0,
                     span: ChicSpan::dummy(),
-                }),
+                },
                 3,
             );
             transitions.entry(4).or_default().insert(
-                Input::Literal(Literal {
+                Input::Literal {
                     literal: ustr("e"),
                     description: None,
                     fallback_level: 0,
                     span: ChicSpan::dummy(),
-                }),
+                },
                 5,
             );
             let accepting_states = RoaringBitmap::from_iter([3, 5]);
             let input_symbols = Rc::new(IndexSet::from_iter([
-                Input::Literal(Literal {
+                Input::Literal {
                     literal: ustr("f"),
                     description: None,
                     fallback_level: 0,
                     span: ChicSpan::dummy(),
-                }),
-                Input::Literal(Literal {
+                },
+                Input::Literal {
                     literal: ustr("e"),
                     description: None,
                     fallback_level: 0,
                     span: ChicSpan::dummy(),
-                }),
-                Input::Literal(Literal {
+                },
+                Input::Literal {
                     literal: ustr("i"),
                     description: None,
                     fallback_level: 0,
                     span: ChicSpan::dummy(),
-                }),
+                },
             ]));
             DFA {
                 starting_state,
@@ -1265,42 +1263,42 @@ mod tests {
         assert_eq!(minimized.accepting_states, RoaringBitmap::from_iter([3]));
         assert!(minimized.has_transition(
             0,
-            Input::Literal(Literal {
+            Input::Literal {
                 literal: ustr("f"),
                 description: None,
                 fallback_level: 0,
                 span: ChicSpan::dummy(),
-            }),
+            },
             1
         ));
         assert!(minimized.has_transition(
             1,
-            Input::Literal(Literal {
+            Input::Literal {
                 literal: ustr("e"),
                 description: None,
                 fallback_level: 0,
                 span: ChicSpan::dummy(),
-            }),
+            },
             2
         ));
         assert!(minimized.has_transition(
             1,
-            Input::Literal(Literal {
+            Input::Literal {
                 literal: ustr("i"),
                 description: None,
                 fallback_level: 0,
                 span: ChicSpan::dummy(),
-            }),
+            },
             2
         ));
         assert!(minimized.has_transition(
             2,
-            Input::Literal(Literal {
+            Input::Literal {
                 literal: ustr("e"),
                 description: None,
                 fallback_level: 0,
                 span: ChicSpan::dummy(),
-            }),
+            },
             3
         ));
     }
