@@ -29,8 +29,13 @@ pub enum Input {
         fallback_level: usize,
         span: ChicSpan,
     },
-    Nonterminal(Ustr, Option<Specialization>, usize), // name, specialization, fallback level
-    Command(Ustr, Option<CmdRegexDecl>, usize),       // command, fallback level
+    Nonterminal {
+        nonterm: Ustr,
+        spec: Option<Specialization>,
+        fallback_level: usize,
+        span: ChicSpan,
+    }, // name, specialization, fallback level
+    Command(Ustr, Option<CmdRegexDecl>, usize), // command, fallback level
 }
 
 impl Input {
@@ -38,7 +43,7 @@ impl Input {
         match self {
             Self::Literal(Literal { .. }) => false,
             Self::Subword { .. } => false,
-            Self::Nonterminal(..) => true,
+            Self::Nonterminal { .. } => true,
             Self::Command(_, None, _) => true,
             Self::Command(_, Some(regex), _) => regex.matches_anything(shell),
         }
@@ -57,7 +62,10 @@ impl Input {
                 fallback_level: level,
                 ..
             } => *level,
-            Self::Nonterminal(_, _, level) => *level,
+            Self::Nonterminal {
+                fallback_level: level,
+                ..
+            } => *level,
             Self::Command(_, _, level) => *level,
         }
     }
@@ -70,7 +78,10 @@ impl std::fmt::Display for Input {
                 subdfa: subword, ..
             } => write!(f, r#"{subword:?}"#),
             Self::Literal(Literal { literal, .. }) => write!(f, r#"{literal}"#),
-            Self::Nonterminal(nonterminal, ..) => write!(f, r#"<{nonterminal}>"#),
+            Self::Nonterminal {
+                nonterm: nonterminal,
+                ..
+            } => write!(f, r#"<{nonterminal}>"#),
             Self::Command(command, ..) => write!(f, r#"{{{{{{ {command} }}}}}}"#),
         }
     }
@@ -330,11 +341,16 @@ fn do_from_expr<'a>(
             };
             result_id
         }
-        Expr::NontermRef(name, fallback_level, _) => {
+        Expr::NontermRef(name, fallback_level, span) => {
             let result =
                 RegexNode::Nonterminal(Position::try_from(input_from_position.len()).unwrap());
             let specialization = specs.get(name);
-            let input = Input::Nonterminal(*name, specialization.copied(), *fallback_level);
+            let input = Input::Nonterminal {
+                nonterm: *name,
+                spec: specialization.copied(),
+                fallback_level: *fallback_level,
+                span: span.clone(),
+            };
             input_from_position.push(input.clone());
             symbols.insert(input);
             let result_id = {

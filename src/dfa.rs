@@ -605,7 +605,7 @@ fn do_to_dot<W: Write>(
     for (from, tos) in &dfa.transitions {
         for (input, to) in tos {
             match input {
-                Input::Literal(Literal { .. }) | Input::Nonterminal(..) | Input::Command(..) => {
+                Input::Literal(Literal { .. }) | Input::Nonterminal { .. } | Input::Command(..) => {
                     let label = format!("{}", input).replace('\"', "\\\"");
                     writeln!(
                         output,
@@ -645,7 +645,7 @@ fn do_get_subdfa_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)
             let cmd = match input {
                 Input::Command(cmd, ..) => *cmd,
                 Input::Subword { .. } => unreachable!(),
-                Input::Nonterminal(..) => continue,
+                Input::Nonterminal { .. } => continue,
                 Input::Literal(Literal { .. }) => continue,
             };
             result.push((*from, cmd));
@@ -702,7 +702,7 @@ impl DFA {
         for (input, _) in self.iter_transitions_from(state) {
             match &input {
                 Input::Literal(Literal { .. }) => {}
-                Input::Nonterminal(..) => ambiguous_inputs.push(input.clone()),
+                Input::Nonterminal { .. } => ambiguous_inputs.push(input.clone()),
                 Input::Subword {
                     subdfa: subdfaid, ..
                 } => {
@@ -789,7 +789,7 @@ impl DFA {
                     ..
                 }) => Some((*input, *description)),
                 Input::Subword { .. } => None,
-                Input::Nonterminal(..) => None,
+                Input::Nonterminal { .. } => None,
                 Input::Command(..) => None,
             })
             .collect()
@@ -812,7 +812,7 @@ impl DFA {
                         continue;
                     }
                     Input::Command(..) => continue,
-                    Input::Nonterminal(..) => continue,
+                    Input::Nonterminal { .. } => continue,
                     Input::Literal(Literal { .. }) => continue,
                 };
             }
@@ -834,7 +834,7 @@ impl DFA {
                     ..
                 }) => Some((*input, description.unwrap_or(ustr("")), *to)),
                 Input::Subword { .. } => None,
-                Input::Nonterminal(..) => None,
+                Input::Nonterminal { .. } => None,
                 Input::Command(..) => None,
             })
             .collect();
@@ -860,7 +860,7 @@ impl DFA {
                 Input::Command(_, Some(CmdRegexDecl { bash: None, .. }), _) => None,
                 Input::Literal(Literal { .. }) => None,
                 Input::Subword { .. } => None,
-                Input::Nonterminal(..) => None,
+                Input::Nonterminal { .. } => None,
             })
             .collect();
         transitions
@@ -885,7 +885,7 @@ impl DFA {
                 Input::Command(_, Some(CmdRegexDecl { fish: None, .. }), _) => None,
                 Input::Literal(Literal { .. }) => None,
                 Input::Subword { .. } => None,
-                Input::Nonterminal(..) => None,
+                Input::Nonterminal { .. } => None,
             })
             .collect();
         transitions
@@ -910,7 +910,7 @@ impl DFA {
                 Input::Command(_, Some(CmdRegexDecl { zsh: None, .. }), _) => None,
                 Input::Literal(Literal { .. }) => None,
                 Input::Subword { .. } => None,
-                Input::Nonterminal(..) => None,
+                Input::Nonterminal { .. } => None,
             })
             .collect();
         transitions
@@ -926,7 +926,7 @@ impl DFA {
             .filter_map(|(input, to)| match input {
                 Input::Subword { subdfa: dfa, .. } => Some((dfa.clone(), *to)),
                 Input::Literal(Literal { .. }) => None,
-                Input::Nonterminal(..) => None,
+                Input::Nonterminal { .. } => None,
                 Input::Command(..) => None,
             })
             .collect();
@@ -977,7 +977,7 @@ impl DFA {
             for (input, _) in tos {
                 let dfa = match input {
                     Input::Subword { subdfa: dfa, .. } => dfa,
-                    Input::Nonterminal(..) => continue,
+                    Input::Nonterminal { .. } => continue,
                     Input::Command(..) => continue,
                     Input::Literal(Literal { .. }) => continue,
                 };

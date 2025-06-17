@@ -517,13 +517,14 @@ pub fn write_subword_fn<W: Write>(
                     .or_default()
                     .push((cmd_id, regex_id));
             }
-            Input::Nonterminal(
-                _,
-                Some(Specialization {
-                    fish: Some(cmd), ..
-                }),
+            Input::Nonterminal {
+                spec:
+                    Some(Specialization {
+                        fish: Some(cmd), ..
+                    }),
                 fallback_level,
-            ) => {
+                ..
+            } => {
                 let specialized_id = id_from_cmd.get_index_of(cmd).unwrap();
                 fallback_commands[*fallback_level]
                     .entry(from)
@@ -804,13 +805,14 @@ pub fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
 
     for input in dfa.iter_inputs() {
         match input {
-            Input::Nonterminal(
-                _,
-                Some(Specialization {
-                    fish: Some(cmd), ..
-                }),
-                ..,
-            ) => {
+            Input::Nonterminal {
+                nonterm: _,
+                spec:
+                    Some(Specialization {
+                        fish: Some(cmd), ..
+                    }),
+                ..
+            } => {
                 id_from_cmd.insert(*cmd);
             }
             Input::Command(cmd, regex, ..) => {
@@ -829,13 +831,13 @@ pub fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
                 let subdfa = dfa.subdfa_interner.lookup(*subdfaid);
                 for input in subdfa.iter_inputs() {
                     match input {
-                        Input::Nonterminal(
-                            _,
-                            Some(Specialization {
-                                fish: Some(cmd), ..
-                            }),
-                            _,
-                        ) => {
+                        Input::Nonterminal {
+                            spec:
+                                Some(Specialization {
+                                    fish: Some(cmd), ..
+                                }),
+                            ..
+                        } => {
                             id_from_cmd.insert(*cmd);
                         }
                         Input::Command(cmd, regex, ..) => {
@@ -1090,13 +1092,14 @@ end
                     .or_default()
                     .push((cmd_id, regex_id));
             }
-            Input::Nonterminal(
-                _,
-                Some(Specialization {
-                    fish: Some(cmd), ..
-                }),
+            Input::Nonterminal {
+                spec:
+                    Some(Specialization {
+                        fish: Some(cmd), ..
+                    }),
                 fallback_level,
-            ) => {
+                ..
+            } => {
                 let specialized_id = id_from_cmd.get_index_of(cmd).unwrap();
                 fallback_commands[*fallback_level]
                     .entry(from)
