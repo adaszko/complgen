@@ -399,21 +399,28 @@ pub fn write_subword_fn<W: Write>(
                     .or_default()
                     .push(literal_id);
             }
-            Input::Command(cmd, None, fallback_level) => {
+            Input::Command {
+                cmd,
+                regex: None,
+                fallback_level,
+                ..
+            } => {
                 let command_id = id_from_cmd.get_index_of(cmd).unwrap();
                 fallback_commands[*fallback_level]
                     .entry(from)
                     .or_default()
                     .push(command_id);
             }
-            Input::Command(
+            Input::Command {
                 cmd,
-                Some(CmdRegexDecl {
-                    zsh: Some(zsh_regex),
-                    ..
-                }),
+                regex:
+                    Some(CmdRegexDecl {
+                        zsh: Some(zsh_regex),
+                        ..
+                    }),
                 fallback_level,
-            ) => {
+                ..
+            } => {
                 let cmd_id = id_from_cmd.get_index_of(cmd).unwrap();
                 let regex_id = id_from_regex.get_index_of(zsh_regex).unwrap();
                 fallback_nontails[*fallback_level]
@@ -550,7 +557,7 @@ pub fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
             } => {
                 id_from_cmd.insert(*cmd);
             }
-            Input::Command(cmd, regex, ..) => {
+            Input::Command { cmd, regex, .. } => {
                 id_from_cmd.insert(*cmd);
                 if let Some(CmdRegexDecl {
                     zsh: Some(zsh_regex),
@@ -572,7 +579,7 @@ pub fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
                         } => {
                             id_from_cmd.insert(*cmd);
                         }
-                        Input::Command(cmd, regex, ..) => {
+                        Input::Command { cmd, regex, .. } => {
                             id_from_cmd.insert(*cmd);
                             if let Some(CmdRegexDecl {
                                 zsh: Some(zsh_regex),
@@ -783,21 +790,28 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                     .or_default()
                     .push(subword_id);
             }
-            Input::Command(cmd, None, fallback_level) => {
+            Input::Command {
+                cmd,
+                regex: None,
+                fallback_level,
+                ..
+            } => {
                 let command_id = id_from_cmd.get_index_of(cmd).unwrap();
                 fallback_commands[*fallback_level]
                     .entry(from)
                     .or_default()
                     .push(command_id);
             }
-            Input::Command(
+            Input::Command {
                 cmd,
-                Some(CmdRegexDecl {
-                    zsh: Some(zsh_regex),
-                    ..
-                }),
+                regex:
+                    Some(CmdRegexDecl {
+                        zsh: Some(zsh_regex),
+                        ..
+                    }),
                 fallback_level,
-            ) => {
+                ..
+            } => {
                 let cmd_id = id_from_cmd.get_index_of(cmd).unwrap();
                 let regex_id = id_from_regex.get_index_of(zsh_regex).unwrap();
                 fallback_nontails[*fallback_level]

@@ -605,7 +605,9 @@ fn do_to_dot<W: Write>(
     for (from, tos) in &dfa.transitions {
         for (input, to) in tos {
             match input {
-                Input::Literal(Literal { .. }) | Input::Nonterminal { .. } | Input::Command(..) => {
+                Input::Literal(Literal { .. })
+                | Input::Nonterminal { .. }
+                | Input::Command { .. } => {
                     let label = format!("{}", input).replace('\"', "\\\"");
                     writeln!(
                         output,
@@ -643,7 +645,7 @@ fn do_get_subdfa_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)
     for (from, tos) in &dfa.transitions {
         for (input, _) in tos {
             let cmd = match input {
-                Input::Command(cmd, ..) => *cmd,
+                Input::Command { cmd, .. } => *cmd,
                 Input::Subword { .. } => unreachable!(),
                 Input::Nonterminal { .. } => continue,
                 Input::Literal(Literal { .. }) => continue,
@@ -715,8 +717,10 @@ impl DFA {
                         is_ambiguous,
                     );
                 }
-                Input::Command(_, None, _) => ambiguous_inputs.push(input.clone()),
-                Input::Command(_, Some(..), _) => {}
+                Input::Command { regex: None, .. } => ambiguous_inputs.push(input.clone()),
+                Input::Command {
+                    regex: Some(..), ..
+                } => {}
             }
         }
         if ambiguous_inputs.len() > 1 {
@@ -790,7 +794,7 @@ impl DFA {
                 }) => Some((*input, *description)),
                 Input::Subword { .. } => None,
                 Input::Nonterminal { .. } => None,
-                Input::Command(..) => None,
+                Input::Command { .. } => None,
             })
             .collect()
     }
@@ -811,7 +815,7 @@ impl DFA {
                         do_get_subdfa_command_transitions(subdfa, transitions);
                         continue;
                     }
-                    Input::Command(..) => continue,
+                    Input::Command { .. } => continue,
                     Input::Nonterminal { .. } => continue,
                     Input::Literal(Literal { .. }) => continue,
                 };
@@ -835,7 +839,7 @@ impl DFA {
                 }) => Some((*input, description.unwrap_or(ustr("")), *to)),
                 Input::Subword { .. } => None,
                 Input::Nonterminal { .. } => None,
-                Input::Command(..) => None,
+                Input::Command { .. } => None,
             })
             .collect();
         transitions
@@ -849,15 +853,19 @@ impl DFA {
         let transitions: Vec<(Ustr, StateId)> = map
             .iter()
             .filter_map(|(input, to)| match input {
-                Input::Command(
-                    _,
-                    Some(CmdRegexDecl {
-                        bash: Some(regex), ..
-                    }),
-                    ..,
-                ) => Some((*regex, *to)),
-                Input::Command(_, None, _) => None,
-                Input::Command(_, Some(CmdRegexDecl { bash: None, .. }), _) => None,
+                Input::Command {
+                    cmd: _,
+                    regex:
+                        Some(CmdRegexDecl {
+                            bash: Some(regex), ..
+                        }),
+                    ..
+                } => Some((*regex, *to)),
+                Input::Command { regex: None, .. } => None,
+                Input::Command {
+                    regex: Some(CmdRegexDecl { bash: None, .. }),
+                    ..
+                } => None,
                 Input::Literal(Literal { .. }) => None,
                 Input::Subword { .. } => None,
                 Input::Nonterminal { .. } => None,
@@ -874,15 +882,19 @@ impl DFA {
         let transitions: Vec<(Ustr, StateId)> = map
             .iter()
             .filter_map(|(input, to)| match input {
-                Input::Command(
-                    _,
-                    Some(CmdRegexDecl {
-                        fish: Some(regex), ..
-                    }),
-                    ..,
-                ) => Some((*regex, *to)),
-                Input::Command(_, None, _) => None,
-                Input::Command(_, Some(CmdRegexDecl { fish: None, .. }), _) => None,
+                Input::Command {
+                    cmd: _,
+                    regex:
+                        Some(CmdRegexDecl {
+                            fish: Some(regex), ..
+                        }),
+                    ..
+                } => Some((*regex, *to)),
+                Input::Command { regex: None, .. } => None,
+                Input::Command {
+                    regex: Some(CmdRegexDecl { fish: None, .. }),
+                    ..
+                } => None,
                 Input::Literal(Literal { .. }) => None,
                 Input::Subword { .. } => None,
                 Input::Nonterminal { .. } => None,
@@ -899,15 +911,19 @@ impl DFA {
         let transitions: Vec<(Ustr, StateId)> = map
             .iter()
             .filter_map(|(input, to)| match input {
-                Input::Command(
-                    _,
-                    Some(CmdRegexDecl {
-                        zsh: Some(regex), ..
-                    }),
-                    ..,
-                ) => Some((*regex, *to)),
-                Input::Command(_, None, _) => None,
-                Input::Command(_, Some(CmdRegexDecl { zsh: None, .. }), _) => None,
+                Input::Command {
+                    cmd: _,
+                    regex:
+                        Some(CmdRegexDecl {
+                            zsh: Some(regex), ..
+                        }),
+                    ..
+                } => Some((*regex, *to)),
+                Input::Command { regex: None, .. } => None,
+                Input::Command {
+                    regex: Some(CmdRegexDecl { zsh: None, .. }),
+                    ..
+                } => None,
                 Input::Literal(Literal { .. }) => None,
                 Input::Subword { .. } => None,
                 Input::Nonterminal { .. } => None,
@@ -927,7 +943,7 @@ impl DFA {
                 Input::Subword { subdfa: dfa, .. } => Some((dfa.clone(), *to)),
                 Input::Literal(Literal { .. }) => None,
                 Input::Nonterminal { .. } => None,
-                Input::Command(..) => None,
+                Input::Command { .. } => None,
             })
             .collect();
         transitions
@@ -978,7 +994,7 @@ impl DFA {
                 let dfa = match input {
                     Input::Subword { subdfa: dfa, .. } => dfa,
                     Input::Nonterminal { .. } => continue,
-                    Input::Command(..) => continue,
+                    Input::Command { .. } => continue,
                     Input::Literal(Literal { .. }) => continue,
                 };
                 result.entry(dfa.clone()).or_insert_with(|| {

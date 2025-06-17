@@ -35,7 +35,12 @@ pub enum Input {
         fallback_level: usize,
         span: ChicSpan,
     }, // name, specialization, fallback level
-    Command(Ustr, Option<CmdRegexDecl>, usize), // command, fallback level
+    Command {
+        cmd: Ustr,
+        regex: Option<CmdRegexDecl>,
+        fallback_level: usize,
+        span: ChicSpan,
+    }, // command, fallback level
 }
 
 impl Input {
@@ -44,8 +49,10 @@ impl Input {
             Self::Literal(Literal { .. }) => false,
             Self::Subword { .. } => false,
             Self::Nonterminal { .. } => true,
-            Self::Command(_, None, _) => true,
-            Self::Command(_, Some(regex), _) => regex.matches_anything(shell),
+            Self::Command { regex: None, .. } => true,
+            Self::Command {
+                regex: Some(regex), ..
+            } => regex.matches_anything(shell),
         }
     }
 
@@ -66,7 +73,10 @@ impl Input {
                 fallback_level: level,
                 ..
             } => *level,
-            Self::Command(_, _, level) => *level,
+            Self::Command {
+                fallback_level: level,
+                ..
+            } => *level,
         }
     }
 }
@@ -82,7 +92,7 @@ impl std::fmt::Display for Input {
                 nonterm: nonterminal,
                 ..
             } => write!(f, r#"<{nonterminal}>"#),
-            Self::Command(command, ..) => write!(f, r#"{{{{{{ {command} }}}}}}"#),
+            Self::Command { cmd: command, .. } => write!(f, r#"{{{{{{ {command} }}}}}}"#),
         }
     }
 }
@@ -360,12 +370,17 @@ fn do_from_expr<'a>(
             };
             result_id
         }
-        Expr::Command(code, cmd_regex_decl, fallback_level, ..) => {
+        Expr::Command(code, cmd_regex_decl, fallback_level, span) => {
             let result = RegexNode::Command(
                 *code,
                 Position::try_from(input_from_position.len()).unwrap(),
             );
-            let input = Input::Command(*code, *cmd_regex_decl, *fallback_level);
+            let input = Input::Command {
+                cmd: *code,
+                regex: *cmd_regex_decl,
+                fallback_level: *fallback_level,
+                span: span.clone(),
+            };
             input_from_position.push(input.clone());
             symbols.insert(input);
             let result_id = {
