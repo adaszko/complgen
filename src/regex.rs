@@ -479,7 +479,7 @@ pub struct Regex {
     pub input_symbols: Rc<IndexSet<Input>>,
     pub input_from_position: Vec<Input>,
     pub endmarker_position: Position,
-    pub myarena: Vec<RegexNode>,
+    pub arena: Vec<RegexNode>,
 }
 
 /*
@@ -588,18 +588,18 @@ impl Regex {
     pub fn from_expr(e: &Expr, specs: &UstrMap<Specialization>) -> Result<Self> {
         let mut input_symbols: IndexSet<Input> = Default::default();
         let mut input_from_position: Vec<Input> = Default::default();
-        let mut myarena: Vec<RegexNode> = Default::default();
+        let mut arena: Vec<RegexNode> = Default::default();
         let regex = do_from_expr(
             e,
             specs,
-            &mut myarena,
+            &mut arena,
             &mut input_symbols,
             &mut input_from_position,
         );
         let endmarker_position = input_from_position.len() as Position;
         let endmarkerid = {
-            let id = myarena.len();
-            myarena.push(RegexNode::EndMarker(endmarker_position));
+            let id = arena.len();
+            arena.push(RegexNode::EndMarker(endmarker_position));
             id
         };
         let root = RegexNode::Cat(regex, endmarkerid);
@@ -609,7 +609,7 @@ impl Regex {
             input_symbols: Rc::new(input_symbols),
             endmarker_position,
             input_from_position,
-            myarena,
+            arena,
         };
         Ok(retval)
     }
@@ -618,8 +618,8 @@ impl Regex {
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);
         do_ensure_ambiguous_inputs_tail_only(
-            &RoaringBitmap::from_iter(&self.root.firstpos(&self.myarena)),
-            &self.root.followpos(&self.myarena),
+            &RoaringBitmap::from_iter(&self.root.firstpos(&self.arena)),
+            &self.root.followpos(&self.arena),
             &self.input_from_position,
             shell,
             &mut visited,
@@ -630,8 +630,8 @@ impl Regex {
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);
         do_ensure_ambiguous_inputs_tail_only_subword(
-            &RoaringBitmap::from_iter(&self.root.firstpos(&self.myarena)),
-            &self.root.followpos(&self.myarena),
+            &RoaringBitmap::from_iter(&self.root.firstpos(&self.arena)),
+            &self.root.followpos(&self.arena),
             &self.input_from_position,
             shell,
             None,
@@ -640,11 +640,11 @@ impl Regex {
     }
 
     pub fn firstpos(&self) -> BTreeSet<Position> {
-        self.root.firstpos(&self.myarena)
+        self.root.firstpos(&self.arena)
     }
 
     pub fn followpos(&self) -> BTreeMap<Position, RoaringBitmap> {
-        self.root.followpos(&self.myarena)
+        self.root.followpos(&self.arena)
     }
 }
 
