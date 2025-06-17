@@ -501,20 +501,7 @@ fn do_ensure_ambiguous_inputs_tail_only(
     if unvisited.len() == 0 {
         return Ok(());
     }
-    if unvisited.len() == 1 {
-        let pos = unvisited.select(0).unwrap();
-        let Some(follow) = followpos.get(&pos) else {
-            return Ok(());
-        };
-        visited.insert(pos);
-        return do_ensure_ambiguous_inputs_tail_only(
-            follow,
-            followpos,
-            input_from_position,
-            shell,
-            visited,
-        );
-    }
+
     let inputs: Vec<Input> = unvisited
         .iter()
         .map(|pos| input_from_position[pos as usize].clone())
@@ -546,6 +533,8 @@ fn do_ensure_ambiguous_inputs_tail_only(
     Ok(())
 }
 
+// Subword ambiguity checker is stricter than the word-based one.  Any matches_anything() input
+// followed by any input is ambiguous since we can't tell where the matches_anything() one ends.
 fn do_ensure_ambiguous_inputs_tail_only_subword(
     firstpos: &RoaringBitmap,
     followpos: &BTreeMap<Position, RoaringBitmap>,
@@ -558,33 +547,7 @@ fn do_ensure_ambiguous_inputs_tail_only_subword(
     if unvisited.len() == 0 {
         return Ok(());
     }
-    if unvisited.len() == 1 {
-        let pos = unvisited.select(0).unwrap();
-        let Some(follow) = followpos.get(&pos) else {
-            return Ok(());
-        };
-        let inp = input_from_position[pos as usize].clone();
-        let this_ambiguous = if inp.is_ambiguous(shell) {
-            Some(inp)
-        } else {
-            None
-        };
-        match (&path_prev_ambiguous, &this_ambiguous) {
-            (Some(prev_inp), Some(inp)) => {
-                return Err(Error::AmbiguousMatchable(prev_inp.clone(), inp.clone()));
-            }
-            _ => (),
-        };
-        visited.insert(pos);
-        return do_ensure_ambiguous_inputs_tail_only_subword(
-            follow,
-            followpos,
-            input_from_position,
-            shell,
-            path_prev_ambiguous.clone().or(this_ambiguous),
-            visited,
-        );
-    }
+
     let inputs: Vec<Input> = unvisited
         .iter()
         .filter_map(|pos| input_from_position.get(pos as usize).cloned())
