@@ -73,6 +73,15 @@ impl Input {
             } => *level,
         }
     }
+
+    pub fn get_span(&self) -> ChicSpan {
+        match self {
+            Self::Literal { span, .. } => *span,
+            Self::Subword { span, .. } => *span,
+            Self::Nonterminal { span, .. } => *span,
+            Self::Command { span, .. } => *span,
+        }
+    }
 }
 
 impl std::fmt::Display for Input {

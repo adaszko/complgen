@@ -38,7 +38,18 @@ def test_ambiguous_transition1(complgen_binary_path: Path):
 def test_ambiguous_transition2(complgen_binary_path: Path):
     r = complgen_check(complgen_binary_path, """cmd {{{ echo foo }}} | {{{ echo bar }}};""")
     assert r.returncode == 1
-    assert r.stderr == snapshot('Ambiguity: "cmd ⇥" ({{{ echo foo }}} | {{{ echo bar }}})\n')
+    assert r.stderr == snapshot("""\
+0:4:error: Ambiguous grammar.  Matching can't differentiate:
+  |
+0 | cmd {{{ echo foo }}} | {{{ echo bar }}};
+  |     ^^^^^^^^^^^^^^^^
+  |
+0:23:error: and:
+  |
+0 | cmd {{{ echo foo }}} | {{{ echo bar }}};
+  |                        ^^^^^^^^^^^^^^^^
+  |
+""")
 
 def test_ambiguous_transition3(complgen_binary_path: Path):
     assert complgen_check(complgen_binary_path, """cmd (foo | {{{ echo bar }}});""").returncode == 0
@@ -46,7 +57,18 @@ def test_ambiguous_transition3(complgen_binary_path: Path):
 def test_ambiguous_transition4(complgen_binary_path: Path):
     r = complgen_check(complgen_binary_path, """cmd {{{ echo foo }}} || {{{ echo bar }}};""")
     assert r.returncode == 1
-    assert r.stderr == snapshot('Ambiguity: "cmd ⇥" ({{{ echo foo }}} | {{{ echo bar }}})\n')
+    assert r.stderr == snapshot("""\
+0:4:error: Ambiguous grammar.  Matching can't differentiate:
+  |
+0 | cmd {{{ echo foo }}} || {{{ echo bar }}};
+  |     ^^^^^^^^^^^^^^^^
+  |
+0:24:error: and:
+  |
+0 | cmd {{{ echo foo }}} || {{{ echo bar }}};
+  |                         ^^^^^^^^^^^^^^^^
+  |
+""")
 
 def test_ambiguous_transition5(complgen_binary_path: Path):
     assert complgen_check(complgen_binary_path, """cmd foo || {{{ echo bar }}};""").returncode == 0
@@ -166,7 +188,16 @@ def test_bug2(complgen_binary_path: Path):
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 warning: undefined nonterminal(s): FILE
-Ambiguity: "darcs ⇥" (<FILE> | <DIRECTORY>)
+0:8:error: Ambiguous grammar.  Matching can't differentiate:
+  |
+0 | darcs ( <FILE> | <DIRECTORY> );
+  |         ^^^^^^
+  |
+0:17:error: and:
+  |
+0 | darcs ( <FILE> | <DIRECTORY> );
+  |                  ^^^^^^^^^^^
+  |
 """)
 
 
@@ -177,13 +208,17 @@ aerc [<OPTION>]... foo;
 """)
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
-1:6:error: Undefined nonterminals are only allowed at tail position
+warning: undefined nonterminal(s): OPTION
+1:6:error: Ambiguous grammar.  Matching can't differentiate:
   |
 1 | aerc [<OPTION>]...;
   |       ^^^^^^^^
   |
-  = help: Either try moving the command into tail position (i.e. last branch of | or ||; end of a subword)
-  = help: or supply its definition via ::=
+2:6:error: and:
+  |
+2 | aerc [<OPTION>]... foo;
+  |       ^^^^^^^^
+  |
 """)
 
 
@@ -192,5 +227,14 @@ def test_bug4(complgen_binary_path: Path):
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 warning: undefined nonterminal(s): INITIALIZATION COMMAND
-Ambiguity: "darcs ⇥" (<INITIALIZATION> | <COMMAND>)
+0:7:error: Ambiguous grammar.  Matching can't differentiate:
+  |
+0 | darcs [<INITIALIZATION>] <COMMAND>;
+  |        ^^^^^^^^^^^^^^^^
+  |
+0:25:error: and:
+  |
+0 | darcs [<INITIALIZATION>] <COMMAND>;
+  |                          ^^^^^^^^^
+  |
 """)

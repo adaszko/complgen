@@ -134,6 +134,42 @@ fn handle_validation_error(e: Error, input: &str) -> anyhow::Result<ValidGrammar
             }
             exit(1);
         }
+        Error::AmbiguousMatchable(first, second) => {
+            let ChicSpan::Significant {
+                line_start: left_line_start,
+                start: left_start,
+                end: left_end,
+            } = first.get_span()
+            else {
+                panic!()
+            };
+            let ChicSpan::Significant {
+                line_start: right_line_start,
+                start: right_start,
+                end: right_end,
+            } = second.get_span()
+            else {
+                panic!()
+            };
+            let error = chic::Error::new("Ambiguous grammar.  Matching can't differentiate:")
+                .error(
+                    left_line_start,
+                    left_start,
+                    left_end,
+                    input.lines().nth(left_line_start).unwrap(),
+                    "",
+                );
+            eprintln!("{}:{}:{}", left_line_start, left_start, error.to_string());
+            let error = chic::Error::new("and:").error(
+                right_line_start,
+                right_start,
+                right_end,
+                input.lines().nth(right_line_start).unwrap(),
+                "",
+            );
+            eprintln!("{}:{}:{}", right_line_start, right_start, error.to_string());
+            exit(1);
+        }
         e => {
             eprintln!("{}", e.to_string());
             exit(1);
@@ -199,7 +235,9 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
     log::debug!("Grammar -> Regex");
     let regex = Regex::from_expr(&validated.expr, &validated.specializations)?;
 
-    regex.ensure_ambiguous_inputs_tail_only(shell)?;
+    if let Err(e) = regex.ensure_ambiguous_inputs_tail_only(shell) {
+        handle_validation_error(e, &input)?;
+    }
 
     log::debug!("Regex -> DFA");
     let dfa = DFA::from_regex(&regex, validated.subdfa_interner);

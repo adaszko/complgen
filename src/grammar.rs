@@ -290,7 +290,7 @@ pub fn to_railroad_diagram_file<P: AsRef<std::path::Path>>(
 use nom_locate::LocatedSpan;
 pub type Span<'a> = LocatedSpan<&'a str>;
 
-#[derive(Debug, Clone, Eq, Hash)]
+#[derive(Debug, Clone, Copy, Eq, Hash)]
 pub enum ChicSpan {
     Significant {
         line_start: usize,
