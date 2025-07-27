@@ -8,7 +8,7 @@ from inline_snapshot import snapshot
 
 def complgen_check_path(complgen_binary_path: Path, path: str) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [complgen_binary_path, path],
+        [complgen_binary_path, '--bash', '/dev/null', path],
         capture_output=True,
         text=True,
     )
@@ -34,6 +34,7 @@ def complgen_check(complgen_binary_path: Path, grammar: str) -> subprocess.Compl
 
 def test_ambiguous_transition1(complgen_binary_path: Path):
     assert complgen_check(complgen_binary_path, """cmd {{{ echo foo }}} {{{ echo bar }}};""").returncode == 0
+
 
 def test_ambiguous_transition2(complgen_binary_path: Path):
     r = complgen_check(complgen_binary_path, """cmd {{{ echo foo }}} | {{{ echo bar }}};""")
@@ -78,6 +79,27 @@ def test_ambiguous_transition6(complgen_binary_path: Path):
 
 def test_ambiguous_transition7(complgen_binary_path: Path):
     assert complgen_check(complgen_binary_path, """cmd {{{ echo foo }}}... foo baz;""").returncode == 0
+
+def test_ambiguous_transition8(complgen_binary_path: Path):
+    GRAMMAR = """
+mygit (<command> || [-c <name>=<value>] <command>);
+<command> ::= clone;
+"""
+    r = complgen_check(complgen_binary_path, GRAMMAR)
+    assert r.returncode == 1
+    assert r.stderr == snapshot("""\
+1:24:error: Ambiguous grammar.  Matching can't differentiate:
+  |
+1 | mygit (<command> || [-c <name>=<value>] <command>);
+  |                         ^^^^^^
+  |
+1:30:error: and:
+  |
+1 | mygit (<command> || [-c <name>=<value>] <command>);
+  |                               ^
+  |
+""")
+
 
 
 def test_issue_45(complgen_binary_path: Path):

@@ -1193,12 +1193,9 @@ fn distribute_descriptions(expr: Rc<Expr>) -> Rc<Expr> {
 fn do_propagate_fallback_levels(expr: Rc<Expr>, fallback_level: usize) -> Rc<Expr> {
     match expr.as_ref() {
         Expr::Terminal(_, _, level, _) if *level == fallback_level => Rc::clone(&expr),
-        Expr::Terminal(term, descr, _, _) => Rc::new(Expr::Terminal(
-            *term,
-            *descr,
-            fallback_level,
-            ChicSpan::Dummy,
-        )),
+        Expr::Terminal(term, descr, _, span) => {
+            Rc::new(Expr::Terminal(*term, *descr, fallback_level, span.clone()))
+        }
         Expr::Fallback(children) => {
             let new_children: Vec<Rc<Expr>> = children
                 .iter()
