@@ -1011,6 +1011,7 @@ fn compile_subword_exprs(
             let subword_expr = flatten_expr(subword_expr);
             let regex = Regex::from_expr(&subword_expr, specs).unwrap();
             regex.ensure_ambiguous_inputs_tail_only_subword(shell)?;
+            regex.check_clashing_variants()?;
             let dfa = DFA::from_regex(&regex, DFAInterner::default());
             let dfa = dfa.minimize();
             let subdfaid = subdfa_interner.intern(dfa);

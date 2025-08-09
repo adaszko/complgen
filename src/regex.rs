@@ -584,6 +584,64 @@ fn do_ensure_ambiguous_inputs_tail_only_subword(
     Ok(())
 }
 
+fn do_check_clashing_variants(
+    firstpos: &RoaringBitmap,
+    followpos: &BTreeMap<Position, RoaringBitmap>,
+    input_from_position: &Vec<Input>,
+    visited: &mut RoaringBitmap,
+) -> Result<()> {
+    let unvisited = firstpos - visited.clone();
+    if unvisited.len() == 0 {
+        return Ok(());
+    }
+
+    let mut inputs: Vec<(Ustr, Option<Ustr>, ChicSpan)> = unvisited
+        .iter()
+        .filter_map(|pos| input_from_position.get(pos as usize).cloned())
+        .filter_map(|inp| match inp {
+            Input::Literal {
+                literal,
+                description,
+                span,
+                ..
+            } => Some((literal, description, span)),
+            _ => None,
+        })
+        .collect();
+
+    inputs.sort_by_key(|(literal, _, _)| *literal);
+    inputs.dedup_by_key(|(literal, description, _)| (*literal, *description));
+
+    for slice in inputs.windows(2) {
+        let [
+            (left_literal, left_description, left_span),
+            (right_literal, right_description, right_span),
+        ] = slice
+        else {
+            unreachable!()
+        };
+
+        if left_literal != right_literal {
+            continue;
+        }
+
+        if left_description == right_description {
+            continue;
+        }
+
+        return Err(Error::ClashingVariants(*left_span, *right_span));
+    }
+
+    for pos in unvisited {
+        let Some(follow) = followpos.get(&pos) else {
+            continue;
+        };
+        visited.insert(pos);
+        do_check_clashing_variants(follow, followpos, input_from_position, visited)?;
+    }
+    Ok(())
+}
+
 impl Regex {
     pub fn from_expr(e: &Expr, specs: &UstrMap<Specialization>) -> Result<Self> {
         let mut input_symbols: IndexSet<Input> = Default::default();
@@ -635,6 +693,18 @@ impl Regex {
             &self.input_from_position,
             shell,
             None,
+            &mut visited,
+        )
+    }
+
+    // e.g. git (subcommand "description" | subcommand --option);
+    pub fn check_clashing_variants(&self) -> Result<()> {
+        let mut visited: RoaringBitmap = Default::default();
+        visited.insert(self.endmarker_position);
+        do_check_clashing_variants(
+            &RoaringBitmap::from_iter(&self.root.firstpos(&self.arena)),
+            &self.root.followpos(&self.arena),
+            &self.input_from_position,
             &mut visited,
         )
     }
@@ -756,6 +826,7 @@ mod tests {
         let specs = UstrMap::default();
         let regex = Regex::from_expr(&validated.expr, &specs).unwrap();
         regex.ensure_ambiguous_inputs_tail_only(Shell::Bash)?;
+        regex.check_clashing_variants()?;
         Ok(validated)
     }
 

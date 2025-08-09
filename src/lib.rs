@@ -37,6 +37,9 @@ pub enum Error {
     #[error("Ambiguity in matching: {:?} {:?}", .0, .1)]
     AmbiguousMatchable(Input, Input),
 
+    #[error("Clashing variants: {:?} {:?}", .0, .1)]
+    ClashingVariants(ChicSpan, ChicSpan),
+
     #[error("Two adjacent terminals in a subword expression: {:?}", .0)]
     SubwordSpaces(ChicSpan, ChicSpan, Vec<ChicSpan>),
 

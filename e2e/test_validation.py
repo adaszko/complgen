@@ -260,3 +260,22 @@ warning: undefined nonterminal(s): INITIALIZATION COMMAND
   |                          ^^^^^^^^^
   |
 """)
+
+
+def test_clashing_variants(complgen_binary_path: Path):
+    r = complgen_check(complgen_binary_path, r"""
+mygit (clone "Clone a repository into a new directory" | clone --bare);
+""")
+    assert r.returncode == 1
+    assert r.stderr == snapshot("""\
+1:7:error: Clashing variants.  Completion can't differentiate:
+  |
+1 | mygit (clone "Clone a repository into a new directory" | clone --bare);
+  |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |
+1:57:error: and:
+  |
+1 | mygit (clone "Clone a repository into a new directory" | clone --bare);
+  |                                                          ^^^^^
+  |
+""")
