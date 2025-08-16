@@ -305,6 +305,12 @@ impl RegexNode {
     }
 }
 
+fn alloc<T>(arena: &mut Vec<T>, elem: T) -> usize {
+    let id = arena.len();
+    arena.push(elem);
+    id
+}
+
 fn do_from_expr(
     e: &Expr,
     specs: &UstrMap<Specialization>,
@@ -327,12 +333,7 @@ fn do_from_expr(
             };
             input_from_position.push(input.clone());
             symbols.insert(input);
-            let result_id = {
-                let id = arena.len();
-                arena.push(result);
-                id
-            };
-            result_id
+            alloc(arena, result)
         }
         Expr::Subword(subword, fallback_level, span) => {
             let result = RegexNode::Subword(Position::try_from(input_from_position.len()).unwrap());
@@ -347,12 +348,7 @@ fn do_from_expr(
             };
             input_from_position.push(input.clone());
             symbols.insert(input);
-            let result_id = {
-                let id = arena.len();
-                arena.push(result);
-                id
-            };
-            result_id
+            alloc(arena, result)
         }
         Expr::NontermRef(name, fallback_level, span) => {
             let result =
@@ -366,12 +362,7 @@ fn do_from_expr(
             };
             input_from_position.push(input.clone());
             symbols.insert(input);
-            let result_id = {
-                let id = arena.len();
-                arena.push(result);
-                id
-            };
-            result_id
+            alloc(arena, result)
         }
         Expr::Command(code, cmd_regex_decl, fallback_level, span) => {
             let result = RegexNode::Command(
@@ -386,12 +377,7 @@ fn do_from_expr(
             };
             input_from_position.push(input.clone());
             symbols.insert(input);
-            let result_id = {
-                let id = arena.len();
-                arena.push(result);
-                id
-            };
-            result_id
+            alloc(arena, result)
         }
         Expr::Sequence(subexprs) => {
             let mut left_regex_id =
@@ -400,11 +386,7 @@ fn do_from_expr(
                 let right_regex_id =
                     do_from_expr(right_expr, specs, arena, symbols, input_from_position);
                 let left_regex = RegexNode::Cat(left_regex_id, right_regex_id);
-                left_regex_id = {
-                    let id = arena.len();
-                    arena.push(left_regex);
-                    id
-                };
+                left_regex_id = alloc(arena, left_regex);
             }
             left_regex_id
         }
@@ -415,43 +397,20 @@ fn do_from_expr(
                 subregexes.push(subregex);
             }
             let result = RegexNode::Or(subregexes.into_boxed_slice(), false);
-            let result_id = {
-                let id = arena.len();
-                arena.push(result);
-                id
-            };
-            result_id
+            alloc(arena, result)
         }
         Expr::Optional(subexpr) => {
             let subregex = do_from_expr(subexpr, specs, arena, symbols, input_from_position);
-            let epsid = {
-                let id = arena.len();
-                arena.push(RegexNode::Epsilon);
-                id
-            };
+            let epsid = alloc(arena, RegexNode::Epsilon);
             let result = RegexNode::Or(Box::new([subregex, epsid]), false);
-            let result_id = {
-                let id = arena.len();
-                arena.push(result);
-                id
-            };
-            result_id
+            alloc(arena, result)
         }
         Expr::Many1(subexpr) => {
             let subregex_id = do_from_expr(subexpr, specs, arena, symbols, input_from_position);
             let star = RegexNode::Star(subregex_id);
-            let starid = {
-                let id = arena.len();
-                arena.push(star);
-                id
-            };
+            let starid = alloc(arena, star);
             let result = RegexNode::Cat(subregex_id, starid);
-            let result_id = {
-                let id = arena.len();
-                arena.push(result);
-                id
-            };
-            result_id
+            alloc(arena, result)
         }
         Expr::DistributiveDescription(_, _) => unreachable!(
             "DistributiveDescription Expr type should have been erased before compilation to regex"
@@ -463,12 +422,7 @@ fn do_from_expr(
                 subregexes.push(subregex);
             }
             let result = RegexNode::Or(subregexes.into_boxed_slice(), true);
-            let result_id = {
-                let id = arena.len();
-                arena.push(result);
-                id
-            };
-            result_id
+            alloc(arena, result)
         }
     }
 }
@@ -655,11 +609,7 @@ impl Regex {
             &mut input_from_position,
         );
         let endmarker_position = input_from_position.len() as Position;
-        let endmarkerid = {
-            let id = arena.len();
-            arena.push(RegexNode::EndMarker(endmarker_position));
-            id
-        };
+        let endmarkerid = alloc(&mut arena, RegexNode::EndMarker(endmarker_position));
         let root = RegexNode::Cat(regex, endmarkerid);
 
         let retval = Self {
@@ -725,38 +675,18 @@ mod tests {
     use ustr::ustr;
 
     fn make_sample_star_regex(arena: &mut Vec<RegexNode>) -> usize {
-        let t1 = {
-            let id = arena.len();
-            arena.push(RegexNode::Terminal(ustr("a"), 0, 1));
-            id
-        };
-        let t2 = {
-            let id = arena.len();
-            arena.push(RegexNode::Terminal(ustr("b"), 0, 2));
-            id
-        };
+        let t1 = alloc(arena, RegexNode::Terminal(ustr("a"), 0, 1));
+        let t2 = alloc(arena, RegexNode::Terminal(ustr("b"), 0, 2));
         let or_ = RegexNode::Or(Box::new([t1, t2]), false);
-        let or_id = {
-            let id = arena.len();
-            arena.push(or_);
-            id
-        };
+        let or_id = alloc(arena, or_);
         let star = RegexNode::Star(or_id);
-        let star_id = {
-            let id = arena.len();
-            arena.push(star);
-            id
-        };
+        let star_id = alloc(arena, star);
         star_id
     }
 
     fn make_sample_regex(arena: &mut Vec<RegexNode>) -> RegexNode {
         // (a|b)*a
-        let t = {
-            let id = arena.len();
-            arena.push(RegexNode::Terminal(ustr("a"), 0, 3));
-            id
-        };
+        let t = alloc(arena, RegexNode::Terminal(ustr("a"), 0, 3));
         RegexNode::Cat(make_sample_star_regex(arena), t)
     }
 
@@ -783,12 +713,6 @@ mod tests {
         let mut arena = Default::default();
         let regex = make_sample_regex(&mut arena);
         assert_eq!(regex.lastpos(&arena), HashSet::from([3]));
-    }
-
-    fn alloc(arena: &mut Vec<RegexNode>, node: RegexNode) -> usize {
-        let id = arena.len();
-        arena.push(node);
-        id
     }
 
     fn make_followpos_regex(arena: &mut Vec<RegexNode>) -> RegexNode {
