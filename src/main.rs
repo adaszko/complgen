@@ -290,10 +290,6 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
         dfa.to_dot(&mut dot_file).context(dot_file_path.clone())?;
     }
 
-    if dfa.is_ambiguous(validated.command) {
-        exit(1);
-    };
-
     let script_file = get_file_or_stdout(path)?;
     let mut writer = BufWriter::new(script_file);
 
