@@ -141,7 +141,7 @@ fn handle_validation_error(e: Error, input: &str) -> anyhow::Result<ValidGrammar
                 end: left_end,
             } = first.get_span()
             else {
-                panic!()
+                unreachable!()
             };
             let ChicSpan::Significant {
                 line_start: right_line_start,
@@ -149,7 +149,7 @@ fn handle_validation_error(e: Error, input: &str) -> anyhow::Result<ValidGrammar
                 end: right_end,
             } = second.get_span()
             else {
-                panic!()
+                unreachable!()
             };
             let error = chic::Error::new("Ambiguous grammar.  Matching can't differentiate:")
                 .error(
@@ -177,7 +177,7 @@ fn handle_validation_error(e: Error, input: &str) -> anyhow::Result<ValidGrammar
                 end: left_end,
             } = first
             else {
-                panic!()
+                unreachable!()
             };
             let ChicSpan::Significant {
                 line_start: right_line_start,
@@ -185,7 +185,7 @@ fn handle_validation_error(e: Error, input: &str) -> anyhow::Result<ValidGrammar
                 end: right_end,
             } = second
             else {
-                panic!()
+                unreachable!()
             };
             let error = chic::Error::new("Clashing variants.  Completion can't differentiate:")
                 .error(
