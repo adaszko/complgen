@@ -305,7 +305,7 @@ impl RegexNode {
     }
 }
 
-fn do_from_expr<'a>(
+fn do_from_expr(
     e: &Expr,
     specs: &UstrMap<Specialization>,
     arena: &mut Vec<RegexNode>,
@@ -323,7 +323,7 @@ fn do_from_expr<'a>(
                 literal: *term,
                 description: *description,
                 fallback_level: *level,
-                span: span.clone(),
+                span: *span,
             };
             input_from_position.push(input.clone());
             symbols.insert(input);
@@ -341,9 +341,9 @@ fn do_from_expr<'a>(
                 SubwordCompilationPhase::Expr(_) => unreachable!(),
             };
             let input = Input::Subword {
-                subdfa: dfa.clone(),
+                subdfa: *dfa,
                 fallback_level: *fallback_level,
-                span: span.clone(),
+                span: *span,
             };
             input_from_position.push(input.clone());
             symbols.insert(input);
@@ -362,7 +362,7 @@ fn do_from_expr<'a>(
                 nonterm: *name,
                 spec: specialization.copied(),
                 fallback_level: *fallback_level,
-                span: span.clone(),
+                span: *span,
             };
             input_from_position.push(input.clone());
             symbols.insert(input);
@@ -382,7 +382,7 @@ fn do_from_expr<'a>(
                 cmd: *code,
                 regex: *cmd_regex_decl,
                 fallback_level: *fallback_level,
-                span: span.clone(),
+                span: *span,
             };
             input_from_position.push(input.clone());
             symbols.insert(input);
@@ -498,7 +498,7 @@ fn do_ensure_ambiguous_inputs_tail_only(
     visited: &mut RoaringBitmap,
 ) -> Result<()> {
     let unvisited = firstpos - visited.clone();
-    if unvisited.len() == 0 {
+    if unvisited.is_empty() {
         return Ok(());
     }
 
@@ -544,7 +544,7 @@ fn do_ensure_ambiguous_inputs_tail_only_subword(
     visited: &mut RoaringBitmap,
 ) -> Result<()> {
     let unvisited = firstpos - visited.clone();
-    if unvisited.len() == 0 {
+    if unvisited.is_empty() {
         return Ok(());
     }
 
@@ -591,7 +591,7 @@ fn do_check_clashing_variants(
     visited: &mut RoaringBitmap,
 ) -> Result<()> {
     let unvisited = firstpos - visited.clone();
-    if unvisited.len() == 0 {
+    if unvisited.is_empty() {
         return Ok(());
     }
 

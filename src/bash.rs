@@ -19,7 +19,7 @@ pub fn make_string_constant(s: &str) -> String {
     if s.is_empty() {
         return r#""""#.to_string();
     }
-    if s.contains(&[' ', '\t', '\n']) {
+    if s.contains([' ', '\t', '\n']) {
         format!(
             r#""{}""#,
             s.replace('\"', "\\\"")
@@ -27,12 +27,9 @@ pub fn make_string_constant(s: &str) -> String {
                 .replace('$', "\\$")
         )
     } else {
-        format!(
-            "{}",
-            s.replace('\"', "\\\"")
-                .replace('`', "\\`")
-                .replace('$', "\\$")
-        )
+        s.replace('\"', "\\\"")
+            .replace('`', "\\`")
+            .replace('$', "\\$")
     }
 }
 
@@ -145,7 +142,6 @@ fn write_lookup_tables<W: Write>(
 
     let match_anything_transitions = itertools::join(
         dfa.iter_match_anything_transitions(Shell::Bash)
-            .into_iter()
             .map(|(from, to)| format!("[{from}]={to}")),
         " ",
     );

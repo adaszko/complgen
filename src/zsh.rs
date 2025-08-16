@@ -60,7 +60,7 @@ fn write_lookup_tables<W: Write>(
             continue;
         }
         let id = descrs.get_index_of(descr).unwrap();
-        let quoted = make_string_constant(&descr);
+        let quoted = make_string_constant(descr);
         writeln!(buffer, r#"    {prefix}descrs[{id}]={quoted}"#)?;
     }
 
@@ -141,7 +141,6 @@ fn write_lookup_tables<W: Write>(
 
     let match_anything_transitions = itertools::join(
         dfa.iter_match_anything_transitions(Shell::Zsh)
-            .into_iter()
             .map(|(from, to)| format!("[{}]={}", from + 1, to + 1)),
         " ",
     );

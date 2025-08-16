@@ -85,10 +85,10 @@ fn dfa_from_regex(regex: &Regex, subdfa_interner: DFAInterner) -> DFA {
             let mut u = RoaringBitmap::new();
             for pos in &combined_state {
                 let pos_usize = usize::try_from(*pos).unwrap();
-                if regex.input_from_position.get(pos_usize) == Some(input) {
-                    if let Some(positions) = followpos.get(pos) {
-                        u |= positions;
-                    }
+                if regex.input_from_position.get(pos_usize) == Some(input)
+                    && let Some(positions) = followpos.get(pos)
+                {
+                    u |= positions;
                 }
             }
             if !u.is_empty() {
@@ -392,7 +392,7 @@ fn do_minimize(dfa: DFA) -> DFA {
             [&all_states, &dfa.accepting_states, &dead_state_group].difference();
         if nonaccepting_states.is_empty() {
             // Nothing to minimize
-            return dfa.clone();
+            return dfa;
         }
         let nonaccepting_states_intern_id = pool.intern(nonaccepting_states);
         let accepting_states_intern_id = pool.intern(dfa.accepting_states.clone());
@@ -435,7 +435,7 @@ fn do_minimize(dfa: DFA) -> DFA {
         for from_states in transitions_to_group.values() {
             let overlapping_sets: Vec<SetInternId> = partitions
                 .iter()
-                .filter(|set_id| !pool.lookup(**set_id).unwrap().is_disjoint(&from_states))
+                .filter(|set_id| !pool.lookup(**set_id).unwrap().is_disjoint(from_states))
                 .copied()
                 .collect();
             for intern_id in overlapping_sets {
@@ -938,7 +938,7 @@ impl DFA {
         let transitions: Vec<(DFAId, StateId)> = map
             .iter()
             .filter_map(|(input, to)| match input {
-                Input::Subword { subdfa: dfa, .. } => Some((dfa.clone(), *to)),
+                Input::Subword { subdfa: dfa, .. } => Some((*dfa, *to)),
                 Input::Literal { .. } => None,
                 Input::Nonterminal { .. } => None,
                 Input::Command { .. } => None,
@@ -956,7 +956,7 @@ impl DFA {
                 return true;
             }
         }
-        return false;
+        false
     }
 
     pub fn get_all_states(&self) -> RoaringBitmap {
@@ -995,7 +995,7 @@ impl DFA {
                     Input::Command { .. } => continue,
                     Input::Literal { .. } => continue,
                 };
-                result.entry(dfa.clone()).or_insert_with(|| {
+                result.entry(*dfa).or_insert_with(|| {
                     let save = unallocated_id;
                     unallocated_id += 1;
                     save

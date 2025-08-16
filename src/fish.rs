@@ -26,7 +26,7 @@ pub fn make_string_constant(s: &str) -> String {
     if s.is_empty() {
         return r#""""#.to_string();
     }
-    if s.contains(&[' ', '\t', '\n', '|']) {
+    if s.contains([' ', '\t', '\n', '|']) {
         format!(
             r#""{}""#,
             s.replace('\\', "\\\\")
@@ -34,12 +34,9 @@ pub fn make_string_constant(s: &str) -> String {
                 .replace('$', "\\$")
         )
     } else {
-        format!(
-            r#"{}"#,
-            s.replace('\\', "\\\\")
-                .replace('\"', "\\\"")
-                .replace('$', "\\$")
-        )
+        s.replace('\\', "\\\\")
+            .replace('\"', "\\\"")
+            .replace('$', "\\$")
     }
 }
 
@@ -150,7 +147,7 @@ fn write_subword_lookup_tables<W: Write>(
             continue;
         }
         let id = descrs.get_index_of(descr).unwrap();
-        let quoted = make_string_constant(&descr);
+        let quoted = make_string_constant(descr);
         writeln!(buffer, r#"    set subword_descrs[{id}] {quoted}"#)?;
     }
 
@@ -681,7 +678,7 @@ fn write_lookup_tables<W: Write>(
             continue;
         }
         let id = descrs.get_index_of(descr).unwrap();
-        let quoted = make_string_constant(&descr);
+        let quoted = make_string_constant(descr);
         writeln!(buffer, r#"    set descrs[{id}] {quoted}"#)?;
     }
 
@@ -1144,7 +1141,7 @@ end
                         .map(|literal_id| format!("{}", literal_id)),
                     " ",
                 );
-                format!(r#"{}"#, cell)
+                cell
             }),
             "|",
         );

@@ -27,19 +27,10 @@ impl From<u32> for DFAId {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct DFAInterner {
     map: HashMap<DFA, u32>,
     vec: Vec<DFA>,
-}
-
-impl Default for DFAInterner {
-    fn default() -> Self {
-        Self {
-            map: HashMap::default(),
-            vec: Default::default(),
-        }
-    }
 }
 
 impl DFAInterner {
@@ -1018,7 +1009,7 @@ fn compile_subword_exprs(
             Rc::new(Expr::Subword(
                 SubwordCompilationPhase::DFA(subdfaid),
                 *fallback_level,
-                span.clone(),
+                *span,
             ))
         }
         Expr::Terminal(..) | Expr::NontermRef(..) | Expr::Command(..) => Rc::clone(&expr),
@@ -1096,13 +1087,13 @@ fn do_distribute_descriptions(expr: Rc<Expr>, description: &mut Option<Ustr>) ->
         Expr::DistributiveDescription(child, descr) => {
             let new_child = do_distribute_descriptions(Rc::clone(child), &mut Some(*descr));
             if Rc::ptr_eq(child, &new_child) {
-                Rc::clone(&child)
+                Rc::clone(child)
             } else {
                 new_child
             }
         }
         Expr::Terminal(term, None, level, span) if description.is_some() => {
-            let result = Rc::new(Expr::Terminal(*term, *description, *level, span.clone()));
+            let result = Rc::new(Expr::Terminal(*term, *description, *level, *span));
             *description = None; // spend it
             result
         }
@@ -1155,14 +1146,14 @@ fn do_distribute_descriptions(expr: Rc<Expr>, description: &mut Option<Ustr>) ->
             }
         }
         Expr::Subword(SubwordCompilationPhase::Expr(child), fallback_level, span) => {
-            let new_child = do_distribute_descriptions(Rc::clone(&child), description);
-            if Rc::ptr_eq(&child, &new_child) {
+            let new_child = do_distribute_descriptions(Rc::clone(child), description);
+            if Rc::ptr_eq(child, &new_child) {
                 Rc::clone(&expr)
             } else {
                 Rc::new(Expr::Subword(
                     SubwordCompilationPhase::Expr(new_child),
                     *fallback_level,
-                    span.clone(),
+                    *span,
                 ))
             }
         }
@@ -1195,7 +1186,7 @@ fn do_propagate_fallback_levels(expr: Rc<Expr>, fallback_level: usize) -> Rc<Exp
     match expr.as_ref() {
         Expr::Terminal(_, _, level, _) if *level == fallback_level => Rc::clone(&expr),
         Expr::Terminal(term, descr, _, span) => {
-            Rc::new(Expr::Terminal(*term, *descr, fallback_level, span.clone()))
+            Rc::new(Expr::Terminal(*term, *descr, fallback_level, *span))
         }
         Expr::Fallback(children) => {
             let new_children: Vec<Rc<Expr>> = children
@@ -1261,14 +1252,14 @@ fn do_propagate_fallback_levels(expr: Rc<Expr>, fallback_level: usize) -> Rc<Exp
             }
         }
         Expr::Subword(SubwordCompilationPhase::Expr(child), _, span) => {
-            let new_child = do_propagate_fallback_levels(Rc::clone(&child), fallback_level);
-            if Rc::ptr_eq(&child, &new_child) {
+            let new_child = do_propagate_fallback_levels(Rc::clone(child), fallback_level);
+            if Rc::ptr_eq(child, &new_child) {
                 Rc::clone(&expr)
             } else {
                 Rc::new(Expr::Subword(
                     SubwordCompilationPhase::Expr(new_child),
                     fallback_level,
-                    span.clone(),
+                    *span,
                 ))
             }
         }
@@ -1337,7 +1328,7 @@ impl ValidGrammar {
                 if nonterminal_definitions.contains_key(&symbol) {
                     return Err(Error::DuplicateNonterminalDefinition(symbol, None));
                 }
-                let expr = distribute_descriptions(Rc::clone(&expr));
+                let expr = distribute_descriptions(Rc::clone(expr));
                 nonterminal_definitions.insert(symbol, expr);
             }
             nonterminal_definitions
@@ -1458,8 +1449,8 @@ fn do_check_subword_spaces(
             for pair in children.windows(2) {
                 let [left, right] = pair else { unreachable!() };
                 match (
-                    expr_get_tail(Rc::clone(&left)).as_ref(),
-                    expr_get_head(Rc::clone(&right)).as_ref(),
+                    expr_get_tail(Rc::clone(left)).as_ref(),
+                    expr_get_head(Rc::clone(right)).as_ref(),
                 ) {
                     (Expr::Terminal(_, _, _, left_span), Expr::Terminal(_, _, _, right_span)) => {
                         return Err(Error::SubwordSpaces(
@@ -1476,7 +1467,7 @@ fn do_check_subword_spaces(
         Expr::Sequence(children) => {
             for child in children {
                 do_check_subword_spaces(
-                    Rc::clone(&child),
+                    Rc::clone(child),
                     nonterms,
                     nonterm_expn_trace,
                     within_subword,
@@ -1489,9 +1480,9 @@ fn do_check_subword_spaces(
             let Some(expn) = nonterms.get(name) else {
                 return Ok(());
             };
-            nonterm_expn_trace.push(span.clone());
+            nonterm_expn_trace.push(*span);
             do_check_subword_spaces(
-                Rc::clone(&expn),
+                Rc::clone(expn),
                 nonterms,
                 nonterm_expn_trace,
                 within_subword,
@@ -1501,7 +1492,7 @@ fn do_check_subword_spaces(
         }
         Expr::Command(..) => Ok(()),
         Expr::Subword(SubwordCompilationPhase::Expr(child), ..) => {
-            do_check_subword_spaces(Rc::clone(&child), nonterms, nonterm_expn_trace, true)
+            do_check_subword_spaces(Rc::clone(child), nonterms, nonterm_expn_trace, true)
         }
         Expr::Subword(SubwordCompilationPhase::DFA(..), ..) => {
             unreachable!("wrong compilation phases order")
@@ -1509,7 +1500,7 @@ fn do_check_subword_spaces(
         Expr::Alternative(children) => {
             for child in children {
                 do_check_subword_spaces(
-                    Rc::clone(&child),
+                    Rc::clone(child),
                     nonterms,
                     nonterm_expn_trace,
                     within_subword,
@@ -1520,7 +1511,7 @@ fn do_check_subword_spaces(
         Expr::Fallback(children) => {
             for child in children {
                 do_check_subword_spaces(
-                    Rc::clone(&child),
+                    Rc::clone(child),
                     nonterms,
                     nonterm_expn_trace,
                     within_subword,
@@ -1529,13 +1520,13 @@ fn do_check_subword_spaces(
             Ok(())
         }
         Expr::Optional(child) => do_check_subword_spaces(
-            Rc::clone(&child),
+            Rc::clone(child),
             nonterms,
             nonterm_expn_trace,
             within_subword,
         ),
         Expr::Many1(child) => do_check_subword_spaces(
-            Rc::clone(&child),
+            Rc::clone(child),
             nonterms,
             nonterm_expn_trace,
             within_subword,
@@ -1569,7 +1560,7 @@ fn resolve_nonterminals(
                 Rc::new(Expr::Subword(
                     SubwordCompilationPhase::Expr(new_child),
                     *fallback_level,
-                    span.clone(),
+                    *span,
                 ))
             }
         }
