@@ -14,7 +14,6 @@ def complgen_check_path(complgen_binary_path: Path, path: str) -> subprocess.Com
     )
 
 
-@pytest.mark.skip("pending precise implementaion of ambiguity detection")
 def test_examples(complgen_binary_path: Path, examples_directory_path: Path):
     for usage_file_path in glob.glob(str(examples_directory_path / "*.usage")):
         r = complgen_check_path(complgen_binary_path, usage_file_path)
