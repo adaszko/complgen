@@ -269,7 +269,7 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
     }
 
     log::debug!("Grammar -> Regex");
-    let regex = Regex::from_expr(&validated.expr, &validated.specializations)?;
+    let regex = Regex::from_expr(validated.expr, &validated.arena, &validated.specializations)?;
 
     if let Err(e) = regex.ensure_ambiguous_inputs_tail_only(shell) {
         handle_validation_error(e, &input)?;

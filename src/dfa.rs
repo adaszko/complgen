@@ -962,10 +962,11 @@ impl DFA {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
     use std::rc::Rc;
 
     use crate::grammar::tests::arb_expr_match;
-    use crate::grammar::{ChicSpan, Expr};
+    use crate::grammar::{ChicSpan, Expr, alloc};
     use crate::regex::Regex;
     use Expr::*;
 
@@ -1062,10 +1063,10 @@ mod tests {
 
     #[test]
     fn minimal_example() {
-        use ustr::ustr;
-        let expr = Terminal(ustr("foo"), None, 0, ChicSpan::Dummy);
+        let mut arena: Vec<Expr> = Default::default();
+        let expr = alloc(&mut arena, Expr::term("foo"));
         let specs = UstrMap::default();
-        let regex = Regex::from_expr(&expr, &specs).unwrap();
+        let regex = Regex::from_expr(expr, &arena, &specs).unwrap();
         let dfa = DFA::from_regex(&regex, DFAInterner::default());
         let transitions = dfa.get_transitions();
         assert_eq!(transitions, vec![Transition::new(1, "foo", 2)]);
@@ -1078,11 +1079,11 @@ mod tests {
 
     proptest! {
         #[test]
-        fn accepts_arb_expr_input_from_regex((expr, input) in arb_expr_match(Rc::new(TERMINALS.iter().map(|s| u(s)).collect()), Rc::new(NONTERMINALS.iter().map(|s| u(s)).collect()), 10, 3)) {
+        fn accepts_arb_expr_input_from_regex((expr, arena, input) in arb_expr_match(Rc::new(RefCell::new(vec![])), Rc::new(TERMINALS.iter().map(|s| u(s)).collect()), Rc::new(NONTERMINALS.iter().map(|s| u(s)).collect()), 10, 3)) {
             // println!("{:?}", expr);
             // println!("{:?}", input);
             let specs = UstrMap::default();
-            let regex = Regex::from_expr(&expr, &specs).unwrap();
+            let regex = Regex::from_expr(expr, &arena.borrow(), &specs).unwrap();
             let dfa = DFA::from_regex(&regex, DFAInterner::default());
             let input: Vec<&str> = input.iter().map(|s| {
                 let s: &str = s;
@@ -1092,11 +1093,11 @@ mod tests {
         }
 
         #[test]
-        fn minimized_dfa_equivalent_to_input_one((expr, input) in arb_expr_match(Rc::new(TERMINALS.iter().map(|s| u(s)).collect()), Rc::new(NONTERMINALS.iter().map(|s| u(s)).collect()), 10, 3)) {
+        fn minimized_dfa_equivalent_to_input_one((expr, arena, input) in arb_expr_match(Rc::new(RefCell::new(vec![])), Rc::new(TERMINALS.iter().map(|s| u(s)).collect()), Rc::new(NONTERMINALS.iter().map(|s| u(s)).collect()), 10, 3)) {
             println!("{:?}", expr);
             println!("{:?}", input);
             let specs = UstrMap::default();
-            let regex = Regex::from_expr(&expr, &specs).unwrap();
+            let regex = Regex::from_expr(expr, &arena.borrow(), &specs).unwrap();
             let dfa = DFA::from_regex(&regex, DFAInterner::default());
             let input: Vec<&str> = input.iter().map(|s| {
                 let s: &str = s;
@@ -1235,40 +1236,33 @@ mod tests {
 
     #[test]
     fn minimization_fails() {
-        let (expr, input) = (
-            Alternative(vec![
-                Rc::new(Many1(Rc::new(Alternative(vec![
-                    Rc::new(Terminal(u("--quux"), None, 0, ChicSpan::Dummy)),
-                    Rc::new(Sequence(vec![
-                        Rc::new(Optional(Rc::new(Sequence(vec![
-                            Rc::new(Many1(Rc::new(Many1(Rc::new(Alternative(vec![
-                                Rc::new(Terminal(u("--baz"), None, 0, ChicSpan::Dummy)),
-                                Rc::new(NontermRef(
-                                    u("FILE"),
-                                    0,
-                                    crate::grammar::ChicSpan::dummy(),
-                                )),
-                            ])))))),
-                            Rc::new(NontermRef(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
-                        ])))),
-                        Rc::new(Sequence(vec![
-                            Rc::new(NontermRef(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
-                            Rc::new(Terminal(u("foo"), None, 0, ChicSpan::Dummy)),
-                        ])),
-                    ])),
-                ])))),
-                Rc::new(NontermRef(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
-            ]),
-            [
-                u("--quux"),
-                u("--baz"),
-                u("anything"),
-                u("anything"),
-                u("foo"),
-            ],
-        );
+        let mut arena: Vec<Expr> = Default::default();
+        let term_baz_id = alloc(&mut arena, Expr::term("--baz"));
+        let nonterm_file1_id = alloc(&mut arena, Expr::nontermref("FILE"));
+        let alt1_id = alloc(&mut arena, Alternative(vec![term_baz_id, nonterm_file1_id]));
+        let many1_1_id = alloc(&mut arena, Many1(alt1_id));
+        let many1_2_id = alloc(&mut arena, Many1(many1_1_id));
+        let nonterm_file2_id = alloc(&mut arena, Expr::nontermref("FILE"));
+        let seq1_id = alloc(&mut arena, Sequence(vec![many1_2_id, nonterm_file2_id]));
+        let opt1_id = alloc(&mut arena, Optional(seq1_id));
+        let nonterm_file3_id = alloc(&mut arena, Expr::nontermref("FILE"));
+        let term_foo_id = alloc(&mut arena, Expr::term("foo"));
+        let seq2_id = alloc(&mut arena, Sequence(vec![nonterm_file3_id, term_foo_id]));
+        let seq3_id = alloc(&mut arena, Sequence(vec![opt1_id, seq2_id]));
+        let term_quux_id = alloc(&mut arena, Expr::term("--quux"));
+        let alt2_id = alloc(&mut arena, Alternative(vec![term_quux_id, seq3_id]));
+        let many1_3_id = alloc(&mut arena, Many1(alt2_id));
+        let nonterm_file4_id = alloc(&mut arena, Expr::nontermref("FILE"));
+        let expr = alloc(&mut arena, Alternative(vec![many1_3_id, nonterm_file4_id]));
+        let input = [
+            u("--quux"),
+            u("--baz"),
+            u("anything"),
+            u("anything"),
+            u("foo"),
+        ];
         let specs = UstrMap::default();
-        let regex = Regex::from_expr(&expr, &specs).unwrap();
+        let regex = Regex::from_expr(expr, &arena, &specs).unwrap();
         let dfa = DFA::from_regex(&regex, DFAInterner::default());
         let input: Vec<&str> = input
             .iter()
@@ -1284,25 +1278,26 @@ mod tests {
 
     #[test]
     fn minimization_counterexample1() {
-        let (expr, input) = (
-            Alternative(vec![
-                Rc::new(Many1(Rc::new(Sequence(vec![
-                    Rc::new(NontermRef(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
-                    Rc::new(NontermRef(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
-                ])))),
-                Rc::new(NontermRef(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
-            ]),
-            [
-                u("anything"),
-                u("anything"),
-                u("anything"),
-                u("anything"),
-                u("anything"),
-                u("anything"),
-            ],
+        let mut arena: Vec<Expr> = Default::default();
+        let nonterm_file1_id = alloc(&mut arena, Expr::nontermref("FILE"));
+        let nonterm_file2_id = alloc(&mut arena, Expr::nontermref("FILE"));
+        let seq_id = alloc(
+            &mut arena,
+            Sequence(vec![nonterm_file1_id, nonterm_file2_id]),
         );
+        let many1_id = alloc(&mut arena, Many1(seq_id));
+        let nonterm_file3_id = alloc(&mut arena, Expr::nontermref("FILE"));
+        let expr = alloc(&mut arena, Alternative(vec![many1_id, nonterm_file3_id]));
+        let input = [
+            u("anything"),
+            u("anything"),
+            u("anything"),
+            u("anything"),
+            u("anything"),
+            u("anything"),
+        ];
         let specs = UstrMap::default();
-        let regex = Regex::from_expr(&expr, &specs).unwrap();
+        let regex = Regex::from_expr(expr, &arena, &specs).unwrap();
         let dfa = DFA::from_regex(&regex, DFAInterner::default());
         let input: Vec<&str> = input
             .iter()
@@ -1318,29 +1313,28 @@ mod tests {
 
     #[test]
     fn minimization_counterexample2() {
-        let (expr, input) = (
-            Sequence(vec![
-                Rc::new(Sequence(vec![
-                    Rc::new(Alternative(vec![
-                        Rc::new(Many1(Rc::new(Many1(Rc::new(Terminal(
-                            u("--baz"),
-                            None,
-                            0,
-                            ChicSpan::Dummy,
-                        )))))),
-                        Rc::new(NontermRef(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
-                    ])),
-                    Rc::new(Terminal(u("--baz"), None, 0, ChicSpan::Dummy)),
-                ])),
-                Rc::new(Many1(Rc::new(Alternative(vec![
-                    Rc::new(NontermRef(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
-                    Rc::new(NontermRef(u("FILE"), 0, crate::grammar::ChicSpan::dummy())),
-                ])))),
-            ]),
-            [u("anything"), u("--baz"), u("anything"), u("anything")],
+        let mut arena: Vec<Expr> = Default::default();
+        let term_baz1_id = alloc(&mut arena, Expr::term("--baz"));
+        let many1_1_id = alloc(&mut arena, Many1(term_baz1_id));
+        let many1_2_id = alloc(&mut arena, Many1(many1_1_id));
+        let nonterm_file1_id = alloc(&mut arena, Expr::nontermref("FILE"));
+        let alt1_id = alloc(&mut arena, Alternative(vec![many1_2_id, nonterm_file1_id]));
+        let term_baz2_id = alloc(&mut arena, Expr::term("--baz"));
+        let seq1_id = alloc(&mut arena, Sequence(vec![alt1_id, term_baz2_id]));
+
+        let nonterm_file2_id = alloc(&mut arena, Expr::nontermref("FILE"));
+        let nonterm_file3_id = alloc(&mut arena, Expr::nontermref("FILE"));
+        let alt2_id = alloc(
+            &mut arena,
+            Alternative(vec![nonterm_file2_id, nonterm_file3_id]),
         );
+        let many1_3_id = alloc(&mut arena, Many1(alt2_id));
+
+        let expr = alloc(&mut arena, Sequence(vec![seq1_id, many1_3_id]));
+        let input = [u("anything"), u("--baz"), u("anything"), u("anything")];
+
         let specs = UstrMap::default();
-        let regex = Regex::from_expr(&expr, &specs).unwrap();
+        let regex = Regex::from_expr(expr, &arena, &specs).unwrap();
         let dfa = DFA::from_regex(&regex, DFAInterner::default());
         let input: Vec<&str> = input
             .iter()

@@ -8,7 +8,7 @@ use roaring::RoaringBitmap;
 use ustr::{Ustr, UstrMap};
 
 use crate::grammar::{
-    ChicSpan, CmdRegexDecl, DFAId, Expr, Shell, Specialization, SubwordCompilationPhase,
+    ChicSpan, CmdRegexDecl, DFAId, Expr, ExprId, Shell, Specialization, SubwordCompilationPhase,
 };
 
 pub type Position = u32;
@@ -312,13 +312,14 @@ fn alloc<T>(arena: &mut Vec<T>, elem: T) -> usize {
 }
 
 fn do_from_expr(
-    e: &Expr,
+    e: ExprId,
+    expr_arena: &[Expr],
     specs: &UstrMap<Specialization>,
     arena: &mut Vec<RegexNode>,
     symbols: &mut IndexSet<Input>,
     input_from_position: &mut Vec<Input>,
 ) -> usize {
-    match e {
+    match &expr_arena[e.to_index()] {
         Expr::Terminal(term, description, level, span) => {
             let result = RegexNode::Terminal(
                 *term,
@@ -380,11 +381,23 @@ fn do_from_expr(
             alloc(arena, result)
         }
         Expr::Sequence(subexprs) => {
-            let mut left_regex_id =
-                do_from_expr(&subexprs[0], specs, arena, symbols, input_from_position);
+            let mut left_regex_id = do_from_expr(
+                subexprs[0],
+                expr_arena,
+                specs,
+                arena,
+                symbols,
+                input_from_position,
+            );
             for right_expr in &subexprs[1..] {
-                let right_regex_id =
-                    do_from_expr(right_expr, specs, arena, symbols, input_from_position);
+                let right_regex_id = do_from_expr(
+                    *right_expr,
+                    expr_arena,
+                    specs,
+                    arena,
+                    symbols,
+                    input_from_position,
+                );
                 let left_regex = RegexNode::Cat(left_regex_id, right_regex_id);
                 left_regex_id = alloc(arena, left_regex);
             }
@@ -393,20 +406,35 @@ fn do_from_expr(
         Expr::Alternative(subexprs) => {
             let mut subregexes: Vec<usize> = Default::default();
             for e in subexprs {
-                let subregex = do_from_expr(e, specs, arena, symbols, input_from_position);
+                let subregex =
+                    do_from_expr(*e, expr_arena, specs, arena, symbols, input_from_position);
                 subregexes.push(subregex);
             }
             let result = RegexNode::Or(subregexes.into_boxed_slice(), false);
             alloc(arena, result)
         }
         Expr::Optional(subexpr) => {
-            let subregex = do_from_expr(subexpr, specs, arena, symbols, input_from_position);
+            let subregex = do_from_expr(
+                *subexpr,
+                expr_arena,
+                specs,
+                arena,
+                symbols,
+                input_from_position,
+            );
             let epsid = alloc(arena, RegexNode::Epsilon);
             let result = RegexNode::Or(Box::new([subregex, epsid]), false);
             alloc(arena, result)
         }
         Expr::Many1(subexpr) => {
-            let subregex_id = do_from_expr(subexpr, specs, arena, symbols, input_from_position);
+            let subregex_id = do_from_expr(
+                *subexpr,
+                expr_arena,
+                specs,
+                arena,
+                symbols,
+                input_from_position,
+            );
             let star = RegexNode::Star(subregex_id);
             let starid = alloc(arena, star);
             let result = RegexNode::Cat(subregex_id, starid);
@@ -418,7 +446,8 @@ fn do_from_expr(
         Expr::Fallback(subexprs) => {
             let mut subregexes: Vec<usize> = Default::default();
             for e in subexprs {
-                let subregex = do_from_expr(e, specs, arena, symbols, input_from_position);
+                let subregex =
+                    do_from_expr(*e, expr_arena, specs, arena, symbols, input_from_position);
                 subregexes.push(subregex);
             }
             let result = RegexNode::Or(subregexes.into_boxed_slice(), true);
@@ -597,12 +626,17 @@ fn do_check_clashing_variants(
 }
 
 impl Regex {
-    pub fn from_expr(e: &Expr, specs: &UstrMap<Specialization>) -> Result<Self> {
+    pub fn from_expr(
+        e: ExprId,
+        expr_arena: &[Expr],
+        specs: &UstrMap<Specialization>,
+    ) -> Result<Self> {
         let mut input_symbols: IndexSet<Input> = Default::default();
         let mut input_from_position: Vec<Input> = Default::default();
         let mut arena: Vec<RegexNode> = Default::default();
         let regex = do_from_expr(
             e,
+            expr_arena,
             specs,
             &mut arena,
             &mut input_symbols,
@@ -748,7 +782,7 @@ mod tests {
             .unwrap();
         let validated = crate::grammar::ValidGrammar::from_grammar(g, Shell::Bash)?;
         let specs = UstrMap::default();
-        let regex = Regex::from_expr(&validated.expr, &specs).unwrap();
+        let regex = Regex::from_expr(validated.expr, &validated.arena, &specs).unwrap();
         regex.ensure_ambiguous_inputs_tail_only(Shell::Bash)?;
         regex.check_clashing_variants()?;
         Ok(validated)
