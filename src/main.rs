@@ -6,7 +6,7 @@ use std::process::exit;
 use anyhow::{Context, bail};
 use clap::Parser;
 
-use complgen::grammar::{ChicSpan, Grammar, Shell, ValidGrammar, to_railroad_diagram_file};
+use complgen::grammar::{Grammar, HumanSpan, Shell, ValidGrammar, to_railroad_diagram_file};
 
 use complgen::Error;
 use complgen::dfa::DFA;
@@ -75,19 +75,17 @@ fn handle_validation_error(e: Error, input: &str) -> anyhow::Result<ValidGrammar
             eprintln!("Multiple commands specified: {joined}");
             exit(1);
         }
-        Error::SubwordSpaces(
-            ChicSpan::Significant {
+        Error::SubwordSpaces(left, right, trace) => {
+            let HumanSpan {
                 line_start: left_line_start,
                 start: left_start,
                 end: left_end,
-            },
-            ChicSpan::Significant {
+            } = left.unwrap();
+            let HumanSpan {
                 line_start: right_line_start,
                 end: right_end,
                 start: right_start,
-            },
-            trace,
-        ) => {
+            } = right.unwrap();
             let error = chic::Error::new(
                 "Adjacent literals in expression used in a subword context.  First one:",
             )
@@ -115,14 +113,11 @@ fn handle_validation_error(e: Error, input: &str) -> anyhow::Result<ValidGrammar
             );
 
             for t in trace {
-                let ChicSpan::Significant {
+                let HumanSpan {
                     line_start,
                     start,
                     end,
-                } = t
-                else {
-                    unreachable!()
-                };
+                } = t;
                 let e = chic::Error::new("Referenced in a subword context at").error(
                     line_start,
                     start,
@@ -135,19 +130,19 @@ fn handle_validation_error(e: Error, input: &str) -> anyhow::Result<ValidGrammar
             exit(1);
         }
         Error::AmbiguousMatchable(first, second) => {
-            let ChicSpan::Significant {
+            let Some(HumanSpan {
                 line_start: left_line_start,
                 start: left_start,
                 end: left_end,
-            } = first.get_span()
+            }) = first.get_span()
             else {
                 unreachable!()
             };
-            let ChicSpan::Significant {
+            let Some(HumanSpan {
                 line_start: right_line_start,
                 start: right_start,
                 end: right_end,
-            } = second.get_span()
+            }) = second.get_span()
             else {
                 unreachable!()
             };
@@ -171,19 +166,19 @@ fn handle_validation_error(e: Error, input: &str) -> anyhow::Result<ValidGrammar
             exit(1);
         }
         Error::ClashingVariants(first, second) => {
-            let ChicSpan::Significant {
+            let Some(HumanSpan {
                 line_start: left_line_start,
                 start: left_start,
                 end: left_end,
-            } = first
+            }) = first
             else {
                 unreachable!()
             };
-            let ChicSpan::Significant {
+            let Some(HumanSpan {
                 line_start: right_line_start,
                 start: right_start,
                 end: right_end,
-            } = second
+            }) = second
             else {
                 unreachable!()
             };

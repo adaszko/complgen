@@ -1,4 +1,4 @@
-use grammar::ChicSpan;
+use grammar::HumanSpan;
 use regex::Input;
 use std::string::FromUtf8Error;
 use ustr::Ustr;
@@ -38,10 +38,10 @@ pub enum Error {
     AmbiguousMatchable(Input, Input),
 
     #[error("Clashing variants: {:?} {:?}", .0, .1)]
-    ClashingVariants(ChicSpan, ChicSpan),
+    ClashingVariants(Option<HumanSpan>, Option<HumanSpan>),
 
     #[error("Two adjacent terminals in a subword expression: {:?}", .0)]
-    SubwordSpaces(ChicSpan, ChicSpan, Vec<ChicSpan>),
+    SubwordSpaces(Option<HumanSpan>, Option<HumanSpan>, Vec<HumanSpan>),
 
     #[error("UTF-8 conversion error")]
     FromUtf8Error(#[from] FromUtf8Error),

@@ -74,21 +74,32 @@ impl ExprId {
     }
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone)]
 pub enum Expr {
     // `--help`
-    Terminal(Ustr, Option<Ustr>, usize, ChicSpan), // terminal, optional description, fallback level
-
-    // `--option=argument`
-    Subword(SubwordCompilationPhase, usize, ChicSpan),
+    Terminal {
+        term: Ustr,
+        descr: Option<Ustr>,
+        fallback: usize,
+        span: Option<HumanSpan>,
+    },
 
     // `<PATH>`, `<DIRECTORY>`, etc.
-    NontermRef(Ustr, usize, ChicSpan), // name, fallback level
+    NontermRef {
+        nonterm: Ustr,
+        fallback: usize,
+        span: Option<HumanSpan>,
+    },
 
     // `{{{ ls }}}`
     // or
     // `{{{ ls }}}@bash"foo"@fish"bar"`
-    Command(Ustr, Option<CmdRegexDecl>, usize, ChicSpan), // command, [regex], fallback level
+    Command {
+        cmd: Ustr,
+        regex: Option<CmdRegexDecl>,
+        fallback: usize,
+        span: Option<HumanSpan>,
+    },
 
     // `foo bar`
     Sequence(Vec<ExprId>),
@@ -105,10 +116,20 @@ pub enum Expr {
     // `(b | build) "Compile the current package"` means the description applies to both `b` and
     // `build`. `(b build) "Compile the current package"` means means the description applies just
     // to `b` (i.e. the first literal)
-    DistributiveDescription(ExprId, Ustr),
+    DistributiveDescription {
+        child: ExprId,
+        descr: Ustr,
+    },
 
     // `foo || bar`
     Fallback(Vec<ExprId>),
+
+    // `--option=argument`
+    Subword {
+        phase: SubwordCompilationPhase,
+        fallback: usize,
+        span: Option<HumanSpan>,
+    },
 }
 
 // Invariant: At least one field must be Some(_)
@@ -147,27 +168,44 @@ pub struct Specialization {
 impl std::fmt::Debug for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Subword(subword, level, ..) => {
-                f.write_fmt(format_args!(r#"Subword({subword:?}, {level})"#))
-            }
-            Expr::Terminal(term, Some(descr), level, ..) => f.write_fmt(format_args!(
+            Self::Subword {
+                phase: subword,
+                fallback: level,
+                ..
+            } => f.write_fmt(format_args!(r#"Subword({subword:?}, {level})"#)),
+            Expr::Terminal {
+                term,
+                descr: Some(descr),
+                fallback: level,
+                ..
+            } => f.write_fmt(format_args!(
                 r#"Terminal(ustr(\"{term}\"), Some(ustr(\"{}\"))), {level})"#,
                 descr
             )),
-            Expr::Terminal(term, None, level, ..) => {
-                f.write_fmt(format_args!(r#"Terminal(ustr(\"{term}\"), None, {level})"#))
-            }
-            Expr::NontermRef(nonterm, level, _) => {
-                f.write_fmt(format_args!(r#"Nonterminal(ustr(\"{nonterm}\"), {level})"#))
-            }
-            Self::Command(cmd, regex, level, span) => f.write_fmt(format_args!(
+            Expr::Terminal {
+                term,
+                descr: None,
+                fallback: level,
+                ..
+            } => f.write_fmt(format_args!(r#"Terminal(ustr(\"{term}\"), None, {level})"#)),
+            Expr::NontermRef {
+                nonterm,
+                fallback: level,
+                span: _,
+            } => f.write_fmt(format_args!(r#"Nonterminal(ustr(\"{nonterm}\"), {level})"#)),
+            Self::Command {
+                cmd,
+                regex,
+                fallback: level,
+                span,
+            } => f.write_fmt(format_args!(
                 r#"Command(ustr({cmd:?}), {regex:?}, {level}, {span:?})"#
             )),
             Self::Sequence(arg0) => f.write_fmt(format_args!(r#"Sequence(vec!{:?})"#, arg0)),
             Self::Alternative(arg0) => f.write_fmt(format_args!(r#"Alternative(vec!{:?})"#, arg0)),
             Self::Optional(arg0) => f.write_fmt(format_args!(r#"Optional({:?})"#, arg0)),
             Self::Many1(arg0) => f.write_fmt(format_args!(r#"Many1({:?})"#, arg0)),
-            Self::DistributiveDescription(expr, descr) => f.write_fmt(format_args!(
+            Self::DistributiveDescription { child: expr, descr } => f.write_fmt(format_args!(
                 r#"DistributiveDescription({expr:?}, {descr:?})"#
             )),
             Self::Fallback(arg0) => f.write_fmt(format_args!(r#"Fallback(vec!{:?})"#, arg0)),
@@ -183,7 +221,7 @@ pub fn alloc<T>(arena: &mut Vec<T>, elem: T) -> ExprId {
 
 fn railroad_node_from_expr(arena: &[Expr], expr_id: ExprId) -> Box<dyn railroad::Node> {
     match &arena[expr_id.to_index()] {
-        Expr::Subword(subword, ..) => {
+        Expr::Subword { phase: subword, .. } => {
             let expr = match subword {
                 SubwordCompilationPhase::Expr(expr) => *expr,
                 SubwordCompilationPhase::DFA(_) => unreachable!(),
@@ -194,9 +232,11 @@ fn railroad_node_from_expr(arena: &[Expr], expr_id: ExprId) -> Box<dyn railroad:
             seq.push(Box::new(railroad::SimpleEnd));
             seq
         }
-        Expr::Terminal(s, ..) => Box::new(railroad::Terminal::new(s.as_str().to_string())),
-        Expr::NontermRef(s, ..) => Box::new(railroad::NonTerminal::new(s.as_str().to_string())),
-        Expr::Command(s, ..) => Box::new(railroad::Comment::new(s.as_str().to_string())),
+        Expr::Terminal { term, .. } => Box::new(railroad::Terminal::new(term.as_str().to_string())),
+        Expr::NontermRef { nonterm, .. } => {
+            Box::new(railroad::NonTerminal::new(nonterm.as_str().to_string()))
+        }
+        Expr::Command { cmd, .. } => Box::new(railroad::Comment::new(cmd.as_str().to_string())),
         Expr::Sequence(subexprs) => {
             let subnodes: Vec<Box<dyn railroad::Node>> = subexprs
                 .iter()
@@ -218,7 +258,10 @@ fn railroad_node_from_expr(arena: &[Expr], expr_id: ExprId) -> Box<dyn railroad:
             let subnode = railroad_node_from_expr(arena, *subexpr);
             Box::new(railroad::Repeat::new(subnode, Box::new(railroad::Empty)))
         }
-        Expr::DistributiveDescription(subexpr, description) => {
+        Expr::DistributiveDescription {
+            child: subexpr,
+            descr: description,
+        } => {
             let inner = railroad_node_from_expr(arena, *subexpr);
             let label = railroad::Comment::new(description.to_string());
             Box::new(railroad::LabeledBox::new(inner, label))
@@ -288,41 +331,17 @@ pub fn to_railroad_diagram_file<P: AsRef<std::path::Path>>(
 use nom_locate::LocatedSpan;
 pub type Span<'a> = LocatedSpan<&'a str>;
 
-#[derive(Debug, Clone, Copy, Eq, Hash)]
-pub enum ChicSpan {
-    Significant {
-        line_start: usize,
-        start: usize,
-        end: usize,
-    },
-    Dummy, // For tests
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct HumanSpan {
+    pub line_start: usize,
+    pub start: usize,
+    pub end: usize,
 }
 
-impl PartialEq for ChicSpan {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Dummy {}, _) => true,
-            (_, Self::Dummy {}) => true,
-            (
-                Self::Significant {
-                    line_start: l_line_start,
-                    start: l_start,
-                    end: l_end,
-                },
-                Self::Significant {
-                    line_start: r_line_start,
-                    start: r_start,
-                    end: r_end,
-                },
-            ) => l_line_start == r_line_start && l_start == r_start && l_end == r_end,
-        }
-    }
-}
-
-impl ChicSpan {
+impl HumanSpan {
     fn new(before: Span, after: Span) -> Self {
         // XXX Doesn't handle tabs
-        Self::Significant {
+        Self {
             line_start: before.location_line() as usize - 1,
             start: before.get_column() - 1,
             end: after.get_column() - 1,
@@ -443,12 +462,12 @@ fn terminal_opt_description_expr<'a, 's>(
 ) -> IResult<Span<'s>, ExprId> {
     let (after, term) = terminal(input)?;
     let (after, descr) = opt(preceded(multiblanks0, description))(after)?;
-    let expr = Expr::Terminal(
-        ustr(&term),
-        descr.map(|span| ustr(&span)),
-        0,
-        ChicSpan::new(input, after),
-    );
+    let expr = Expr::Terminal {
+        term: ustr(&term),
+        descr: descr.map(|span| ustr(&span)),
+        fallback: 0,
+        span: Some(HumanSpan::new(input, after)),
+    };
     let id = alloc(arena, expr);
     Ok((after, id))
 }
@@ -462,8 +481,12 @@ fn nonterm(input: Span) -> IResult<Span, Span> {
 
 fn nonterm_expr<'a, 's>(arena: &'a mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
     let (after, nonterm) = context("nonterminal", nonterm)(input)?;
-    let diagnostic_span = ChicSpan::new(input, after);
-    let e = Expr::NontermRef(ustr(nonterm.into_fragment()), 0, diagnostic_span);
+    let diagnostic_span = HumanSpan::new(input, after);
+    let e = Expr::NontermRef {
+        nonterm: ustr(nonterm.into_fragment()),
+        fallback: 0,
+        span: Some(diagnostic_span),
+    };
     let id = alloc(arena, e);
     Ok((after, id))
 }
@@ -477,8 +500,13 @@ fn triple_bracket_command(input: Span) -> IResult<Span, Span> {
 
 fn command_expr<'a, 's>(arena: &'a mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
     let (after, cmd) = triple_bracket_command(input)?;
-    let command_span = ChicSpan::new(input, after);
-    let e = Expr::Command(ustr(cmd.into_fragment()), None, 0, command_span);
+    let command_span = HumanSpan::new(input, after);
+    let e = Expr::Command {
+        cmd: ustr(cmd.into_fragment()),
+        regex: None,
+        fallback: 0,
+        span: Some(command_span),
+    };
     let id = alloc(arena, e);
     Ok((after, id))
 }
@@ -523,10 +551,15 @@ fn nontail_command_expr<'a, 's>(
     mut input: Span<'s>,
 ) -> IResult<Span<'s>, ExprId> {
     let (after, cmd) = triple_bracket_command(input)?;
-    let command_span = ChicSpan::new(input, after);
+    let command_span = HumanSpan::new(input, after);
     input = after;
     let (input, regex_decl) = cmd_regex_decl(input)?;
-    let e = Expr::Command(ustr(cmd.into_fragment()), Some(regex_decl), 0, command_span);
+    let e = Expr::Command {
+        cmd: ustr(cmd.into_fragment()),
+        regex: Some(regex_decl),
+        fallback: 0,
+        span: Some(command_span),
+    };
     let id = alloc(arena, e);
     Ok((input, id))
 }
@@ -611,9 +644,13 @@ fn subword_sequence_expr<'a, 's>(
             .map(|e| flatten_expr(arena, e))
             .collect();
         let e = Expr::Sequence(flattened_factors);
-        let span = ChicSpan::new(input, after);
+        let span = HumanSpan::new(input, after);
         let subword_id = alloc(arena, e);
-        let subword_expr = Expr::Subword(SubwordCompilationPhase::Expr(subword_id), 0, span);
+        let subword_expr = Expr::Subword {
+            phase: SubwordCompilationPhase::Expr(subword_id),
+            fallback: 0,
+            span: Some(span),
+        };
         alloc(arena, subword_expr)
     };
     Ok((after, result))
@@ -627,7 +664,10 @@ fn subword_sequence_expr_opt_description<'a, 's>(
     let (input, description) = opt(preceded(multiblanks0, description))(input)?;
     let result = match description {
         Some(descr) => {
-            let e = Expr::DistributiveDescription(expr_id, ustr(&descr));
+            let e = Expr::DistributiveDescription {
+                child: expr_id,
+                descr: ustr(&descr),
+            };
             alloc(arena, e)
         }
         None => expr_id,
@@ -801,7 +841,7 @@ fn grammar(input: Span) -> IResult<Span, (Vec<Expr>, Vec<Statement>)> {
     Ok((input, (arena, statements)))
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Clone)]
 pub struct Grammar {
     pub arena: Vec<Expr>,
     pub statements: Vec<Statement>,
@@ -834,7 +874,7 @@ fn make_specializations_map(
             Statement::CallVariant { .. } => continue,
         };
         let command = match &arena[expr.to_index()] {
-            Expr::Command(cmd, ..) => cmd,
+            Expr::Command { cmd, .. } => cmd,
             _ => return Err(Error::NonCommandSpecialization(name, Some(*shell))),
         };
         let known_shell = matches!(shell.as_str(), "bash" | "fish" | "zsh");
@@ -877,7 +917,7 @@ fn make_specializations_map(
         let Some(spec) = specializations.get_mut(name) else {
             continue;
         };
-        let Expr::Command(command, ..) = &arena[expr.to_index()] else {
+        let Expr::Command { cmd: command, .. } = &arena[expr.to_index()] else {
             return Err(Error::NonCommandSpecialization(*name, None));
         };
         if spec.generic.is_some() {
@@ -971,8 +1011,8 @@ fn make_specializations_map(
 // Substitutes Expr::Subword with Expr to make AST simpler to process.
 fn flatten_expr(arena: &mut Vec<Expr>, expr_id: ExprId) -> ExprId {
     match arena[expr_id.to_index()].clone() {
-        Expr::Terminal(..) | Expr::NontermRef(..) | Expr::Command(..) => expr_id,
-        Expr::Subword(child, ..) => {
+        Expr::Terminal { .. } | Expr::NontermRef { .. } | Expr::Command { .. } => expr_id,
+        Expr::Subword { phase: child, .. } => {
             let child = match child {
                 SubwordCompilationPhase::Expr(e) => e,
                 SubwordCompilationPhase::DFA(_) => unreachable!(),
@@ -1013,12 +1053,21 @@ fn flatten_expr(arena: &mut Vec<Expr>, expr_id: ExprId) -> ExprId {
                 alloc(arena, Expr::Many1(new_child))
             }
         }
-        Expr::DistributiveDescription(child, description) => {
+        Expr::DistributiveDescription {
+            child,
+            descr: description,
+        } => {
             let new_child = flatten_expr(arena, child);
             if child == new_child {
                 expr_id
             } else {
-                alloc(arena, Expr::DistributiveDescription(new_child, description))
+                alloc(
+                    arena,
+                    Expr::DistributiveDescription {
+                        child: new_child,
+                        descr: description,
+                    },
+                )
             }
         }
         Expr::Fallback(children) => {
@@ -1041,7 +1090,11 @@ fn compile_subword_exprs(
     subdfa_interner: &mut DFAInterner,
 ) -> Result<ExprId> {
     let retval = match arena[expr_id.to_index()].clone() {
-        Expr::Subword(subword_expr, fallback_level, span) => {
+        Expr::Subword {
+            phase: subword_expr,
+            fallback,
+            span,
+        } => {
             let subword_expr = match subword_expr {
                 SubwordCompilationPhase::Expr(e) => e,
                 SubwordCompilationPhase::DFA(_) => unreachable!(),
@@ -1055,10 +1108,14 @@ fn compile_subword_exprs(
             let subdfaid = subdfa_interner.intern(dfa);
             alloc(
                 arena,
-                Expr::Subword(SubwordCompilationPhase::DFA(subdfaid), fallback_level, span),
+                Expr::Subword {
+                    phase: SubwordCompilationPhase::DFA(subdfaid),
+                    fallback,
+                    span,
+                },
             )
         }
-        Expr::Terminal(..) | Expr::NontermRef(..) | Expr::Command(..) => expr_id,
+        Expr::Terminal { .. } | Expr::NontermRef { .. } | Expr::Command { .. } => expr_id,
         Expr::Sequence(children) => {
             let new_children: Vec<ExprId> = children
                 .iter()
@@ -1097,7 +1154,7 @@ fn compile_subword_exprs(
                 alloc(arena, Expr::Many1(new_child))
             }
         }
-        Expr::DistributiveDescription(..) => unreachable!(
+        Expr::DistributiveDescription { .. } => unreachable!(
             "DistributiveDescription Expr type should have been erased by the time subwords are being compiled"
         ),
         Expr::Fallback(children) => {
@@ -1122,17 +1179,27 @@ fn do_distribute_descriptions(
     description: &mut Option<Ustr>,
 ) -> ExprId {
     match arena[expr_id.to_index()].clone() {
-        Expr::DistributiveDescription(child, descr) => {
+        Expr::DistributiveDescription { child, descr } => {
             let new_child = do_distribute_descriptions(arena, child, &mut Some(descr));
             if child == new_child { child } else { new_child }
         }
-        Expr::Terminal(term, None, level, span) if description.is_some() => {
-            let result = Expr::Terminal(term, *description, level, span);
+        Expr::Terminal {
+            term,
+            descr: None,
+            fallback: level,
+            span,
+        } if description.is_some() => {
+            let result = Expr::Terminal {
+                term,
+                descr: *description,
+                fallback: level,
+                span,
+            };
             *description = None; // spend it
             alloc(arena, result)
         }
-        Expr::Terminal(..) => expr_id,
-        Expr::NontermRef(..) | Expr::Command(..) => expr_id,
+        Expr::Terminal { .. } => expr_id,
+        Expr::NontermRef { .. } | Expr::Command { .. } => expr_id,
         Expr::Sequence(children) => {
             let new_children: Vec<ExprId> = children
                 .iter()
@@ -1171,22 +1238,29 @@ fn do_distribute_descriptions(
                 alloc(arena, Expr::Many1(new_child))
             }
         }
-        Expr::Subword(SubwordCompilationPhase::Expr(child), fallback_level, span) => {
+        Expr::Subword {
+            phase: SubwordCompilationPhase::Expr(child),
+            fallback,
+            span,
+        } => {
             let new_child = do_distribute_descriptions(arena, child, description);
             if child == new_child {
                 expr_id
             } else {
                 alloc(
                     arena,
-                    Expr::Subword(
-                        SubwordCompilationPhase::Expr(new_child),
-                        fallback_level,
+                    Expr::Subword {
+                        phase: SubwordCompilationPhase::Expr(new_child),
+                        fallback,
                         span,
-                    ),
+                    },
                 )
             }
         }
-        Expr::Subword(SubwordCompilationPhase::DFA(_), ..) => unreachable!(),
+        Expr::Subword {
+            phase: SubwordCompilationPhase::DFA(_),
+            ..
+        } => unreachable!(),
         Expr::Fallback(children) => {
             let new_children: Vec<ExprId> = children
                 .iter()
@@ -1213,10 +1287,23 @@ fn do_propagate_fallback_levels(
     fallback_level: usize,
 ) -> ExprId {
     match arena[expr_id.to_index()].clone() {
-        Expr::Terminal(_, _, level, _) if level == fallback_level => expr_id,
-        Expr::Terminal(term, descr, _, span) => {
-            alloc(arena, Expr::Terminal(term, descr, fallback_level, span))
-        }
+        Expr::Terminal {
+            fallback: level, ..
+        } if level == fallback_level => expr_id,
+        Expr::Terminal {
+            term,
+            descr,
+            fallback: _,
+            span,
+        } => alloc(
+            arena,
+            Expr::Terminal {
+                term,
+                descr,
+                fallback: fallback_level,
+                span,
+            },
+        ),
         Expr::Fallback(children) => {
             let new_children: Vec<ExprId> = children
                 .iter()
@@ -1229,7 +1316,7 @@ fn do_propagate_fallback_levels(
                 alloc(arena, Expr::Fallback(new_children))
             }
         }
-        Expr::NontermRef(..) | Expr::Command(..) => expr_id,
+        Expr::NontermRef { .. } | Expr::Command { .. } => expr_id,
         Expr::Sequence(children) => {
             let new_children: Vec<ExprId> = children
                 .iter()
@@ -1268,23 +1355,30 @@ fn do_propagate_fallback_levels(
                 alloc(arena, Expr::Many1(new_child))
             }
         }
-        Expr::Subword(SubwordCompilationPhase::Expr(child), _, span) => {
+        Expr::Subword {
+            phase: SubwordCompilationPhase::Expr(child),
+            fallback: _,
+            span,
+        } => {
             let new_child = do_propagate_fallback_levels(arena, child, fallback_level);
             if child == new_child {
                 expr_id
             } else {
                 alloc(
                     arena,
-                    Expr::Subword(
-                        SubwordCompilationPhase::Expr(new_child),
-                        fallback_level,
+                    Expr::Subword {
+                        phase: SubwordCompilationPhase::Expr(new_child),
+                        fallback: fallback_level,
                         span,
-                    ),
+                    },
                 )
             }
         }
-        Expr::Subword(SubwordCompilationPhase::DFA(..), ..) => unreachable!(),
-        Expr::DistributiveDescription(..) => unreachable!(),
+        Expr::Subword {
+            phase: SubwordCompilationPhase::DFA(..),
+            ..
+        } => unreachable!(),
+        Expr::DistributiveDescription { .. } => unreachable!(),
     }
 }
 
@@ -1416,36 +1510,40 @@ impl ValidGrammar {
 
 fn expr_get_head(arena: &[Expr], expr_id: ExprId) -> ExprId {
     match &arena[expr_id.to_index()] {
-        Expr::Terminal(..)
-        | Expr::NontermRef(..)
-        | Expr::Command(..)
+        Expr::Terminal { .. }
+        | Expr::NontermRef { .. }
+        | Expr::Command { .. }
         | Expr::Alternative(..)
         | Expr::Fallback(..)
         | Expr::Optional(..)
         | Expr::Many1(..) => expr_id,
         Expr::Sequence(children) => expr_get_head(arena, *children.first().unwrap()),
-        Expr::Subword(..) => unreachable!(),
-        Expr::DistributiveDescription(..) => unreachable!("wrong compilation phases order"),
+        Expr::Subword { .. } => unreachable!(),
+        Expr::DistributiveDescription { .. } => {
+            unreachable!("wrong compilation phases order")
+        }
     }
 }
 
 fn expr_get_tail(arena: &[Expr], expr_id: ExprId) -> ExprId {
     match &arena[expr_id.to_index()] {
-        Expr::Terminal(..)
-        | Expr::NontermRef(..)
-        | Expr::Command(..)
+        Expr::Terminal { .. }
+        | Expr::NontermRef { .. }
+        | Expr::Command { .. }
         | Expr::Alternative(..)
         | Expr::Fallback(..)
         | Expr::Optional(..)
         | Expr::Many1(..) => expr_id,
         Expr::Sequence(children) => expr_get_head(arena, *children.last().unwrap()),
-        Expr::Subword(..) => unreachable!(),
-        Expr::DistributiveDescription(..) => unreachable!("wrong compilation phases order"),
+        Expr::Subword { .. } => unreachable!(),
+        Expr::DistributiveDescription { .. } => {
+            unreachable!("wrong compilation phases order")
+        }
     }
 }
 
 fn check_subword_spaces(arena: &[Expr], expr_id: ExprId, nonterms: &UstrMap<ExprId>) -> Result<()> {
-    let mut nonterm_expn_trace: Vec<ChicSpan> = Default::default();
+    let mut nonterm_expn_trace: Vec<HumanSpan> = Default::default();
     do_check_subword_spaces(arena, expr_id, nonterms, &mut nonterm_expn_trace, false)
 }
 
@@ -1460,7 +1558,7 @@ fn do_check_subword_spaces(
     arena: &[Expr],
     expr_id: ExprId,
     nonterms: &UstrMap<ExprId>,
-    nonterm_expn_trace: &mut Vec<ChicSpan>,
+    nonterm_expn_trace: &mut Vec<HumanSpan>,
     within_subword: bool,
 ) -> Result<()> {
     match &arena[expr_id.to_index()] {
@@ -1479,15 +1577,20 @@ fn do_check_subword_spaces(
                 let [left, right] = pair else { unreachable!() };
                 let left_tail = expr_get_tail(arena, *left);
                 let right_head = expr_get_head(arena, *right);
-                match (&arena[left_tail.to_index()], &arena[right_head.to_index()]) {
-                    (Expr::Terminal(_, _, _, left_span), Expr::Terminal(_, _, _, right_span)) => {
-                        return Err(Error::SubwordSpaces(
-                            left_span.to_owned(),
-                            right_span.to_owned(),
-                            nonterm_expn_trace.to_owned(),
-                        ));
-                    }
-                    _ => {}
+                if let (
+                    Expr::Terminal {
+                        span: left_span, ..
+                    },
+                    Expr::Terminal {
+                        span: right_span, ..
+                    },
+                ) = (&arena[left_tail.to_index()], &arena[right_head.to_index()])
+                {
+                    return Err(Error::SubwordSpaces(
+                        left_span.to_owned(),
+                        right_span.to_owned(),
+                        nonterm_expn_trace.to_owned(),
+                    ));
                 }
             }
             Ok(())
@@ -1504,21 +1607,29 @@ fn do_check_subword_spaces(
             }
             Ok(())
         }
-        Expr::Terminal(..) => Ok(()),
-        Expr::NontermRef(name, _, span) => {
-            let Some(expn) = nonterms.get(name) else {
+        Expr::Terminal { .. } => Ok(()),
+        Expr::NontermRef { nonterm, span, .. } => {
+            let Some(expn) = nonterms.get(nonterm) else {
                 return Ok(());
             };
-            nonterm_expn_trace.push(*span);
+            if let Some(span) = *span {
+                nonterm_expn_trace.push(span);
+            }
             do_check_subword_spaces(arena, *expn, nonterms, nonterm_expn_trace, within_subword)?;
-            nonterm_expn_trace.pop();
+            if let Some(_) = *span {
+                nonterm_expn_trace.pop();
+            }
             Ok(())
         }
-        Expr::Command(..) => Ok(()),
-        Expr::Subword(SubwordCompilationPhase::Expr(child), ..) => {
-            do_check_subword_spaces(arena, *child, nonterms, nonterm_expn_trace, true)
-        }
-        Expr::Subword(SubwordCompilationPhase::DFA(..), ..) => {
+        Expr::Command { .. } => Ok(()),
+        Expr::Subword {
+            phase: SubwordCompilationPhase::Expr(child),
+            ..
+        } => do_check_subword_spaces(arena, *child, nonterms, nonterm_expn_trace, true),
+        Expr::Subword {
+            phase: SubwordCompilationPhase::DFA(..),
+            ..
+        } => {
             unreachable!("wrong compilation phases order")
         }
         Expr::Alternative(children) => {
@@ -1551,7 +1662,9 @@ fn do_check_subword_spaces(
         Expr::Many1(child) => {
             do_check_subword_spaces(arena, *child, nonterms, nonterm_expn_trace, within_subword)
         }
-        Expr::DistributiveDescription(..) => unreachable!("wrong compilation phases order"),
+        Expr::DistributiveDescription { .. } => {
+            unreachable!("wrong compilation phases order")
+        }
     }
 }
 
@@ -1563,12 +1676,12 @@ fn resolve_nonterminals(
     unused_nonterminals: &mut UstrSet,
 ) -> ExprId {
     match arena[expr_id.to_index()].clone() {
-        Expr::Terminal(..) | Expr::Command(..) => expr_id,
-        Expr::Subword(child, fallback_level, span) => {
-            let child = match child {
-                SubwordCompilationPhase::Expr(e) => e,
-                SubwordCompilationPhase::DFA(..) => unreachable!(),
-            };
+        Expr::Terminal { .. } | Expr::Command { .. } => expr_id,
+        Expr::Subword {
+            phase: SubwordCompilationPhase::Expr(child),
+            fallback,
+            span,
+        } => {
             let new_child =
                 resolve_nonterminals(arena, child, vars, specializations, unused_nonterminals);
             if child == new_child {
@@ -1576,15 +1689,19 @@ fn resolve_nonterminals(
             } else {
                 alloc(
                     arena,
-                    Expr::Subword(
-                        SubwordCompilationPhase::Expr(new_child),
-                        fallback_level,
+                    Expr::Subword {
+                        phase: SubwordCompilationPhase::Expr(new_child),
+                        fallback,
                         span,
-                    ),
+                    },
                 )
             }
         }
-        Expr::NontermRef(name, ..) => {
+        Expr::Subword {
+            phase: SubwordCompilationPhase::DFA(..),
+            ..
+        } => unreachable!(),
+        Expr::NontermRef { nonterm: name, .. } => {
             if specializations.contains_key(&name) {
                 // Specialized nonterminals are resolved when the target shell is known, not earlier.
                 return expr_id;
@@ -1643,7 +1760,7 @@ fn resolve_nonterminals(
                 alloc(arena, Expr::Many1(new_child))
             }
         }
-        Expr::DistributiveDescription(..) => unreachable!(
+        Expr::DistributiveDescription { .. } => unreachable!(
             "Expr::DistributiveDescription should have been erased by the time nonterminals are being resolved"
         ),
         Expr::Fallback(children) => {
@@ -1665,15 +1782,17 @@ fn resolve_nonterminals(
 
 fn do_get_expression_nonterminals(arena: &[Expr], expr_id: ExprId, deps: &mut UstrSet) {
     match &arena[expr_id.to_index()] {
-        Expr::Terminal(..) | Expr::Command(..) => {}
-        Expr::Subword(subexpr, ..) => {
-            let subexpr = match subexpr {
+        Expr::Terminal { .. } | Expr::Command { .. } => {}
+        Expr::Subword { phase, .. } => {
+            let subexpr = match phase {
                 SubwordCompilationPhase::Expr(e) => *e,
                 SubwordCompilationPhase::DFA(..) => unreachable!(),
             };
             do_get_expression_nonterminals(arena, subexpr, deps);
         }
-        Expr::NontermRef(varname, ..) => {
+        Expr::NontermRef {
+            nonterm: varname, ..
+        } => {
             deps.insert(*varname);
         }
         Expr::Sequence(children) => {
@@ -1692,7 +1811,7 @@ fn do_get_expression_nonterminals(arena: &[Expr], expr_id: ExprId, deps: &mut Us
         Expr::Many1(child) => {
             do_get_expression_nonterminals(arena, *child, deps);
         }
-        Expr::DistributiveDescription(..) => unreachable!(
+        Expr::DistributiveDescription { .. } => unreachable!(
             "Expr::DistributiveDescription should have been erased by the time nonterminals are being collected"
         ),
         Expr::Fallback(children) => {
@@ -1847,368 +1966,138 @@ impl Grammar {
 
 #[cfg(test)]
 pub mod tests {
-    use itertools::Itertools;
-    use proptest::prelude::*;
-    use proptest::{strategy::BoxedStrategy, test_runner::TestRng};
-    use std::cell::RefCell;
-    use std::ops::Rem;
-    use std::rc::Rc;
-    use ustr::ustr as u;
-
     use super::*;
     use Expr::*;
 
-    impl ChicSpan {
-        pub fn dummy() -> Self {
-            Self::Dummy {}
-        }
-    }
-
     impl Expr {
         pub fn term(s: &str) -> Self {
-            Self::Terminal(ustr(s), None, 0, ChicSpan::Dummy)
+            Self::Terminal {
+                term: ustr(s),
+                descr: None,
+                fallback: 0,
+                span: None,
+            }
         }
 
         fn term_descr(s: &str, d: &str) -> Self {
-            Self::Terminal(ustr(s), Some(ustr(d)), 0, ChicSpan::Dummy)
+            Self::Terminal {
+                term: ustr(s),
+                descr: Some(ustr(d)),
+                fallback: 0,
+                span: None,
+            }
         }
 
         pub fn nontermref(s: &str) -> Self {
-            Self::NontermRef(ustr(s), 0, ChicSpan::dummy())
+            Self::NontermRef {
+                nonterm: ustr(s),
+                fallback: 0,
+                span: None,
+            }
         }
 
         fn subword(expr: ExprId) -> Self {
-            Self::Subword(SubwordCompilationPhase::Expr(expr), 0, ChicSpan::Dummy)
+            Self::Subword {
+                phase: SubwordCompilationPhase::Expr(expr),
+                fallback: 0,
+                span: None,
+            }
         }
     }
 
-    fn expr_extensionally_eq(left: ExprId, right: ExprId, arena: &[Expr]) -> bool {
+    // Extensional equality.  Ignores spans
+    fn teq(left: ExprId, right: ExprId, arena: &[Expr]) -> bool {
         if left.to_index() == right.to_index() {
             return true;
         }
 
         match (&arena[left.to_index()], &arena[right.to_index()]) {
-            (Expr::Terminal(l, l_descr, _, _), Expr::Terminal(r, r_descr, _, _)) => {
-                l == r && l_descr == r_descr
-            }
             (
-                Expr::Subword(SubwordCompilationPhase::Expr(l), _, _),
-                Expr::Subword(SubwordCompilationPhase::Expr(r), _, _),
-            ) => expr_extensionally_eq(*l, *r, arena),
+                Expr::Terminal {
+                    term: l,
+                    descr: l_descr,
+                    fallback: l_fallback,
+                    span: _,
+                },
+                Expr::Terminal {
+                    term: r,
+                    descr: r_descr,
+                    fallback: r_fallback,
+                    span: _,
+                },
+            ) => l == r && l_descr == r_descr && l_fallback == r_fallback,
             (
-                Expr::Subword(SubwordCompilationPhase::DFA(l), _, _),
-                Expr::Subword(SubwordCompilationPhase::DFA(r), _, _),
-            ) => l == r,
-            (Expr::NontermRef(l, _, _), Expr::NontermRef(r, _, _)) => l == r,
-            (Expr::Command(l, l_regex, _, _), Expr::Command(r, r_regex, _, _)) => {
-                l == r && l_regex == r_regex
-            }
-            (Expr::Sequence(l), Expr::Sequence(r)) => {
-                if l.len() != r.len() {
-                    return false;
-                }
-                l.iter()
-                    .zip(r.iter())
-                    .all(|(le, re)| expr_extensionally_eq(*le, *re, arena))
-            }
-            (Expr::Alternative(l), Expr::Alternative(r))
+                Expr::NontermRef {
+                    nonterm: l,
+                    fallback: l_fallback,
+                    span: _,
+                },
+                Expr::NontermRef {
+                    nonterm: r,
+                    fallback: r_fallback,
+                    span: _,
+                },
+            ) => l == r && l_fallback == r_fallback,
+            (
+                Expr::Command {
+                    cmd: l,
+                    regex: l_regex,
+                    fallback: l_fallback,
+                    span: _,
+                },
+                Expr::Command {
+                    cmd: r,
+                    regex: r_regex,
+                    fallback: r_fallback,
+                    span: _,
+                },
+            ) => l == r && l_regex == r_regex && l_fallback == r_fallback,
+            (Expr::Sequence(l), Expr::Sequence(r))
+            | (Expr::Alternative(l), Expr::Alternative(r))
             | (Expr::Fallback(l), Expr::Fallback(r)) => {
                 if l.len() != r.len() {
                     return false;
                 }
-                let mut r_used = vec![false; r.len()];
-                for le in l.iter() {
-                    if r.iter()
-                        .enumerate()
-                        .find(|(i, re)| !r_used[*i] && expr_extensionally_eq(*le, **re, arena))
-                        .map(|(i, _)| r_used[i] = true)
-                        .is_none()
-                    {
-                        return false;
-                    }
-                }
-                true
+                l.iter().zip(r.iter()).all(|(le, re)| teq(*le, *re, arena))
             }
-            (Expr::Optional(l), Expr::Optional(r)) => expr_extensionally_eq(*l, *r, arena),
-            (Expr::Many1(l), Expr::Many1(r)) => expr_extensionally_eq(*l, *r, arena),
+            (Expr::Optional(l), Expr::Optional(r)) => teq(*l, *r, arena),
+            (Expr::Many1(l), Expr::Many1(r)) => teq(*l, *r, arena),
             (
-                Expr::DistributiveDescription(l, l_descr),
-                Expr::DistributiveDescription(r, r_descr),
-            ) => l_descr == r_descr && expr_extensionally_eq(*l, *r, arena),
+                Expr::DistributiveDescription {
+                    child: l,
+                    descr: l_descr,
+                },
+                Expr::DistributiveDescription {
+                    child: r,
+                    descr: r_descr,
+                },
+            ) => l_descr == r_descr && teq(*l, *r, arena),
+            (
+                Expr::Subword {
+                    phase: SubwordCompilationPhase::Expr(l),
+                    fallback: l_fallback,
+                    span: _,
+                },
+                Expr::Subword {
+                    phase: SubwordCompilationPhase::Expr(r),
+                    fallback: r_fallback,
+                    span: _,
+                },
+            ) => l_fallback == r_fallback && teq(*l, *r, arena),
+            (
+                Expr::Subword {
+                    phase: SubwordCompilationPhase::DFA(l),
+                    fallback: l_fallback,
+                    span: _,
+                },
+                Expr::Subword {
+                    phase: SubwordCompilationPhase::DFA(r),
+                    fallback: r_fallback,
+                    span: _,
+                },
+            ) => l_fallback == r_fallback && l == r,
             _ => false,
         }
-    }
-
-    fn arb_literal(arena: Rc<RefCell<Vec<Expr>>>, inputs: Rc<Vec<Ustr>>) -> BoxedStrategy<ExprId> {
-        (0..inputs.len())
-            .prop_map(move |index| {
-                let e = Expr::term(&inputs[index]);
-                let id = ExprId(arena.borrow().len());
-                arena.borrow_mut().push(e);
-                id
-            })
-            .boxed()
-    }
-
-    fn arb_nonterminal(
-        arena: Rc<RefCell<Vec<Expr>>>,
-        nonterminals: Rc<Vec<Ustr>>,
-    ) -> BoxedStrategy<ExprId> {
-        (0..nonterminals.len())
-            .prop_map(move |index| {
-                let e = Expr::nontermref(&nonterminals[index]);
-                let id = ExprId(arena.borrow().len());
-                arena.borrow_mut().push(e);
-                id
-            })
-            .boxed()
-    }
-
-    fn arb_optional(
-        arena: Rc<RefCell<Vec<Expr>>>,
-        inputs: Rc<Vec<Ustr>>,
-        nonterminals: Rc<Vec<Ustr>>,
-        remaining_depth: usize,
-        max_width: usize,
-    ) -> BoxedStrategy<ExprId> {
-        arb_expr(
-            Rc::clone(&arena),
-            inputs,
-            nonterminals,
-            remaining_depth - 1,
-            max_width,
-        )
-        .prop_map(move |e| {
-            let e = Optional(e);
-            let id = ExprId(arena.borrow().len());
-            arena.borrow_mut().push(e);
-            id
-        })
-        .boxed()
-    }
-
-    fn arb_many1(
-        arena: Rc<RefCell<Vec<Expr>>>,
-        inputs: Rc<Vec<Ustr>>,
-        nonterminals: Rc<Vec<Ustr>>,
-        remaining_depth: usize,
-        max_width: usize,
-    ) -> BoxedStrategy<ExprId> {
-        arb_expr(
-            Rc::clone(&arena),
-            inputs,
-            nonterminals,
-            remaining_depth - 1,
-            max_width,
-        )
-        .prop_map(move |e| {
-            let e = Many1(e);
-            let id = ExprId(arena.borrow().len());
-            arena.borrow_mut().push(e);
-            id
-        })
-        .boxed()
-    }
-
-    fn arb_sequence(
-        arena: Rc<RefCell<Vec<Expr>>>,
-        inputs: Rc<Vec<Ustr>>,
-        nonterminals: Rc<Vec<Ustr>>,
-        remaining_depth: usize,
-        max_width: usize,
-    ) -> BoxedStrategy<ExprId> {
-        (2..max_width)
-            .prop_flat_map(move |width| {
-                let e = arb_expr(
-                    Rc::clone(&arena),
-                    inputs.clone(),
-                    nonterminals.clone(),
-                    remaining_depth - 1,
-                    max_width,
-                );
-                let a = Rc::clone(&arena);
-                prop::collection::vec(e, width).prop_map(move |v| {
-                    let e = Sequence(v);
-                    let id = ExprId(a.borrow().len());
-                    a.borrow_mut().push(e);
-                    id
-                })
-            })
-            .boxed()
-    }
-
-    fn arb_alternative(
-        arena: Rc<RefCell<Vec<Expr>>>,
-        inputs: Rc<Vec<Ustr>>,
-        nonterminals: Rc<Vec<Ustr>>,
-        remaining_depth: usize,
-        max_width: usize,
-    ) -> BoxedStrategy<ExprId> {
-        (2..max_width)
-            .prop_flat_map(move |width| {
-                let e = arb_expr(
-                    Rc::clone(&arena),
-                    inputs.clone(),
-                    nonterminals.clone(),
-                    remaining_depth - 1,
-                    max_width,
-                );
-                let a = Rc::clone(&arena);
-                prop::collection::vec(e, width).prop_map(move |v| {
-                    let e = Alternative(v);
-                    let id = ExprId(a.borrow().len());
-                    a.borrow_mut().push(e);
-                    id
-                })
-            })
-            .boxed()
-    }
-
-    pub fn arb_expr(
-        arena: Rc<RefCell<Vec<Expr>>>,
-        inputs: Rc<Vec<Ustr>>,
-        nonterminals: Rc<Vec<Ustr>>,
-        remaining_depth: usize,
-        max_width: usize,
-    ) -> BoxedStrategy<ExprId> {
-        if remaining_depth <= 1 {
-            prop_oneof![
-                arb_literal(Rc::clone(&arena), Rc::clone(&inputs)),
-                arb_nonterminal(Rc::clone(&arena), nonterminals),
-            ]
-            .boxed()
-        } else {
-            prop_oneof![
-                arb_literal(Rc::clone(&arena), inputs.clone()),
-                arb_nonterminal(Rc::clone(&arena), nonterminals.clone()),
-                arb_optional(
-                    Rc::clone(&arena),
-                    inputs.clone(),
-                    nonterminals.clone(),
-                    remaining_depth,
-                    max_width
-                ),
-                arb_many1(
-                    Rc::clone(&arena),
-                    inputs.clone(),
-                    nonterminals.clone(),
-                    remaining_depth,
-                    max_width
-                ),
-                arb_sequence(
-                    Rc::clone(&arena),
-                    inputs.clone(),
-                    nonterminals.clone(),
-                    remaining_depth,
-                    max_width
-                ),
-                arb_alternative(
-                    Rc::clone(&arena),
-                    inputs,
-                    nonterminals,
-                    remaining_depth,
-                    max_width
-                ),
-            ]
-            .boxed()
-        }
-    }
-
-    pub fn do_arb_match(
-        arena: Rc<RefCell<Vec<Expr>>>,
-        expr: ExprId,
-        rng: &mut TestRng,
-        max_width: usize,
-        output: &mut Vec<Ustr>,
-    ) {
-        match &arena.borrow()[expr.to_index()] {
-            Terminal(s, ..) => output.push(*s),
-            Subword(sw, ..) => {
-                let e = match sw {
-                    SubwordCompilationPhase::Expr(e) => e,
-                    SubwordCompilationPhase::DFA(_) => unreachable!(),
-                };
-                let mut out: Vec<Ustr> = Default::default();
-                do_arb_match(Rc::clone(&arena), *e, rng, max_width, &mut out);
-                let joined = out.into_iter().join("");
-                output.push(ustr(&joined));
-            }
-            NontermRef(..) => output.push(ustr("anything")),
-            Command(..) => output.push(ustr("anything")),
-            Sequence(v) => {
-                for subexpr in v {
-                    do_arb_match(Rc::clone(&arena), *subexpr, rng, max_width, output);
-                }
-            }
-            Alternative(v) => {
-                let chosen_alternative =
-                    usize::try_from(rng.next_u64().rem(u64::try_from(v.len()).unwrap())).unwrap();
-                do_arb_match(
-                    Rc::clone(&arena),
-                    v[chosen_alternative],
-                    rng,
-                    max_width,
-                    output,
-                );
-            }
-            Optional(subexpr) => {
-                if rng.next_u64() % 2 == 0 {
-                    do_arb_match(Rc::clone(&arena), *subexpr, rng, max_width, output);
-                }
-            }
-            Many1(subexpr) => {
-                let n = rng.next_u64();
-                let chosen_len = n % u64::try_from(max_width).unwrap() + 1;
-                for _ in 0..chosen_len {
-                    do_arb_match(Rc::clone(&arena), *subexpr, rng, max_width, output);
-                }
-            }
-            DistributiveDescription(subexpr, description) => {
-                do_arb_match(Rc::clone(&arena), *subexpr, rng, max_width, output);
-                output.push(ustr(&format!(r#""{description}""#)));
-            }
-            Fallback(v) => {
-                let chosen_alternative =
-                    usize::try_from(rng.next_u64().rem(u64::try_from(v.len()).unwrap())).unwrap();
-                do_arb_match(
-                    Rc::clone(&arena),
-                    v[chosen_alternative],
-                    rng,
-                    max_width,
-                    output,
-                );
-            }
-        }
-    }
-
-    pub fn arb_match(
-        arena: Rc<RefCell<Vec<Expr>>>,
-        e: ExprId,
-        mut rng: TestRng,
-        max_width: usize,
-    ) -> (ExprId, Rc<RefCell<Vec<Expr>>>, Vec<Ustr>) {
-        let mut output: Vec<Ustr> = Default::default();
-        do_arb_match(Rc::clone(&arena), e, &mut rng, max_width, &mut output);
-        (e, arena, output)
-    }
-
-    // Produce an arbitrary sequence matching `e`.
-    pub fn arb_expr_match(
-        arena: Rc<RefCell<Vec<Expr>>>,
-        inputs: Rc<Vec<Ustr>>,
-        nonterminals: Rc<Vec<Ustr>>,
-        remaining_depth: usize,
-        max_width: usize,
-    ) -> BoxedStrategy<(ExprId, Rc<RefCell<Vec<Expr>>>, Vec<Ustr>)> {
-        arb_expr(
-            Rc::clone(&arena),
-            inputs,
-            nonterminals,
-            remaining_depth,
-            max_width,
-        )
-        .prop_perturb(move |e, rng| arb_match(Rc::clone(&arena), e, rng, max_width))
-        .boxed()
     }
 
     #[test]
@@ -2222,9 +2111,13 @@ pub mod tests {
         let e1 = alloc(&mut arena, Sequence(vec![e2, e3]));
         let expected = alloc(
             &mut arena,
-            Expr::Subword(SubwordCompilationPhase::Expr(e1), 0, ChicSpan::Dummy),
+            Expr::Subword {
+                phase: SubwordCompilationPhase::Expr(e1),
+                fallback: 0,
+                span: None,
+            },
         );
-        assert!(expr_extensionally_eq(actual, expected, &arena));
+        assert!(teq(actual, expected, &arena));
     }
 
     #[test]
@@ -2239,20 +2132,20 @@ pub mod tests {
         let nonterm_id = alloc(&mut arena, nonterm_expr);
         let sequence_expr = Sequence(vec![terminal_id, nonterm_id]);
         let sequence_id = alloc(&mut arena, sequence_expr);
-        let subword_expr = Subword(
-            SubwordCompilationPhase::Expr(sequence_id),
-            0,
-            ChicSpan::Dummy,
-        );
+        let subword_expr = Subword {
+            phase: SubwordCompilationPhase::Expr(sequence_id),
+            fallback: 0,
+            span: None,
+        };
         let subword_id = alloc(&mut arena, subword_expr);
         let expected = alloc(
             &mut arena,
-            DistributiveDescription(
-                subword_id,
-                ustr("use markers to highlight the matching strings"),
-            ),
+            DistributiveDescription {
+                child: subword_id,
+                descr: ustr("use markers to highlight the matching strings"),
+            },
         );
-        assert!(expr_extensionally_eq(actual, expected, &arena));
+        assert!(teq(actual, expected, &arena));
     }
 
     #[test]
@@ -2272,12 +2165,12 @@ pub mod tests {
         let alternative_id = alloc(&mut arena, Alternative(vec![subword_id, sequence2_id]));
         let expected = alloc(
             &mut arena,
-            DistributiveDescription(
-                alternative_id,
-                ustr("use markers to highlight the matching strings"),
-            ),
+            DistributiveDescription {
+                child: alternative_id,
+                descr: ustr("use markers to highlight the matching strings"),
+            },
         );
-        assert!(expr_extensionally_eq(actual, expected, &arena));
+        assert!(teq(actual, expected, &arena));
     }
 
     #[test]
@@ -2287,7 +2180,7 @@ pub mod tests {
         let (s, e) = terminal_opt_description_expr(&mut arena, Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
         let expected = alloc(&mut arena, Expr::term("foo.bar"));
-        assert!(expr_extensionally_eq(e, expected, &arena));
+        assert!(teq(e, expected, &arena));
     }
 
     #[test]
@@ -2297,7 +2190,7 @@ pub mod tests {
         let (s, actual) = terminal_opt_description_expr(&mut arena, Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
         let expected = alloc(&mut arena, Expr::term("-f"));
-        assert!(expr_extensionally_eq(actual, expected, &arena));
+        assert!(teq(actual, expected, &arena));
     }
 
     #[test]
@@ -2307,7 +2200,7 @@ pub mod tests {
         let (s, actual) = terminal_opt_description_expr(&mut arena, Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
         let expected = alloc(&mut arena, Expr::term("--foo"));
-        assert!(expr_extensionally_eq(actual, expected, &arena));
+        assert!(teq(actual, expected, &arena));
     }
 
     #[test]
@@ -2317,7 +2210,7 @@ pub mod tests {
         let (s, actual) = nonterm_expr(&mut arena, Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
         let expected = alloc(&mut arena, Expr::nontermref("FILE"));
-        assert!(expr_extensionally_eq(actual, expected, &arena));
+        assert!(teq(actual, expected, &arena));
     }
 
     #[test]
@@ -2327,7 +2220,7 @@ pub mod tests {
         let (s, e) = command_expr(&mut arena, Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
         assert!(
-            matches!(arena[e.to_index()], Command(s, None, 0, ..) if s == "rustup toolchain list | cut -d' ' -f1")
+            matches!(arena[e.to_index()], Command { cmd: s, regex: None, fallback: 0, .. } if s == "rustup toolchain list | cut -d' ' -f1")
         );
     }
 
@@ -2339,18 +2232,18 @@ pub mod tests {
         assert!(s.is_empty(), "{:?}", s.fragment());
         let expected = alloc(
             &mut arena,
-            Command(
-                ustr("foo"),
-                Some(CmdRegexDecl {
+            Command {
+                cmd: ustr("foo"),
+                regex: Some(CmdRegexDecl {
                     bash: Some(ustr("bar")),
                     fish: None,
                     zsh: None,
                 }),
-                0,
-                ChicSpan::dummy(),
-            ),
+                fallback: 0,
+                span: None,
+            },
         );
-        assert!(expr_extensionally_eq(actual, expected, &arena));
+        assert!(teq(actual, expected, &arena));
     }
 
     #[test]
@@ -2361,14 +2254,14 @@ pub mod tests {
         assert!(s.is_empty());
         let expected = alloc(
             &mut arena,
-            Command(
-                ustr("rad patch list | awk '{print $3}' | grep . | grep -vw ID"),
-                None,
-                0,
-                ChicSpan::dummy(),
-            ),
+            Command {
+                cmd: ustr("rad patch list | awk '{print $3}' | grep . | grep -vw ID"),
+                regex: None,
+                fallback: 0,
+                span: None,
+            },
         );
-        assert!(expr_extensionally_eq(actual, expected, &arena));
+        assert!(teq(actual, expected, &arena));
     }
 
     #[test]
@@ -2379,7 +2272,7 @@ pub mod tests {
         assert!(s.is_empty());
         let nonterm_id = alloc(&mut arena, Expr::nontermref("foo"));
         let expected = alloc(&mut arena, Optional(nonterm_id));
-        assert!(expr_extensionally_eq(actual, expected, &arena));
+        assert!(teq(actual, expected, &arena));
     }
 
     #[test]
@@ -2390,7 +2283,7 @@ pub mod tests {
         assert!(s.is_empty());
         let nonterm_id = alloc(&mut arena, Expr::nontermref("foo"));
         let expected = alloc(&mut arena, Many1(nonterm_id));
-        assert!(expr_extensionally_eq(actual, expected, &arena));
+        assert!(teq(actual, expected, &arena));
     }
 
     #[test]
@@ -2402,7 +2295,7 @@ pub mod tests {
         let nonterm1_id = alloc(&mut arena, Expr::nontermref("first-symbol"));
         let nonterm2_id = alloc(&mut arena, Expr::nontermref("second symbol"));
         let expected = alloc(&mut arena, Sequence(vec![nonterm1_id, nonterm2_id]));
-        assert!(expr_extensionally_eq(actual, expected, &arena));
+        assert!(teq(actual, expected, &arena));
     }
 
     #[test]
@@ -2416,7 +2309,7 @@ pub mod tests {
         let seq_id = alloc(&mut arena, Sequence(vec![a_id, b_id]));
         let c_id = alloc(&mut arena, Expr::term("c"));
         let expected = alloc(&mut arena, Alternative(vec![seq_id, c_id]));
-        assert!(expr_extensionally_eq(actual, expected, &arena));
+        assert!(teq(actual, expected, &arena));
     }
 
     #[test]
@@ -2430,7 +2323,7 @@ pub mod tests {
         let c_id = alloc(&mut arena, Expr::term("c"));
         let alt_id = alloc(&mut arena, Alternative(vec![b_id, c_id]));
         let expected = alloc(&mut arena, Sequence(vec![a_id, alt_id]));
-        assert!(expr_extensionally_eq(actual, expected, &arena));
+        assert!(teq(actual, expected, &arena));
     }
 
     #[test]
@@ -2439,14 +2332,12 @@ pub mod tests {
         let mut arena: Vec<Expr> = Default::default();
         let (s, v) = call_variant(&mut arena, Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
-        match v {
-            Statement::CallVariant { head, expr } => {
-                assert_eq!(head, u("foo"));
-                let expected = Expr::term("bar");
-                assert_eq!(arena[expr.to_index()], expected);
-            }
-            _ => panic!("Expected a call variant"),
+        let Statement::CallVariant { head, expr: actual } = v else {
+            unreachable!()
         };
+        assert_eq!(head, ustr("foo"));
+        let expected = alloc(&mut arena, Expr::term("bar"));
+        assert!(teq(actual, expected, &arena));
     }
 
     #[test]
@@ -2455,112 +2346,70 @@ pub mod tests {
 foo bar;
 foo baz;
 "#;
-        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
+        let mut g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements.len(), 2);
-        let bar_expr = Expr::term("bar");
-        let baz_expr = Expr::term("baz");
-        match &g.statements[0] {
-            Statement::CallVariant { head, expr } => {
-                assert_eq!(*head, u("foo"));
-                assert_eq!(g.arena[expr.to_index()], bar_expr);
-            }
-            _ => panic!("Expected a call variant"),
-        }
-        match &g.statements[1] {
-            Statement::CallVariant { head, expr } => {
-                assert_eq!(*head, u("foo"));
-                assert_eq!(g.arena[expr.to_index()], baz_expr);
-            }
-            _ => panic!("Expected a call variant"),
-        }
+
+        // Statement 1
+        let (head, actual_expr_id) = match &g.statements[0] {
+            Statement::CallVariant { head, expr } => (head, expr),
+            _ => panic!("Expected CallVariant"),
+        };
+        assert_eq!(*head, ustr("foo"));
+        let expected_bar_id = alloc(&mut g.arena, Expr::term("bar"));
+        assert!(teq(*actual_expr_id, expected_bar_id, &g.arena));
+
+        // Statement 2
+        let (head, actual_expr_id) = match &g.statements[1] {
+            Statement::CallVariant { head, expr } => (head, expr),
+            _ => panic!("Expected CallVariant"),
+        };
+        assert_eq!(*head, ustr("foo"));
+        let expected_baz_id = alloc(&mut g.arena, Expr::term("baz"));
+        assert!(teq(*actual_expr_id, expected_baz_id, &g.arena));
     }
 
     #[test]
     fn bug1() {
         // Did not consider whitespace before ...
         const INPUT: &str = "darcs help ( ( -v | --verbose ) | ( -q | --quiet ) ) ... [<DARCS_COMMAND> [DARCS_SUBCOMMAND]]  ;";
-        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
+        let mut g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements.len(), 1);
 
         let (head, expr_id) = match &g.statements[0] {
-            Statement::CallVariant { head, expr } => (head, expr),
+            Statement::CallVariant { head, expr } => (*head, *expr),
             _ => panic!("Expected CallVariant"),
         };
 
-        assert_eq!(*head, u("darcs"));
+        assert_eq!(head, ustr("darcs"));
 
-        let top_level_seq_children = match &g.arena[expr_id.to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(top_level_seq_children.len(), 3);
+        let help_id = alloc(&mut g.arena, Expr::term("help"));
 
-        // 1. Terminal("help")
-        assert_eq!(
-            g.arena[top_level_seq_children[0].to_index()],
-            Expr::term("help")
+        let v_id = alloc(&mut g.arena, Expr::term("-v"));
+        let verbose_id = alloc(&mut g.arena, Expr::term("--verbose"));
+        let v_alt_id = alloc(&mut g.arena, Alternative(vec![v_id, verbose_id]));
+
+        let q_id = alloc(&mut g.arena, Expr::term("-q"));
+        let quiet_id = alloc(&mut g.arena, Expr::term("--quiet"));
+        let q_alt_id = alloc(&mut g.arena, Alternative(vec![q_id, quiet_id]));
+
+        let top_alt_id = alloc(&mut g.arena, Alternative(vec![v_alt_id, q_alt_id]));
+        let many1_id = alloc(&mut g.arena, Many1(top_alt_id));
+
+        let darcs_subcommand_id = alloc(&mut g.arena, Expr::term("DARCS_SUBCOMMAND"));
+        let optional_subcommand_id = alloc(&mut g.arena, Optional(darcs_subcommand_id));
+        let darcs_command_id = alloc(&mut g.arena, Expr::nontermref("DARCS_COMMAND"));
+        let seq_command_id = alloc(
+            &mut g.arena,
+            Sequence(vec![darcs_command_id, optional_subcommand_id]),
+        );
+        let optional_command_id = alloc(&mut g.arena, Optional(seq_command_id));
+
+        let expected_expr_id = alloc(
+            &mut g.arena,
+            Sequence(vec![help_id, many1_id, optional_command_id]),
         );
 
-        // 2. Many1(...)
-        let many1_child_id = match &g.arena[top_level_seq_children[1].to_index()] {
-            Expr::Many1(child) => *child,
-            _ => panic!("Expected Many1"),
-        };
-
-        let alt1_children = match &g.arena[many1_child_id.to_index()] {
-            Expr::Alternative(children) => children,
-            _ => panic!("Expected Alternative"),
-        };
-        assert_eq!(alt1_children.len(), 2);
-
-        let alt1_1_children = match &g.arena[alt1_children[0].to_index()] {
-            Expr::Alternative(children) => children,
-            _ => panic!("Expected Alternative"),
-        };
-        assert_eq!(alt1_1_children.len(), 2);
-        assert_eq!(g.arena[alt1_1_children[0].to_index()], Expr::term("-v"));
-        assert_eq!(
-            g.arena[alt1_1_children[1].to_index()],
-            Expr::term("--verbose")
-        );
-
-        let alt1_2_children = match &g.arena[alt1_children[1].to_index()] {
-            Expr::Alternative(children) => children,
-            _ => panic!("Expected Alternative"),
-        };
-        assert_eq!(alt1_2_children.len(), 2);
-        assert_eq!(g.arena[alt1_2_children[0].to_index()], Expr::term("-q"));
-        assert_eq!(
-            g.arena[alt1_2_children[1].to_index()],
-            Expr::term("--quiet")
-        );
-
-        // 3. Optional(...)
-        let optional1_child_id = match &g.arena[top_level_seq_children[2].to_index()] {
-            Expr::Optional(child) => *child,
-            _ => panic!("Expected Optional"),
-        };
-
-        let seq2_children = match &g.arena[optional1_child_id.to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(seq2_children.len(), 2);
-
-        assert_eq!(
-            g.arena[seq2_children[0].to_index()],
-            Expr::nontermref("DARCS_COMMAND")
-        );
-
-        let optional2_child_id = match &g.arena[seq2_children[1].to_index()] {
-            Expr::Optional(child) => *child,
-            _ => panic!("Expected Optional"),
-        };
-
-        assert_eq!(
-            g.arena[optional2_child_id.to_index()],
-            Expr::term("DARCS_SUBCOMMAND")
-        );
+        assert!(teq(expr_id, expected_expr_id, &g.arena));
     }
 
     #[test]
@@ -2611,7 +2460,7 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
 <OPTION> ::= --color <WHEN>;
 <WHEN> ::= always | never | auto;
 "#;
-        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
+        let mut g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements.len(), 3);
 
         // Statement 1: grep ...
@@ -2619,44 +2468,20 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
             Statement::CallVariant { head, expr } => (head, expr),
             _ => panic!("Expected CallVariant"),
         };
-        assert_eq!(*head, u("grep"));
+        assert_eq!(*head, ustr("grep"));
 
-        let seq1_children = match &g.arena[expr_id.to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(seq1_children.len(), 3);
-
-        let many1_child_id = match &g.arena[seq1_children[0].to_index()] {
-            Expr::Many1(child) => *child,
-            _ => panic!("Expected Many1"),
-        };
-        let optional_child_id = match &g.arena[many1_child_id.to_index()] {
-            Expr::Optional(child) => *child,
-            _ => panic!("Expected Optional"),
-        };
-        assert_eq!(
-            g.arena[optional_child_id.to_index()],
-            Expr::nontermref("OPTION")
+        let option_nonterm_id = alloc(&mut g.arena, Expr::nontermref("OPTION"));
+        let optional_option_id = alloc(&mut g.arena, Optional(option_nonterm_id));
+        let many1_option_id = alloc(&mut g.arena, Many1(optional_option_id));
+        let patterns_nonterm_id = alloc(&mut g.arena, Expr::nontermref("PATTERNS"));
+        let file_nonterm_id = alloc(&mut g.arena, Expr::nontermref("FILE"));
+        let optional_file_id = alloc(&mut g.arena, Optional(file_nonterm_id));
+        let many1_file_id = alloc(&mut g.arena, Many1(optional_file_id));
+        let expected_expr1_id = alloc(
+            &mut g.arena,
+            Sequence(vec![many1_option_id, patterns_nonterm_id, many1_file_id]),
         );
-
-        assert_eq!(
-            g.arena[seq1_children[1].to_index()],
-            Expr::nontermref("PATTERNS")
-        );
-
-        let many1_child_id2 = match &g.arena[seq1_children[2].to_index()] {
-            Expr::Many1(child) => *child,
-            _ => panic!("Expected Many1"),
-        };
-        let optional_child_id2 = match &g.arena[many1_child_id2.to_index()] {
-            Expr::Optional(child) => *child,
-            _ => panic!("Expected Optional"),
-        };
-        assert_eq!(
-            g.arena[optional_child_id2.to_index()],
-            Expr::nontermref("FILE")
-        );
+        assert!(teq(*expr_id, expected_expr1_id, &g.arena));
 
         // Statement 2: <OPTION> ::= ...
         let (symbol, shell, expr_id2) = match &g.statements[1] {
@@ -2667,18 +2492,12 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
             } => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
-        assert_eq!(*symbol, u("OPTION"));
+        assert_eq!(*symbol, ustr("OPTION"));
         assert!(shell.is_none());
-        let seq2_children = match &g.arena[expr_id2.to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(seq2_children.len(), 2);
-        assert_eq!(g.arena[seq2_children[0].to_index()], Expr::term("--color"));
-        assert_eq!(
-            g.arena[seq2_children[1].to_index()],
-            Expr::nontermref("WHEN")
-        );
+        let color_term_id = alloc(&mut g.arena, Expr::term("--color"));
+        let when_nonterm_id = alloc(&mut g.arena, Expr::nontermref("WHEN"));
+        let expected_expr2_id = alloc(&mut g.arena, Sequence(vec![color_term_id, when_nonterm_id]));
+        assert!(teq(*expr_id2, expected_expr2_id, &g.arena));
 
         // Statement 3: <WHEN> ::= ...
         let (symbol, shell, expr_id3) = match &g.statements[2] {
@@ -2689,16 +2508,16 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
             } => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
-        assert_eq!(*symbol, u("WHEN"));
+        assert_eq!(*symbol, ustr("WHEN"));
         assert!(shell.is_none());
-        let alt3_children = match &g.arena[expr_id3.to_index()] {
-            Expr::Alternative(children) => children,
-            _ => panic!("Expected Alternative"),
-        };
-        assert_eq!(alt3_children.len(), 3);
-        assert_eq!(g.arena[alt3_children[0].to_index()], Expr::term("always"));
-        assert_eq!(g.arena[alt3_children[1].to_index()], Expr::term("never"));
-        assert_eq!(g.arena[alt3_children[2].to_index()], Expr::term("auto"));
+        let always_term_id = alloc(&mut g.arena, Expr::term("always"));
+        let never_term_id = alloc(&mut g.arena, Expr::term("never"));
+        let auto_term_id = alloc(&mut g.arena, Expr::term("auto"));
+        let expected_expr3_id = alloc(
+            &mut g.arena,
+            Alternative(vec![always_term_id, never_term_id, auto_term_id]),
+        );
+        assert!(teq(*expr_id3, expected_expr3_id, &g.arena));
     }
 
     #[test]
@@ -2720,7 +2539,7 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
 # another comment
            ;
 "#;
-        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
+        let mut g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements.len(), 1);
 
         let (symbol, shell, expr_id) = match &g.statements[0] {
@@ -2732,28 +2551,25 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
             _ => panic!("Expected NonterminalDefinition"),
         };
 
-        assert_eq!(*symbol, u("OPTION"));
+        assert_eq!(*symbol, ustr("OPTION"));
         assert!(shell.is_none());
 
-        let children = match &g.arena[expr_id.to_index()] {
-            Expr::Alternative(children) => children,
-            _ => panic!("Expected Alternative"),
-        };
+        let extended_regexp_id = alloc(&mut g.arena, Expr::term("--extended-regexp"));
+        let fixed_strings_id = alloc(&mut g.arena, Expr::term("--fixed-strings"));
+        let basic_regexp_id = alloc(&mut g.arena, Expr::term("--basic-regexp"));
+        let perl_regexp_id = alloc(&mut g.arena, Expr::term("--perl-regexp"));
 
-        assert_eq!(children.len(), 4);
-        assert_eq!(
-            g.arena[children[0].to_index()],
-            Expr::term("--extended-regexp")
+        let expected_expr_id = alloc(
+            &mut g.arena,
+            Alternative(vec![
+                extended_regexp_id,
+                fixed_strings_id,
+                basic_regexp_id,
+                perl_regexp_id,
+            ]),
         );
-        assert_eq!(
-            g.arena[children[1].to_index()],
-            Expr::term("--fixed-strings")
-        );
-        assert_eq!(
-            g.arena[children[2].to_index()],
-            Expr::term("--basic-regexp")
-        );
-        assert_eq!(g.arena[children[3].to_index()], Expr::term("--perl-regexp"));
+
+        assert!(teq(*expr_id, expected_expr_id, &g.arena));
     }
 
     #[test]
@@ -2763,7 +2579,8 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
         let foo_id = alloc(&mut arena, foo_expr);
         let bar_expr = Expr::nontermref("FOO");
         let bar_id = alloc(&mut arena, bar_expr);
-        let nonterminal_definitions = UstrMap::from_iter([(u("FOO"), foo_id), (u("BAR"), bar_id)]);
+        let nonterminal_definitions =
+            UstrMap::from_iter([(ustr("FOO"), foo_id), (ustr("BAR"), bar_id)]);
         assert!(matches!(
             get_nonterminals_resolution_order(&arena, &nonterminal_definitions),
             Err(Error::NonterminalDefinitionsCycle(None))
@@ -2777,9 +2594,10 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
         let foo_id = alloc(&mut arena, foo_expr);
         let bar_expr = Expr::nontermref("BAR");
         let bar_id = alloc(&mut arena, bar_expr);
-        let nonterminal_definitions = UstrMap::from_iter([(u("FOO"), foo_id), (u("BAR"), bar_id)]);
+        let nonterminal_definitions =
+            UstrMap::from_iter([(ustr("FOO"), foo_id), (ustr("BAR"), bar_id)]);
         assert!(
-            matches!(&get_nonterminals_resolution_order(&arena, &nonterminal_definitions), Err(Error::NonterminalDefinitionsCycle(Some(path))) if path == &[u("BAR"), u("BAR")])
+            matches!(&get_nonterminals_resolution_order(&arena, &nonterminal_definitions), Err(Error::NonterminalDefinitionsCycle(Some(path))) if path == &[ustr("BAR"), ustr("BAR")])
         );
     }
 
@@ -2795,13 +2613,13 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
         let option_foo_ref_id = alloc(&mut arena, Expr::nontermref("FOO"));
         let option_id = alloc(&mut arena, Sequence(vec![color_id, option_foo_ref_id]));
         let nonterminal_definitions = UstrMap::from_iter([
-            (u("WHEN"), when_id),
-            (u("FOO"), foo_id),
-            (u("OPTION"), option_id),
+            (ustr("WHEN"), when_id),
+            (ustr("FOO"), foo_id),
+            (ustr("OPTION"), option_id),
         ]);
         assert_eq!(
             get_nonterminals_resolution_order(&arena, &nonterminal_definitions).unwrap(),
-            vec![u("FOO"), u("OPTION")]
+            vec![ustr("FOO"), ustr("OPTION")]
         );
     }
 
@@ -2811,61 +2629,40 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
 cargo [+{{{ rustup toolchain list | cut -d' ' -f1 }}}]
 [<OPTIONS>] [<COMMAND>];
 "#;
-        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
+        let mut g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements.len(), 1);
         let (head, expr_id) = match &g.statements[0] {
             Statement::CallVariant { head, expr } => (head, expr),
             _ => panic!("Expected CallVariant"),
         };
         assert_eq!(*head, ustr("cargo"));
-        let seq1_children = match &g.arena[expr_id.to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(seq1_children.len(), 3);
-        let optional1_child_id = match &g.arena[seq1_children[0].to_index()] {
-            Expr::Optional(child) => *child,
-            _ => panic!("Expected Optional"),
-        };
-        let subword_phase = match &g.arena[optional1_child_id.to_index()] {
-            Expr::Subword(phase, 0, _) => phase,
-            _ => panic!("Expected Subword"),
-        };
-        let subword_child_id = match subword_phase {
-            SubwordCompilationPhase::Expr(expr_id) => *expr_id,
-            _ => panic!("Expected SubwordCompilationPhase::Expr"),
-        };
-        let seq2_children = match &g.arena[subword_child_id.to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(seq2_children.len(), 2);
-        assert_eq!(g.arena[seq2_children[0].to_index()], Expr::term("+"));
-        assert_eq!(
-            g.arena[seq2_children[1].to_index()],
-            Command(
-                ustr("rustup toolchain list | cut -d' ' -f1"),
-                None,
-                0,
-                ChicSpan::dummy()
-            )
+
+        let plus_id = alloc(&mut g.arena, Expr::term("+"));
+        let cmd_id = alloc(
+            &mut g.arena,
+            Command {
+                cmd: ustr("rustup toolchain list | cut -d' ' -f1"),
+                regex: None,
+                fallback: 0,
+                span: None,
+            },
         );
-        let optional2_child_id = match &g.arena[seq1_children[1].to_index()] {
-            Expr::Optional(child) => *child,
-            _ => panic!("Expected Optional"),
-        };
-        assert_eq!(
-            g.arena[optional2_child_id.to_index()],
-            Expr::nontermref("OPTIONS")
+        let subword_seq_id = alloc(&mut g.arena, Sequence(vec![plus_id, cmd_id]));
+        let subword_id = alloc(&mut g.arena, Expr::subword(subword_seq_id));
+        let optional1_id = alloc(&mut g.arena, Optional(subword_id));
+
+        let options_id = alloc(&mut g.arena, Expr::nontermref("OPTIONS"));
+        let optional2_id = alloc(&mut g.arena, Optional(options_id));
+
+        let command_id = alloc(&mut g.arena, Expr::nontermref("COMMAND"));
+        let optional3_id = alloc(&mut g.arena, Optional(command_id));
+
+        let expected_expr_id = alloc(
+            &mut g.arena,
+            Sequence(vec![optional1_id, optional2_id, optional3_id]),
         );
-        let optional3_child_id = match &g.arena[seq1_children[2].to_index()] {
-            Expr::Optional(child) => *child,
-            _ => panic!("Expected Optional"),
-        };
-        assert_eq!(
-            g.arena[optional3_child_id.to_index()],
-            Expr::nontermref("COMMAND")
-        );
+
+        assert!(teq(*expr_id, expected_expr_id, &g.arena));
     }
 
     #[test]
@@ -2874,7 +2671,7 @@ cargo [+{{{ rustup toolchain list | cut -d' ' -f1 }}}]
 grep --color=<WHEN> --version;
 <WHEN> ::= always | never | auto;
 "#;
-        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
+        let mut g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements.len(), 2);
 
         // Statement 1: grep ...
@@ -2884,35 +2681,13 @@ grep --color=<WHEN> --version;
         };
         assert_eq!(*head, ustr("grep"));
 
-        let seq1_children = match &g.arena[expr_id.to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(seq1_children.len(), 2);
-
-        let subword_phase = match &g.arena[seq1_children[0].to_index()] {
-            Expr::Subword(phase, 0, _) => phase,
-            _ => panic!("Expected Subword"),
-        };
-        let subword_child_id = match subword_phase {
-            SubwordCompilationPhase::Expr(expr_id) => *expr_id,
-            _ => panic!("Expected SubwordCompilationPhase::Expr"),
-        };
-        let seq2_children = match &g.arena[subword_child_id.to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(seq2_children.len(), 2);
-        assert_eq!(g.arena[seq2_children[0].to_index()], Expr::term("--color="));
-        assert_eq!(
-            g.arena[seq2_children[1].to_index()],
-            Expr::nontermref("WHEN")
-        );
-
-        assert_eq!(
-            g.arena[seq1_children[1].to_index()],
-            Expr::term("--version")
-        );
+        let color_eq_id = alloc(&mut g.arena, Expr::term("--color="));
+        let when_nonterm_id = alloc(&mut g.arena, Expr::nontermref("WHEN"));
+        let subword_seq_id = alloc(&mut g.arena, Sequence(vec![color_eq_id, when_nonterm_id]));
+        let subword_id = alloc(&mut g.arena, Expr::subword(subword_seq_id));
+        let version_id = alloc(&mut g.arena, Expr::term("--version"));
+        let expected_expr1_id = alloc(&mut g.arena, Sequence(vec![subword_id, version_id]));
+        assert!(teq(*expr_id, expected_expr1_id, &g.arena));
 
         // Statement 2: <WHEN> ::= ...
         let (symbol, shell, expr_id2) = match &g.statements[1] {
@@ -2925,22 +2700,23 @@ grep --color=<WHEN> --version;
         };
         assert_eq!(*symbol, ustr("WHEN"));
         assert!(shell.is_none());
-        let alt2_children = match &g.arena[expr_id2.to_index()] {
-            Expr::Alternative(children) => children,
-            _ => panic!("Expected Alternative"),
-        };
-        assert_eq!(alt2_children.len(), 3);
-        assert_eq!(g.arena[alt2_children[0].to_index()], Expr::term("always"));
-        assert_eq!(g.arena[alt2_children[1].to_index()], Expr::term("never"));
-        assert_eq!(g.arena[alt2_children[2].to_index()], Expr::term("auto"));
+
+        let always_id = alloc(&mut g.arena, Expr::term("always"));
+        let never_id = alloc(&mut g.arena, Expr::term("never"));
+        let auto_id = alloc(&mut g.arena, Expr::term("auto"));
+        let expected_expr2_id = alloc(
+            &mut g.arena,
+            Alternative(vec![always_id, never_id, auto_id]),
+        );
+        assert!(teq(*expr_id2, expected_expr2_id, &g.arena));
     }
 
     #[test]
-    fn parens_are_enough_to_parse_as_subword() {
+    fn parens_suffice_to_parse_as_subword() {
         const INPUT: &str = r#"
 grep --color=(always | never | auto);
 "#;
-        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
+        let mut g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements.len(), 1);
 
         let (head, expr_id) = match &g.statements[0] {
@@ -2949,31 +2725,18 @@ grep --color=(always | never | auto);
         };
         assert_eq!(*head, ustr("grep"));
 
-        let subword_phase = match &g.arena[expr_id.to_index()] {
-            Expr::Subword(phase, 0, _) => phase,
-            _ => panic!("Expected Subword"),
-        };
-        let subword_child_id = match subword_phase {
-            SubwordCompilationPhase::Expr(expr_id) => *expr_id,
-            _ => panic!("Expected SubwordCompilationPhase::Expr"),
-        };
+        let color_eq_id = alloc(&mut g.arena, Expr::term("--color="));
+        let always_id = alloc(&mut g.arena, Expr::term("always"));
+        let never_id = alloc(&mut g.arena, Expr::term("never"));
+        let auto_id = alloc(&mut g.arena, Expr::term("auto"));
+        let alt_id = alloc(
+            &mut g.arena,
+            Alternative(vec![always_id, never_id, auto_id]),
+        );
+        let seq_id = alloc(&mut g.arena, Sequence(vec![color_eq_id, alt_id]));
+        let expected_expr_id = alloc(&mut g.arena, Expr::subword(seq_id));
 
-        let seq_children = match &g.arena[subword_child_id.to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(seq_children.len(), 2);
-
-        assert_eq!(g.arena[seq_children[0].to_index()], Expr::term("--color="));
-
-        let alt_children = match &g.arena[seq_children[1].to_index()] {
-            Expr::Alternative(children) => children,
-            _ => panic!("Expected Alternative"),
-        };
-        assert_eq!(alt_children.len(), 3);
-        assert_eq!(g.arena[alt_children[0].to_index()], Expr::term("always"));
-        assert_eq!(g.arena[alt_children[1].to_index()], Expr::term("never"));
-        assert_eq!(g.arena[alt_children[2].to_index()], Expr::term("auto"));
+        assert!(teq(*expr_id, expected_expr_id, &g.arena));
     }
 
     #[test]
@@ -2985,7 +2748,7 @@ strace -e <EXPR>;
 <qualifier> ::= trace | read | write | fault;
 <value> ::= %file | file | all;
 "#;
-        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
+        let mut g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements.len(), 4);
 
         // Statement 1
@@ -2994,16 +2757,10 @@ strace -e <EXPR>;
             _ => panic!("Expected CallVariant"),
         };
         assert_eq!(*head, ustr("strace"));
-        let seq_children = match &g.arena[expr_id.to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(seq_children.len(), 2);
-        assert_eq!(g.arena[seq_children[0].to_index()], Expr::term("-e"));
-        assert_eq!(
-            g.arena[seq_children[1].to_index()],
-            Expr::nontermref("EXPR")
-        );
+        let e_id = alloc(&mut g.arena, Expr::term("-e"));
+        let expr_nonterm_id = alloc(&mut g.arena, Expr::nontermref("EXPR"));
+        let expected_expr1_id = alloc(&mut g.arena, Sequence(vec![e_id, expr_nonterm_id]));
+        assert!(teq(*expr_id, expected_expr1_id, &g.arena));
 
         // Statement 2
         let (symbol, shell, expr_id) = match &g.statements[1] {
@@ -3016,64 +2773,24 @@ strace -e <EXPR>;
         };
         assert_eq!(*symbol, ustr("EXPR"));
         assert!(shell.is_none());
-        let subword_phase = match &g.arena[expr_id.to_index()] {
-            Expr::Subword(phase, 0, _) => phase,
-            _ => panic!("Expected Subword"),
-        };
-        let subword_child_id = match subword_phase {
-            SubwordCompilationPhase::Expr(expr_id) => *expr_id,
-            _ => panic!("Expected SubwordCompilationPhase::Expr"),
-        };
-        let seq2_children = match &g.arena[subword_child_id.to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(seq2_children.len(), 4);
-
-        let optional1_child_id = match &g.arena[seq2_children[0].to_index()] {
-            Expr::Optional(child) => *child,
-            _ => panic!("Expected Optional"),
-        };
-        let seq3_children = match &g.arena[optional1_child_id.to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(seq3_children.len(), 2);
-        assert_eq!(
-            g.arena[seq3_children[0].to_index()],
-            Expr::nontermref("qualifier")
+        let qualifier_nonterm_id = alloc(&mut g.arena, Expr::nontermref("qualifier"));
+        let eq_id = alloc(&mut g.arena, Expr::term("="));
+        let seq1_id = alloc(&mut g.arena, Sequence(vec![qualifier_nonterm_id, eq_id]));
+        let opt1_id = alloc(&mut g.arena, Optional(seq1_id));
+        let bang_id = alloc(&mut g.arena, Expr::term("!"));
+        let opt2_id = alloc(&mut g.arena, Optional(bang_id));
+        let value_nonterm_id = alloc(&mut g.arena, Expr::nontermref("value"));
+        let comma_id = alloc(&mut g.arena, Expr::term(","));
+        let value_nonterm2_id = alloc(&mut g.arena, Expr::nontermref("value"));
+        let seq2_id = alloc(&mut g.arena, Sequence(vec![comma_id, value_nonterm2_id]));
+        let opt3_id = alloc(&mut g.arena, Optional(seq2_id));
+        let many1_id = alloc(&mut g.arena, Many1(opt3_id));
+        let subword_seq_id = alloc(
+            &mut g.arena,
+            Sequence(vec![opt1_id, opt2_id, value_nonterm_id, many1_id]),
         );
-        assert_eq!(g.arena[seq3_children[1].to_index()], Expr::term("="));
-
-        let optional2_child_id = match &g.arena[seq2_children[1].to_index()] {
-            Expr::Optional(child) => *child,
-            _ => panic!("Expected Optional"),
-        };
-        assert_eq!(g.arena[optional2_child_id.to_index()], Expr::term("!"));
-
-        assert_eq!(
-            g.arena[seq2_children[2].to_index()],
-            Expr::nontermref("value")
-        );
-
-        let many1_child_id = match &g.arena[seq2_children[3].to_index()] {
-            Expr::Many1(child) => *child,
-            _ => panic!("Expected Many1"),
-        };
-        let optional3_child_id = match &g.arena[many1_child_id.to_index()] {
-            Expr::Optional(child) => *child,
-            _ => panic!("Expected Optional"),
-        };
-        let seq4_children = match &g.arena[optional3_child_id.to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(seq4_children.len(), 2);
-        assert_eq!(g.arena[seq4_children[0].to_index()], Expr::term(","));
-        assert_eq!(
-            g.arena[seq4_children[1].to_index()],
-            Expr::nontermref("value")
-        );
+        let expected_expr2_id = alloc(&mut g.arena, Expr::subword(subword_seq_id));
+        assert!(teq(*expr_id, expected_expr2_id, &g.arena));
 
         // Statement 3
         let (symbol, shell, expr_id) = match &g.statements[2] {
@@ -3086,15 +2803,15 @@ strace -e <EXPR>;
         };
         assert_eq!(*symbol, ustr("qualifier"));
         assert!(shell.is_none());
-        let alt_children = match &g.arena[expr_id.to_index()] {
-            Expr::Alternative(children) => children,
-            _ => panic!("Expected Alternative"),
-        };
-        assert_eq!(alt_children.len(), 4);
-        assert_eq!(g.arena[alt_children[0].to_index()], Expr::term("trace"));
-        assert_eq!(g.arena[alt_children[1].to_index()], Expr::term("read"));
-        assert_eq!(g.arena[alt_children[2].to_index()], Expr::term("write"));
-        assert_eq!(g.arena[alt_children[3].to_index()], Expr::term("fault"));
+        let trace_id = alloc(&mut g.arena, Expr::term("trace"));
+        let read_id = alloc(&mut g.arena, Expr::term("read"));
+        let write_id = alloc(&mut g.arena, Expr::term("write"));
+        let fault_id = alloc(&mut g.arena, Expr::term("fault"));
+        let expected_expr3_id = alloc(
+            &mut g.arena,
+            Alternative(vec![trace_id, read_id, write_id, fault_id]),
+        );
+        assert!(teq(*expr_id, expected_expr3_id, &g.arena));
 
         // Statement 4
         let (symbol, shell, expr_id) = match &g.statements[3] {
@@ -3107,14 +2824,14 @@ strace -e <EXPR>;
         };
         assert_eq!(*symbol, ustr("value"));
         assert!(shell.is_none());
-        let alt_children = match &g.arena[expr_id.to_index()] {
-            Expr::Alternative(children) => children,
-            _ => panic!("Expected Alternative"),
-        };
-        assert_eq!(alt_children.len(), 3);
-        assert_eq!(g.arena[alt_children[0].to_index()], Expr::term("%file"));
-        assert_eq!(g.arena[alt_children[1].to_index()], Expr::term("file"));
-        assert_eq!(g.arena[alt_children[2].to_index()], Expr::term("all"));
+        let file_percent_id = alloc(&mut g.arena, Expr::term("%file"));
+        let file_id = alloc(&mut g.arena, Expr::term("file"));
+        let all_id = alloc(&mut g.arena, Expr::term("all"));
+        let expected_expr4_id = alloc(
+            &mut g.arena,
+            Alternative(vec![file_percent_id, file_id, all_id]),
+        );
+        assert!(teq(*expr_id, expected_expr4_id, &g.arena));
     }
 
     #[test]
@@ -3126,7 +2843,7 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
 <STATE-SPEC> ::= [^]<STATE>;
 <STATE> ::= LISTEN | CLOSED;
 "#;
-        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
+        let mut g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements.len(), 4);
 
         // Statement 1
@@ -3135,47 +2852,21 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
             _ => panic!("Expected CallVariant"),
         };
         assert_eq!(*head, ustr("lsof"));
-        let subword_phase = match &g.arena[expr_id.to_index()] {
-            Expr::Subword(phase, 0, _) => phase,
-            _ => panic!("Expected Subword"),
-        };
-        let subword_child_id = match subword_phase {
-            SubwordCompilationPhase::Expr(expr_id) => *expr_id,
-            _ => panic!("Expected SubwordCompilationPhase::Expr"),
-        };
-        let seq_children = match &g.arena[subword_child_id.to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(seq_children.len(), 5);
-        assert_eq!(g.arena[seq_children[0].to_index()], Expr::term("-s"));
-        assert_eq!(
-            g.arena[seq_children[1].to_index()],
-            Expr::nontermref("PROTOCOL")
+        let s_id = alloc(&mut g.arena, Expr::term("-s"));
+        let protocol_id = alloc(&mut g.arena, Expr::nontermref("PROTOCOL"));
+        let colon_id = alloc(&mut g.arena, Expr::term(":"));
+        let state_spec_id = alloc(&mut g.arena, Expr::nontermref("STATE-SPEC"));
+        let comma_id = alloc(&mut g.arena, Expr::term(","));
+        let state_spec2_id = alloc(&mut g.arena, Expr::nontermref("STATE-SPEC"));
+        let seq_id = alloc(&mut g.arena, Sequence(vec![comma_id, state_spec2_id]));
+        let opt_id = alloc(&mut g.arena, Optional(seq_id));
+        let many1_id = alloc(&mut g.arena, Many1(opt_id));
+        let subword_seq_id = alloc(
+            &mut g.arena,
+            Sequence(vec![s_id, protocol_id, colon_id, state_spec_id, many1_id]),
         );
-        assert_eq!(g.arena[seq_children[2].to_index()], Expr::term(":"));
-        assert_eq!(
-            g.arena[seq_children[3].to_index()],
-            Expr::nontermref("STATE-SPEC")
-        );
-        let many1_child_id = match &g.arena[seq_children[4].to_index()] {
-            Expr::Many1(child) => *child,
-            _ => panic!("Expected Many1"),
-        };
-        let optional_child_id = match &g.arena[many1_child_id.to_index()] {
-            Expr::Optional(child) => *child,
-            _ => panic!("Expected Optional"),
-        };
-        let seq2_children = match &g.arena[optional_child_id.to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(seq2_children.len(), 2);
-        assert_eq!(g.arena[seq2_children[0].to_index()], Expr::term(","));
-        assert_eq!(
-            g.arena[seq2_children[1].to_index()],
-            Expr::nontermref("STATE-SPEC")
-        );
+        let expected_expr1_id = alloc(&mut g.arena, Expr::subword(subword_seq_id));
+        assert!(teq(*expr_id, expected_expr1_id, &g.arena));
 
         // Statement 2
         let (symbol, shell, expr_id) = match &g.statements[1] {
@@ -3188,13 +2879,10 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
         };
         assert_eq!(*symbol, ustr("PROTOCOL"));
         assert!(shell.is_none());
-        let alt_children = match &g.arena[expr_id.to_index()] {
-            Expr::Alternative(children) => children,
-            _ => panic!("Expected Alternative"),
-        };
-        assert_eq!(alt_children.len(), 2);
-        assert_eq!(g.arena[alt_children[0].to_index()], Expr::term("TCP"));
-        assert_eq!(g.arena[alt_children[1].to_index()], Expr::term("UDP"));
+        let tcp_id = alloc(&mut g.arena, Expr::term("TCP"));
+        let udp_id = alloc(&mut g.arena, Expr::term("UDP"));
+        let expected_expr2_id = alloc(&mut g.arena, Alternative(vec![tcp_id, udp_id]));
+        assert!(teq(*expr_id, expected_expr2_id, &g.arena));
 
         // Statement 3
         let (symbol, shell, expr_id) = match &g.statements[2] {
@@ -3207,28 +2895,12 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
         };
         assert_eq!(*symbol, ustr("STATE-SPEC"));
         assert!(shell.is_none());
-        let subword_phase = match &g.arena[expr_id.to_index()] {
-            Expr::Subword(phase, 0, _) => phase,
-            _ => panic!("Expected Subword"),
-        };
-        let subword_child_id = match subword_phase {
-            SubwordCompilationPhase::Expr(expr_id) => *expr_id,
-            _ => panic!("Expected SubwordCompilationPhase::Expr"),
-        };
-        let seq3_children = match &g.arena[subword_child_id.to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(seq3_children.len(), 2);
-        let optional2_child_id = match &g.arena[seq3_children[0].to_index()] {
-            Expr::Optional(child) => *child,
-            _ => panic!("Expected Optional"),
-        };
-        assert_eq!(g.arena[optional2_child_id.to_index()], Expr::term("^"));
-        assert_eq!(
-            g.arena[seq3_children[1].to_index()],
-            Expr::nontermref("STATE")
-        );
+        let caret_id = alloc(&mut g.arena, Expr::term("^"));
+        let opt_caret_id = alloc(&mut g.arena, Optional(caret_id));
+        let state_id = alloc(&mut g.arena, Expr::nontermref("STATE"));
+        let subword_seq2_id = alloc(&mut g.arena, Sequence(vec![opt_caret_id, state_id]));
+        let expected_expr3_id = alloc(&mut g.arena, Expr::subword(subword_seq2_id));
+        assert!(teq(*expr_id, expected_expr3_id, &g.arena));
 
         // Statement 4
         let (symbol, shell, expr_id) = match &g.statements[3] {
@@ -3241,13 +2913,10 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
         };
         assert_eq!(*symbol, ustr("STATE"));
         assert!(shell.is_none());
-        let alt2_children = match &g.arena[expr_id.to_index()] {
-            Expr::Alternative(children) => children,
-            _ => panic!("Expected Alternative"),
-        };
-        assert_eq!(alt2_children.len(), 2);
-        assert_eq!(g.arena[alt2_children[0].to_index()], Expr::term("LISTEN"));
-        assert_eq!(g.arena[alt2_children[1].to_index()], Expr::term("CLOSED"));
+        let listen_id = alloc(&mut g.arena, Expr::term("LISTEN"));
+        let closed_id = alloc(&mut g.arena, Expr::term("CLOSED"));
+        let expected_expr4_id = alloc(&mut g.arena, Alternative(vec![listen_id, closed_id]));
+        assert!(teq(*expr_id, expected_expr4_id, &g.arena));
     }
 
     #[test]
@@ -3256,7 +2925,7 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
 cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
 <toolchain> ::= {{{ rustup toolchain list | cut -d' ' -f1 }}};
 "#;
-        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
+        let mut g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements.len(), 2);
 
         // Statement 1
@@ -3264,53 +2933,22 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
             Statement::CallVariant { head, expr } => (head, expr),
             _ => panic!("Expected CallVariant"),
         };
-        assert_eq!(*head, u("cargo"));
-        let seq1_children = match &g.arena[expr_id.to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(seq1_children.len(), 3);
+        assert_eq!(*head, ustr("cargo"));
 
-        let optional1_child_id = match &g.arena[seq1_children[0].to_index()] {
-            Expr::Optional(child) => *child,
-            _ => panic!("Expected Optional"),
-        };
-        let subword_phase = match &g.arena[optional1_child_id.to_index()] {
-            Expr::Subword(phase, 0, _) => phase,
-            _ => panic!("Expected Subword"),
-        };
-        let subword_child_id = match subword_phase {
-            SubwordCompilationPhase::Expr(expr_id) => *expr_id,
-            _ => panic!("Expected SubwordCompilationPhase::Expr"),
-        };
-        let seq2_children = match &g.arena[subword_child_id.to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(seq2_children.len(), 2);
-        assert_eq!(g.arena[seq2_children[0].to_index()], Expr::term("+"));
-        assert_eq!(
-            g.arena[seq2_children[1].to_index()],
-            Expr::nontermref("toolchain")
-        );
+        let plus_id = alloc(&mut g.arena, Expr::term("+"));
+        let toolchain_id = alloc(&mut g.arena, Expr::nontermref("toolchain"));
+        let subword_seq_id = alloc(&mut g.arena, Sequence(vec![plus_id, toolchain_id]));
+        let subword_id = alloc(&mut g.arena, Expr::subword(subword_seq_id));
+        let opt1_id = alloc(&mut g.arena, Optional(subword_id));
 
-        let optional2_child_id = match &g.arena[seq1_children[1].to_index()] {
-            Expr::Optional(child) => *child,
-            _ => panic!("Expected Optional"),
-        };
-        assert_eq!(
-            g.arena[optional2_child_id.to_index()],
-            Expr::nontermref("OPTIONS")
-        );
+        let options_id = alloc(&mut g.arena, Expr::nontermref("OPTIONS"));
+        let opt2_id = alloc(&mut g.arena, Optional(options_id));
 
-        let optional3_child_id = match &g.arena[seq1_children[2].to_index()] {
-            Expr::Optional(child) => *child,
-            _ => panic!("Expected Optional"),
-        };
-        assert_eq!(
-            g.arena[optional3_child_id.to_index()],
-            Expr::nontermref("COMMAND")
-        );
+        let command_id = alloc(&mut g.arena, Expr::nontermref("COMMAND"));
+        let opt3_id = alloc(&mut g.arena, Optional(command_id));
+
+        let expected_expr1_id = alloc(&mut g.arena, Sequence(vec![opt1_id, opt2_id, opt3_id]));
+        assert!(teq(*expr_id, expected_expr1_id, &g.arena));
 
         // Statement 2
         let (symbol, shell, expr_id) = match &g.statements[1] {
@@ -3321,17 +2959,18 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
             } => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
-        assert_eq!(*symbol, u("toolchain"));
+        assert_eq!(*symbol, ustr("toolchain"));
         assert!(shell.is_none());
-        assert_eq!(
-            g.arena[expr_id.to_index()],
-            Command(
-                u("rustup toolchain list | cut -d' ' -f1"),
-                None,
-                0,
-                ChicSpan::dummy()
-            )
+        let expected_expr2_id = alloc(
+            &mut g.arena,
+            Command {
+                cmd: ustr("rustup toolchain list | cut -d' ' -f1"),
+                regex: None,
+                fallback: 0,
+                span: None,
+            },
         );
+        assert!(teq(*expr_id, expected_expr2_id, &g.arena));
     }
 
     #[test]
@@ -3363,7 +3002,7 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
                 "PATTERNS are extended regular expressions",
             ),
         );
-        assert!(expr_extensionally_eq(actual, expected, &arena));
+        assert!(teq(actual, expected, &arena));
     }
 
     #[test]
@@ -3378,7 +3017,7 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
         );
         let nonterm_id = alloc(&mut arena, Expr::nontermref("NUM"));
         let expected = alloc(&mut arena, Sequence(vec![term_id, nonterm_id]));
-        assert!(expr_extensionally_eq(actual, expected, &arena));
+        assert!(teq(actual, expected, &arena));
     }
 
     #[test]
@@ -3392,7 +3031,7 @@ grep --extended-regexp "PATTERNS are extended regular expressions";
             Statement::CallVariant { head, expr } => (head, *expr),
             _ => panic!("Expected CallVariant"),
         };
-        assert_eq!(*head, u("grep"));
+        assert_eq!(*head, ustr("grep"));
         let expected = alloc(
             &mut g.arena,
             Expr::term_descr(
@@ -3400,7 +3039,7 @@ grep --extended-regexp "PATTERNS are extended regular expressions";
                 "PATTERNS are extended regular expressions",
             ),
         );
-        assert!(expr_extensionally_eq(actual, expected, &g.arena));
+        assert!(teq(actual, expected, &g.arena));
     }
 
     #[test]
@@ -3419,18 +3058,16 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
     #[test]
     fn issue_15() {
         const INPUT: &str = r#"foo.sh [-h] ;"#;
-        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
+        let mut g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements.len(), 1);
         let (head, expr_id) = match &g.statements[0] {
             Statement::CallVariant { head, expr } => (head, expr),
             _ => panic!("Expected CallVariant"),
         };
-        assert_eq!(*head, u("foo.sh"));
-        let optional_child_id = match &g.arena[expr_id.to_index()] {
-            Expr::Optional(child) => *child,
-            _ => panic!("Expected Optional"),
-        };
-        assert_eq!(g.arena[optional_child_id.to_index()], Expr::term("-h"));
+        assert_eq!(*head, ustr("foo.sh"));
+        let h_id = alloc(&mut g.arena, Expr::term("-h"));
+        let expected_expr_id = alloc(&mut g.arena, Optional(h_id));
+        assert!(teq(*expr_id, expected_expr_id, &g.arena));
     }
 
     #[test]
@@ -3450,15 +3087,16 @@ ls <FILE>;
 <FILE@bash> ::= {{{ compgen -A file "$1" }}};
 <FILE@fish> ::= {{{ __fish_complete_path "$1" }}};
 "#;
-        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
+        let mut g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements.len(), 3);
 
         let (head, expr_id) = match &g.statements[0] {
             CallVariant { head, expr } => (head, expr),
             _ => panic!("Expected CallVariant"),
         };
-        assert_eq!(*head, u("ls"));
-        assert_eq!(g.arena[expr_id.to_index()], Expr::nontermref("FILE"));
+        assert_eq!(*head, ustr("ls"));
+        let expected_expr1_id = alloc(&mut g.arena, Expr::nontermref("FILE"));
+        assert!(teq(*expr_id, expected_expr1_id, &g.arena));
 
         let (symbol, shell, expr_id) = match &g.statements[1] {
             NonterminalDefinition {
@@ -3470,10 +3108,16 @@ ls <FILE>;
         };
         assert_eq!(*symbol, ustr("FILE"));
         assert_eq!(*shell, Some(ustr("bash")));
-        assert_eq!(
-            g.arena[expr_id.to_index()],
-            Command(ustr(r#"compgen -A file "$1""#), None, 0, ChicSpan::dummy())
+        let expected_expr2_id = alloc(
+            &mut g.arena,
+            Command {
+                cmd: ustr(r#"compgen -A file "$1""#),
+                regex: None,
+                fallback: 0,
+                span: None,
+            },
         );
+        assert!(teq(*expr_id, expected_expr2_id, &g.arena));
 
         let (symbol, shell, expr_id) = match &g.statements[2] {
             NonterminalDefinition {
@@ -3485,15 +3129,16 @@ ls <FILE>;
         };
         assert_eq!(*symbol, ustr("FILE"));
         assert_eq!(*shell, Some(ustr("fish")));
-        assert_eq!(
-            g.arena[expr_id.to_index()],
-            Command(
-                ustr(r#"__fish_complete_path "$1""#),
-                None,
-                0,
-                ChicSpan::dummy()
-            )
+        let expected_expr3_id = alloc(
+            &mut g.arena,
+            Command {
+                cmd: ustr(r#"__fish_complete_path "$1""#),
+                regex: None,
+                fallback: 0,
+                span: None,
+            },
         );
+        assert!(teq(*expr_id, expected_expr3_id, &g.arena));
 
         let v = ValidGrammar::from_grammar(g, Shell::Bash).unwrap();
         let spec = v.specializations.get(&ustr("FILE")).unwrap();
@@ -3510,53 +3155,26 @@ ls <FILE>;
         assert!(s.is_empty());
         let distributed_id = distribute_descriptions(&mut arena, e);
 
-        let seq_children = match &arena[distributed_id.to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(seq_children.len(), 2);
-        assert_eq!(arena[seq_children[0].to_index()], Expr::term("mygrep"));
-
-        let alt_children = match &arena[seq_children[1].to_index()] {
-            Expr::Alternative(children) => children,
-            _ => panic!("Expected Alternative"),
-        };
-        assert_eq!(alt_children.len(), 2);
-
-        // First alternative
-        let subword_phase = match &arena[alt_children[0].to_index()] {
-            Expr::Subword(phase, 0, _) => phase,
-            _ => panic!("Expected Subword"),
-        };
-        let subword_child_id = match subword_phase {
-            SubwordCompilationPhase::Expr(expr_id) => *expr_id,
-            _ => panic!("Expected SubwordCompilationPhase::Expr"),
-        };
-        let subword_seq_children = match &arena[subword_child_id.to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(subword_seq_children.len(), 2);
-        assert_eq!(
-            arena[subword_seq_children[0].to_index()],
-            Expr::term_descr("--color=", "use markers to highlight the matching strings")
+        let mygrep_id = alloc(&mut arena, Expr::term("mygrep"));
+        let color_eq_id = alloc(
+            &mut arena,
+            Expr::term_descr("--color=", "use markers to highlight the matching strings"),
         );
-        assert_eq!(
-            arena[subword_seq_children[1].to_index()],
-            Expr::nontermref("WHEN")
-        );
+        let when_id1 = alloc(&mut arena, Expr::nontermref("WHEN"));
+        let subword_seq_id = alloc(&mut arena, Sequence(vec![color_eq_id, when_id1]));
+        let subword_id = alloc(&mut arena, Expr::subword(subword_seq_id));
 
-        // Second alternative
-        let seq2_children = match &arena[alt_children[1].to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(seq2_children.len(), 2);
-        assert_eq!(
-            arena[seq2_children[0].to_index()],
-            Expr::term_descr("--color", "use markers to highlight the matching strings")
+        let color_id = alloc(
+            &mut arena,
+            Expr::term_descr("--color", "use markers to highlight the matching strings"),
         );
-        assert_eq!(arena[seq2_children[1].to_index()], Expr::nontermref("WHEN"));
+        let when_id2 = alloc(&mut arena, Expr::nontermref("WHEN"));
+        let seq2_id = alloc(&mut arena, Sequence(vec![color_id, when_id2]));
+
+        let alt_id = alloc(&mut arena, Alternative(vec![subword_id, seq2_id]));
+        let expected_expr_id = alloc(&mut arena, Sequence(vec![mygrep_id, alt_id]));
+
+        assert!(teq(distributed_id, expected_expr_id, &arena));
     }
 
     #[test]
@@ -3567,60 +3185,30 @@ ls <FILE>;
         assert!(s.is_empty());
         let distributed_id = distribute_descriptions(&mut arena, e);
 
-        let alt1_children = match &arena[distributed_id.to_index()] {
-            Expr::Alternative(children) => children,
-            _ => panic!("Expected Alternative"),
-        };
-        assert_eq!(alt1_children.len(), 2);
+        let mygrep_id = alloc(&mut arena, Expr::term("mygrep"));
+        let help_id = alloc(&mut arena, Expr::term("--help"));
+        let seq1_id = alloc(&mut arena, Sequence(vec![mygrep_id, help_id]));
 
-        let seq1_children = match &arena[alt1_children[0].to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(seq1_children.len(), 2);
-        assert_eq!(arena[seq1_children[0].to_index()], Expr::term("mygrep"));
-        assert_eq!(arena[seq1_children[1].to_index()], Expr::term("--help"));
-
-        let alt2_children = match &arena[alt1_children[1].to_index()] {
-            Expr::Alternative(children) => children,
-            _ => panic!("Expected Alternative"),
-        };
-        assert_eq!(alt2_children.len(), 2);
-
-        // First alternative of second alternative
-        let subword_phase = match &arena[alt2_children[0].to_index()] {
-            Expr::Subword(phase, 0, _) => phase,
-            _ => panic!("Expected Subword"),
-        };
-        let subword_child_id = match subword_phase {
-            SubwordCompilationPhase::Expr(expr_id) => *expr_id,
-            _ => panic!("Expected SubwordCompilationPhase::Expr"),
-        };
-        let subword_seq_children = match &arena[subword_child_id.to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(subword_seq_children.len(), 2);
-        assert_eq!(
-            arena[subword_seq_children[0].to_index()],
-            Expr::term_descr("--color=", "use markers to highlight the matching strings")
+        let color_eq_id = alloc(
+            &mut arena,
+            Expr::term_descr("--color=", "use markers to highlight the matching strings"),
         );
-        assert_eq!(
-            arena[subword_seq_children[1].to_index()],
-            Expr::nontermref("WHEN")
-        );
+        let when_id1 = alloc(&mut arena, Expr::nontermref("WHEN"));
+        let subword_seq_id = alloc(&mut arena, Sequence(vec![color_eq_id, when_id1]));
+        let subword_id = alloc(&mut arena, Expr::subword(subword_seq_id));
 
-        // Second alternative of second alternative
-        let seq2_children = match &arena[alt2_children[1].to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(seq2_children.len(), 2);
-        assert_eq!(
-            arena[seq2_children[0].to_index()],
-            Expr::term_descr("--color", "use markers to highlight the matching strings")
+        let color_id = alloc(
+            &mut arena,
+            Expr::term_descr("--color", "use markers to highlight the matching strings"),
         );
-        assert_eq!(arena[seq2_children[1].to_index()], Expr::nontermref("WHEN"));
+        let when_id2 = alloc(&mut arena, Expr::nontermref("WHEN"));
+        let seq2_id = alloc(&mut arena, Sequence(vec![color_id, when_id2]));
+
+        let alt2_id = alloc(&mut arena, Alternative(vec![subword_id, seq2_id]));
+
+        let expected_expr_id = alloc(&mut arena, Alternative(vec![seq1_id, alt2_id]));
+
+        assert!(teq(distributed_id, expected_expr_id, &arena));
     }
 
     #[test]
@@ -3631,60 +3219,31 @@ ls <FILE>;
         assert!(s.is_empty());
         let distributed_id = distribute_descriptions(&mut arena, e);
 
-        let seq1_children = match &arena[distributed_id.to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(seq1_children.len(), 2);
-        assert_eq!(arena[seq1_children[0].to_index()], Expr::term("mygrep"));
+        let mygrep_id = alloc(&mut arena, Expr::term("mygrep"));
+        let help_id = alloc(&mut arena, Expr::term("--help"));
 
-        let alt1_children = match &arena[seq1_children[1].to_index()] {
-            Expr::Alternative(children) => children,
-            _ => panic!("Expected Alternative"),
-        };
-        assert_eq!(alt1_children.len(), 2);
-        assert_eq!(arena[alt1_children[0].to_index()], Expr::term("--help"));
-
-        let alt2_children = match &arena[alt1_children[1].to_index()] {
-            Expr::Alternative(children) => children,
-            _ => panic!("Expected Alternative"),
-        };
-        assert_eq!(alt2_children.len(), 2);
-
-        // First alternative of second alternative
-        let subword_phase = match &arena[alt2_children[0].to_index()] {
-            Expr::Subword(phase, 0, _) => phase,
-            _ => panic!("Expected Subword"),
-        };
-        let subword_child_id = match subword_phase {
-            SubwordCompilationPhase::Expr(expr_id) => *expr_id,
-            _ => panic!("Expected SubwordCompilationPhase::Expr"),
-        };
-        let subword_seq_children = match &arena[subword_child_id.to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(subword_seq_children.len(), 2);
-        assert_eq!(
-            arena[subword_seq_children[0].to_index()],
-            Expr::term_descr("--color=", "use markers to highlight the matching strings")
+        let color_eq_id = alloc(
+            &mut arena,
+            Expr::term_descr("--color=", "use markers to highlight the matching strings"),
         );
-        assert_eq!(
-            arena[subword_seq_children[1].to_index()],
-            Expr::nontermref("WHEN")
-        );
+        let when_id1 = alloc(&mut arena, Expr::nontermref("WHEN"));
+        let subword_seq_id = alloc(&mut arena, Sequence(vec![color_eq_id, when_id1]));
+        let subword_id = alloc(&mut arena, Expr::subword(subword_seq_id));
 
-        // Second alternative of second alternative
-        let seq2_children = match &arena[alt2_children[1].to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(seq2_children.len(), 2);
-        assert_eq!(
-            arena[seq2_children[0].to_index()],
-            Expr::term_descr("--color", "use markers to highlight the matching strings")
+        let color_id = alloc(
+            &mut arena,
+            Expr::term_descr("--color", "use markers to highlight the matching strings"),
         );
-        assert_eq!(arena[seq2_children[1].to_index()], Expr::nontermref("WHEN"));
+        let when_id2 = alloc(&mut arena, Expr::nontermref("WHEN"));
+        let seq2_id = alloc(&mut arena, Sequence(vec![color_id, when_id2]));
+
+        let alt2_id = alloc(&mut arena, Alternative(vec![subword_id, seq2_id]));
+
+        let alt1_id = alloc(&mut arena, Alternative(vec![help_id, alt2_id]));
+
+        let expected_expr_id = alloc(&mut arena, Sequence(vec![mygrep_id, alt1_id]));
+
+        assert!(teq(distributed_id, expected_expr_id, &arena));
     }
 
     #[test]
@@ -3693,19 +3252,14 @@ ls <FILE>;
         let mut arena: Vec<Expr> = Default::default();
         let (s, e) = expr(&mut arena, Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
-        let seq_children = match &arena[e.to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(seq_children.len(), 2);
-        assert_eq!(arena[seq_children[0].to_index()], Expr::term("cmd"));
-        let fallback_children = match &arena[seq_children[1].to_index()] {
-            Expr::Fallback(children) => children,
-            _ => panic!("Expected Fallback"),
-        };
-        assert_eq!(fallback_children.len(), 2);
-        assert_eq!(arena[fallback_children[0].to_index()], Expr::term("foo"));
-        assert_eq!(arena[fallback_children[1].to_index()], Expr::term("bar"));
+
+        let cmd_id = alloc(&mut arena, Expr::term("cmd"));
+        let foo_id = alloc(&mut arena, Expr::term("foo"));
+        let bar_id = alloc(&mut arena, Expr::term("bar"));
+        let fallback_id = alloc(&mut arena, Fallback(vec![foo_id, bar_id]));
+        let expected_expr_id = alloc(&mut arena, Sequence(vec![cmd_id, fallback_id]));
+
+        assert!(teq(e, expected_expr_id, &arena));
     }
 
     #[test]
@@ -3714,28 +3268,33 @@ ls <FILE>;
         let mut arena: Vec<Expr> = Default::default();
         let (s, e) = expr(&mut arena, Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
-        let subword_phase = match &arena[e.to_index()] {
-            Expr::Subword(phase, 0, _) => phase,
-            _ => panic!("Expected Subword"),
-        };
-        let subword_child_id = match subword_phase {
-            SubwordCompilationPhase::Expr(expr_id) => *expr_id,
-            _ => panic!("Expected SubwordCompilationPhase::Expr"),
-        };
-        let seq_children = match &arena[subword_child_id.to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(seq_children.len(), 3);
-        assert_eq!(
-            arena[seq_children[0].to_index()],
-            Command(ustr("git tag"), None, 0, ChicSpan::dummy())
+
+        let git_tag1_id = alloc(
+            &mut arena,
+            Command {
+                cmd: ustr("git tag"),
+                regex: None,
+                fallback: 0,
+                span: None,
+            },
         );
-        assert_eq!(arena[seq_children[1].to_index()], Expr::term(".."));
-        assert_eq!(
-            arena[seq_children[2].to_index()],
-            Command(ustr("git tag"), None, 0, ChicSpan::dummy())
+        let dotdot_id = alloc(&mut arena, Expr::term(".."));
+        let git_tag2_id = alloc(
+            &mut arena,
+            Command {
+                cmd: ustr("git tag"),
+                regex: None,
+                fallback: 0,
+                span: None,
+            },
         );
+        let seq_id = alloc(
+            &mut arena,
+            Sequence(vec![git_tag1_id, dotdot_id, git_tag2_id]),
+        );
+        let expected_expr_id = alloc(&mut arena, Expr::subword(seq_id));
+
+        assert!(teq(e, expected_expr_id, &arena));
     }
 
     #[test]
@@ -3744,13 +3303,12 @@ ls <FILE>;
         let mut arena: Vec<Expr> = Default::default();
         let (s, e) = expr(&mut arena, Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
-        let seq_children = match &arena[e.to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(seq_children.len(), 2);
-        assert_eq!(arena[seq_children[0].to_index()], Expr::term("cmd"));
-        assert_eq!(arena[seq_children[1].to_index()], Expr::term("foo"));
+
+        let cmd_id = alloc(&mut arena, Expr::term("cmd"));
+        let foo_id = alloc(&mut arena, Expr::term("foo"));
+        let expected_expr_id = alloc(&mut arena, Sequence(vec![cmd_id, foo_id]));
+
+        assert!(teq(e, expected_expr_id, &arena));
     }
 
     #[test]
@@ -3759,24 +3317,23 @@ ls <FILE>;
         let mut arena: Vec<Expr> = Default::default();
         let (s, e) = expr(&mut arena, Span::new(INPUT)).unwrap();
         assert!(s.is_empty(), "{:?}", s.fragment());
-        let seq_children = match &arena[e.to_index()] {
-            Expr::Sequence(children) => children,
-            _ => panic!("Expected Sequence"),
-        };
-        assert_eq!(seq_children.len(), 2);
-        assert_eq!(arena[seq_children[0].to_index()], Expr::term("cmd"));
-        assert_eq!(
-            arena[seq_children[1].to_index()],
-            Command(
-                ustr("echo foo"),
-                Some(CmdRegexDecl {
+
+        let cmd_id = alloc(&mut arena, Expr::term("cmd"));
+        let echo_id = alloc(
+            &mut arena,
+            Command {
+                cmd: ustr("echo foo"),
+                regex: Some(CmdRegexDecl {
                     bash: Some(ustr("bar")),
                     fish: Some(ustr("baz")),
-                    zsh: Some(ustr("quux"))
+                    zsh: Some(ustr("quux")),
                 }),
-                0,
-                ChicSpan::dummy(),
-            )
+                fallback: 0,
+                span: None,
+            },
         );
+        let expected_expr_id = alloc(&mut arena, Sequence(vec![cmd_id, echo_id]));
+
+        assert!(teq(e, expected_expr_id, &arena));
     }
 }

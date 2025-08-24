@@ -1135,13 +1135,12 @@ end
 
         let inputs_initializer = itertools::join(
             transitions.iter().map(|(_, state_inputs)| {
-                let cell = itertools::join(
+                itertools::join(
                     state_inputs
                         .iter()
                         .map(|literal_id| format!("{}", literal_id)),
                     " ",
-                );
-                cell
+                )
             }),
             "|",
         );

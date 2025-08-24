@@ -905,7 +905,6 @@ impl DFA {
     ) -> impl Iterator<Item = (StateId, StateId)> + '_ {
         self.iter_transitions()
             .filter_map(move |(from, input, to)| {
-                // XXX Likely wrong
                 if input.is_ambiguous(shell) {
                     Some((from, to))
                 } else {
@@ -920,7 +919,7 @@ impl DFA {
         for (_, tos) in &self.transitions {
             for (input, _) in tos {
                 let dfa = match input {
-                    Input::Subword { subdfa: dfa, .. } => dfa,
+                    Input::Subword { subdfa, .. } => subdfa,
                     Input::Nonterminal { .. } => continue,
                     Input::Command { .. } => continue,
                     Input::Literal { .. } => continue,
@@ -963,17 +962,31 @@ impl DFA {
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
+    use std::ops::Rem;
     use std::rc::Rc;
 
-    use crate::grammar::tests::arb_expr_match;
-    use crate::grammar::{ChicSpan, Expr, alloc};
+    use crate::grammar::{Expr, ExprId, SubwordCompilationPhase, alloc};
     use crate::regex::Regex;
     use Expr::*;
+    use itertools::Itertools;
+    use proptest::bits::{u64, usize};
+    use proptest::test_runner::TestRng;
 
     use super::*;
 
     use proptest::prelude::*;
-    use ustr::{UstrMap, ustr as u};
+    use ustr::UstrMap;
+
+    impl Input {
+        fn literal(s: &str) -> Self {
+            Input::Literal {
+                literal: ustr(s),
+                description: None,
+                fallback_level: 0,
+                span: None,
+            }
+        }
+    }
 
     impl Transition {
         fn new(from: StateId, input: &str, to: StateId) -> Self {
@@ -983,7 +996,7 @@ mod tests {
                     literal: ustr::ustr(input),
                     description: None,
                     fallback_level: 0,
-                    span: ChicSpan::Dummy,
+                    span: None,
                 },
                 to,
             }
@@ -1010,8 +1023,8 @@ mod tests {
                 }
 
                 for (transition_input, to) in self.iter_transitions_from(current_state) {
-                    if let Input::Subword { subdfa: dfaid, .. } = transition_input {
-                        let dfa = self.subdfa_interner.lookup(dfaid);
+                    if let Input::Subword { subdfa, .. } = transition_input {
+                        let dfa = self.subdfa_interner.lookup(subdfa);
                         if dfa.accepts_str(inputs[input_index], shell) {
                             input_index += 1;
                             current_state = to;
@@ -1077,32 +1090,273 @@ mod tests {
     const TERMINALS: &[&str] = &["foo", "bar", "--baz", "--quux"];
     const NONTERMINALS: &[&str] = &["FILE", "DIRECTORY", "PATH"];
 
+    fn arb_literal(arena: Rc<RefCell<Vec<Expr>>>, inputs: Rc<Vec<Ustr>>) -> BoxedStrategy<ExprId> {
+        (0..inputs.len())
+            .prop_map(move |index| {
+                let e = Expr::term(&inputs[index]);
+                alloc(&mut *arena.borrow_mut(), e)
+            })
+            .boxed()
+    }
+
+    fn arb_nonterminal(
+        arena: Rc<RefCell<Vec<Expr>>>,
+        nonterminals: Rc<Vec<Ustr>>,
+    ) -> BoxedStrategy<ExprId> {
+        (0..nonterminals.len())
+            .prop_map(move |index| {
+                let e = Expr::nontermref(&nonterminals[index]);
+                alloc(&mut *arena.borrow_mut(), e)
+            })
+            .boxed()
+    }
+
+    fn arb_optional(
+        arena: Rc<RefCell<Vec<Expr>>>,
+        inputs: Rc<Vec<Ustr>>,
+        nonterminals: Rc<Vec<Ustr>>,
+        remaining_depth: usize,
+        max_width: usize,
+    ) -> BoxedStrategy<ExprId> {
+        arb_expr(
+            Rc::clone(&arena),
+            inputs,
+            nonterminals,
+            remaining_depth - 1,
+            max_width,
+        )
+        .prop_map(move |e| {
+            let e = Optional(e);
+            alloc(&mut *arena.borrow_mut(), e)
+        })
+        .boxed()
+    }
+
+    fn arb_many1(
+        arena: Rc<RefCell<Vec<Expr>>>,
+        inputs: Rc<Vec<Ustr>>,
+        nonterminals: Rc<Vec<Ustr>>,
+        remaining_depth: usize,
+        max_width: usize,
+    ) -> BoxedStrategy<ExprId> {
+        arb_expr(
+            Rc::clone(&arena),
+            inputs,
+            nonterminals,
+            remaining_depth - 1,
+            max_width,
+        )
+        .prop_map(move |e| {
+            let e = Many1(e);
+            alloc(&mut *arena.borrow_mut(), e)
+        })
+        .boxed()
+    }
+
+    fn arb_sequence(
+        arena: Rc<RefCell<Vec<Expr>>>,
+        inputs: Rc<Vec<Ustr>>,
+        nonterminals: Rc<Vec<Ustr>>,
+        remaining_depth: usize,
+        max_width: usize,
+    ) -> BoxedStrategy<ExprId> {
+        (2..max_width)
+            .prop_flat_map(move |width| {
+                let e = arb_expr(
+                    Rc::clone(&arena),
+                    inputs.clone(),
+                    nonterminals.clone(),
+                    remaining_depth - 1,
+                    max_width,
+                );
+                let a = Rc::clone(&arena);
+                prop::collection::vec(e, width).prop_map(move |v| {
+                    let e = Sequence(v);
+                    alloc(&mut *a.borrow_mut(), e)
+                })
+            })
+            .boxed()
+    }
+
+    fn arb_alternative(
+        arena: Rc<RefCell<Vec<Expr>>>,
+        inputs: Rc<Vec<Ustr>>,
+        nonterminals: Rc<Vec<Ustr>>,
+        remaining_depth: usize,
+        max_width: usize,
+    ) -> BoxedStrategy<ExprId> {
+        (2..max_width)
+            .prop_flat_map(move |width| {
+                let e = arb_expr(
+                    Rc::clone(&arena),
+                    inputs.clone(),
+                    nonterminals.clone(),
+                    remaining_depth - 1,
+                    max_width,
+                );
+                let a = Rc::clone(&arena);
+                prop::collection::vec(e, width).prop_map(move |v| {
+                    let e = Alternative(v);
+                    alloc(&mut *a.borrow_mut(), e)
+                })
+            })
+            .boxed()
+    }
+
+    pub fn arb_expr(
+        arena: Rc<RefCell<Vec<Expr>>>,
+        inputs: Rc<Vec<Ustr>>,
+        nonterminals: Rc<Vec<Ustr>>,
+        remaining_depth: usize,
+        max_width: usize,
+    ) -> BoxedStrategy<ExprId> {
+        if remaining_depth <= 1 {
+            prop_oneof![
+                arb_literal(Rc::clone(&arena), Rc::clone(&inputs)),
+                arb_nonterminal(Rc::clone(&arena), nonterminals),
+            ]
+            .boxed()
+        } else {
+            prop_oneof![
+                arb_literal(Rc::clone(&arena), inputs.clone()),
+                arb_nonterminal(Rc::clone(&arena), nonterminals.clone()),
+                arb_optional(
+                    Rc::clone(&arena),
+                    inputs.clone(),
+                    nonterminals.clone(),
+                    remaining_depth,
+                    max_width
+                ),
+                arb_many1(
+                    Rc::clone(&arena),
+                    inputs.clone(),
+                    nonterminals.clone(),
+                    remaining_depth,
+                    max_width
+                ),
+                arb_sequence(
+                    Rc::clone(&arena),
+                    inputs.clone(),
+                    nonterminals.clone(),
+                    remaining_depth,
+                    max_width
+                ),
+                arb_alternative(
+                    Rc::clone(&arena),
+                    inputs,
+                    nonterminals,
+                    remaining_depth,
+                    max_width
+                ),
+            ]
+            .boxed()
+        }
+    }
+
+    pub fn do_arb_match(
+        arena: Rc<RefCell<Vec<Expr>>>,
+        expr: ExprId,
+        rng: &mut TestRng,
+        max_width: usize,
+        output: &mut Vec<Ustr>,
+    ) {
+        match &arena.borrow()[expr.to_index()] {
+            Terminal { term, .. } => output.push(*term),
+            Subword {
+                phase: SubwordCompilationPhase::Expr(e),
+                ..
+            } => {
+                let mut out: Vec<Ustr> = Default::default();
+                do_arb_match(Rc::clone(&arena), *e, rng, max_width, &mut out);
+                let joined = out.into_iter().join("");
+                output.push(ustr(&joined));
+            }
+            Subword { .. } => unreachable!(),
+            NontermRef { .. } => output.push(ustr("anything")),
+            Command { .. } => output.push(ustr("anything")),
+            Sequence(v) => {
+                for subexpr in v {
+                    do_arb_match(Rc::clone(&arena), *subexpr, rng, max_width, output);
+                }
+            }
+            Alternative(v) => {
+                let chosen_branch = rng.next_u64().rem(v.len() as u64) as usize;
+                do_arb_match(Rc::clone(&arena), v[chosen_branch], rng, max_width, output);
+            }
+            Optional(subexpr) => {
+                if rng.next_u64() % 2 == 0 {
+                    do_arb_match(Rc::clone(&arena), *subexpr, rng, max_width, output);
+                }
+            }
+            Many1(subexpr) => {
+                let n = rng.next_u64();
+                let chosen_len = n % (max_width as u64) + 1;
+                for _ in 0..chosen_len {
+                    do_arb_match(Rc::clone(&arena), *subexpr, rng, max_width, output);
+                }
+            }
+            DistributiveDescription { child, descr } => {
+                do_arb_match(Rc::clone(&arena), *child, rng, max_width, output);
+                output.push(ustr(&format!(r#""{descr}""#)));
+            }
+            Fallback(v) => {
+                let chosen_branch =
+                    usize::try_from(rng.next_u64().rem(u64::try_from(v.len()).unwrap())).unwrap();
+                do_arb_match(Rc::clone(&arena), v[chosen_branch], rng, max_width, output);
+            }
+        }
+    }
+
+    pub fn arb_match(
+        arena: Rc<RefCell<Vec<Expr>>>,
+        e: ExprId,
+        mut rng: TestRng,
+        max_width: usize,
+    ) -> (ExprId, Rc<RefCell<Vec<Expr>>>, Vec<Ustr>) {
+        let mut output: Vec<Ustr> = Default::default();
+        do_arb_match(Rc::clone(&arena), e, &mut rng, max_width, &mut output);
+        (e, arena, output)
+    }
+
+    // Produce an arbitrary sequence matching `e`.
+    pub fn arb_expr_match(
+        inputs: Rc<Vec<Ustr>>,
+        nonterminals: Rc<Vec<Ustr>>,
+        remaining_depth: usize,
+        max_width: usize,
+    ) -> BoxedStrategy<(ExprId, Rc<RefCell<Vec<Expr>>>, Vec<Ustr>)> {
+        let arena = Rc::new(RefCell::new(vec![]));
+        arb_expr(
+            Rc::clone(&arena),
+            inputs,
+            nonterminals,
+            remaining_depth,
+            max_width,
+        )
+        .prop_perturb(move |e, rng| arb_match(Rc::clone(&arena), e, rng, max_width))
+        .boxed()
+    }
+
     proptest! {
         #[test]
-        fn accepts_arb_expr_input_from_regex((expr, arena, input) in arb_expr_match(Rc::new(RefCell::new(vec![])), Rc::new(TERMINALS.iter().map(|s| u(s)).collect()), Rc::new(NONTERMINALS.iter().map(|s| u(s)).collect()), 10, 3)) {
+        fn accepts_arb_expr_input_from_regex((expr, arena, input) in arb_expr_match(Rc::new(TERMINALS.iter().map(|s| ustr(s)).collect()), Rc::new(NONTERMINALS.iter().map(|s| ustr(s)).collect()), 10, 3)) {
             // println!("{:?}", expr);
             // println!("{:?}", input);
             let specs = UstrMap::default();
             let regex = Regex::from_expr(expr, &arena.borrow(), &specs).unwrap();
             let dfa = DFA::from_regex(&regex, DFAInterner::default());
-            let input: Vec<&str> = input.iter().map(|s| {
-                let s: &str = s;
-                s
-            }).collect();
+            let input: Vec<&str> = input.iter().map(|s| s.as_str()).collect();
             prop_assert!(dfa.accepts(&input, Shell::Bash)?);
         }
 
         #[test]
-        fn minimized_dfa_equivalent_to_input_one((expr, arena, input) in arb_expr_match(Rc::new(RefCell::new(vec![])), Rc::new(TERMINALS.iter().map(|s| u(s)).collect()), Rc::new(NONTERMINALS.iter().map(|s| u(s)).collect()), 10, 3)) {
+        fn minimized_dfa_equivalent_to_input_one((expr, arena, input) in arb_expr_match(Rc::new(TERMINALS.iter().map(|s| ustr(s)).collect()), Rc::new(NONTERMINALS.iter().map(|s| ustr(s)).collect()), 10, 3)) {
             println!("{:?}", expr);
             println!("{:?}", input);
             let specs = UstrMap::default();
             let regex = Regex::from_expr(expr, &arena.borrow(), &specs).unwrap();
             let dfa = DFA::from_regex(&regex, DFAInterner::default());
-            let input: Vec<&str> = input.iter().map(|s| {
-                let s: &str = s;
-                s
-            }).collect();
+            let input: Vec<&str> = input.iter().map(|s| s.as_str()).collect();
             prop_assert!(dfa.accepts(&input, Shell::Bash)?);
             let minimal_dfa = dfa.minimize();
             prop_assert!(minimal_dfa.accepts(&input, Shell::Bash)?);
@@ -1111,76 +1365,22 @@ mod tests {
 
     #[test]
     fn engineering_a_compiler_book_dfa_minimization_example() {
-        use ustr::ustr;
+        let f = Input::literal("f");
+        let e = Input::literal("e");
+        let i = Input::literal("i");
         let dfa = {
             let starting_state = 0;
             let mut transitions: IndexMap<StateId, IndexMap<Input, StateId>> = Default::default();
-            transitions.entry(0).or_default().insert(
-                Input::Literal {
-                    literal: ustr("f"),
-                    description: None,
-                    fallback_level: 0,
-                    span: ChicSpan::dummy(),
-                },
-                1,
-            );
-            transitions.entry(1).or_default().insert(
-                Input::Literal {
-                    literal: ustr("e"),
-                    description: None,
-                    fallback_level: 0,
-                    span: ChicSpan::dummy(),
-                },
-                2,
-            );
-            transitions.entry(1).or_default().insert(
-                Input::Literal {
-                    literal: ustr("i"),
-                    description: None,
-                    fallback_level: 0,
-                    span: ChicSpan::dummy(),
-                },
-                4,
-            );
-            transitions.entry(2).or_default().insert(
-                Input::Literal {
-                    literal: ustr("e"),
-                    description: None,
-                    fallback_level: 0,
-                    span: ChicSpan::dummy(),
-                },
-                3,
-            );
-            transitions.entry(4).or_default().insert(
-                Input::Literal {
-                    literal: ustr("e"),
-                    description: None,
-                    fallback_level: 0,
-                    span: ChicSpan::dummy(),
-                },
-                5,
-            );
+            transitions.entry(0).or_default().insert(f.clone(), 1);
+            transitions.entry(1).or_default().insert(e.clone(), 2);
+            transitions.entry(1).or_default().insert(i.clone(), 4);
+            transitions.entry(2).or_default().insert(e.clone(), 3);
+            transitions
+                .entry(4)
+                .or_default()
+                .insert(Input::literal("e"), 5);
             let accepting_states = RoaringBitmap::from_iter([3, 5]);
-            let input_symbols = Rc::new(IndexSet::from_iter([
-                Input::Literal {
-                    literal: ustr("f"),
-                    description: None,
-                    fallback_level: 0,
-                    span: ChicSpan::dummy(),
-                },
-                Input::Literal {
-                    literal: ustr("e"),
-                    description: None,
-                    fallback_level: 0,
-                    span: ChicSpan::dummy(),
-                },
-                Input::Literal {
-                    literal: ustr("i"),
-                    description: None,
-                    fallback_level: 0,
-                    span: ChicSpan::dummy(),
-                },
-            ]));
+            let input_symbols = Rc::new(IndexSet::from_iter([f.clone(), e.clone(), i.clone()]));
             DFA {
                 starting_state,
                 transitions,
@@ -1192,46 +1392,10 @@ mod tests {
         let minimized = dfa.minimize();
         assert_eq!(minimized.starting_state, 0);
         assert_eq!(minimized.accepting_states, RoaringBitmap::from_iter([3]));
-        assert!(minimized.has_transition(
-            0,
-            Input::Literal {
-                literal: ustr("f"),
-                description: None,
-                fallback_level: 0,
-                span: ChicSpan::dummy(),
-            },
-            1
-        ));
-        assert!(minimized.has_transition(
-            1,
-            Input::Literal {
-                literal: ustr("e"),
-                description: None,
-                fallback_level: 0,
-                span: ChicSpan::dummy(),
-            },
-            2
-        ));
-        assert!(minimized.has_transition(
-            1,
-            Input::Literal {
-                literal: ustr("i"),
-                description: None,
-                fallback_level: 0,
-                span: ChicSpan::dummy(),
-            },
-            2
-        ));
-        assert!(minimized.has_transition(
-            2,
-            Input::Literal {
-                literal: ustr("e"),
-                description: None,
-                fallback_level: 0,
-                span: ChicSpan::dummy(),
-            },
-            3
-        ));
+        assert!(minimized.has_transition(0, f, 1));
+        assert!(minimized.has_transition(1, e.clone(), 2));
+        assert!(minimized.has_transition(1, i, 2));
+        assert!(minimized.has_transition(2, e, 3));
     }
 
     #[test]
@@ -1254,23 +1418,10 @@ mod tests {
         let many1_3_id = alloc(&mut arena, Many1(alt2_id));
         let nonterm_file4_id = alloc(&mut arena, Expr::nontermref("FILE"));
         let expr = alloc(&mut arena, Alternative(vec![many1_3_id, nonterm_file4_id]));
-        let input = [
-            u("--quux"),
-            u("--baz"),
-            u("anything"),
-            u("anything"),
-            u("foo"),
-        ];
+        let input = ["--quux", "--baz", "anything", "anything", "foo"];
         let specs = UstrMap::default();
         let regex = Regex::from_expr(expr, &arena, &specs).unwrap();
         let dfa = DFA::from_regex(&regex, DFAInterner::default());
-        let input: Vec<&str> = input
-            .iter()
-            .map(|s| {
-                let s: &str = s;
-                s
-            })
-            .collect();
         assert!(dfa.accepts(&input, Shell::Bash).unwrap());
         let minimal_dfa = dfa.minimize();
         assert!(minimal_dfa.accepts(&input, Shell::Bash).unwrap());
@@ -1289,23 +1440,11 @@ mod tests {
         let nonterm_file3_id = alloc(&mut arena, Expr::nontermref("FILE"));
         let expr = alloc(&mut arena, Alternative(vec![many1_id, nonterm_file3_id]));
         let input = [
-            u("anything"),
-            u("anything"),
-            u("anything"),
-            u("anything"),
-            u("anything"),
-            u("anything"),
+            "anything", "anything", "anything", "anything", "anything", "anything",
         ];
         let specs = UstrMap::default();
         let regex = Regex::from_expr(expr, &arena, &specs).unwrap();
         let dfa = DFA::from_regex(&regex, DFAInterner::default());
-        let input: Vec<&str> = input
-            .iter()
-            .map(|s| {
-                let s: &str = s;
-                s
-            })
-            .collect();
         assert!(dfa.accepts(&input, Shell::Bash).unwrap());
         let minimal_dfa = dfa.minimize();
         assert!(minimal_dfa.accepts(&input, Shell::Bash).unwrap());
@@ -1331,18 +1470,11 @@ mod tests {
         let many1_3_id = alloc(&mut arena, Many1(alt2_id));
 
         let expr = alloc(&mut arena, Sequence(vec![seq1_id, many1_3_id]));
-        let input = [u("anything"), u("--baz"), u("anything"), u("anything")];
+        let input = ["anything", "--baz", "anything", "anything"];
 
         let specs = UstrMap::default();
         let regex = Regex::from_expr(expr, &arena, &specs).unwrap();
         let dfa = DFA::from_regex(&regex, DFAInterner::default());
-        let input: Vec<&str> = input
-            .iter()
-            .map(|s| {
-                let s: &str = s;
-                s
-            })
-            .collect();
         assert!(dfa.accepts(&input, Shell::Bash).unwrap());
         let minimal_dfa = dfa.minimize();
         assert!(minimal_dfa.accepts(&input, Shell::Bash).unwrap());

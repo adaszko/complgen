@@ -8,7 +8,7 @@ use roaring::RoaringBitmap;
 use ustr::{Ustr, UstrMap};
 
 use crate::grammar::{
-    ChicSpan, CmdRegexDecl, DFAId, Expr, ExprId, Shell, Specialization, SubwordCompilationPhase,
+    CmdRegexDecl, DFAId, Expr, ExprId, HumanSpan, Shell, Specialization, SubwordCompilationPhase,
 };
 
 pub type Position = u32;
@@ -19,24 +19,24 @@ pub enum Input {
         literal: Ustr,
         description: Option<Ustr>,
         fallback_level: usize,
-        span: ChicSpan,
+        span: Option<HumanSpan>,
     },
     Subword {
         subdfa: DFAId,
         fallback_level: usize,
-        span: ChicSpan,
+        span: Option<HumanSpan>,
     },
     Nonterminal {
         nonterm: Ustr,
         spec: Option<Specialization>,
         fallback_level: usize,
-        span: ChicSpan,
+        span: Option<HumanSpan>,
     },
     Command {
         cmd: Ustr,
         regex: Option<CmdRegexDecl>,
         fallback_level: usize,
-        span: ChicSpan,
+        span: Option<HumanSpan>,
     },
 }
 
@@ -74,7 +74,7 @@ impl Input {
         }
     }
 
-    pub fn get_span(&self) -> ChicSpan {
+    pub fn get_span(&self) -> Option<HumanSpan> {
         match self {
             Self::Literal { span, .. } => *span,
             Self::Subword { span, .. } => *span,
@@ -320,7 +320,12 @@ fn do_from_expr(
     input_from_position: &mut Vec<Input>,
 ) -> usize {
     match &expr_arena[e.to_index()] {
-        Expr::Terminal(term, description, level, span) => {
+        Expr::Terminal {
+            term,
+            descr: description,
+            fallback: level,
+            span,
+        } => {
             let result = RegexNode::Terminal(
                 *term,
                 *level,
@@ -336,7 +341,11 @@ fn do_from_expr(
             symbols.insert(input);
             alloc(arena, result)
         }
-        Expr::Subword(subword, fallback_level, span) => {
+        Expr::Subword {
+            phase: subword,
+            fallback: fallback_level,
+            span,
+        } => {
             let result = RegexNode::Subword(Position::try_from(input_from_position.len()).unwrap());
             let dfa = match subword {
                 SubwordCompilationPhase::DFA(dfa) => dfa,
@@ -351,7 +360,11 @@ fn do_from_expr(
             symbols.insert(input);
             alloc(arena, result)
         }
-        Expr::NontermRef(name, fallback_level, span) => {
+        Expr::NontermRef {
+            nonterm: name,
+            fallback: fallback_level,
+            span,
+        } => {
             let result =
                 RegexNode::Nonterminal(Position::try_from(input_from_position.len()).unwrap());
             let specialization = specs.get(name);
@@ -365,7 +378,12 @@ fn do_from_expr(
             symbols.insert(input);
             alloc(arena, result)
         }
-        Expr::Command(code, cmd_regex_decl, fallback_level, span) => {
+        Expr::Command {
+            cmd: code,
+            regex: cmd_regex_decl,
+            fallback: fallback_level,
+            span,
+        } => {
             let result = RegexNode::Command(
                 *code,
                 Position::try_from(input_from_position.len()).unwrap(),
@@ -440,7 +458,7 @@ fn do_from_expr(
             let result = RegexNode::Cat(subregex_id, starid);
             alloc(arena, result)
         }
-        Expr::DistributiveDescription(_, _) => unreachable!(
+        Expr::DistributiveDescription { child: _, descr: _ } => unreachable!(
             "DistributiveDescription Expr type should have been erased before compilation to regex"
         ),
         Expr::Fallback(subexprs) => {
@@ -578,7 +596,7 @@ fn do_check_clashing_variants(
         return Ok(());
     }
 
-    let mut inputs: Vec<(Ustr, Option<Ustr>, ChicSpan)> = unvisited
+    let mut inputs: Vec<(Ustr, Option<Ustr>, Option<HumanSpan>)> = unvisited
         .iter()
         .filter_map(|pos| input_from_position.get(pos as usize).cloned())
         .filter_map(|inp| match inp {
