@@ -61,7 +61,7 @@ directories listed in `$fpath` variable.
 ## Installation
 
 ```sh
-cargo install --git https://github.com/adaszko/complgen --tag v0.4.0 complgen
+cargo install --git https://github.com/adaszko/complgen --tag v0.5.0 complgen
 ```
 
 ## Syntax
