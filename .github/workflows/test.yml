@@ -1,4 +1,4 @@
-name: Rust
+name: Test
 
 on:
   push:
@@ -10,15 +10,21 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  build:
-
+  cargo-test:
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v3
-    - name: Build
-      run: cargo build
-    - name: Run tests
-      run: cargo test
-    - name: Run e2e tests
-      run: ./run-e2e-tests.bash
+    - uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+    - run: cargo test
+
+  e2e-test:
+    needs: cargo-test
+    runs-on: ubuntu-latest
+    steps:
+    - run: ./run-e2e-tests.bash
