@@ -1906,7 +1906,6 @@ fn get_nonterminals_resolution_order(
             .unwrap_or(true)
     });
 
-    log::debug!("nonterminals expansion order: {:?}", result);
     Ok(result)
 }
 

@@ -263,7 +263,6 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
         eprintln!("warning: unused nonterminal(s): {}", joined);
     }
 
-    log::debug!("Grammar -> Regex");
     let regex = Regex::from_expr(validated.expr, &validated.arena, &validated.specializations)?;
 
     if let Err(e) = regex.ensure_ambiguous_inputs_tail_only(shell) {
@@ -274,10 +273,8 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
         handle_validation_error(e, &input)?;
     }
 
-    log::debug!("Regex -> DFA");
     let dfa = DFA::from_regex(&regex, validated.subdfa_interner);
 
-    log::debug!("Minimizing DFA");
     let dfa = dfa.minimize();
 
     if let Some(dot_file_path) = &args.dfa {
@@ -324,7 +321,6 @@ fn scrape() -> anyhow::Result<()> {
 }
 
 fn main() -> anyhow::Result<()> {
-    env_logger::init();
     let args = Cli::parse();
 
     if args.version {
