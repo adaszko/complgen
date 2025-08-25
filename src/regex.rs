@@ -512,7 +512,7 @@ fn do_ensure_ambiguous_inputs_tail_only(
     for inp in inputs {
         if inp.is_ambiguous(shell) {
             if let Some(prev_inp) = prev_ambiguous {
-                return Err(Error::AmbiguousMatchable(prev_inp, inp));
+                return Err(Error::AmbiguousMatchable(Box::new(prev_inp), Box::new(inp)));
             }
             prev_ambiguous = Some(inp);
         }
@@ -557,11 +557,14 @@ fn do_ensure_ambiguous_inputs_tail_only_subword(
     let mut prev_ambiguous: Option<Input> = None;
     for inp in inputs {
         if let Some(ref prev_inp) = path_prev_ambiguous {
-            return Err(Error::AmbiguousMatchable(prev_inp.clone(), inp));
+            return Err(Error::AmbiguousMatchable(
+                Box::new(prev_inp.clone()),
+                Box::new(inp),
+            ));
         }
 
         if let Some(prev_inp) = prev_ambiguous {
-            return Err(Error::AmbiguousMatchable(prev_inp, inp));
+            return Err(Error::AmbiguousMatchable(Box::new(prev_inp), Box::new(inp)));
         }
         if inp.is_ambiguous(shell) {
             prev_ambiguous = Some(inp);

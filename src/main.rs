@@ -59,7 +59,7 @@ fn get_file_or_stdin(path: &str) -> anyhow::Result<Box<dyn Read>> {
 }
 
 fn handle_parse_error(input: &str) -> anyhow::Result<Grammar> {
-    match Grammar::parse(&input) {
+    match Grammar::parse(input) {
         Ok(g) => Ok(g),
         Err(e) => {
             eprintln!("{}", e.to_string());
@@ -202,7 +202,7 @@ fn handle_validation_error(e: Error, input: &str) -> anyhow::Result<ValidGrammar
             exit(1);
         }
         e => {
-            eprintln!("{}", e.to_string());
+            eprintln!("{}", e);
             exit(1);
         }
     }
@@ -223,7 +223,7 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
     };
 
     let input = {
-        let mut usage_file = get_file_or_stdin(&usage_file_path)?;
+        let mut usage_file = get_file_or_stdin(usage_file_path)?;
         let mut input = String::default();
         usage_file
             .read_to_string(&mut input)

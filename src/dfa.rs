@@ -73,11 +73,8 @@ fn dfa_from_regex(regex: &Regex, subdfa_interner: DFAInterner) -> DFA {
     let mut dtran: IndexMap<StateId, IndexMap<Input, StateId>> = Default::default();
     let mut unmarked_states: HashSet<BTreeSet<Position>> = Default::default();
     unmarked_states.insert(combined_starting_state.clone());
-    loop {
-        let combined_state = match unmarked_states.iter().next() {
-            Some(state) => state.clone(),
-            None => break,
-        };
+    while let Some(state) = unmarked_states.iter().next() {
+        let combined_state = state.clone();
         unmarked_states.remove(&combined_state);
         let from_combined_state_id = *dstates.get(&combined_state).unwrap();
         let from_entry = dtran.entry(from_combined_state_id).or_default();
@@ -405,11 +402,8 @@ fn do_minimize(dfa: DFA) -> DFA {
     };
     let mut worklist = partitions.clone();
     let transitions_image = make_transitions_image(&dfa.transitions, Rc::clone(&dfa.input_symbols));
-    loop {
-        let group_id = match worklist.iter().next() {
-            Some(group_id) => *group_id,
-            None => break,
-        };
+    while let Some(group_id) = worklist.iter().next() {
+        let group_id = *group_id;
         worklist.remove(&group_id);
         let group = pool.lookup(group_id).unwrap();
         let group_min = group.min().unwrap();

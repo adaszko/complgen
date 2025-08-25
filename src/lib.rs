@@ -35,7 +35,7 @@ pub enum Error {
     NonCommandSpecialization(Ustr, Option<Ustr>),
 
     #[error("Ambiguity in matching: {:?} {:?}", .0, .1)]
-    AmbiguousMatchable(Input, Input),
+    AmbiguousMatchable(Box<Input>, Box<Input>),
 
     #[error("Clashing variants: {:?} {:?}", .0, .1)]
     ClashingVariants(Option<HumanSpan>, Option<HumanSpan>),

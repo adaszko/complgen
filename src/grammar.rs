@@ -456,8 +456,8 @@ fn description(input: Span) -> IResult<Span, String> {
     Ok((input, descr))
 }
 
-fn terminal_opt_description_expr<'a, 's>(
-    arena: &'a mut Vec<Expr>,
+fn terminal_opt_description_expr<'s>(
+    arena: &mut Vec<Expr>,
     input: Span<'s>,
 ) -> IResult<Span<'s>, ExprId> {
     let (after, term) = terminal(input)?;
@@ -479,7 +479,7 @@ fn nonterm(input: Span) -> IResult<Span, Span> {
     Ok((input, name))
 }
 
-fn nonterm_expr<'a, 's>(arena: &'a mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
+fn nonterm_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
     let (after, nonterm) = context("nonterminal", nonterm)(input)?;
     let diagnostic_span = HumanSpan::new(input, after);
     let e = Expr::NontermRef {
@@ -498,7 +498,7 @@ fn triple_bracket_command(input: Span) -> IResult<Span, Span> {
     Ok((input, Span::new(cmd.into_fragment().trim())))
 }
 
-fn command_expr<'a, 's>(arena: &'a mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
+fn command_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
     let (after, cmd) = triple_bracket_command(input)?;
     let command_span = HumanSpan::new(input, after);
     let e = Expr::Command {
@@ -546,8 +546,8 @@ fn cmd_regex_decl(mut input: Span) -> IResult<Span, CmdRegexDecl> {
     Ok((input, spec))
 }
 
-fn nontail_command_expr<'a, 's>(
-    arena: &'a mut Vec<Expr>,
+fn nontail_command_expr<'s>(
+    arena: &mut Vec<Expr>,
     mut input: Span<'s>,
 ) -> IResult<Span<'s>, ExprId> {
     let (after, cmd) = triple_bracket_command(input)?;
@@ -564,7 +564,7 @@ fn nontail_command_expr<'a, 's>(
     Ok((input, id))
 }
 
-fn optional_expr<'a, 's>(arena: &'a mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
+fn optional_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
     let (input, _) = char('[')(input)?;
     let (input, _) = multiblanks0(input)?;
     let (input, expr) = expr(arena, input)?;
@@ -574,10 +574,7 @@ fn optional_expr<'a, 's>(arena: &'a mut Vec<Expr>, input: Span<'s>) -> IResult<S
     Ok((input, id))
 }
 
-fn parenthesized_expr<'a, 's>(
-    arena: &'a mut Vec<Expr>,
-    input: Span<'s>,
-) -> IResult<Span<'s>, ExprId> {
+fn parenthesized_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
     let (input, _) = char('(')(input)?;
     let (input, _) = multiblanks0(input)?;
     let (input, e) = expr(arena, input)?;
@@ -592,7 +589,7 @@ fn many1_tag(input: Span) -> IResult<Span, ()> {
     Ok((input, ()))
 }
 
-fn unary_expr<'a, 's>(arena: &'a mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
+fn unary_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
     let (input, e) = 'alt: {
         if let Ok((input, e)) = nonterm_expr(arena, input) {
             break 'alt (input, e);
@@ -626,10 +623,7 @@ fn unary_expr<'a, 's>(arena: &'a mut Vec<Expr>, input: Span<'s>) -> IResult<Span
     Ok((input, e))
 }
 
-fn subword_sequence_expr<'a, 's>(
-    arena: &'a mut Vec<Expr>,
-    input: Span<'s>,
-) -> IResult<Span<'s>, ExprId> {
+fn subword_sequence_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
     let (mut after, left) = unary_expr(arena, input)?;
     let mut factors: Vec<ExprId> = vec![left];
     while let Ok((rest, right)) = unary_expr(arena, after) {
@@ -656,8 +650,8 @@ fn subword_sequence_expr<'a, 's>(
     Ok((after, result))
 }
 
-fn subword_sequence_expr_opt_description<'a, 's>(
-    arena: &'a mut Vec<Expr>,
+fn subword_sequence_expr_opt_description<'s>(
+    arena: &mut Vec<Expr>,
     input: Span<'s>,
 ) -> IResult<Span<'s>, ExprId> {
     let (input, expr_id) = subword_sequence_expr(arena, input)?;
@@ -675,7 +669,7 @@ fn subword_sequence_expr_opt_description<'a, 's>(
     Ok((input, result))
 }
 
-fn sequence_expr<'a, 's>(arena: &'a mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
+fn sequence_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
     let (mut input, left) = subword_sequence_expr_opt_description(arena, input)?;
     let mut factors: Vec<ExprId> = vec![left];
     while let Ok((rest, right)) = preceded(multiblanks1, |i| {
@@ -693,10 +687,7 @@ fn sequence_expr<'a, 's>(arena: &'a mut Vec<Expr>, input: Span<'s>) -> IResult<S
     Ok((input, result))
 }
 
-fn do_alternative_expr<'a, 's>(
-    arena: &'a mut Vec<Expr>,
-    input: Span<'s>,
-) -> IResult<Span<'s>, ExprId> {
+fn do_alternative_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
     let (input, _) = multiblanks0(input)?;
     let (input, _) = char('|')(input)?;
     let (input, _) = multiblanks0(input)?;
@@ -704,10 +695,7 @@ fn do_alternative_expr<'a, 's>(
     Ok((input, right))
 }
 
-fn alternative_expr<'a, 's>(
-    arena: &'a mut Vec<Expr>,
-    input: Span<'s>,
-) -> IResult<Span<'s>, ExprId> {
+fn alternative_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
     let (mut input, left) = sequence_expr(arena, input)?;
     let mut elems: Vec<ExprId> = vec![left];
     while let Ok((rest, right)) = do_alternative_expr(arena, input) {
@@ -722,10 +710,7 @@ fn alternative_expr<'a, 's>(
     Ok((input, result))
 }
 
-fn do_fallback_expr<'a, 's>(
-    arena: &'a mut Vec<Expr>,
-    input: Span<'s>,
-) -> IResult<Span<'s>, ExprId> {
+fn do_fallback_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
     let (input, _) = multiblanks0(input)?;
     let (input, _) = tag("||")(input)?;
     let (input, _) = multiblanks0(input)?;
@@ -733,7 +718,7 @@ fn do_fallback_expr<'a, 's>(
     Ok((input, right))
 }
 
-fn fallback_expr<'a, 's>(arena: &'a mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
+fn fallback_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
     let (mut input, left) = alternative_expr(arena, input)?;
     let mut fallbacks: Vec<ExprId> = vec![left];
     while let Ok((rest, right)) = do_fallback_expr(arena, input) {
@@ -748,7 +733,7 @@ fn fallback_expr<'a, 's>(arena: &'a mut Vec<Expr>, input: Span<'s>) -> IResult<S
     Ok((input, result))
 }
 
-fn expr<'a, 's>(arena: &'a mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
+fn expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
     fallback_expr(arena, input)
 }
 
@@ -765,7 +750,7 @@ pub enum Statement {
     },
 }
 
-fn call_variant<'a, 's>(arena: &'a mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, Statement> {
+fn call_variant<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, Statement> {
     let (input, name) = terminal(input)?;
     let (input, _) = multiblanks1(input)?;
     let (input, expr) = expr(arena, input)?;
@@ -799,8 +784,8 @@ fn nonterm_def(input: Span) -> IResult<Span, (Span, Option<Span>)> {
     fail(input)
 }
 
-fn nonterm_def_statement<'a, 's>(
-    arena: &'a mut Vec<Expr>,
+fn nonterm_def_statement<'s>(
+    arena: &mut Vec<Expr>,
     input: Span<'s>,
 ) -> IResult<Span<'s>, Statement> {
     let (input, (name, shell)) = nonterm_def(input)?;
@@ -820,7 +805,7 @@ fn nonterm_def_statement<'a, 's>(
     Ok((input, stmt))
 }
 
-fn statement<'a, 's>(arena: &'a mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, Statement> {
+fn statement<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, Statement> {
     let (input, stmt) = 'alt: {
         if let Ok((input, stmt)) = call_variant(arena, input) {
             break 'alt (input, stmt);
@@ -1616,7 +1601,7 @@ fn do_check_subword_spaces(
                 nonterm_expn_trace.push(span);
             }
             do_check_subword_spaces(arena, *expn, nonterms, nonterm_expn_trace, within_subword)?;
-            if let Some(_) = *span {
+            if span.is_some() {
                 nonterm_expn_trace.pop();
             }
             Ok(())
