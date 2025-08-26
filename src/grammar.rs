@@ -96,7 +96,7 @@ pub enum Expr {
     // `{{{ ls }}}@bash"foo"@fish"bar"`
     Command {
         cmd: Ustr,
-        regex: Option<CmdRegexDecl>,
+        regex: Option<CmdRegex>,
         fallback: usize,
         span: Option<HumanSpan>,
     },
@@ -134,7 +134,7 @@ pub enum Expr {
 
 // Invariant: At least one field must be Some(_)
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct CmdRegexDecl {
+pub struct CmdRegex {
     pub bash: Option<Ustr>,
     pub fish: Option<Ustr>,
     pub zsh: Option<Ustr>,
@@ -147,7 +147,7 @@ pub enum Shell {
     Zsh,
 }
 
-impl CmdRegexDecl {
+impl CmdRegex {
     pub fn matches_anything(&self, shell: Shell) -> bool {
         match shell {
             Shell::Bash => self.bash.is_none(),
@@ -169,37 +169,39 @@ impl std::fmt::Debug for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Subword {
-                phase: subword,
-                fallback: level,
-                ..
-            } => f.write_fmt(format_args!(r#"Subword({subword:?}, {level})"#)),
+                phase, fallback, ..
+            } => f.write_fmt(format_args!(r#"Subword({phase:?}, {fallback})"#)),
             Expr::Terminal {
                 term,
                 descr: Some(descr),
-                fallback: level,
+                fallback,
                 ..
             } => f.write_fmt(format_args!(
-                r#"Terminal(ustr(\"{term}\"), Some(ustr(\"{}\"))), {level})"#,
+                r#"Terminal(ustr(\"{term}\"), Some(ustr(\"{}\"))), {fallback})"#,
                 descr
             )),
             Expr::Terminal {
                 term,
                 descr: None,
-                fallback: level,
+                fallback,
                 ..
-            } => f.write_fmt(format_args!(r#"Terminal(ustr(\"{term}\"), None, {level})"#)),
+            } => f.write_fmt(format_args!(
+                r#"Terminal(ustr(\"{term}\"), None, {fallback})"#
+            )),
             Expr::NontermRef {
                 nonterm,
-                fallback: level,
+                fallback,
                 span: _,
-            } => f.write_fmt(format_args!(r#"Nonterminal(ustr(\"{nonterm}\"), {level})"#)),
+            } => f.write_fmt(format_args!(
+                r#"Nonterminal(ustr(\"{nonterm}\"), {fallback})"#
+            )),
             Self::Command {
                 cmd,
                 regex,
-                fallback: level,
+                fallback,
                 span,
             } => f.write_fmt(format_args!(
-                r#"Command(ustr({cmd:?}), {regex:?}, {level}, {span:?})"#
+                r#"Command(ustr({cmd:?}), {regex:?}, {fallback}, {span:?})"#
             )),
             Self::Sequence(arg0) => f.write_fmt(format_args!(r#"Sequence(vec!{:?})"#, arg0)),
             Self::Alternative(arg0) => f.write_fmt(format_args!(r#"Alternative(vec!{:?})"#, arg0)),
@@ -221,8 +223,8 @@ pub fn alloc<T>(arena: &mut Vec<T>, elem: T) -> ExprId {
 
 fn railroad_node_from_expr(arena: &[Expr], expr_id: ExprId) -> Box<dyn railroad::Node> {
     match &arena[expr_id.to_index()] {
-        Expr::Subword { phase: subword, .. } => {
-            let expr = match subword {
+        Expr::Subword { phase, .. } => {
+            let expr = match phase {
                 SubwordCompilationPhase::Expr(expr) => *expr,
                 SubwordCompilationPhase::DFA(_) => unreachable!(),
             };
@@ -258,12 +260,9 @@ fn railroad_node_from_expr(arena: &[Expr], expr_id: ExprId) -> Box<dyn railroad:
             let subnode = railroad_node_from_expr(arena, *subexpr);
             Box::new(railroad::Repeat::new(subnode, Box::new(railroad::Empty)))
         }
-        Expr::DistributiveDescription {
-            child: subexpr,
-            descr: description,
-        } => {
-            let inner = railroad_node_from_expr(arena, *subexpr);
-            let label = railroad::Comment::new(description.to_string());
+        Expr::DistributiveDescription { child, descr } => {
+            let inner = railroad_node_from_expr(arena, *child);
+            let label = railroad::Comment::new(descr.to_string());
             Box::new(railroad::LabeledBox::new(inner, label))
         }
         Expr::Fallback(subexprs) => {
@@ -522,8 +521,8 @@ fn at_shell_regex(input: Span) -> IResult<Span, (String, String)> {
     Ok((input, (shell, regex)))
 }
 
-fn cmd_regex_decl(mut input: Span) -> IResult<Span, CmdRegexDecl> {
-    let mut spec = CmdRegexDecl::default();
+fn cmd_regex_decl(mut input: Span) -> IResult<Span, CmdRegex> {
+    let mut spec = CmdRegex::default();
     while let Ok((rest, (shell, regex))) = at_shell_regex(input) {
         match shell.as_ref() {
             "bash" => spec.bash = Some(ustr(regex.as_ref())),
@@ -534,7 +533,7 @@ fn cmd_regex_decl(mut input: Span) -> IResult<Span, CmdRegexDecl> {
         input = rest;
     }
 
-    if let CmdRegexDecl {
+    if let CmdRegex {
         bash: None,
         fish: None,
         zsh: None,
@@ -1272,14 +1271,9 @@ fn do_propagate_fallback_levels(
     fallback_level: usize,
 ) -> ExprId {
     match arena[expr_id.to_index()].clone() {
+        Expr::Terminal { fallback, .. } if fallback == fallback_level => expr_id,
         Expr::Terminal {
-            fallback: level, ..
-        } if level == fallback_level => expr_id,
-        Expr::Terminal {
-            term,
-            descr,
-            fallback: _,
-            span,
+            term, descr, span, ..
         } => alloc(
             arena,
             Expr::Terminal {
@@ -2218,7 +2212,7 @@ pub mod tests {
             &mut arena,
             Command {
                 cmd: ustr("foo"),
-                regex: Some(CmdRegexDecl {
+                regex: Some(CmdRegex {
                     bash: Some(ustr("bar")),
                     fish: None,
                     zsh: None,
@@ -3307,7 +3301,7 @@ ls <FILE>;
             &mut arena,
             Command {
                 cmd: ustr("echo foo"),
-                regex: Some(CmdRegexDecl {
+                regex: Some(CmdRegex {
                     bash: Some(ustr("bar")),
                     fish: Some(ustr("baz")),
                     zsh: Some(ustr("quux")),

@@ -3,7 +3,7 @@ use std::io::Write;
 use crate::Result;
 use crate::StateId;
 use crate::dfa::DFA;
-use crate::grammar::CmdRegexDecl;
+use crate::grammar::CmdRegex;
 use crate::grammar::Shell;
 use crate::grammar::Specialization;
 use crate::regex::Input;
@@ -354,7 +354,7 @@ pub fn write_subword_fn<W: Write>(
             Input::Command {
                 cmd,
                 regex:
-                    Some(CmdRegexDecl {
+                    Some(CmdRegex {
                         bash: Some(bash_regex),
                         ..
                     }),
@@ -481,7 +481,7 @@ pub fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
             }
             Input::Command { cmd, regex, .. } => {
                 id_from_cmd.insert(*cmd);
-                if let Some(CmdRegexDecl {
+                if let Some(CmdRegex {
                     bash: Some(bash_regex),
                     ..
                 }) = regex
@@ -506,7 +506,7 @@ pub fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
                         }
                         Input::Command { cmd, regex, .. } => {
                             id_from_cmd.insert(*cmd);
-                            if let Some(CmdRegexDecl {
+                            if let Some(CmdRegex {
                                 bash: Some(bash_regex),
                                 ..
                             }) = regex
@@ -724,7 +724,7 @@ fi
             Input::Command {
                 cmd,
                 regex:
-                    Some(CmdRegexDecl {
+                    Some(CmdRegex {
                         bash: Some(bash_regex),
                         ..
                     }),

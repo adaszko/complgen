@@ -8,7 +8,7 @@ use roaring::RoaringBitmap;
 use ustr::{Ustr, UstrMap};
 
 use crate::grammar::{
-    CmdRegexDecl, DFAId, Expr, ExprId, HumanSpan, Shell, Specialization, SubwordCompilationPhase,
+    CmdRegex, DFAId, Expr, ExprId, HumanSpan, Shell, Specialization, SubwordCompilationPhase,
 };
 
 pub type Position = u32;
@@ -34,7 +34,7 @@ pub enum Input {
     },
     Command {
         cmd: Ustr,
-        regex: Option<CmdRegexDecl>,
+        regex: Option<CmdRegex>,
         fallback_level: usize,
         span: Option<HumanSpan>,
     },
@@ -87,14 +87,9 @@ impl Input {
 impl std::fmt::Display for Input {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Subword {
-                subdfa: subword, ..
-            } => write!(f, r#"{subword:?}"#),
+            Self::Subword { subdfa, .. } => write!(f, r#"{subdfa:?}"#),
             Self::Literal { literal, .. } => write!(f, r#"{literal}"#),
-            Self::Nonterminal {
-                nonterm: nonterminal,
-                ..
-            } => write!(f, r#"<{nonterminal}>"#),
+            Self::Nonterminal { nonterm, .. } => write!(f, r#"<{nonterm}>"#),
             Self::Command { cmd: command, .. } => write!(f, r#"{{{{{{ {command} }}}}}}"#),
         }
     }
@@ -342,18 +337,18 @@ fn do_from_expr(
             alloc(arena, result)
         }
         Expr::Subword {
-            phase: subword,
-            fallback: fallback_level,
+            phase,
+            fallback,
             span,
         } => {
             let result = RegexNode::Subword(Position::try_from(input_from_position.len()).unwrap());
-            let dfa = match subword {
+            let dfa = match phase {
                 SubwordCompilationPhase::DFA(dfa) => dfa,
                 SubwordCompilationPhase::Expr(_) => unreachable!(),
             };
             let input = Input::Subword {
                 subdfa: *dfa,
-                fallback_level: *fallback_level,
+                fallback_level: *fallback,
                 span: *span,
             };
             input_from_position.push(input.clone());
@@ -361,17 +356,17 @@ fn do_from_expr(
             alloc(arena, result)
         }
         Expr::NontermRef {
-            nonterm: name,
-            fallback: fallback_level,
+            nonterm,
+            fallback,
             span,
         } => {
             let result =
                 RegexNode::Nonterminal(Position::try_from(input_from_position.len()).unwrap());
-            let specialization = specs.get(name);
+            let specialization = specs.get(nonterm);
             let input = Input::Nonterminal {
-                nonterm: *name,
+                nonterm: *nonterm,
                 spec: specialization.copied(),
-                fallback_level: *fallback_level,
+                fallback_level: *fallback,
                 span: *span,
             };
             input_from_position.push(input.clone());
@@ -379,19 +374,17 @@ fn do_from_expr(
             alloc(arena, result)
         }
         Expr::Command {
-            cmd: code,
-            regex: cmd_regex_decl,
-            fallback: fallback_level,
+            cmd,
+            regex,
+            fallback,
             span,
         } => {
-            let result = RegexNode::Command(
-                *code,
-                Position::try_from(input_from_position.len()).unwrap(),
-            );
+            let result =
+                RegexNode::Command(*cmd, Position::try_from(input_from_position.len()).unwrap());
             let input = Input::Command {
-                cmd: *code,
-                regex: *cmd_regex_decl,
-                fallback_level: *fallback_level,
+                cmd: *cmd,
+                regex: *regex,
+                fallback_level: *fallback,
                 span: *span,
             };
             input_from_position.push(input.clone());

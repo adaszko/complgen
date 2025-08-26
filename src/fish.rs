@@ -1,7 +1,7 @@
 use std::io::Write;
 
 use crate::dfa::DFA;
-use crate::grammar::{CmdRegexDecl, Shell, Specialization};
+use crate::grammar::{CmdRegex, Shell, Specialization};
 use crate::regex::Input;
 use crate::{Result, StateId};
 use hashbrown::HashMap;
@@ -507,7 +507,7 @@ pub fn write_subword_fn<W: Write>(
             Input::Command {
                 cmd,
                 regex:
-                    Some(CmdRegexDecl {
+                    Some(CmdRegex {
                         fish: Some(fish_regex),
                         ..
                     }),
@@ -821,7 +821,7 @@ pub fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
             }
             Input::Command { cmd, regex, .. } => {
                 id_from_cmd.insert(*cmd);
-                if let Some(CmdRegexDecl {
+                if let Some(CmdRegex {
                     fish: Some(fish_regex),
                     ..
                 }) = regex
@@ -846,7 +846,7 @@ pub fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
                         }
                         Input::Command { cmd, regex, .. } => {
                             id_from_cmd.insert(*cmd);
-                            if let Some(CmdRegexDecl {
+                            if let Some(CmdRegex {
                                 fish: Some(fish_regex),
                                 ..
                             }) = regex
@@ -1089,7 +1089,7 @@ end
             Input::Command {
                 cmd,
                 regex:
-                    Some(CmdRegexDecl {
+                    Some(CmdRegex {
                         fish: Some(fish_regex),
                         ..
                     }),

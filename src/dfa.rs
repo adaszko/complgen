@@ -6,7 +6,7 @@ use roaring::{MultiOps, RoaringBitmap};
 use ustr::{Ustr, ustr};
 
 use crate::StateId;
-use crate::grammar::{CmdRegexDecl, DFAId, DFAInterner, Shell};
+use crate::grammar::{CmdRegex, DFAId, DFAInterner, Shell};
 use crate::regex::{Input, Position, Regex};
 
 // Every state in a DFA is formally defined to have a transition on *every* input symbol.  In
@@ -778,14 +778,14 @@ impl DFA {
                 Input::Command {
                     cmd: _,
                     regex:
-                        Some(CmdRegexDecl {
+                        Some(CmdRegex {
                             bash: Some(regex), ..
                         }),
                     ..
                 } => Some((*regex, *to)),
                 Input::Command { regex: None, .. } => None,
                 Input::Command {
-                    regex: Some(CmdRegexDecl { bash: None, .. }),
+                    regex: Some(CmdRegex { bash: None, .. }),
                     ..
                 } => None,
                 Input::Literal { .. } => None,
@@ -807,14 +807,14 @@ impl DFA {
                 Input::Command {
                     cmd: _,
                     regex:
-                        Some(CmdRegexDecl {
+                        Some(CmdRegex {
                             fish: Some(regex), ..
                         }),
                     ..
                 } => Some((*regex, *to)),
                 Input::Command { regex: None, .. } => None,
                 Input::Command {
-                    regex: Some(CmdRegexDecl { fish: None, .. }),
+                    regex: Some(CmdRegex { fish: None, .. }),
                     ..
                 } => None,
                 Input::Literal { .. } => None,
@@ -836,14 +836,14 @@ impl DFA {
                 Input::Command {
                     cmd: _,
                     regex:
-                        Some(CmdRegexDecl {
+                        Some(CmdRegex {
                             zsh: Some(regex), ..
                         }),
                     ..
                 } => Some((*regex, *to)),
                 Input::Command { regex: None, .. } => None,
                 Input::Command {
-                    regex: Some(CmdRegexDecl { zsh: None, .. }),
+                    regex: Some(CmdRegex { zsh: None, .. }),
                     ..
                 } => None,
                 Input::Literal { .. } => None,
