@@ -1,7 +1,7 @@
 ## Value Proposition
 
-`complgen` generates completion scripts for bash/fish/zsh from a man-page/EBNF-like grammar.  The resulting
-standalone scripts require only the target shell to be present.  See [examples](examples/).
+`complgen` compiles man-page/EBNF-like grammars into standalone completion scripts.  See
+[examples](examples/).
 
 ## Demo
 
@@ -119,13 +119,13 @@ directory which is too specific to be generally useful.
 These nonterminals can still be defined in the grammar in the usual way (`<PATH> ::= ...`), in which case
 their predefined meaning gets overriden.
 
-### Completion descriptions (fish/zsh only)
+### Descriptions (fish/zsh only)
 
 If a literal is immediately followed with a quoted string, it's going to appear as a hint to the user at
 completion time.  E.g. the grammar:
 
 ```sh
-grep --extended-regexp "PATTERNS are extended regular expressions" | --exclude  (skip files that match GLOB)
+grep --extended-regexp "PATTERNS are extended regular expressions" | --exclude  "skip files that match GLOB";
 ```
 
 results in something like this under fish (and zsh):
@@ -160,10 +160,10 @@ cargo {{{ rustup toolchain list | cut -d' ' -f1 | grep "^$1" | sed 's/^/+/' }}};
 Note that in general, it's best to leave the filtering up to the executing shell since it may be configured to
 perform some non-standard filtering.  zsh for example is capable of expanding `/u/l/b` to `/usr/local/bin`.
 
-##### Completion descriptions
+##### Descriptions
 
 Externals commands are also assumed to produce descriptions similar to those described in the [section
-above](#descriptions-aka-completion-hints).  Their expected stdout format is a sequence of lines of the form
+above](#descriptions).  Their expected stdout format is a sequence of lines of the form
 
 ```
 COMPLETION\tDESCRIPTION
