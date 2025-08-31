@@ -191,9 +191,9 @@ impl std::fmt::Debug for Expr {
             Expr::NontermRef {
                 nonterm,
                 fallback,
-                span: _,
+                span,
             } => f.write_fmt(format_args!(
-                r#"Nonterminal(ustr(\"{nonterm}\"), {fallback})"#
+                r#"Nonterminal(ustr(\"{nonterm}\"), {fallback}, {span:?})"#
             )),
             Self::Command {
                 cmd,
@@ -203,14 +203,20 @@ impl std::fmt::Debug for Expr {
             } => f.write_fmt(format_args!(
                 r#"Command(ustr({cmd:?}), {regex:?}, {fallback}, {span:?})"#
             )),
-            Self::Sequence(arg0) => f.write_fmt(format_args!(r#"Sequence(vec!{:?})"#, arg0)),
-            Self::Alternative(arg0) => f.write_fmt(format_args!(r#"Alternative(vec!{:?})"#, arg0)),
-            Self::Optional(arg0) => f.write_fmt(format_args!(r#"Optional({:?})"#, arg0)),
-            Self::Many1(arg0) => f.write_fmt(format_args!(r#"Many1({:?})"#, arg0)),
+            Self::Sequence(children) => {
+                f.write_fmt(format_args!(r#"Sequence(vec!{:?})"#, children))
+            }
+            Self::Alternative(children) => {
+                f.write_fmt(format_args!(r#"Alternative(vec!{:?})"#, children))
+            }
+            Self::Optional(child) => f.write_fmt(format_args!(r#"Optional({:?})"#, child)),
+            Self::Many1(child) => f.write_fmt(format_args!(r#"Many1({:?})"#, child)),
             Self::DistributiveDescription { child: expr, descr } => f.write_fmt(format_args!(
                 r#"DistributiveDescription({expr:?}, {descr:?})"#
             )),
-            Self::Fallback(arg0) => f.write_fmt(format_args!(r#"Fallback(vec!{:?})"#, arg0)),
+            Self::Fallback(children) => {
+                f.write_fmt(format_args!(r#"Fallback(vec!{:?})"#, children))
+            }
         }
     }
 }
