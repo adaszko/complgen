@@ -146,7 +146,7 @@ impl std::hash::Hash for HashableRoaringBitmap {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
-struct SetInternId(usize);
+struct SetId(usize);
 
 #[derive(Default)]
 struct SetInternPool {
@@ -155,7 +155,7 @@ struct SetInternPool {
 }
 
 impl SetInternPool {
-    fn intern(&mut self, set: RoaringBitmap) -> SetInternId {
+    fn intern(&mut self, set: RoaringBitmap) -> SetId {
         let rc = Rc::new(set);
         let id = *self
             .id_from_set
@@ -165,10 +165,10 @@ impl SetInternPool {
                 self.pool.push(rc);
                 id
             });
-        SetInternId(id)
+        SetId(id)
     }
 
-    fn lookup(&self, id: SetInternId) -> Option<Rc<RoaringBitmap>> {
+    fn lookup(&self, id: SetId) -> Option<Rc<RoaringBitmap>> {
         self.pool.get(id.0).cloned()
     }
 }
@@ -382,7 +382,7 @@ fn find_bounds(
 //  * https://github.com/BurntSushi/regex-automata/blob/c61a6d0f19b013dc832755375709023dfb9d5a8f/src/dfa/minimize.rs#L87
 fn do_minimize(dfa: DFA) -> DFA {
     let mut pool = SetInternPool::default();
-    let mut partitions: HashSet<SetInternId> = {
+    let mut partitions: HashSet<SetId> = {
         let dead_state_group = RoaringBitmap::from_iter([u32::from(DEAD_STATE_ID)]);
         let all_states = dfa.get_all_states();
         let nonaccepting_states =
@@ -427,7 +427,7 @@ fn do_minimize(dfa: DFA) -> DFA {
             group_transitions
         };
         for from_states in transitions_to_group.values() {
-            let overlapping_sets: Vec<SetInternId> = partitions
+            let overlapping_sets: Vec<SetId> = partitions
                 .iter()
                 .filter(|set_id| !pool.lookup(**set_id).unwrap().is_disjoint(from_states))
                 .copied()
