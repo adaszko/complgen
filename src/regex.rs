@@ -113,22 +113,18 @@ impl std::fmt::Debug for RegexNode {
         match self {
             Self::Subword(position) => f.write_fmt(format_args!(r#"Subword({position})"#)),
             Self::Terminal(term, level, position) => f.write_fmt(format_args!(
-                r#"Terminal({:?}.to_string(), {level}, {position})"#,
-                term
+                r#"Terminal({term:?}.to_string(), {level}, {position})"#
             )),
-            Self::Nonterminal(position) => {
-                f.write_fmt(format_args!(r#"Nonterminal({})"#, position))
+            Self::Nonterminal(position) => f.write_fmt(format_args!(r#"Nonterminal({position})"#)),
+            Self::Command(code, position) => {
+                f.write_fmt(format_args!(r#"Command({code:?}.to_string(), {position})"#))
             }
-            Self::Command(code, position) => f.write_fmt(format_args!(
-                r#"Command({:?}.to_string(), {})"#,
-                code, position
-            )),
-            Self::Cat(left, right) => f.write_fmt(format_args!(r#"Cat({:?}, {:?})"#, left, right)),
-            Self::Or(arg0, is_fallback) => {
-                f.write_fmt(format_args!(r#"Or(vec!{:?}, {is_fallback})"#, arg0))
+            Self::Cat(left, right) => f.write_fmt(format_args!(r#"Cat({left:?}, {right:?})"#)),
+            Self::Or(children, is_fallback) => {
+                f.write_fmt(format_args!(r#"Or(vec!{children:?}, {is_fallback})"#))
             }
-            Self::Star(arg0) => f.write_fmt(format_args!(r#"Star({:?})"#, arg0)),
-            Self::EndMarker(position) => f.write_fmt(format_args!(r#"EndMarker({})"#, position)),
+            Self::Star(child) => f.write_fmt(format_args!(r#"Star({child:?})"#)),
+            Self::EndMarker(position) => f.write_fmt(format_args!(r#"EndMarker({position})"#)),
             Self::Epsilon => f.write_fmt(format_args!(r#"Epsilon"#)),
         }
     }

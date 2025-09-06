@@ -2,7 +2,6 @@ use std::debug_assert;
 
 use hashbrown::HashMap;
 use nom::{
-    Finish, IResult, Parser,
     branch::alt,
     bytes::complete::{escaped_transform, is_not, tag, take_till, take_until, take_while1},
     character::complete::{char, multispace1, one_of},
@@ -10,10 +9,11 @@ use nom::{
     error::context,
     multi::{fold_many0, many0},
     sequence::preceded,
+    Finish, IResult, Parser,
 };
 
 use crate::{Error, Result};
-use ustr::{Ustr, UstrMap, UstrSet, ustr};
+use ustr::{ustr, Ustr, UstrMap, UstrSet};
 
 use crate::{dfa::DFA, regex::Regex};
 
@@ -211,8 +211,8 @@ impl std::fmt::Debug for Expr {
             }
             Self::Optional(child) => f.write_fmt(format_args!(r#"Optional({:?})"#, child)),
             Self::Many1(child) => f.write_fmt(format_args!(r#"Many1({:?})"#, child)),
-            Self::DistributiveDescription { child: expr, descr } => f.write_fmt(format_args!(
-                r#"DistributiveDescription({expr:?}, {descr:?})"#
+            Self::DistributiveDescription { child, descr } => f.write_fmt(format_args!(
+                r#"DistributiveDescription({child:?}, {descr:?})"#
             )),
             Self::Fallback(children) => {
                 f.write_fmt(format_args!(r#"Fallback(vec!{:?})"#, children))
@@ -229,17 +229,20 @@ pub fn alloc<T>(arena: &mut Vec<T>, elem: T) -> ExprId {
 
 fn railroad_node_from_expr(arena: &[Expr], expr_id: ExprId) -> Box<dyn railroad::Node> {
     match &arena[expr_id.to_index()] {
-        Expr::Subword { phase, .. } => {
-            let expr = match phase {
-                SubwordCompilationPhase::Expr(expr) => *expr,
-                SubwordCompilationPhase::DFA(_) => unreachable!(),
-            };
+        Expr::Subword {
+            phase: SubwordCompilationPhase::Expr(expr),
+            ..
+        } => {
             let mut seq: Box<railroad::Sequence<Box<dyn railroad::Node>>> = Default::default();
             seq.push(Box::new(railroad::SimpleStart));
-            seq.push(railroad_node_from_expr(arena, expr));
+            seq.push(railroad_node_from_expr(arena, *expr));
             seq.push(Box::new(railroad::SimpleEnd));
             seq
         }
+        Expr::Subword {
+            phase: SubwordCompilationPhase::DFA(..),
+            ..
+        } => unreachable!(),
         Expr::Terminal { term, .. } => Box::new(railroad::Terminal::new(term.as_str().to_string())),
         Expr::NontermRef { nonterm, .. } => {
             Box::new(railroad::NonTerminal::new(nonterm.as_str().to_string()))
