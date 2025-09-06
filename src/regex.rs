@@ -2,7 +2,6 @@ use crate::{Error, Result};
 use hashbrown::HashSet;
 use indexmap::IndexSet;
 use std::collections::{BTreeMap, BTreeSet};
-use std::rc::Rc;
 
 use roaring::RoaringBitmap;
 use ustr::{Ustr, UstrMap};
@@ -485,7 +484,7 @@ fn do_from_expr(
 #[derive(Debug)]
 pub struct Regex {
     pub root: RegexNode,
-    pub input_symbols: Rc<IndexSet<Input>>,
+    pub input_symbols: IndexSet<Input>,
     pub input_from_position: Vec<Input>,
     pub endmarker_position: Position,
     pub arena: Vec<RegexNode>,
@@ -677,7 +676,7 @@ impl Regex {
 
         let retval = Self {
             root,
-            input_symbols: Rc::new(input_symbols),
+            input_symbols,
             endmarker_position,
             input_from_position,
             arena,

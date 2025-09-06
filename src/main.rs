@@ -273,7 +273,7 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
         handle_validation_error(e, &input)?;
     }
 
-    let dfa = DFA::from_regex(&regex, validated.subdfa_interner);
+    let dfa = DFA::from_regex(regex, validated.subdfa_interner);
 
     let dfa = dfa.minimize();
 
