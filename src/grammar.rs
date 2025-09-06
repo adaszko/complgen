@@ -2,6 +2,7 @@ use std::debug_assert;
 
 use hashbrown::HashMap;
 use nom::{
+    Finish, IResult, Parser,
     branch::alt,
     bytes::complete::{escaped_transform, is_not, tag, take_till, take_until, take_while1},
     character::complete::{char, multispace1, one_of},
@@ -9,11 +10,10 @@ use nom::{
     error::context,
     multi::{fold_many0, many0},
     sequence::preceded,
-    Finish, IResult, Parser,
 };
 
 use crate::{Error, Result};
-use ustr::{ustr, Ustr, UstrMap, UstrSet};
+use ustr::{Ustr, UstrMap, UstrSet, ustr};
 
 use crate::{dfa::DFA, regex::Regex};
 

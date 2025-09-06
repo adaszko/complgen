@@ -95,6 +95,31 @@ impl std::fmt::Display for Input {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct RegexNodeId(usize);
+
+impl std::ops::Index<RegexNodeId> for Vec<RegexNode> {
+    type Output = RegexNode;
+
+    fn index(&self, index: RegexNodeId) -> &Self::Output {
+        &self[index.0]
+    }
+}
+
+impl std::ops::Index<RegexNodeId> for [RegexNode] {
+    type Output = RegexNode;
+
+    fn index(&self, index: RegexNodeId) -> &Self::Output {
+        &self[index.0]
+    }
+}
+
+fn alloc(arena: &mut Vec<RegexNode>, elem: RegexNode) -> RegexNodeId {
+    let id = arena.len();
+    arena.push(elem);
+    RegexNodeId(id)
+}
+
 #[derive(Clone, PartialEq)]
 pub enum RegexNode {
     Epsilon,
@@ -102,9 +127,9 @@ pub enum RegexNode {
     Terminal(Ustr, usize, Position), // terminal, fallback level, position
     Nonterminal(Position),
     Command(Ustr, Position),
-    Cat(usize, usize),
-    Or(Box<[usize]>, bool), // is fallback
-    Star(usize),
+    Cat(RegexNodeId, RegexNodeId),
+    Or(Box<[RegexNodeId]>, bool), // is fallback
+    Star(RegexNodeId),
     EndMarker(Position),
 }
 
@@ -296,12 +321,6 @@ impl RegexNode {
     }
 }
 
-fn alloc<T>(arena: &mut Vec<T>, elem: T) -> usize {
-    let id = arena.len();
-    arena.push(elem);
-    id
-}
-
 fn do_from_expr(
     e: ExprId,
     expr_arena: &[Expr],
@@ -309,7 +328,7 @@ fn do_from_expr(
     arena: &mut Vec<RegexNode>,
     symbols: &mut IndexSet<Input>,
     input_from_position: &mut Vec<Input>,
-) -> usize {
+) -> RegexNodeId {
     match &expr_arena[e.to_index()] {
         Expr::Terminal {
             term,
@@ -411,7 +430,7 @@ fn do_from_expr(
             left_regex_id
         }
         Expr::Alternative(subexprs) => {
-            let mut subregexes: Vec<usize> = Default::default();
+            let mut subregexes: Vec<RegexNodeId> = Default::default();
             for e in subexprs {
                 let subregex =
                     do_from_expr(*e, expr_arena, specs, arena, symbols, input_from_position);
@@ -451,7 +470,7 @@ fn do_from_expr(
             "DistributiveDescription Expr type should have been erased before compilation to regex"
         ),
         Expr::Fallback(subexprs) => {
-            let mut subregexes: Vec<usize> = Default::default();
+            let mut subregexes: Vec<RegexNodeId> = Default::default();
             for e in subexprs {
                 let subregex =
                     do_from_expr(*e, expr_arena, specs, arena, symbols, input_from_position);
@@ -718,7 +737,7 @@ mod tests {
     use crate::{Error, Result};
     use ustr::ustr;
 
-    fn make_sample_star_regex(arena: &mut Vec<RegexNode>) -> usize {
+    fn make_sample_star_regex(arena: &mut Vec<RegexNode>) -> RegexNodeId {
         let t1 = alloc(arena, RegexNode::Terminal(ustr("a"), 0, 1));
         let t2 = alloc(arena, RegexNode::Terminal(ustr("b"), 0, 2));
         let or_ = RegexNode::Or(Box::new([t1, t2]), false);
