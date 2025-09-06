@@ -21,11 +21,11 @@ use crate::{dfa::DFA, regex::Regex};
 pub struct DFAId(usize);
 
 #[derive(Debug, Clone, Default)]
-pub struct DFAInterner {
+pub struct DFAInternPool {
     store: IndexSet<DFA>,
 }
 
-impl DFAInterner {
+impl DFAInternPool {
     pub fn intern(&mut self, value: DFA) -> DFAId {
         let (id, _) = self.store.insert_full(value);
         DFAId(id)
@@ -846,7 +846,7 @@ pub struct ValidGrammar {
     pub specializations: UstrMap<Specialization>,
     pub undefined_nonterminals: UstrSet,
     pub unused_nonterminals: UstrSet,
-    pub subdfa_interner: DFAInterner,
+    pub subdfa_interner: DFAInternPool,
 }
 
 fn make_specializations_map(
@@ -1078,7 +1078,7 @@ fn compile_subword_exprs(
     expr_id: ExprId,
     specs: &UstrMap<Specialization>,
     shell: Shell,
-    subdfa_interner: &mut DFAInterner,
+    subdfa_interner: &mut DFAInternPool,
 ) -> Result<ExprId> {
     let retval = match arena[expr_id].clone() {
         Expr::Subword {
@@ -1094,7 +1094,7 @@ fn compile_subword_exprs(
             let regex = Regex::from_expr(subword_expr, arena, specs).unwrap();
             regex.ensure_ambiguous_inputs_tail_only_subword(shell)?;
             regex.check_clashing_variants()?;
-            let dfa = DFA::from_regex(regex, DFAInterner::default());
+            let dfa = DFA::from_regex(regex, DFAInternPool::default());
             let dfa = dfa.minimize();
             let subdfaid = subdfa_interner.intern(dfa);
             alloc(
@@ -1472,7 +1472,7 @@ impl ValidGrammar {
             nonterms
         };
 
-        let mut subdfa_interner = DFAInterner::default();
+        let mut subdfa_interner = DFAInternPool::default();
         let expr = compile_subword_exprs(
             &mut grammar.arena,
             expr,

@@ -6,7 +6,7 @@ use roaring::{MultiOps, RoaringBitmap};
 use ustr::{Ustr, ustr};
 
 use crate::StateId;
-use crate::grammar::{CmdRegex, DFAId, DFAInterner, Shell};
+use crate::grammar::{CmdRegex, DFAId, DFAInternPool, Shell};
 use crate::regex::{Input, Position, Regex};
 
 // Every state in a DFA is formally defined to have a transition on *every* input symbol.  In
@@ -25,7 +25,7 @@ pub struct DFA {
     pub accepting_states: RoaringBitmap,
 
     pub input_symbols: IndexSet<Input>,
-    pub subdfa_interner: DFAInterner,
+    pub subdfa_interner: DFAInternPool,
 }
 
 impl PartialEq for DFA {
@@ -59,7 +59,7 @@ impl std::hash::Hash for DFA {
 
 // Reference:
 //  * The Dragon Book: 3.9.5 Converting a Regular Expression Directly to a DFA
-fn dfa_from_regex(regex: Regex, subdfa_interner: DFAInterner) -> DFA {
+fn dfa_from_regex(regex: Regex, subdfa_interner: DFAInternPool) -> DFA {
     let mut unallocated_state_id = FIRST_STATE_ID;
     let combined_starting_state: BTreeSet<Position> = regex.firstpos();
     let combined_starting_state_id = unallocated_state_id;
@@ -648,7 +648,7 @@ fn do_get_subdfa_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)
 }
 
 impl DFA {
-    pub fn from_regex(regex: Regex, subdfa_interner: DFAInterner) -> Self {
+    pub fn from_regex(regex: Regex, subdfa_interner: DFAInternPool) -> Self {
         dfa_from_regex(regex, subdfa_interner)
     }
 
@@ -1074,7 +1074,7 @@ mod tests {
         let expr = alloc(&mut arena, Expr::term("foo"));
         let specs = UstrMap::default();
         let regex = Regex::from_expr(expr, &arena, &specs).unwrap();
-        let dfa = DFA::from_regex(regex, DFAInterner::default());
+        let dfa = DFA::from_regex(regex, DFAInternPool::default());
         let transitions = dfa.get_transitions();
         assert_eq!(transitions, vec![Transition::new(1, "foo", 2)]);
         assert_eq!(dfa.accepting_states, RoaringBitmap::from_iter([2]));
@@ -1338,7 +1338,7 @@ mod tests {
             // println!("{:?}", input);
             let specs = UstrMap::default();
             let regex = Regex::from_expr(expr, &arena.borrow(), &specs).unwrap();
-            let dfa = DFA::from_regex(regex, DFAInterner::default());
+            let dfa = DFA::from_regex(regex, DFAInternPool::default());
             let input: Vec<&str> = input.iter().map(|s| s.as_str()).collect();
             prop_assert!(dfa.accepts(&input, Shell::Bash)?);
         }
@@ -1349,7 +1349,7 @@ mod tests {
             println!("{:?}", input);
             let specs = UstrMap::default();
             let regex = Regex::from_expr(expr, &arena.borrow(), &specs).unwrap();
-            let dfa = DFA::from_regex(regex, DFAInterner::default());
+            let dfa = DFA::from_regex(regex, DFAInternPool::default());
             let input: Vec<&str> = input.iter().map(|s| s.as_str()).collect();
             prop_assert!(dfa.accepts(&input, Shell::Bash)?);
             let minimal_dfa = dfa.minimize();
@@ -1380,7 +1380,7 @@ mod tests {
                 transitions,
                 accepting_states,
                 input_symbols,
-                subdfa_interner: DFAInterner::default(),
+                subdfa_interner: DFAInternPool::default(),
             }
         };
         let minimized = dfa.minimize();
@@ -1415,7 +1415,7 @@ mod tests {
         let input = ["--quux", "--baz", "anything", "anything", "foo"];
         let specs = UstrMap::default();
         let regex = Regex::from_expr(expr, &arena, &specs).unwrap();
-        let dfa = DFA::from_regex(regex, DFAInterner::default());
+        let dfa = DFA::from_regex(regex, DFAInternPool::default());
         assert!(dfa.accepts(&input, Shell::Bash).unwrap());
         let minimal_dfa = dfa.minimize();
         assert!(minimal_dfa.accepts(&input, Shell::Bash).unwrap());
@@ -1438,7 +1438,7 @@ mod tests {
         ];
         let specs = UstrMap::default();
         let regex = Regex::from_expr(expr, &arena, &specs).unwrap();
-        let dfa = DFA::from_regex(regex, DFAInterner::default());
+        let dfa = DFA::from_regex(regex, DFAInternPool::default());
         assert!(dfa.accepts(&input, Shell::Bash).unwrap());
         let minimal_dfa = dfa.minimize();
         assert!(minimal_dfa.accepts(&input, Shell::Bash).unwrap());
@@ -1468,7 +1468,7 @@ mod tests {
 
         let specs = UstrMap::default();
         let regex = Regex::from_expr(expr, &arena, &specs).unwrap();
-        let dfa = DFA::from_regex(regex, DFAInterner::default());
+        let dfa = DFA::from_regex(regex, DFAInternPool::default());
         assert!(dfa.accepts(&input, Shell::Bash).unwrap());
         let minimal_dfa = dfa.minimize();
         assert!(minimal_dfa.accepts(&input, Shell::Bash).unwrap());
