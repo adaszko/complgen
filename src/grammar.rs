@@ -1,6 +1,6 @@
 use std::debug_assert;
 
-use hashbrown::HashMap;
+use indexmap::IndexSet;
 use nom::{
     Finish, IResult, Parser,
     branch::alt,
@@ -18,33 +18,21 @@ use ustr::{Ustr, UstrMap, UstrSet, ustr};
 use crate::{dfa::DFA, regex::Regex};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct DFAId(u32);
-
-impl From<u32> for DFAId {
-    fn from(value: u32) -> Self {
-        Self(value)
-    }
-}
+pub struct DFAId(usize);
 
 #[derive(Debug, Clone, Default)]
 pub struct DFAInterner {
-    map: HashMap<DFA, u32>,
-    vec: Vec<DFA>,
+    store: IndexSet<DFA>,
 }
 
 impl DFAInterner {
-    pub fn intern(&mut self, val: DFA) -> DFAId {
-        if let Some(&idx) = self.map.get(&val) {
-            return DFAId(idx);
-        }
-        let idx = self.map.len() as u32;
-        self.map.insert(val.clone(), idx);
-        self.vec.push(val);
-        DFAId::from(idx)
+    pub fn intern(&mut self, value: DFA) -> DFAId {
+        let (id, _) = self.store.insert_full(value);
+        DFAId(id)
     }
 
-    pub fn lookup(&self, idx: DFAId) -> &DFA {
-        &self.vec[idx.0 as usize]
+    pub fn lookup(&self, id: DFAId) -> &DFA {
+        self.store.get_index(id.0).unwrap()
     }
 }
 
