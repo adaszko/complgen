@@ -1254,7 +1254,7 @@ mod tests {
         max_width: usize,
         output: &mut Vec<Ustr>,
     ) {
-        match &arena.borrow()[expr.to_index()] {
+        match &arena.borrow()[expr] {
             Terminal { term, .. } => output.push(*term),
             Subword {
                 phase: SubwordCompilationPhase::Expr(e),

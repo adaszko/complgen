@@ -68,10 +68,26 @@ impl std::fmt::Debug for SubwordCompilationPhase {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct ExprId(usize);
 
-impl ExprId {
-    pub fn to_index(&self) -> usize {
-        self.0
+impl std::ops::Index<ExprId> for Vec<Expr> {
+    type Output = Expr;
+
+    fn index(&self, index: ExprId) -> &Self::Output {
+        &self[index.0]
     }
+}
+
+impl std::ops::Index<ExprId> for [Expr] {
+    type Output = Expr;
+
+    fn index(&self, index: ExprId) -> &Self::Output {
+        &self[index.0]
+    }
+}
+
+pub fn alloc(arena: &mut Vec<Expr>, elem: Expr) -> ExprId {
+    let id = arena.len();
+    arena.push(elem);
+    ExprId(id)
 }
 
 #[derive(Clone)]
@@ -221,14 +237,8 @@ impl std::fmt::Debug for Expr {
     }
 }
 
-pub fn alloc<T>(arena: &mut Vec<T>, elem: T) -> ExprId {
-    let id = arena.len();
-    arena.push(elem);
-    ExprId(id)
-}
-
 fn railroad_node_from_expr(arena: &[Expr], expr_id: ExprId) -> Box<dyn railroad::Node> {
-    match &arena[expr_id.to_index()] {
+    match &arena[expr_id] {
         Expr::Subword {
             phase: SubwordCompilationPhase::Expr(expr),
             ..
@@ -866,7 +876,7 @@ fn make_specializations_map(
             Statement::NonterminalDefinition { shell: None, .. } => continue,
             Statement::CallVariant { .. } => continue,
         };
-        let command = match &arena[expr.to_index()] {
+        let command = match &arena[*expr] {
             Expr::Command { cmd, .. } => cmd,
             _ => return Err(Error::NonCommandSpecialization(name, Some(*shell))),
         };
@@ -910,7 +920,7 @@ fn make_specializations_map(
         let Some(spec) = specializations.get_mut(name) else {
             continue;
         };
-        let Expr::Command { cmd: command, .. } = &arena[expr.to_index()] else {
+        let Expr::Command { cmd: command, .. } = &arena[*expr] else {
             return Err(Error::NonCommandSpecialization(*name, None));
         };
         if spec.generic.is_some() {
@@ -1003,7 +1013,7 @@ fn make_specializations_map(
 // Used in subword mode, when we know there won't be any sub-DFAs needed, just one big one.
 // Substitutes Expr::Subword with Expr to make AST simpler to process.
 fn flatten_expr(arena: &mut Vec<Expr>, expr_id: ExprId) -> ExprId {
-    match arena[expr_id.to_index()].clone() {
+    match arena[expr_id].clone() {
         Expr::Terminal { .. } | Expr::NontermRef { .. } | Expr::Command { .. } => expr_id,
         Expr::Subword { phase: child, .. } => {
             let child = match child {
@@ -1082,7 +1092,7 @@ fn compile_subword_exprs(
     shell: Shell,
     subdfa_interner: &mut DFAInterner,
 ) -> Result<ExprId> {
-    let retval = match arena[expr_id.to_index()].clone() {
+    let retval = match arena[expr_id].clone() {
         Expr::Subword {
             phase: subword_expr,
             fallback,
@@ -1171,7 +1181,7 @@ fn do_distribute_descriptions(
     expr_id: ExprId,
     description: &mut Option<Ustr>,
 ) -> ExprId {
-    match arena[expr_id.to_index()].clone() {
+    match arena[expr_id].clone() {
         Expr::DistributiveDescription { child, descr } => {
             let new_child = do_distribute_descriptions(arena, child, &mut Some(descr));
             if child == new_child { child } else { new_child }
@@ -1279,7 +1289,7 @@ fn do_propagate_fallback_levels(
     expr_id: ExprId,
     fallback_level: usize,
 ) -> ExprId {
-    match arena[expr_id.to_index()].clone() {
+    match arena[expr_id].clone() {
         Expr::Terminal { fallback, .. } if fallback == fallback_level => expr_id,
         Expr::Terminal {
             term, descr, span, ..
@@ -1497,7 +1507,7 @@ impl ValidGrammar {
 }
 
 fn expr_get_head(arena: &[Expr], expr_id: ExprId) -> ExprId {
-    match &arena[expr_id.to_index()] {
+    match &arena[expr_id] {
         Expr::Terminal { .. }
         | Expr::NontermRef { .. }
         | Expr::Command { .. }
@@ -1514,7 +1524,7 @@ fn expr_get_head(arena: &[Expr], expr_id: ExprId) -> ExprId {
 }
 
 fn expr_get_tail(arena: &[Expr], expr_id: ExprId) -> ExprId {
-    match &arena[expr_id.to_index()] {
+    match &arena[expr_id] {
         Expr::Terminal { .. }
         | Expr::NontermRef { .. }
         | Expr::Command { .. }
@@ -1549,7 +1559,7 @@ fn do_check_subword_spaces(
     nonterm_expn_trace: &mut Vec<HumanSpan>,
     within_subword: bool,
 ) -> Result<()> {
-    match &arena[expr_id.to_index()] {
+    match &arena[expr_id] {
         Expr::Sequence(children) if within_subword => {
             for child in children {
                 do_check_subword_spaces(
@@ -1572,7 +1582,7 @@ fn do_check_subword_spaces(
                     Expr::Terminal {
                         span: right_span, ..
                     },
-                ) = (&arena[left_tail.to_index()], &arena[right_head.to_index()])
+                ) = (&arena[left_tail], &arena[right_head])
                 {
                     return Err(Error::SubwordSpaces(
                         left_span.to_owned(),
@@ -1663,7 +1673,7 @@ fn resolve_nonterminals(
     specializations: &UstrMap<Specialization>,
     unused_nonterminals: &mut UstrSet,
 ) -> ExprId {
-    match arena[expr_id.to_index()].clone() {
+    match arena[expr_id].clone() {
         Expr::Terminal { .. } | Expr::Command { .. } => expr_id,
         Expr::Subword {
             phase: SubwordCompilationPhase::Expr(child),
@@ -1769,7 +1779,7 @@ fn resolve_nonterminals(
 }
 
 fn do_get_expression_nonterminals(arena: &[Expr], expr_id: ExprId, deps: &mut UstrSet) {
-    match &arena[expr_id.to_index()] {
+    match &arena[expr_id] {
         Expr::Terminal { .. } | Expr::Command { .. } => {}
         Expr::Subword { phase, .. } => {
             let subexpr = match phase {
@@ -1994,11 +2004,11 @@ pub mod tests {
 
     // Extensional equality.  Ignores spans
     fn teq(left: ExprId, right: ExprId, arena: &[Expr]) -> bool {
-        if left.to_index() == right.to_index() {
+        if left == right {
             return true;
         }
 
-        match (&arena[left.to_index()], &arena[right.to_index()]) {
+        match (&arena[left], &arena[right]) {
             (
                 Expr::Terminal {
                     term: l,
@@ -2207,7 +2217,7 @@ pub mod tests {
         let (s, e) = command_expr(&mut arena, Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
         assert!(
-            matches!(arena[e.to_index()], Command { cmd: s, regex: None, fallback: 0, .. } if s == "rustup toolchain list | cut -d' ' -f1")
+            matches!(arena[e], Command { cmd: s, regex: None, fallback: 0, .. } if s == "rustup toolchain list | cut -d' ' -f1")
         );
     }
 

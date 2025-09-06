@@ -329,7 +329,7 @@ fn do_from_expr(
     symbols: &mut IndexSet<Input>,
     input_from_position: &mut Vec<Input>,
 ) -> RegexNodeId {
-    match &expr_arena[e.to_index()] {
+    match &expr_arena[e] {
         Expr::Terminal {
             term,
             descr: description,
