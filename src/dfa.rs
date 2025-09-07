@@ -1314,10 +1314,10 @@ mod tests {
 
     // Produce an arbitrary sequence matching `e`.
     pub fn arb_expr_match(
-        inputs: Rc<Vec<Ustr>>,
-        nonterminals: Rc<Vec<Ustr>>,
         remaining_depth: usize,
         max_width: usize,
+        inputs: Rc<Vec<Ustr>>,
+        nonterminals: Rc<Vec<Ustr>>,
     ) -> BoxedStrategy<(ExprId, Rc<RefCell<Vec<Expr>>>, Vec<Ustr>)> {
         let arena = Rc::new(RefCell::new(vec![]));
         arb_expr(
@@ -1333,7 +1333,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn accepts_arb_expr_input_from_regex((expr, arena, input) in arb_expr_match(Rc::new(TERMINALS.iter().map(|s| ustr(s)).collect()), Rc::new(NONTERMINALS.iter().map(|s| ustr(s)).collect()), 10, 3)) {
+        fn accepts_arb_expr_input_from_regex((expr, arena, input) in arb_expr_match(3, 3, Rc::new(TERMINALS.iter().map(|s| ustr(s)).collect()), Rc::new(NONTERMINALS.iter().map(|s| ustr(s)).collect()))) {
             // println!("{:?}", expr);
             // println!("{:?}", input);
             let specs = UstrMap::default();
@@ -1344,7 +1344,7 @@ mod tests {
         }
 
         #[test]
-        fn minimized_dfa_equivalent_to_input_one((expr, arena, input) in arb_expr_match(Rc::new(TERMINALS.iter().map(|s| ustr(s)).collect()), Rc::new(NONTERMINALS.iter().map(|s| ustr(s)).collect()), 10, 3)) {
+        fn minimized_dfa_equivalent_to_input_one((expr, arena, input) in arb_expr_match(10, 3, Rc::new(TERMINALS.iter().map(|s| ustr(s)).collect()), Rc::new(NONTERMINALS.iter().map(|s| ustr(s)).collect()))) {
             println!("{:?}", expr);
             println!("{:?}", input);
             let specs = UstrMap::default();
