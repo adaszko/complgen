@@ -181,7 +181,7 @@ impl std::fmt::Debug for Expr {
                 fallback,
                 ..
             } => f.write_fmt(format_args!(
-                r#"Terminal(ustr(\"{term}\"), Some(ustr(\"{}\"))), {fallback})"#,
+                r#"Terminal {{ term: ustr("{term}"), descr: Some(ustr("{}"))), fallback: {fallback}, span: None }}"#,
                 descr
             )),
             Expr::Terminal {
@@ -190,14 +190,14 @@ impl std::fmt::Debug for Expr {
                 fallback,
                 ..
             } => f.write_fmt(format_args!(
-                r#"Terminal(ustr(\"{term}\"), None, {fallback})"#
+                r#"Terminal {{ term: ustr("{term}"), descr: None, fallback: {fallback}, span: None }}"#
             )),
             Expr::NontermRef {
                 nonterm,
                 fallback,
-                span,
+                ..
             } => f.write_fmt(format_args!(
-                r#"Nonterminal(ustr(\"{nonterm}\"), {fallback}, {span:?})"#
+                r#"NontermRef {{ nonterm: ustr("{nonterm}"), fallback: {fallback}, span: None }}"#
             )),
             Self::Command {
                 cmd,
