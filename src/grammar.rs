@@ -54,7 +54,7 @@ impl std::fmt::Debug for SubwordCompilationPhase {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct ExprId(usize);
+pub struct ExprId(pub usize);
 
 impl std::ops::Index<ExprId> for Vec<Expr> {
     type Output = Expr;

@@ -15,17 +15,25 @@ use crate::regex::{Input, Position, Regex};
 pub const DEAD_STATE_ID: StateId = 0;
 pub const FIRST_STATE_ID: StateId = 1;
 
+type InputId = usize;
+
 #[derive(Debug, Clone)]
 pub struct DFA {
     pub starting_state: StateId,
 
     // IndexMap is used to keep complgen deterministic
     // https://github.com/adaszko/complgen/issues/60
-    pub transitions: IndexMap<StateId, IndexMap<Input, StateId>>,
+    pub transitions: IndexMap<StateId, IndexMap<InputId, StateId>>,
     pub accepting_states: RoaringBitmap,
 
     pub input_symbols: IndexSet<Input>,
     pub subdfa_interner: DFAInternPool,
+}
+
+impl DFA {
+    pub fn get_input(&self, id: InputId) -> &Input {
+        self.input_symbols.get_index(id).unwrap()
+    }
 }
 
 impl PartialEq for DFA {
@@ -70,7 +78,7 @@ fn dfa_from_regex(regex: Regex, subdfa_interner: DFAInternPool) -> DFA {
 
     let followpos = regex.followpos();
 
-    let mut dtran: IndexMap<StateId, IndexMap<Input, StateId>> = Default::default();
+    let mut dtran: IndexMap<StateId, IndexMap<InputId, StateId>> = Default::default();
     let mut unmarked_states: HashSet<BTreeSet<Position>> = Default::default();
     unmarked_states.insert(combined_starting_state.clone());
     while let Some(state) = unmarked_states.iter().next() {
@@ -78,7 +86,8 @@ fn dfa_from_regex(regex: Regex, subdfa_interner: DFAInternPool) -> DFA {
         unmarked_states.remove(&combined_state);
         let from_combined_state_id = *dstates.get(&combined_state).unwrap();
         let from_entry = dtran.entry(from_combined_state_id).or_default();
-        for input in regex.input_symbols.iter() {
+        for input_id in 0..regex.input_symbols.len() {
+            let input = regex.input_symbols.get_index(input_id).unwrap();
             let mut u = RoaringBitmap::new();
             for pos in &combined_state {
                 let pos_usize = usize::try_from(*pos).unwrap();
@@ -96,7 +105,7 @@ fn dfa_from_regex(regex: Regex, subdfa_interner: DFAInternPool) -> DFA {
                     unmarked_states.insert(u.clone());
                 }
                 let to_combined_state_id = dstates.get(&u).unwrap();
-                from_entry.insert(input.clone(), *to_combined_state_id);
+                from_entry.insert(input_id, *to_combined_state_id);
             }
         }
     }
@@ -177,7 +186,7 @@ impl SetInternPool {
 struct Transition {
     from: StateId,
     to: StateId,
-    input: Input,
+    input: InputId,
 }
 
 fn keep_only_states_with_input_transitions(
@@ -297,38 +306,41 @@ fn renumber_states(
 
 fn hashmap_transitions_from_vec(
     transitions: &[Transition],
-) -> IndexMap<StateId, IndexMap<Input, StateId>> {
-    let mut result: IndexMap<StateId, IndexMap<Input, StateId>> = Default::default();
+) -> IndexMap<StateId, IndexMap<InputId, StateId>> {
+    let mut result: IndexMap<StateId, IndexMap<InputId, StateId>> = Default::default();
 
     for transition in transitions {
         result
             .entry(transition.from)
             .or_default()
-            .insert(transition.input.clone(), transition.to);
+            .insert(transition.input, transition.to);
     }
 
     result
 }
 
 fn make_transitions_image(
-    transitions: &IndexMap<StateId, IndexMap<Input, StateId>>,
+    transitions: &IndexMap<StateId, IndexMap<InputId, StateId>>,
     input_symbols: &IndexSet<Input>,
 ) -> Vec<Transition> {
     let mut result: Vec<Transition> = Default::default();
     for (from, tos) in transitions {
-        let meaningful_inputs: IndexSet<Input> = tos.keys().cloned().collect();
+        let meaningful_inputs: IndexSet<usize> = tos.keys().cloned().collect();
         for (input, to) in tos {
             result.push(Transition {
                 from: *from,
                 to: *to,
-                input: input.clone(),
+                input: *input,
             });
         }
-        for input in input_symbols.difference(&meaningful_inputs) {
+        for input_id in 0..input_symbols.len() {
+            if meaningful_inputs.contains(&input_id) {
+                continue;
+            }
             result.push(Transition {
                 from: *from,
                 to: DEAD_STATE_ID,
-                input: input.clone(),
+                input: input_id,
             });
         }
     }
@@ -414,12 +426,12 @@ fn do_minimize(dfa: DFA) -> DFA {
             None => continue,
         };
 
-        let transitions_to_group: HashMap<Input, RoaringBitmap> = {
-            let mut group_transitions: HashMap<Input, RoaringBitmap> = Default::default();
+        let transitions_to_group: HashMap<InputId, RoaringBitmap> = {
+            let mut group_transitions: HashMap<InputId, RoaringBitmap> = Default::default();
             for transition in transitions {
                 if group.contains(transition.to.into()) {
                     group_transitions
-                        .entry(transition.input.clone())
+                        .entry(transition.input)
                         .or_default()
                         .insert(transition.from.into());
                 }
@@ -597,7 +609,8 @@ fn do_to_dot<W: Write>(
     }
 
     for (from, tos) in &dfa.transitions {
-        for (input, to) in tos {
+        for (input_id, to) in tos {
+            let input = dfa.get_input(*input_id);
             match input {
                 Input::Literal { .. } | Input::Nonterminal { .. } | Input::Command { .. } => {
                     let label = format!("{}", input).replace('\"', "\\\"");
@@ -635,7 +648,8 @@ fn do_to_dot<W: Write>(
 
 fn do_get_subdfa_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)>) {
     for (from, tos) in &dfa.transitions {
-        for (input, _) in tos {
+        for (input_id, _) in tos {
+            let input = dfa.get_input(*input_id);
             let cmd = match input {
                 Input::Command { cmd, .. } => *cmd,
                 Input::Subword { .. } => unreachable!(),
@@ -659,7 +673,8 @@ impl DFA {
     pub fn accepts_str(&self, mut input: &str, shell: Shell) -> bool {
         let mut current_state = self.starting_state;
         'outer: while !input.is_empty() {
-            for (transition_input, to) in self.iter_transitions_from(current_state) {
+            for (transition_input_id, to) in self.iter_transitions_from(current_state) {
+                let transition_input = self.get_input(transition_input_id);
                 if let Input::Literal { literal, .. } = transition_input {
                     let s = literal.as_str();
                     if input.starts_with(s) {
@@ -670,7 +685,8 @@ impl DFA {
                 }
             }
 
-            for (transition_input, to) in self.iter_transitions_from(current_state) {
+            for (transition_input_id, to) in self.iter_transitions_from(current_state) {
+                let transition_input = self.get_input(transition_input_id);
                 if transition_input.is_ambiguous(shell) {
                     current_state = to;
                     break 'outer;
@@ -683,26 +699,27 @@ impl DFA {
     }
 
     pub fn iter_inputs(&self) -> impl Iterator<Item = &Input> + '_ {
-        self.iter_transitions().map(|(_, input, _)| input)
+        self.iter_transitions()
+            .map(|(_, input_id, _)| self.get_input(input_id))
     }
 
-    pub fn iter_froms_inputs(&self) -> impl Iterator<Item = (StateId, Input)> + '_ {
+    pub fn iter_froms_inputs(&self) -> impl Iterator<Item = (StateId, InputId)> + '_ {
         self.transitions
             .iter()
-            .flat_map(|(from, tos)| tos.iter().map(|(input, _)| (*from, input.clone())))
+            .flat_map(|(from, tos)| tos.iter().map(|(input, _)| (*from, *input)))
     }
 
-    pub fn iter_transitions_from(&self, from: StateId) -> impl Iterator<Item = (Input, StateId)> {
+    pub fn iter_transitions_from(&self, from: StateId) -> impl Iterator<Item = (InputId, StateId)> {
         match self.transitions.get(&from) {
             Some(transitions) => transitions.clone().into_iter(),
-            None => IndexMap::<Input, StateId>::default().into_iter(),
+            None => IndexMap::<InputId, StateId>::default().into_iter(),
         }
     }
 
-    pub fn iter_transitions(&self) -> impl Iterator<Item = (StateId, &Input, StateId)> + '_ {
+    pub fn iter_transitions(&self) -> impl Iterator<Item = (StateId, InputId, StateId)> + '_ {
         self.transitions
             .iter()
-            .flat_map(|(from, tos)| tos.iter().map(|(input, to)| (*from, input, *to)))
+            .flat_map(|(from, tos)| tos.iter().map(|(input, to)| (*from, *input, *to)))
     }
 
     pub fn get_all_literals(&self) -> Vec<(Ustr, Option<Ustr>)> {
@@ -724,7 +741,8 @@ impl DFA {
     pub fn get_subword_command_transitions(&self) -> HashMap<DFAId, Vec<(StateId, Ustr)>> {
         let mut subdfas: HashMap<DFAId, Vec<(StateId, Ustr)>> = Default::default();
         for (_, tos) in &self.transitions {
-            for (input, _) in tos {
+            for (input_id, _) in tos {
+                let input = self.get_input(*input_id);
                 match input {
                     Input::Subword {
                         subdfa: subdfaid, ..
@@ -740,7 +758,7 @@ impl DFA {
                     Input::Command { .. } => continue,
                     Input::Nonterminal { .. } => continue,
                     Input::Literal { .. } => continue,
-                };
+                }
             }
         }
         subdfas
@@ -753,15 +771,18 @@ impl DFA {
         };
         let transitions: Vec<(Ustr, Ustr, StateId)> = map
             .iter()
-            .filter_map(|(input, to)| match input {
-                Input::Literal {
-                    literal: input,
-                    description,
-                    ..
-                } => Some((*input, description.unwrap_or(ustr("")), *to)),
-                Input::Subword { .. } => None,
-                Input::Nonterminal { .. } => None,
-                Input::Command { .. } => None,
+            .filter_map(|(input_id, to)| {
+                let input = self.get_input(*input_id);
+                match input {
+                    Input::Literal {
+                        literal: input,
+                        description,
+                        ..
+                    } => Some((*input, description.unwrap_or(ustr("")), *to)),
+                    Input::Subword { .. } => None,
+                    Input::Nonterminal { .. } => None,
+                    Input::Command { .. } => None,
+                }
             })
             .collect();
         transitions
@@ -774,23 +795,26 @@ impl DFA {
         };
         let transitions: Vec<(Ustr, StateId)> = map
             .iter()
-            .filter_map(|(input, to)| match input {
-                Input::Command {
-                    cmd: _,
-                    regex:
-                        Some(CmdRegex {
-                            bash: Some(regex), ..
-                        }),
-                    ..
-                } => Some((*regex, *to)),
-                Input::Command { regex: None, .. } => None,
-                Input::Command {
-                    regex: Some(CmdRegex { bash: None, .. }),
-                    ..
-                } => None,
-                Input::Literal { .. } => None,
-                Input::Subword { .. } => None,
-                Input::Nonterminal { .. } => None,
+            .filter_map(|(input_id, to)| {
+                let input = self.get_input(*input_id);
+                match input {
+                    Input::Command {
+                        cmd: _,
+                        regex:
+                            Some(CmdRegex {
+                                bash: Some(regex), ..
+                            }),
+                        ..
+                    } => Some((*regex, *to)),
+                    Input::Command { regex: None, .. } => None,
+                    Input::Command {
+                        regex: Some(CmdRegex { bash: None, .. }),
+                        ..
+                    } => None,
+                    Input::Literal { .. } => None,
+                    Input::Subword { .. } => None,
+                    Input::Nonterminal { .. } => None,
+                }
             })
             .collect();
         transitions
@@ -803,7 +827,7 @@ impl DFA {
         };
         let transitions: Vec<(Ustr, StateId)> = map
             .iter()
-            .filter_map(|(input, to)| match input {
+            .filter_map(|(input_id, to)| match self.get_input(*input_id) {
                 Input::Command {
                     cmd: _,
                     regex:
@@ -832,7 +856,7 @@ impl DFA {
         };
         let transitions: Vec<(Ustr, StateId)> = map
             .iter()
-            .filter_map(|(input, to)| match input {
+            .filter_map(|(input_id, to)| match self.get_input(*input_id) {
                 Input::Command {
                     cmd: _,
                     regex:
@@ -861,7 +885,7 @@ impl DFA {
         };
         let transitions: Vec<(DFAId, StateId)> = map
             .iter()
-            .filter_map(|(input, to)| match input {
+            .filter_map(|(input_id, to)| match self.get_input(*input_id) {
                 Input::Subword { subdfa: dfa, .. } => Some((*dfa, *to)),
                 Input::Literal { .. } => None,
                 Input::Nonterminal { .. } => None,
@@ -898,7 +922,8 @@ impl DFA {
         shell: Shell,
     ) -> impl Iterator<Item = (StateId, StateId)> + '_ {
         self.iter_transitions()
-            .filter_map(move |(from, input, to)| {
+            .filter_map(move |(from, input_id, to)| {
+                let input = self.get_input(input_id);
                 if input.is_ambiguous(shell) {
                     Some((from, to))
                 } else {
@@ -911,8 +936,8 @@ impl DFA {
         let mut unallocated_id = first_id;
         let mut result: IndexMap<DFAId, usize> = Default::default();
         for (_, tos) in &self.transitions {
-            for (input, _) in tos {
-                let dfa = match input {
+            for (input_id, _) in tos {
+                let dfa = match self.get_input(*input_id) {
                     Input::Subword { subdfa, .. } => subdfa,
                     Input::Nonterminal { .. } => continue,
                     Input::Command { .. } => continue,
@@ -982,21 +1007,6 @@ mod tests {
         }
     }
 
-    impl Transition {
-        fn new(from: StateId, input: &str, to: StateId) -> Self {
-            Self {
-                from,
-                input: Input::Literal {
-                    literal: ustr::ustr(input),
-                    description: None,
-                    fallback_level: 0,
-                    span: None,
-                },
-                to,
-            }
-        }
-    }
-
     impl DFA {
         pub fn accepts(&self, inputs: &[&str], shell: Shell) -> Result<bool, TestCaseError> {
             let mut input_index = 0;
@@ -1006,7 +1016,8 @@ mod tests {
                     break;
                 }
 
-                for (transition_input, to) in self.iter_transitions_from(current_state) {
+                for (transition_input_id, to) in self.iter_transitions_from(current_state) {
+                    let transition_input = self.get_input(transition_input_id);
                     if let Input::Literal { literal, .. } = transition_input {
                         if inputs[input_index] == literal.as_str() {
                             input_index += 1;
@@ -1016,9 +1027,10 @@ mod tests {
                     }
                 }
 
-                for (transition_input, to) in self.iter_transitions_from(current_state) {
+                for (transition_input_id, to) in self.iter_transitions_from(current_state) {
+                    let transition_input = self.get_input(transition_input_id);
                     if let Input::Subword { subdfa, .. } = transition_input {
-                        let dfa = self.subdfa_interner.lookup(subdfa);
+                        let dfa = self.subdfa_interner.lookup(*subdfa);
                         if dfa.accepts_str(inputs[input_index], shell) {
                             input_index += 1;
                             current_state = to;
@@ -1027,16 +1039,17 @@ mod tests {
                     }
                 }
 
-                let anys: Vec<(Input, StateId)> = self
+                let anys: Vec<(InputId, StateId)> = self
                     .iter_transitions_from(current_state)
-                    .filter(|(input, _)| input.is_ambiguous(shell))
+                    .filter(|(input_id, _)| self.get_input(*input_id).is_ambiguous(shell))
                     .map(|(k, v)| (k.clone(), v))
                     .collect();
                 // It's ambiguous which transition to take if there are two transitions
                 // representing a nonterminal.
                 prop_assume!(anys.len() <= 1);
 
-                for (transition_input, to) in anys {
+                for (transition_input_id, to) in anys {
+                    let transition_input = self.get_input(transition_input_id);
                     if transition_input.is_ambiguous(shell) {
                         input_index += 1;
                         current_state = to;
@@ -1049,21 +1062,7 @@ mod tests {
             Ok(self.accepting_states.contains(current_state.into()))
         }
 
-        fn get_transitions(&self) -> Vec<Transition> {
-            let mut result: Vec<Transition> = Default::default();
-            for (from, tos) in &self.transitions {
-                for (input, to) in tos {
-                    result.push(Transition {
-                        from: *from,
-                        to: *to,
-                        input: input.clone(),
-                    });
-                }
-            }
-            result
-        }
-
-        pub fn has_transition(&self, from: StateId, input: Input, to: StateId) -> bool {
+        pub fn has_transition(&self, from: StateId, input: InputId, to: StateId) -> bool {
             *self.transitions.get(&from).unwrap().get(&input).unwrap() == to
         }
     }
@@ -1075,8 +1074,11 @@ mod tests {
         let specs = UstrMap::default();
         let regex = Regex::from_expr(expr, &arena, &specs).unwrap();
         let dfa = DFA::from_regex(regex, DFAInternPool::default());
-        let transitions = dfa.get_transitions();
-        assert_eq!(transitions, vec![Transition::new(1, "foo", 2)]);
+        let foo = Input::literal("foo");
+        let foo_id = dfa.input_symbols.get_index_of(&foo).unwrap();
+        assert_eq!(dfa.transitions.len(), 2);
+        let tos: IndexMap<InputId, StateId> = IndexMap::from_iter([(foo_id, 2)]);
+        assert_eq!(*dfa.transitions.get(&1).unwrap(), tos);
         assert_eq!(dfa.accepting_states, RoaringBitmap::from_iter([2]));
         assert_eq!(dfa.starting_state, 1);
     }
@@ -1331,16 +1333,297 @@ mod tests {
         .boxed()
     }
 
+    /// Illustrates why trying to detect matching ambiguities at Regex stage is futile, or to be
+    /// more precise, is doomed to work duplication with transforming regex into a DFA and also is
+    /// necessarily complicated.  The Expr below leads to generating a DFA that's ambiguous but it
+    /// isn't readily apparent just from examining Regex::followpos() paths.  The ambiguity arises
+    /// from having two separate "--baz" in two separate places in the regex tree.  It leads to a
+    /// DFA state where we're trying to make a transition based on whether the input is <FILE> or
+    /// <DIRECTORY> -- i.e. something that can't be done.  Better way is to perform ambiguity
+    /// detection at the DFA compilation phase (likely before minimization) and that's what
+    /// subsequent commits should implement.  It was found by proptest.
+    #[test]
+    fn followpos_ambiuity_detection_counterexample() {
+        let expr = ExprId(94);
+        let arena = RefCell::new(vec![
+            NontermRef {
+                nonterm: ustr("FILE"),
+                fallback: 0,
+                span: None,
+            },
+            Optional(ExprId(0)),
+            Optional(ExprId(1)),
+            Optional(ExprId(2)),
+            Optional(ExprId(3)),
+            NontermRef {
+                nonterm: ustr("FILE"),
+                fallback: 0,
+                span: None,
+            },
+            Optional(ExprId(5)),
+            Alternative(vec![ExprId(4), ExprId(6)]),
+            NontermRef {
+                nonterm: ustr("DIRECTORY"),
+                fallback: 0,
+                span: None,
+            },
+            Terminal {
+                term: ustr("bar"),
+                descr: None,
+                fallback: 0,
+                span: None,
+            },
+            Alternative(vec![ExprId(8), ExprId(9)]),
+            NontermRef {
+                nonterm: ustr("DIRECTORY"),
+                fallback: 0,
+                span: None,
+            },
+            Optional(ExprId(11)),
+            Alternative(vec![ExprId(10), ExprId(12)]),
+            NontermRef {
+                nonterm: ustr("DIRECTORY"),
+                fallback: 0,
+                span: None,
+            },
+            NontermRef {
+                nonterm: ustr("FILE"),
+                fallback: 0,
+                span: None,
+            },
+            Alternative(vec![ExprId(14), ExprId(15)]),
+            Terminal {
+                term: ustr("foo"),
+                descr: None,
+                fallback: 0,
+                span: None,
+            },
+            Terminal {
+                term: ustr("bar"),
+                descr: None,
+                fallback: 0,
+                span: None,
+            },
+            Alternative(vec![ExprId(17), ExprId(18)]),
+            Sequence(vec![ExprId(16), ExprId(19)]),
+            Sequence(vec![ExprId(13), ExprId(20)]),
+            NontermRef {
+                nonterm: ustr("PATH"),
+                fallback: 0,
+                span: None,
+            },
+            Sequence(vec![ExprId(21), ExprId(22)]),
+            Terminal {
+                term: ustr("--baz"),
+                descr: None,
+                fallback: 0,
+                span: None,
+            },
+            Many1(ExprId(24)),
+            Many1(ExprId(25)),
+            Sequence(vec![ExprId(23), ExprId(26)]),
+            Sequence(vec![ExprId(7), ExprId(27)]),
+            Many1(ExprId(28)),
+            Many1(ExprId(29)),
+            Terminal {
+                term: ustr("--baz"),
+                descr: None,
+                fallback: 0,
+                span: None,
+            },
+            NontermRef {
+                nonterm: ustr("PATH"),
+                fallback: 0,
+                span: None,
+            },
+            Many1(ExprId(32)),
+            Optional(ExprId(33)),
+            Many1(ExprId(34)),
+            NontermRef {
+                nonterm: ustr("FILE"),
+                fallback: 0,
+                span: None,
+            },
+            Many1(ExprId(36)),
+            Sequence(vec![ExprId(35), ExprId(37)]),
+            Optional(ExprId(38)),
+            Optional(ExprId(39)),
+            Sequence(vec![ExprId(31), ExprId(40)]),
+            Sequence(vec![ExprId(30), ExprId(41)]),
+            Terminal {
+                term: ustr("bar"),
+                descr: None,
+                fallback: 0,
+                span: None,
+            },
+            Many1(ExprId(43)),
+            NontermRef {
+                nonterm: ustr("PATH"),
+                fallback: 0,
+                span: None,
+            },
+            Alternative(vec![ExprId(44), ExprId(45)]),
+            NontermRef {
+                nonterm: ustr("FILE"),
+                fallback: 0,
+                span: None,
+            },
+            Sequence(vec![ExprId(46), ExprId(47)]),
+            NontermRef {
+                nonterm: ustr("PATH"),
+                fallback: 0,
+                span: None,
+            },
+            Terminal {
+                term: ustr("bar"),
+                descr: None,
+                fallback: 0,
+                span: None,
+            },
+            Sequence(vec![ExprId(49), ExprId(50)]),
+            Sequence(vec![ExprId(48), ExprId(51)]),
+            Many1(ExprId(52)),
+            Terminal {
+                term: ustr("foo"),
+                descr: None,
+                fallback: 0,
+                span: None,
+            },
+            NontermRef {
+                nonterm: ustr("DIRECTORY"),
+                fallback: 0,
+                span: None,
+            },
+            Alternative(vec![ExprId(54), ExprId(55)]),
+            Optional(ExprId(56)),
+            Many1(ExprId(57)),
+            Terminal {
+                term: ustr("bar"),
+                descr: None,
+                fallback: 0,
+                span: None,
+            },
+            Optional(ExprId(59)),
+            Optional(ExprId(60)),
+            Sequence(vec![ExprId(58), ExprId(61)]),
+            Terminal {
+                term: ustr("foo"),
+                descr: None,
+                fallback: 0,
+                span: None,
+            },
+            Many1(ExprId(63)),
+            NontermRef {
+                nonterm: ustr("PATH"),
+                fallback: 0,
+                span: None,
+            },
+            Many1(ExprId(65)),
+            Sequence(vec![ExprId(64), ExprId(66)]),
+            Many1(ExprId(67)),
+            Alternative(vec![ExprId(62), ExprId(68)]),
+            NontermRef {
+                nonterm: ustr("DIRECTORY"),
+                fallback: 0,
+                span: None,
+            },
+            Sequence(vec![ExprId(69), ExprId(70)]),
+            NontermRef {
+                nonterm: ustr("PATH"),
+                fallback: 0,
+                span: None,
+            },
+            Sequence(vec![ExprId(71), ExprId(72)]),
+            Many1(ExprId(73)),
+            Many1(ExprId(74)),
+            Terminal {
+                term: ustr("bar"),
+                descr: None,
+                fallback: 0,
+                span: None,
+            },
+            Optional(ExprId(76)),
+            Terminal {
+                term: ustr("--baz"),
+                descr: None,
+                fallback: 0,
+                span: None,
+            },
+            NontermRef {
+                nonterm: ustr("DIRECTORY"),
+                fallback: 0,
+                span: None,
+            },
+            Sequence(vec![ExprId(78), ExprId(79)]),
+            Terminal {
+                term: ustr("--quux"),
+                descr: None,
+                fallback: 0,
+                span: None,
+            },
+            Optional(ExprId(81)),
+            Many1(ExprId(82)),
+            Terminal {
+                term: ustr("--quux"),
+                descr: None,
+                fallback: 0,
+                span: None,
+            },
+            Optional(ExprId(84)),
+            Alternative(vec![ExprId(83), ExprId(85)]),
+            Alternative(vec![ExprId(80), ExprId(86)]),
+            Optional(ExprId(87)),
+            Optional(ExprId(88)),
+            Terminal {
+                term: ustr("--baz"),
+                descr: None,
+                fallback: 0,
+                span: None,
+            },
+            Sequence(vec![ExprId(89), ExprId(90)]),
+            NontermRef {
+                nonterm: ustr("FILE"),
+                fallback: 0,
+                span: None,
+            },
+            Sequence(vec![ExprId(91), ExprId(92)]),
+            Sequence(vec![ExprId(77), ExprId(93)]),
+        ]);
+        //expr_to_dot_file("expr.dot", expr, &arena.borrow()).unwrap();
+        let input = [ustr("--baz"), ustr("anything")];
+        let specs = UstrMap::default();
+        let regex = Regex::from_expr(expr, &arena.borrow(), &specs).unwrap();
+
+        //dbg!(&regex.firstpos());
+        //dbg!(&regex.followpos());
+        //dbg!(&regex.input_from_position);
+
+        assert!(matches!(
+            regex.ensure_ambiguous_inputs_tail_only(Shell::Bash),
+            Ok(())
+        ));
+        assert!(matches!(regex.check_clashing_variants(), Ok(())));
+
+        //regex.to_dot_file("regex.dot").unwrap();
+        let dfa = DFA::from_regex(regex, DFAInternPool::default());
+        let input: Vec<&str> = input.iter().map(|s| s.as_str()).collect();
+        //dfa.to_dot_file("dfa.dot").unwrap();
+        assert!(dfa.accepts(&input, Shell::Bash).unwrap());
+    }
+
     proptest! {
         #[test]
         fn accepts_arb_expr_input_from_regex((expr, arena, input) in arb_expr_match(3, 3, Rc::new(TERMINALS.iter().map(|s| ustr(s)).collect()), Rc::new(NONTERMINALS.iter().map(|s| ustr(s)).collect()))) {
-            // println!("{:?}", expr);
-            // println!("{:?}", input);
+            //println!("{:?}", expr);
+            //println!("{:?}", arena);
+            //println!("{:?}", input);
             let specs = UstrMap::default();
             let regex = Regex::from_expr(expr, &arena.borrow(), &specs).unwrap();
+            prop_assume!(matches!(regex.ensure_ambiguous_inputs_tail_only(Shell::Bash), Ok(())));
+            prop_assume!(matches!(regex.check_clashing_variants(), Ok(())));
             let dfa = DFA::from_regex(regex, DFAInternPool::default());
             let input: Vec<&str> = input.iter().map(|s| s.as_str()).collect();
-            prop_assert!(dfa.accepts(&input, Shell::Bash)?);
+            prop_assert!(dbg!(dfa.accepts(&input, Shell::Bash))?);
         }
 
         #[test]
@@ -1349,6 +1632,8 @@ mod tests {
             println!("{:?}", input);
             let specs = UstrMap::default();
             let regex = Regex::from_expr(expr, &arena.borrow(), &specs).unwrap();
+            prop_assume!(matches!(regex.ensure_ambiguous_inputs_tail_only(Shell::Bash), Ok(())));
+            prop_assume!(matches!(regex.check_clashing_variants(), Ok(())));
             let dfa = DFA::from_regex(regex, DFAInternPool::default());
             let input: Vec<&str> = input.iter().map(|s| s.as_str()).collect();
             prop_assert!(dfa.accepts(&input, Shell::Bash)?);
@@ -1362,19 +1647,19 @@ mod tests {
         let f = Input::literal("f");
         let e = Input::literal("e");
         let i = Input::literal("i");
+        let input_symbols = IndexSet::from_iter([f.clone(), e.clone(), i.clone()]);
+        let f_id = input_symbols.get_index_of(&f).unwrap();
+        let e_id = input_symbols.get_index_of(&e).unwrap();
+        let i_id = input_symbols.get_index_of(&i).unwrap();
         let dfa = {
             let starting_state = 0;
-            let mut transitions: IndexMap<StateId, IndexMap<Input, StateId>> = Default::default();
-            transitions.entry(0).or_default().insert(f.clone(), 1);
-            transitions.entry(1).or_default().insert(e.clone(), 2);
-            transitions.entry(1).or_default().insert(i.clone(), 4);
-            transitions.entry(2).or_default().insert(e.clone(), 3);
-            transitions
-                .entry(4)
-                .or_default()
-                .insert(Input::literal("e"), 5);
+            let mut transitions: IndexMap<StateId, IndexMap<InputId, StateId>> = Default::default();
+            transitions.entry(0).or_default().insert(f_id, 1);
+            transitions.entry(1).or_default().insert(e_id, 2);
+            transitions.entry(1).or_default().insert(i_id, 4);
+            transitions.entry(2).or_default().insert(e_id, 3);
+            transitions.entry(4).or_default().insert(e_id, 5);
             let accepting_states = RoaringBitmap::from_iter([3, 5]);
-            let input_symbols = IndexSet::from_iter([f.clone(), e.clone(), i.clone()]);
             DFA {
                 starting_state,
                 transitions,
@@ -1386,10 +1671,10 @@ mod tests {
         let minimized = dfa.minimize();
         assert_eq!(minimized.starting_state, 0);
         assert_eq!(minimized.accepting_states, RoaringBitmap::from_iter([3]));
-        assert!(minimized.has_transition(0, f, 1));
-        assert!(minimized.has_transition(1, e.clone(), 2));
-        assert!(minimized.has_transition(1, i, 2));
-        assert!(minimized.has_transition(2, e, 3));
+        assert!(minimized.has_transition(0, f_id, 1));
+        assert!(minimized.has_transition(1, e_id, 2));
+        assert!(minimized.has_transition(1, i_id, 2));
+        assert!(minimized.has_transition(2, e_id, 3));
     }
 
     #[test]

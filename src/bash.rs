@@ -323,8 +323,8 @@ pub fn write_subword_fn<W: Write>(
     let mut fallback_nontails: Vec<HashMap<StateId, Vec<(usize, usize)>>> = Default::default();
     fallback_nontails.resize_with(max_fallback_level + 1, Default::default);
 
-    for (from, input, _) in dfa.iter_transitions() {
-        match input {
+    for (from, input_id, _) in dfa.iter_transitions() {
+        match dfa.get_input(input_id) {
             Input::Literal {
                 literal: lit,
                 description: descr,
@@ -332,7 +332,7 @@ pub fn write_subword_fn<W: Write>(
                 ..
             } => {
                 let literal_id = *literal_id_from_input_description
-                    .get(&(*lit, (*descr).unwrap_or("".into())))
+                    .get(&(*lit, descr.unwrap_or("".into())))
                     .unwrap();
                 fallback_literals[*fallback_level]
                     .entry(from)
@@ -682,18 +682,18 @@ fi
     let mut fallback_nontails: Vec<HashMap<StateId, Vec<(usize, usize)>>> = Default::default();
     fallback_nontails.resize_with(max_fallback_level + 1, Default::default);
 
-    for (from, input, _) in dfa.iter_transitions() {
-        match input {
+    for (from, input_id, _) in dfa.iter_transitions() {
+        match dfa.get_input(input_id).clone() {
             Input::Literal {
                 literal: lit,
-                description: descr,
+                description,
                 fallback_level,
                 ..
             } => {
                 let literal_id = *literal_id_from_input_description
-                    .get(&(*lit, (*descr).unwrap_or("".into())))
+                    .get(&(lit, description.unwrap_or("".into())))
                     .unwrap();
-                fallback_literals[*fallback_level]
+                fallback_literals[fallback_level]
                     .entry(from)
                     .or_default()
                     .push(literal_id);
@@ -703,8 +703,8 @@ fi
                 fallback_level,
                 ..
             } => {
-                let subword_id = *id_from_dfa.get(dfa).unwrap();
-                fallback_subwords[*fallback_level]
+                let subword_id = *id_from_dfa.get(&dfa).unwrap();
+                fallback_subwords[fallback_level]
                     .entry(from)
                     .or_default()
                     .push(subword_id);
@@ -715,8 +715,8 @@ fi
                 fallback_level,
                 ..
             } => {
-                let command_id = id_from_cmd.get_index_of(cmd).unwrap();
-                fallback_commands[*fallback_level]
+                let command_id = id_from_cmd.get_index_of(&cmd).unwrap();
+                fallback_commands[fallback_level]
                     .entry(from)
                     .or_default()
                     .push(command_id);
@@ -731,9 +731,9 @@ fi
                 fallback_level,
                 ..
             } => {
-                let cmd_id = id_from_cmd.get_index_of(cmd).unwrap();
-                let regex_id = id_from_regex.get_index_of(bash_regex).unwrap();
-                fallback_nontails[*fallback_level]
+                let cmd_id = id_from_cmd.get_index_of(&cmd).unwrap();
+                let regex_id = id_from_regex.get_index_of(&bash_regex).unwrap();
+                fallback_nontails[fallback_level]
                     .entry(from)
                     .or_default()
                     .push((cmd_id, regex_id));
@@ -746,8 +746,8 @@ fi
                 fallback_level,
                 ..
             } => {
-                let specialized_id = id_from_cmd.get_index_of(cmd).unwrap();
-                fallback_commands[*fallback_level]
+                let specialized_id = id_from_cmd.get_index_of(&cmd).unwrap();
+                fallback_commands[fallback_level]
                     .entry(from)
                     .or_default()
                     .push(specialized_id);
