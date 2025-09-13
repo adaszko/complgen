@@ -984,7 +984,7 @@ mod tests {
     use std::ops::Rem;
     use std::rc::Rc;
 
-    use crate::grammar::{Expr, ExprId, SubwordCompilationPhase, alloc};
+    use crate::grammar::{Expr, ExprId, SubwordCompilationPhase, alloc, expr_to_dot_file};
     use crate::regex::Regex;
     use Expr::*;
     use itertools::Itertools;

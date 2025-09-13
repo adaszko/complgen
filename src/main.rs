@@ -6,7 +6,7 @@ use std::process::exit;
 use anyhow::{Context, bail};
 use clap::Parser;
 
-use complgen::grammar::{Grammar, HumanSpan, Shell, ValidGrammar, to_railroad_diagram_file};
+use complgen::grammar::{Grammar, HumanSpan, Shell, ValidGrammar};
 
 use complgen::Error;
 use complgen::dfa::DFA;
@@ -47,13 +47,6 @@ struct Cli {
         name = "DFA_DOT_PATH"
     )]
     dfa: Option<String>,
-
-    #[clap(
-        long,
-        help = "Write .usage grammar as a railroad diagram (SVG)",
-        name = "RAILROAD_SVG_PATH"
-    )]
-    railroad: Option<String>,
 }
 
 fn get_file_or_stdin(path: &str) -> anyhow::Result<Box<dyn Read>> {
@@ -239,10 +232,6 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
     };
 
     let grammar = handle_parse_error(&input)?;
-
-    if let Some(railroad_svg_path) = &args.railroad {
-        to_railroad_diagram_file(&grammar, railroad_svg_path).context(railroad_svg_path.clone())?;
-    }
 
     let (shell, path) = match (&args.bash, &args.fish, &args.zsh) {
         (Some(path), None, None) => (Shell::Bash, path),

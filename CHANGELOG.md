@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  - Added `--regex` option for writing generated regular expression into a .dot file for debugging
 
+### Removed
+
+ - Removed `--railroad` option for diagrams generation due to limited utility
+
 ## 0.5.0
 ### Changed
 

@@ -100,10 +100,6 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
 <FILE> ::= { ls };
 ```
 
-its abstract syntax tree can be visualized as a railroad diagram:
-
-![Railroad diagram](assets/railroad.svg)
-
 The DFA can be visualized as a [Graphviz diagram](https://graphviz.org/):
 
 ![DFA](assets/dfa.svg)
