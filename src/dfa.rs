@@ -551,9 +551,9 @@ fn do_to_dot<W: Write>(
     let id_from_dfa = dfa.get_subwords(0);
 
     if dfa.accepting_states.contains(dfa.starting_state.into()) {
-        writeln!(output, "{indentation}node [shape = doubleoctagon];")?;
+        writeln!(output, "{indentation}node [shape=doubleoctagon];")?;
     } else {
-        writeln!(output, "{indentation}node [shape = octagon];")?;
+        writeln!(output, "{indentation}node [shape=octagon];")?;
     }
     writeln!(
         output,
@@ -567,7 +567,7 @@ fn do_to_dot<W: Write>(
         states
     };
 
-    writeln!(output, "{indentation}node [shape = circle];")?;
+    writeln!(output, "{indentation}node [shape=circle];")?;
     for state in regular_states {
         writeln!(
             output,
@@ -578,7 +578,7 @@ fn do_to_dot<W: Write>(
 
     writeln!(output)?;
 
-    writeln!(output, "{indentation}node [shape = doublecircle];")?;
+    writeln!(output, "{indentation}node [shape=doublecircle];")?;
     for state in &dfa.accepting_states {
         writeln!(
             output,
@@ -960,7 +960,7 @@ impl DFA {
     }
 
     pub fn to_dot<W: Write>(&self, output: &mut W) -> std::result::Result<(), std::io::Error> {
-        writeln!(output, "digraph nfa {{")?;
+        writeln!(output, "digraph dfa {{")?;
         writeln!(output, "\trankdir=LR;")?;
         do_to_dot(output, self, "", 0)?;
         writeln!(output, "}}")?;

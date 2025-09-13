@@ -1,4 +1,4 @@
-use std::debug_assert;
+use std::{debug_assert, io::Write};
 
 use indexmap::IndexSet;
 use nom::{
@@ -55,6 +55,12 @@ impl std::fmt::Debug for SubwordCompilationPhase {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct ExprId(pub usize);
+
+impl std::fmt::Display for ExprId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 impl std::ops::Index<ExprId> for Vec<Expr> {
     type Output = Expr;
@@ -331,6 +337,100 @@ pub fn to_railroad_diagram_file<P: AsRef<std::path::Path>>(
 ) -> std::result::Result<(), std::io::Error> {
     let mut file = std::fs::File::create(path)?;
     to_railroad_diagram(grammar, &mut file)?;
+    Ok(())
+}
+
+fn do_expr_to_dot<W: Write>(
+    output: &mut W,
+    expr_id: ExprId,
+    arena: &[Expr],
+) -> std::result::Result<(), std::io::Error> {
+    match arena[expr_id].clone() {
+        Expr::Terminal { term, .. } => {
+            writeln!(output, r#"  _{expr_id}[label="\"{term}\""];"#)?;
+        }
+        Expr::NontermRef { nonterm, .. } => {
+            writeln!(output, r#"  _{expr_id}[label="<{nonterm}>"];"#)?;
+        }
+        Expr::Command { cmd, .. } => {
+            writeln!(output, r#"  _{expr_id}[label="{cmd}"];"#)?;
+        }
+        Expr::Sequence(children) => {
+            writeln!(output, r#"  _{expr_id}[label="Sequence"];"#)?;
+            for child in &children {
+                writeln!(output, r#"  _{expr_id} -> _{child};"#)?;
+            }
+            for child in children {
+                do_expr_to_dot(output, child, arena)?;
+            }
+        }
+        Expr::Alternative(children) => {
+            writeln!(output, r#"  _{expr_id}[label="Alternative"];"#)?;
+            for child in &children {
+                writeln!(output, r#"  _{expr_id} -> _{child};"#)?;
+            }
+            for child in children {
+                do_expr_to_dot(output, child, arena)?;
+            }
+        }
+        Expr::Fallback(children) => {
+            writeln!(output, r#"  _{expr_id}[label="Fallback"];"#)?;
+            for child in &children {
+                writeln!(output, r#"  _{expr_id} -> _{child};"#)?;
+            }
+            for child in children {
+                do_expr_to_dot(output, child, arena)?;
+            }
+        }
+        Expr::Optional(child) => {
+            writeln!(output, r#"  _{expr_id}[label="Optional"];"#)?;
+            writeln!(output, r#"  _{expr_id} -> _{child};"#)?;
+            do_expr_to_dot(output, child, arena)?;
+        }
+        Expr::Many1(child) => {
+            writeln!(output, r#"  _{expr_id}[label="Many1"];"#)?;
+            writeln!(output, r#"  _{expr_id} -> _{child};"#)?;
+            do_expr_to_dot(output, child, arena)?;
+        }
+        Expr::DistributiveDescription { child, .. } => {
+            writeln!(output, r#"  _{expr_id}[label="DistributiveDescription"];"#)?;
+            writeln!(output, r#"  _{expr_id} -> _{child};"#)?;
+        }
+        Expr::Subword {
+            phase: SubwordCompilationPhase::Expr(child),
+            ..
+        } => {
+            writeln!(output, "  subgraph _{expr_id} {{")?;
+            do_expr_to_dot(output, child, arena)?;
+            writeln!(output, "  }}")?;
+        }
+        Expr::Subword {
+            phase: SubwordCompilationPhase::DFA(..),
+            ..
+        } => unreachable!(),
+    }
+    Ok(())
+}
+
+pub fn expr_to_dot<W: Write>(
+    output: &mut W,
+    root_id: ExprId,
+    arena: &[Expr],
+) -> std::result::Result<(), std::io::Error> {
+    writeln!(output, "digraph rx {{")?;
+    do_expr_to_dot(output, root_id, arena)?;
+    writeln!(output, "}}")?;
+    Ok(())
+}
+
+#[allow(dead_code)]
+pub fn expr_to_dot_file<P: AsRef<std::path::Path>>(
+    path: P,
+    root_id: ExprId,
+    arena: &[Expr],
+) -> std::result::Result<(), std::io::Error> {
+    let mut file = std::fs::File::create(path)?;
+    expr_to_dot(&mut file, root_id, arena)?;
     Ok(())
 }
 

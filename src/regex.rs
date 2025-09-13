@@ -1,7 +1,10 @@
 use crate::{Error, Result};
 use hashbrown::HashSet;
 use indexmap::IndexSet;
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    io::Write,
+};
 
 use roaring::RoaringBitmap;
 use ustr::{Ustr, UstrMap};
@@ -96,6 +99,12 @@ impl std::fmt::Display for Input {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct RegexNodeId(usize);
+
+impl std::fmt::Display for RegexNodeId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 impl std::ops::Index<RegexNodeId> for Vec<RegexNode> {
     type Output = RegexNode;
@@ -484,6 +493,7 @@ fn do_from_expr(
 #[derive(Debug)]
 pub struct Regex {
     pub root: RegexNode,
+    pub root_id: RegexNodeId,
     pub input_symbols: IndexSet<Input>,
     pub input_from_position: Vec<Input>,
     pub endmarker_position: Position,
@@ -653,6 +663,62 @@ fn do_check_clashing_variants(
     Ok(())
 }
 
+fn do_to_dot<W: Write>(
+    output: &mut W,
+    node_id: RegexNodeId,
+    arena: &[RegexNode],
+    input_from_position: &Vec<Input>,
+) -> std::result::Result<(), std::io::Error> {
+    match arena[node_id].clone() {
+        RegexNode::Epsilon => {
+            writeln!(output, r#"  _{node_id}[label="Epsilon"];"#)?;
+        }
+        RegexNode::Subword(pos) => {
+            writeln!(output, r#"  _{node_id}[label="{pos}: Subword"];"#)?;
+        }
+        RegexNode::Terminal(term, _, pos) => {
+            writeln!(output, r#"  _{node_id}[label="{pos}: \"{term}\""];"#)?;
+        }
+        RegexNode::Nonterminal(pos) => {
+            let input = input_from_position[pos as usize].clone();
+            let Input::Nonterminal { nonterm, .. } = input else {
+                unreachable!()
+            };
+            writeln!(output, r#"  _{node_id}[label="{pos}: <{nonterm}>"];"#)?;
+        }
+        RegexNode::Command(cmd, pos) => {
+            writeln!(output, r#"  _{node_id}[label="{pos}: {cmd}"];"#)?;
+        }
+        RegexNode::Cat(lhs, rhs) => {
+            writeln!(
+                output,
+                r#"  _{node_id}[label="Cat"]; _{node_id} -> _{lhs}; _{node_id} -> _{rhs};"#
+            )?;
+            do_to_dot(output, lhs, arena, input_from_position)?;
+            do_to_dot(output, rhs, arena, input_from_position)?;
+        }
+        RegexNode::Or(ors, _) => {
+            writeln!(output, r#"  _{node_id}[label="Or"];"#)?;
+            for child in &ors {
+                writeln!(output, r#"  _{node_id} -> _{child};"#)?;
+            }
+            for child in ors {
+                do_to_dot(output, child, arena, input_from_position)?;
+            }
+        }
+        RegexNode::Star(child) => {
+            writeln!(
+                output,
+                r#"  _{node_id}[label="Star"]; _{node_id} -> _{child};"#
+            )?;
+        }
+        RegexNode::EndMarker(pos) => {
+            writeln!(output, r#"  _{node_id}[label="{pos}: EndMarker"];"#)?;
+        }
+    }
+    Ok(())
+}
+
 impl Regex {
     pub fn from_expr(
         e: ExprId,
@@ -673,9 +739,11 @@ impl Regex {
         let endmarker_position = input_from_position.len() as Position;
         let endmarkerid = alloc(&mut arena, RegexNode::EndMarker(endmarker_position));
         let root = RegexNode::Cat(regex, endmarkerid);
+        let root_id = alloc(&mut arena, root.clone());
 
         let retval = Self {
             root,
+            root_id,
             input_symbols,
             endmarker_position,
             input_from_position,
@@ -727,6 +795,23 @@ impl Regex {
 
     pub fn followpos(&self) -> BTreeMap<Position, RoaringBitmap> {
         self.root.followpos(&self.arena)
+    }
+
+    pub fn to_dot<W: Write>(&self, output: &mut W) -> std::result::Result<(), std::io::Error> {
+        writeln!(output, "digraph rx {{")?;
+        do_to_dot(output, self.root_id, &self.arena, &self.input_from_position)?;
+        writeln!(output, "}}")?;
+        Ok(())
+    }
+
+    #[allow(dead_code)]
+    pub fn to_dot_file<P: AsRef<std::path::Path>>(
+        &self,
+        path: P,
+    ) -> std::result::Result<(), std::io::Error> {
+        let mut file = std::fs::File::create(path)?;
+        self.to_dot(&mut file)?;
+        Ok(())
     }
 }
 

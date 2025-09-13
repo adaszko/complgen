@@ -36,6 +36,13 @@ struct Cli {
 
     #[clap(
         long,
+        help = "Write regex in GraphViz .dot format",
+        name = "REGEX_DOT_PATH"
+    )]
+    regex: Option<String>,
+
+    #[clap(
+        long,
         help = "Write DFA in GraphViz .dot format",
         name = "DFA_DOT_PATH"
     )]
@@ -242,7 +249,10 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
         (None, Some(path), None) => (Shell::Fish, path),
         (None, None, Some(path)) => (Shell::Zsh, path),
 
-        _ => todo!(),
+        _ => {
+            eprintln!("Please specify at least one of: --bash, --fish, --zsh");
+            exit(1);
+        }
     };
 
     let validated = match ValidGrammar::from_grammar(grammar, shell) {
@@ -271,6 +281,13 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
 
     if let Err(e) = regex.check_clashing_variants() {
         handle_validation_error(e, &input)?;
+    }
+
+    if let Some(regex_dot_file_path) = &args.regex {
+        let mut dot_file = get_file_or_stdout(&regex_dot_file_path)?;
+        regex
+            .to_dot(&mut dot_file)
+            .context(regex_dot_file_path.clone())?;
     }
 
     let dfa = DFA::from_regex(regex, validated.subdfa_interner);
