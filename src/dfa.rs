@@ -15,7 +15,7 @@ use crate::{Error, StateId};
 pub const DEAD_STATE_ID: StateId = 0;
 pub const FIRST_STATE_ID: StateId = 1;
 
-pub type InputId = usize;
+pub type InputId = u32;
 
 #[derive(Debug, Clone)]
 pub struct DFA {
@@ -32,7 +32,7 @@ pub struct DFA {
 
 impl DFA {
     pub fn get_input(&self, id: InputId) -> &Input {
-        self.input_symbols.get_index(id).unwrap()
+        self.input_symbols.get_index(id as _).unwrap()
     }
 }
 
@@ -105,7 +105,7 @@ fn dfa_from_regex(regex: Regex, subdfa_interner: DFAInternPool) -> DFA {
                     unmarked_states.insert(u.clone());
                 }
                 let to_combined_state_id = dstates.get(&u).unwrap();
-                from_entry.insert(input_id, *to_combined_state_id);
+                from_entry.insert(input_id as _, *to_combined_state_id);
             }
         }
     }
@@ -322,7 +322,7 @@ fn make_transitions_image(
 ) -> Vec<Transition> {
     let mut result: Vec<Transition> = Default::default();
     for (from, tos) in transitions {
-        let meaningful_inputs: IndexSet<usize> = tos.keys().cloned().collect();
+        let meaningful_inputs: IndexSet<InputId> = tos.keys().cloned().collect();
         for (input, to) in tos {
             result.push(Transition {
                 from: *from,
@@ -331,13 +331,13 @@ fn make_transitions_image(
             });
         }
         for input_id in 0..input_symbols.len() {
-            if meaningful_inputs.contains(&input_id) {
+            if meaningful_inputs.contains(&(input_id as InputId)) {
                 continue;
             }
             result.push(Transition {
                 from: *from,
                 to: DEAD_STATE_ID,
-                input: input_id,
+                input: input_id as _,
             });
         }
     }
@@ -1108,7 +1108,7 @@ mod tests {
         let foo = Input::literal("foo");
         let foo_id = dfa.input_symbols.get_index_of(&foo).unwrap();
         assert_eq!(dfa.transitions.len(), 2);
-        let tos: IndexMap<InputId, StateId> = IndexMap::from_iter([(foo_id, 2)]);
+        let tos: IndexMap<InputId, StateId> = IndexMap::from_iter([(foo_id as _, 2)]);
         assert_eq!(*dfa.transitions.get(&1).unwrap(), tos);
         assert_eq!(dfa.accepting_states, RoaringBitmap::from_iter([2]));
         assert_eq!(dfa.starting_state, 1);
@@ -1682,9 +1682,9 @@ mod tests {
         let e = Input::literal("e");
         let i = Input::literal("i");
         let input_symbols = IndexSet::from_iter([f.clone(), e.clone(), i.clone()]);
-        let f_id = input_symbols.get_index_of(&f).unwrap();
-        let e_id = input_symbols.get_index_of(&e).unwrap();
-        let i_id = input_symbols.get_index_of(&i).unwrap();
+        let f_id = input_symbols.get_index_of(&f).unwrap() as InputId;
+        let e_id = input_symbols.get_index_of(&e).unwrap() as InputId;
+        let i_id = input_symbols.get_index_of(&i).unwrap() as InputId;
         let dfa = {
             let starting_state = 0;
             let mut transitions: IndexMap<StateId, IndexMap<InputId, StateId>> = Default::default();
