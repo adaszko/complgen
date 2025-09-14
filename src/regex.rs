@@ -492,7 +492,6 @@ fn do_from_expr(
 
 #[derive(Debug)]
 pub struct Regex {
-    pub root: RegexNode,
     pub root_id: RegexNodeId,
     pub input_symbols: IndexSet<Input>,
     pub input_from_position: Vec<Input>,
@@ -742,7 +741,6 @@ impl Regex {
         let root_id = alloc(&mut arena, root.clone());
 
         let retval = Self {
-            root,
             root_id,
             input_symbols,
             endmarker_position,
@@ -756,8 +754,8 @@ impl Regex {
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);
         do_ensure_ambiguous_inputs_tail_only(
-            &RoaringBitmap::from_iter(&self.root.firstpos(&self.arena)),
-            &self.root.followpos(&self.arena),
+            &RoaringBitmap::from_iter(&self.get_root().firstpos(&self.arena)),
+            &self.get_root().followpos(&self.arena),
             &self.input_from_position,
             shell,
             &mut visited,
@@ -768,8 +766,8 @@ impl Regex {
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);
         do_ensure_ambiguous_inputs_tail_only_subword(
-            &RoaringBitmap::from_iter(&self.root.firstpos(&self.arena)),
-            &self.root.followpos(&self.arena),
+            &RoaringBitmap::from_iter(&self.get_root().firstpos(&self.arena)),
+            &self.get_root().followpos(&self.arena),
             &self.input_from_position,
             shell,
             None,
@@ -782,19 +780,23 @@ impl Regex {
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);
         do_check_clashing_variants(
-            &RoaringBitmap::from_iter(&self.root.firstpos(&self.arena)),
-            &self.root.followpos(&self.arena),
+            &RoaringBitmap::from_iter(&self.get_root().firstpos(&self.arena)),
+            &self.get_root().followpos(&self.arena),
             &self.input_from_position,
             &mut visited,
         )
     }
 
+    pub fn get_root(&self) -> &RegexNode {
+        &self.arena[self.root_id]
+    }
+
     pub fn firstpos(&self) -> BTreeSet<Position> {
-        self.root.firstpos(&self.arena)
+        self.get_root().firstpos(&self.arena)
     }
 
     pub fn followpos(&self) -> BTreeMap<Position, RoaringBitmap> {
-        self.root.followpos(&self.arena)
+        self.get_root().followpos(&self.arena)
     }
 
     pub fn to_dot<W: Write>(&self, output: &mut W) -> std::result::Result<(), std::io::Error> {
