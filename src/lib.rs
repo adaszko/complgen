@@ -37,6 +37,9 @@ pub enum Error {
     #[error("Ambiguity in matching: {:?} {:?}", .0, .1)]
     AmbiguousMatchable(Box<Input>, Box<Input>),
 
+    #[error("Ambiguous DFA: {:?}", .0)]
+    AmbiguousDFA(Box<[Input]>),
+
     #[error("Clashing variants: {:?} {:?}", .0, .1)]
     ClashingVariants(Option<HumanSpan>, Option<HumanSpan>),
 

@@ -278,3 +278,24 @@ mygit (clone "Clone a repository into a new directory" | clone --bare);
   |                                                          ^^^^^
   |
 """)
+
+
+def test_ambiguous_dfa(complgen_binary_path: Path):
+    r = complgen_check(complgen_binary_path, """
+darcs move ( ( --case-ok | --reserved-ok ) | --repodir <DIRECTORY> | --umask <UMASK> | ( --debug | --debug-verbose | --debug-http | ( -v | --verbose ) | ( -q | --quiet ) | --standard-verbosity ) | --timings | ( --posthook <COMMAND> | --no-posthook ) | ( --prompt-posthook | --run-posthook ) | ( --prehook <COMMAND> | --no-prehook ) | ( --prompt-prehook | --run-prehook ) ) ... <SOURCE> ... <DESTINATION>;
+""")
+    assert r.returncode == 1
+    assert r.stderr == snapshot("""\
+warning: undefined nonterminal(s): SOURCE UMASK DESTINATION COMMAND
+1:377:error: Ambiguous grammar.  Matching DFA can't differentiate:
+  |
+1 | darcs move ( ( --case-ok | --reserved-ok ) | --repodir <DIRECTORY> | --umask <UMASK> | ( --debug | --debug-verbose | --debug-http | ( -v | --verbose ) | ( -q | --quiet ) | --standard-verbosity ) | --timings | ( --posthook <COMMAND> | --no-posthook ) | ( --prompt-posthook | --run-posthook ) | ( --prehook <COMMAND> | --no-prehook ) | ( --prompt-prehook | --run-prehook ) ) ... <SOURCE> ... <DESTINATION>;
+  |                                                                                                                                                                                                                                                                                                                                                                                          ^^^^^^^^
+  |
+1:390:error: and:
+  |
+1 | darcs move ( ( --case-ok | --reserved-ok ) | --repodir <DIRECTORY> | --umask <UMASK> | ( --debug | --debug-verbose | --debug-http | ( -v | --verbose ) | ( -q | --quiet ) | --standard-verbosity ) | --timings | ( --posthook <COMMAND> | --no-posthook ) | ( --prompt-posthook | --run-posthook ) | ( --prehook <COMMAND> | --no-prehook ) | ( --prompt-prehook | --run-prehook ) ) ... <SOURCE> ... <DESTINATION>;
+  |                                                                                                                                                                                                                                                                                                                                                                                                       ^^^^^^^^^^^^^
+  |
+""")
+

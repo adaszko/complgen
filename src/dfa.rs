@@ -5,9 +5,9 @@ use std::{cmp::Ordering, collections::BTreeSet, hash::Hash, io::Write, rc::Rc};
 use roaring::{MultiOps, RoaringBitmap};
 use ustr::{Ustr, ustr};
 
-use crate::StateId;
 use crate::grammar::{CmdRegex, DFAId, DFAInternPool, Shell};
 use crate::regex::{Input, Position, Regex};
+use crate::{Error, StateId};
 
 // Every state in a DFA is formally defined to have a transition on *every* input symbol.  In
 // our applications that's not the case, so we add artificial transitions to a special, designated
@@ -15,7 +15,7 @@ use crate::regex::{Input, Position, Regex};
 pub const DEAD_STATE_ID: StateId = 0;
 pub const FIRST_STATE_ID: StateId = 1;
 
-type InputId = usize;
+pub type InputId = usize;
 
 #[derive(Debug, Clone)]
 pub struct DFA {
@@ -698,6 +698,38 @@ impl DFA {
         self.accepting_states.contains(current_state.into())
     }
 
+    /// Best-effort only!  This isn't able to detect ambiguities arising from use of overlapping shell
+    /// regexes!
+    pub fn best_effort_check_dfa_ambiguity(&self) -> crate::Result<()> {
+        for (_, tos) in &self.transitions {
+            let mut ambiguous_inputs: Vec<InputId> = Default::default();
+            for (input_id, _) in tos {
+                match self.get_input(*input_id) {
+                    Input::Literal { .. } => {}
+                    Input::Nonterminal { .. } => ambiguous_inputs.push(*input_id),
+                    Input::Subword {
+                        subdfa: subdfa_id, ..
+                    } => {
+                        let subdfa = self.subdfa_interner.lookup(*subdfa_id);
+                        subdfa.best_effort_check_dfa_ambiguity()?
+                    }
+                    Input::Command { regex: None, .. } => ambiguous_inputs.push(*input_id),
+                    Input::Command {
+                        regex: Some(..), ..
+                    } => {}
+                }
+            }
+            if ambiguous_inputs.len() >= 2 {
+                let inputs: Box<[Input]> = ambiguous_inputs
+                    .into_iter()
+                    .map(|id| self.get_input(id).clone())
+                    .collect();
+                return Err(Error::AmbiguousDFA(inputs));
+            }
+        }
+        Ok(())
+    }
+
     pub fn iter_inputs(&self) -> impl Iterator<Item = &Input> + '_ {
         self.iter_transitions()
             .map(|(_, input_id, _)| self.get_input(input_id))
@@ -984,7 +1016,7 @@ mod tests {
     use std::ops::Rem;
     use std::rc::Rc;
 
-    use crate::grammar::{Expr, ExprId, SubwordCompilationPhase, alloc, expr_to_dot_file};
+    use crate::grammar::{Expr, ExprId, SubwordCompilationPhase, alloc};
     use crate::regex::Regex;
     use Expr::*;
     use itertools::Itertools;
@@ -1046,7 +1078,7 @@ mod tests {
                     .collect();
                 // It's ambiguous which transition to take if there are two transitions
                 // representing a nonterminal.
-                prop_assume!(anys.len() <= 1);
+                assert!(anys.len() <= 1);
 
                 for (transition_input_id, to) in anys {
                     let transition_input = self.get_input(transition_input_id);
@@ -1073,7 +1105,13 @@ mod tests {
         let expr = alloc(&mut arena, Expr::term("foo"));
         let specs = UstrMap::default();
         let regex = Regex::from_expr(expr, &arena, &specs).unwrap();
+        assert!(matches!(
+            regex.ensure_ambiguous_inputs_tail_only(Shell::Bash),
+            Ok(())
+        ));
+        assert!(matches!(regex.check_clashing_variants(), Ok(())));
         let dfa = DFA::from_regex(regex, DFAInternPool::default());
+        assert!(matches!(dfa.best_effort_check_dfa_ambiguity(), Ok(_)));
         let foo = Input::literal("foo");
         let foo_id = dfa.input_symbols.get_index_of(&foo).unwrap();
         assert_eq!(dfa.transitions.len(), 2);
@@ -1590,7 +1628,6 @@ mod tests {
             Sequence(vec![ExprId(77), ExprId(93)]),
         ]);
         //expr_to_dot_file("expr.dot", expr, &arena.borrow()).unwrap();
-        let input = [ustr("--baz"), ustr("anything")];
         let specs = UstrMap::default();
         let regex = Regex::from_expr(expr, &arena.borrow(), &specs).unwrap();
 
@@ -1606,9 +1643,11 @@ mod tests {
 
         //regex.to_dot_file("regex.dot").unwrap();
         let dfa = DFA::from_regex(regex, DFAInternPool::default());
-        let input: Vec<&str> = input.iter().map(|s| s.as_str()).collect();
+        assert!(matches!(
+            dfa.best_effort_check_dfa_ambiguity(),
+            Err(Error::AmbiguousDFA(_))
+        ));
         //dfa.to_dot_file("dfa.dot").unwrap();
-        assert!(dfa.accepts(&input, Shell::Bash).unwrap());
     }
 
     proptest! {
@@ -1622,8 +1661,9 @@ mod tests {
             prop_assume!(matches!(regex.ensure_ambiguous_inputs_tail_only(Shell::Bash), Ok(())));
             prop_assume!(matches!(regex.check_clashing_variants(), Ok(())));
             let dfa = DFA::from_regex(regex, DFAInternPool::default());
+            prop_assume!(matches!(dfa.best_effort_check_dfa_ambiguity(), Ok(_)));
             let input: Vec<&str> = input.iter().map(|s| s.as_str()).collect();
-            prop_assert!(dbg!(dfa.accepts(&input, Shell::Bash))?);
+            prop_assert!(dfa.accepts(&input, Shell::Bash)?);
         }
 
         #[test]
@@ -1635,6 +1675,7 @@ mod tests {
             prop_assume!(matches!(regex.ensure_ambiguous_inputs_tail_only(Shell::Bash), Ok(())));
             prop_assume!(matches!(regex.check_clashing_variants(), Ok(())));
             let dfa = DFA::from_regex(regex, DFAInternPool::default());
+            prop_assume!(matches!(dfa.best_effort_check_dfa_ambiguity(), Ok(_)));
             let input: Vec<&str> = input.iter().map(|s| s.as_str()).collect();
             prop_assert!(dfa.accepts(&input, Shell::Bash)?);
             let minimal_dfa = dfa.minimize();
@@ -1701,6 +1742,7 @@ mod tests {
         let specs = UstrMap::default();
         let regex = Regex::from_expr(expr, &arena, &specs).unwrap();
         let dfa = DFA::from_regex(regex, DFAInternPool::default());
+        assert!(matches!(dfa.best_effort_check_dfa_ambiguity(), Ok(_)));
         assert!(dfa.accepts(&input, Shell::Bash).unwrap());
         let minimal_dfa = dfa.minimize();
         assert!(minimal_dfa.accepts(&input, Shell::Bash).unwrap());
@@ -1724,6 +1766,7 @@ mod tests {
         let specs = UstrMap::default();
         let regex = Regex::from_expr(expr, &arena, &specs).unwrap();
         let dfa = DFA::from_regex(regex, DFAInternPool::default());
+        assert!(matches!(dfa.best_effort_check_dfa_ambiguity(), Ok(_)));
         assert!(dfa.accepts(&input, Shell::Bash).unwrap());
         let minimal_dfa = dfa.minimize();
         assert!(minimal_dfa.accepts(&input, Shell::Bash).unwrap());
@@ -1754,6 +1797,7 @@ mod tests {
         let specs = UstrMap::default();
         let regex = Regex::from_expr(expr, &arena, &specs).unwrap();
         let dfa = DFA::from_regex(regex, DFAInternPool::default());
+        assert!(matches!(dfa.best_effort_check_dfa_ambiguity(), Ok(_)));
         assert!(dfa.accepts(&input, Shell::Bash).unwrap());
         let minimal_dfa = dfa.minimize();
         assert!(minimal_dfa.accepts(&input, Shell::Bash).unwrap());

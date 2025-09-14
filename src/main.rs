@@ -165,6 +165,44 @@ fn handle_validation_error(e: Error, input: &str) -> anyhow::Result<ValidGrammar
             eprintln!("{}:{}:{}", right_line_start, right_start, error.to_string());
             exit(1);
         }
+        Error::AmbiguousDFA(inputs) => {
+            let Some(HumanSpan {
+                line_start: left_line_start,
+                start: left_start,
+                end: left_end,
+            }) = inputs[0].get_span()
+            else {
+                unreachable!()
+            };
+            let error = chic::Error::new("Ambiguous grammar.  Matching DFA can't differentiate:")
+                .error(
+                    left_line_start,
+                    left_start,
+                    left_end,
+                    input.lines().nth(left_line_start).unwrap(),
+                    "",
+                );
+            eprintln!("{}:{}:{}", left_line_start, left_start, error.to_string());
+            for inp in &inputs[1..] {
+                let Some(HumanSpan {
+                    line_start: right_line_start,
+                    start: right_start,
+                    end: right_end,
+                }) = inp.get_span()
+                else {
+                    unreachable!()
+                };
+                let error = chic::Error::new("and:").error(
+                    right_line_start,
+                    right_start,
+                    right_end,
+                    input.lines().nth(right_line_start).unwrap(),
+                    "",
+                );
+                eprintln!("{}:{}:{}", right_line_start, right_start, error.to_string());
+            }
+            exit(1);
+        }
         Error::ClashingVariants(first, second) => {
             let Some(HumanSpan {
                 line_start: left_line_start,
@@ -280,6 +318,9 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
     }
 
     let dfa = DFA::from_regex(regex, validated.subdfa_interner);
+    if let Err(e) = dfa.best_effort_check_dfa_ambiguity() {
+        handle_validation_error(e, &input)?;
+    };
 
     let dfa = dfa.minimize();
 
