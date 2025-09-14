@@ -292,14 +292,11 @@ fn renumber_states(
         })
         .collect();
 
-    let new_accepting_states: RoaringBitmap =
-        RoaringBitmap::from_iter(accepting_states.iter().map(|old| {
-            u32::from(
-                *new_from_old_state_id
-                    .get(&u16::try_from(old).unwrap())
-                    .unwrap(),
-            )
-        }));
+    let new_accepting_states: RoaringBitmap = RoaringBitmap::from_iter(
+        accepting_states
+            .iter()
+            .map(|old| *new_from_old_state_id.get(&old).unwrap()),
+    );
 
     (new_starting_state, new_transitions, new_accepting_states)
 }
@@ -499,12 +496,8 @@ fn do_minimize(dfa: DFA) -> DFA {
     let accepting_states = {
         let mut accepting_states: RoaringBitmap = Default::default();
         for state_id in &dfa.accepting_states {
-            accepting_states.insert(
-                (*representative_id_from_state_id
-                    .get(&u16::try_from(state_id).unwrap())
-                    .unwrap())
-                .into(),
-            );
+            accepting_states
+                .insert((*representative_id_from_state_id.get(&state_id).unwrap()).into());
         }
         accepting_states
     };

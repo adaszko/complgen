@@ -58,4 +58,4 @@ pub enum Error {
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-pub type StateId = u16;
+pub type StateId = u32;
