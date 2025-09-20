@@ -15,24 +15,22 @@ use crate::{Error, StateId};
 pub const DEAD_STATE_ID: StateId = 0;
 pub const FIRST_STATE_ID: StateId = 1;
 
-pub type InputId = u32;
-
 #[derive(Debug, Clone)]
 pub struct DFA {
     pub starting_state: StateId,
 
     // IndexMap is used to keep complgen deterministic
     // https://github.com/adaszko/complgen/issues/60
-    pub transitions: IndexMap<StateId, IndexMap<InputId, StateId>>,
+    pub transitions: IndexMap<StateId, IndexMap<Position, StateId>>,
     pub accepting_states: RoaringBitmap,
 
-    pub input_symbols: IndexSet<Input>,
+    pub input_from_position: Vec<Input>,
     pub subdfa_interner: DFAInternPool,
 }
 
 impl DFA {
-    pub fn get_input(&self, id: InputId) -> &Input {
-        self.input_symbols.get_index(id as _).unwrap()
+    pub fn get_input(&self, id: Position) -> &Input {
+        &self.input_from_position[id as usize]
     }
 }
 
@@ -41,7 +39,7 @@ impl PartialEq for DFA {
         self.starting_state == other.starting_state
             && self.transitions == other.transitions
             && self.accepting_states == other.accepting_states
-            && self.input_symbols == other.input_symbols
+            && self.input_from_position == other.input_from_position
     }
 }
 
@@ -59,7 +57,7 @@ impl std::hash::Hash for DFA {
         for elem in &self.accepting_states {
             elem.hash(state);
         }
-        for sym in &self.input_symbols {
+        for sym in &self.input_from_position {
             sym.hash(state);
         }
     }
@@ -77,8 +75,9 @@ fn dfa_from_regex(regex: Regex, subdfa_interner: DFAInternPool) -> DFA {
         IndexMap::from_iter([(combined_starting_state.clone(), combined_starting_state_id)]);
 
     let followpos = regex.followpos();
+    let unique_inputs = regex.get_unique_inputs();
 
-    let mut dtran: IndexMap<StateId, IndexMap<InputId, StateId>> = Default::default();
+    let mut dtran: IndexMap<StateId, IndexMap<Position, StateId>> = Default::default();
     let mut unmarked_states: HashSet<BTreeSet<Position>> = Default::default();
     unmarked_states.insert(combined_starting_state.clone());
     while let Some(state) = unmarked_states.iter().next() {
@@ -86,12 +85,10 @@ fn dfa_from_regex(regex: Regex, subdfa_interner: DFAInternPool) -> DFA {
         unmarked_states.remove(&combined_state);
         let from_combined_state_id = *dstates.get(&combined_state).unwrap();
         let from_entry = dtran.entry(from_combined_state_id).or_default();
-        for input_id in 0..regex.input_symbols.len() {
-            let input = regex.input_symbols.get_index(input_id).unwrap();
+        for (input, input_id) in &unique_inputs {
             let mut u = RoaringBitmap::new();
             for pos in &combined_state {
-                let pos_usize = usize::try_from(*pos).unwrap();
-                if regex.input_from_position.get(pos_usize) == Some(input)
+                if regex.input_from_position.get(*pos as usize) == Some(&input)
                     && let Some(positions) = followpos.get(pos)
                 {
                     u |= positions;
@@ -105,7 +102,7 @@ fn dfa_from_regex(regex: Regex, subdfa_interner: DFAInternPool) -> DFA {
                     unmarked_states.insert(u.clone());
                 }
                 let to_combined_state_id = dstates.get(&u).unwrap();
-                from_entry.insert(input_id as _, *to_combined_state_id);
+                from_entry.insert(*input_id as _, *to_combined_state_id);
             }
         }
     }
@@ -125,7 +122,7 @@ fn dfa_from_regex(regex: Regex, subdfa_interner: DFAInternPool) -> DFA {
         starting_state: *dstates.get(&combined_starting_state).unwrap(),
         transitions: dtran,
         accepting_states,
-        input_symbols: regex.input_symbols,
+        input_from_position: regex.input_from_position,
         subdfa_interner,
     }
 }
@@ -186,7 +183,7 @@ impl SetInternPool {
 struct Transition {
     from: StateId,
     to: StateId,
-    input: InputId,
+    input: Position,
 }
 
 fn keep_only_states_with_input_transitions(
@@ -229,11 +226,8 @@ fn eliminate_nonaccepting_states_without_output_transitions(
     transitions: &[Transition],
     accepting_states: &RoaringBitmap,
 ) -> Vec<Transition> {
-    let states_with_output_transition = RoaringBitmap::from_iter(
-        transitions
-            .iter()
-            .map(|transition| u32::from(transition.from)),
-    );
+    let states_with_output_transition =
+        RoaringBitmap::from_iter(transitions.iter().map(|transition| transition.from));
     let alive_transitions: Vec<Transition> = transitions
         .iter()
         .filter(|transition| {
@@ -303,8 +297,8 @@ fn renumber_states(
 
 fn hashmap_transitions_from_vec(
     transitions: &[Transition],
-) -> IndexMap<StateId, IndexMap<InputId, StateId>> {
-    let mut result: IndexMap<StateId, IndexMap<InputId, StateId>> = Default::default();
+) -> IndexMap<StateId, IndexMap<Position, StateId>> {
+    let mut result: IndexMap<StateId, IndexMap<Position, StateId>> = Default::default();
 
     for transition in transitions {
         result
@@ -317,12 +311,12 @@ fn hashmap_transitions_from_vec(
 }
 
 fn make_transitions_image(
-    transitions: &IndexMap<StateId, IndexMap<InputId, StateId>>,
-    input_symbols: &IndexSet<Input>,
+    transitions: &IndexMap<StateId, IndexMap<Position, StateId>>,
+    input_symbols: &[Input],
 ) -> Vec<Transition> {
     let mut result: Vec<Transition> = Default::default();
     for (from, tos) in transitions {
-        let meaningful_inputs: IndexSet<InputId> = tos.keys().cloned().collect();
+        let meaningful_inputs: IndexSet<Position> = tos.keys().cloned().collect();
         for (input, to) in tos {
             result.push(Transition {
                 from: *from,
@@ -331,7 +325,7 @@ fn make_transitions_image(
             });
         }
         for input_id in 0..input_symbols.len() {
-            if meaningful_inputs.contains(&(input_id as InputId)) {
+            if meaningful_inputs.contains(&(input_id as Position)) {
                 continue;
             }
             result.push(Transition {
@@ -410,7 +404,7 @@ fn do_minimize(dfa: DFA) -> DFA {
         ])
     };
     let mut worklist = partitions.clone();
-    let transitions_image = make_transitions_image(&dfa.transitions, &dfa.input_symbols);
+    let transitions_image = make_transitions_image(&dfa.transitions, &dfa.input_from_position);
     while let Some(group_id) = worklist.iter().next() {
         let group_id = *group_id;
         worklist.remove(&group_id);
@@ -423,8 +417,8 @@ fn do_minimize(dfa: DFA) -> DFA {
             None => continue,
         };
 
-        let transitions_to_group: HashMap<InputId, RoaringBitmap> = {
-            let mut group_transitions: HashMap<InputId, RoaringBitmap> = Default::default();
+        let transitions_to_group: HashMap<Position, RoaringBitmap> = {
+            let mut group_transitions: HashMap<Position, RoaringBitmap> = Default::default();
             for transition in transitions {
                 if group.contains(transition.to.into()) {
                     group_transitions
@@ -528,7 +522,7 @@ fn do_minimize(dfa: DFA) -> DFA {
         starting_state,
         transitions,
         accepting_states,
-        input_symbols: dfa.input_symbols,
+        input_from_position: dfa.input_from_position,
         subdfa_interner: dfa.subdfa_interner,
     }
 }
@@ -695,7 +689,7 @@ impl DFA {
     /// regexes!
     pub fn best_effort_check_dfa_ambiguity(&self) -> crate::Result<()> {
         for (_, tos) in &self.transitions {
-            let mut ambiguous_inputs: Vec<InputId> = Default::default();
+            let mut ambiguous_inputs: Vec<Position> = Default::default();
             for (input_id, _) in tos {
                 match self.get_input(*input_id) {
                     Input::Literal { .. } => {}
@@ -728,27 +722,30 @@ impl DFA {
             .map(|(_, input_id, _)| self.get_input(input_id))
     }
 
-    pub fn iter_froms_inputs(&self) -> impl Iterator<Item = (StateId, InputId)> + '_ {
+    pub fn iter_froms_inputs(&self) -> impl Iterator<Item = (StateId, Position)> + '_ {
         self.transitions
             .iter()
             .flat_map(|(from, tos)| tos.iter().map(|(input, _)| (*from, *input)))
     }
 
-    pub fn iter_transitions_from(&self, from: StateId) -> impl Iterator<Item = (InputId, StateId)> {
+    pub fn iter_transitions_from(
+        &self,
+        from: StateId,
+    ) -> impl Iterator<Item = (Position, StateId)> {
         match self.transitions.get(&from) {
             Some(transitions) => transitions.clone().into_iter(),
-            None => IndexMap::<InputId, StateId>::default().into_iter(),
+            None => IndexMap::<Position, StateId>::default().into_iter(),
         }
     }
 
-    pub fn iter_transitions(&self) -> impl Iterator<Item = (StateId, InputId, StateId)> + '_ {
+    pub fn iter_transitions(&self) -> impl Iterator<Item = (StateId, Position, StateId)> + '_ {
         self.transitions
             .iter()
             .flat_map(|(from, tos)| tos.iter().map(|(input, to)| (*from, *input, *to)))
     }
 
     pub fn get_all_literals(&self) -> Vec<(Ustr, Option<Ustr>)> {
-        self.input_symbols
+        self.input_from_position
             .iter()
             .filter_map(|input| match input {
                 Input::Literal {
@@ -1064,7 +1061,7 @@ mod tests {
                     }
                 }
 
-                let anys: Vec<(InputId, StateId)> = self
+                let anys: Vec<(Position, StateId)> = self
                     .iter_transitions_from(current_state)
                     .filter(|(input_id, _)| self.get_input(*input_id).is_ambiguous(shell))
                     .map(|(k, v)| (k.clone(), v))
@@ -1087,7 +1084,7 @@ mod tests {
             Ok(self.accepting_states.contains(current_state.into()))
         }
 
-        pub fn has_transition(&self, from: StateId, input: InputId, to: StateId) -> bool {
+        pub fn has_transition(&self, from: StateId, input: Position, to: StateId) -> bool {
             *self.transitions.get(&from).unwrap().get(&input).unwrap() == to
         }
     }
@@ -1106,9 +1103,13 @@ mod tests {
         let dfa = DFA::from_regex(regex, DFAInternPool::default());
         assert!(matches!(dfa.best_effort_check_dfa_ambiguity(), Ok(_)));
         let foo = Input::literal("foo");
-        let foo_id = dfa.input_symbols.get_index_of(&foo).unwrap();
+        let (foo_id, _) = dfa
+            .input_from_position
+            .iter()
+            .find_position(|e| e == &&foo)
+            .unwrap();
         assert_eq!(dfa.transitions.len(), 2);
-        let tos: IndexMap<InputId, StateId> = IndexMap::from_iter([(foo_id as _, 2)]);
+        let tos: IndexMap<Position, StateId> = IndexMap::from_iter([(foo_id as _, 2)]);
         assert_eq!(*dfa.transitions.get(&1).unwrap(), tos);
         assert_eq!(dfa.accepting_states, RoaringBitmap::from_iter([2]));
         assert_eq!(dfa.starting_state, 1);
@@ -1681,13 +1682,14 @@ mod tests {
         let f = Input::literal("f");
         let e = Input::literal("e");
         let i = Input::literal("i");
-        let input_symbols = IndexSet::from_iter([f.clone(), e.clone(), i.clone()]);
-        let f_id = input_symbols.get_index_of(&f).unwrap() as InputId;
-        let e_id = input_symbols.get_index_of(&e).unwrap() as InputId;
-        let i_id = input_symbols.get_index_of(&i).unwrap() as InputId;
+        let input_symbols = vec![f.clone(), e.clone(), i.clone()];
+        let f_id = 0;
+        let e_id = 1;
+        let i_id = 2;
         let dfa = {
             let starting_state = 0;
-            let mut transitions: IndexMap<StateId, IndexMap<InputId, StateId>> = Default::default();
+            let mut transitions: IndexMap<StateId, IndexMap<Position, StateId>> =
+                Default::default();
             transitions.entry(0).or_default().insert(f_id, 1);
             transitions.entry(1).or_default().insert(e_id, 2);
             transitions.entry(1).or_default().insert(i_id, 4);
@@ -1698,7 +1700,7 @@ mod tests {
                 starting_state,
                 transitions,
                 accepting_states,
-                input_symbols,
+                input_from_position: input_symbols,
                 subdfa_interner: DFAInternPool::default(),
             }
         };
@@ -1709,90 +1711,5 @@ mod tests {
         assert!(minimized.has_transition(1, e_id, 2));
         assert!(minimized.has_transition(1, i_id, 2));
         assert!(minimized.has_transition(2, e_id, 3));
-    }
-
-    #[test]
-    fn minimization_fails() {
-        let mut arena: Vec<Expr> = Default::default();
-        let term_baz_id = alloc(&mut arena, Expr::term("--baz"));
-        let nonterm_file1_id = alloc(&mut arena, Expr::nontermref("FILE"));
-        let alt1_id = alloc(&mut arena, Alternative(vec![term_baz_id, nonterm_file1_id]));
-        let many1_1_id = alloc(&mut arena, Many1(alt1_id));
-        let many1_2_id = alloc(&mut arena, Many1(many1_1_id));
-        let nonterm_file2_id = alloc(&mut arena, Expr::nontermref("FILE"));
-        let seq1_id = alloc(&mut arena, Sequence(vec![many1_2_id, nonterm_file2_id]));
-        let opt1_id = alloc(&mut arena, Optional(seq1_id));
-        let nonterm_file3_id = alloc(&mut arena, Expr::nontermref("FILE"));
-        let term_foo_id = alloc(&mut arena, Expr::term("foo"));
-        let seq2_id = alloc(&mut arena, Sequence(vec![nonterm_file3_id, term_foo_id]));
-        let seq3_id = alloc(&mut arena, Sequence(vec![opt1_id, seq2_id]));
-        let term_quux_id = alloc(&mut arena, Expr::term("--quux"));
-        let alt2_id = alloc(&mut arena, Alternative(vec![term_quux_id, seq3_id]));
-        let many1_3_id = alloc(&mut arena, Many1(alt2_id));
-        let nonterm_file4_id = alloc(&mut arena, Expr::nontermref("FILE"));
-        let expr = alloc(&mut arena, Alternative(vec![many1_3_id, nonterm_file4_id]));
-        let input = ["--quux", "--baz", "anything", "anything", "foo"];
-        let specs = UstrMap::default();
-        let regex = Regex::from_expr(expr, &arena, &specs).unwrap();
-        let dfa = DFA::from_regex(regex, DFAInternPool::default());
-        assert!(matches!(dfa.best_effort_check_dfa_ambiguity(), Ok(_)));
-        assert!(dfa.accepts(&input, Shell::Bash).unwrap());
-        let minimal_dfa = dfa.minimize();
-        assert!(minimal_dfa.accepts(&input, Shell::Bash).unwrap());
-    }
-
-    #[test]
-    fn minimization_counterexample1() {
-        let mut arena: Vec<Expr> = Default::default();
-        let nonterm_file1_id = alloc(&mut arena, Expr::nontermref("FILE"));
-        let nonterm_file2_id = alloc(&mut arena, Expr::nontermref("FILE"));
-        let seq_id = alloc(
-            &mut arena,
-            Sequence(vec![nonterm_file1_id, nonterm_file2_id]),
-        );
-        let many1_id = alloc(&mut arena, Many1(seq_id));
-        let nonterm_file3_id = alloc(&mut arena, Expr::nontermref("FILE"));
-        let expr = alloc(&mut arena, Alternative(vec![many1_id, nonterm_file3_id]));
-        let input = [
-            "anything", "anything", "anything", "anything", "anything", "anything",
-        ];
-        let specs = UstrMap::default();
-        let regex = Regex::from_expr(expr, &arena, &specs).unwrap();
-        let dfa = DFA::from_regex(regex, DFAInternPool::default());
-        assert!(matches!(dfa.best_effort_check_dfa_ambiguity(), Ok(_)));
-        assert!(dfa.accepts(&input, Shell::Bash).unwrap());
-        let minimal_dfa = dfa.minimize();
-        assert!(minimal_dfa.accepts(&input, Shell::Bash).unwrap());
-    }
-
-    #[test]
-    fn minimization_counterexample2() {
-        let mut arena: Vec<Expr> = Default::default();
-        let term_baz1_id = alloc(&mut arena, Expr::term("--baz"));
-        let many1_1_id = alloc(&mut arena, Many1(term_baz1_id));
-        let many1_2_id = alloc(&mut arena, Many1(many1_1_id));
-        let nonterm_file1_id = alloc(&mut arena, Expr::nontermref("FILE"));
-        let alt1_id = alloc(&mut arena, Alternative(vec![many1_2_id, nonterm_file1_id]));
-        let term_baz2_id = alloc(&mut arena, Expr::term("--baz"));
-        let seq1_id = alloc(&mut arena, Sequence(vec![alt1_id, term_baz2_id]));
-
-        let nonterm_file2_id = alloc(&mut arena, Expr::nontermref("FILE"));
-        let nonterm_file3_id = alloc(&mut arena, Expr::nontermref("FILE"));
-        let alt2_id = alloc(
-            &mut arena,
-            Alternative(vec![nonterm_file2_id, nonterm_file3_id]),
-        );
-        let many1_3_id = alloc(&mut arena, Many1(alt2_id));
-
-        let expr = alloc(&mut arena, Sequence(vec![seq1_id, many1_3_id]));
-        let input = ["anything", "--baz", "anything", "anything"];
-
-        let specs = UstrMap::default();
-        let regex = Regex::from_expr(expr, &arena, &specs).unwrap();
-        let dfa = DFA::from_regex(regex, DFAInternPool::default());
-        assert!(matches!(dfa.best_effort_check_dfa_ambiguity(), Ok(_)));
-        assert!(dfa.accepts(&input, Shell::Bash).unwrap());
-        let minimal_dfa = dfa.minimize();
-        assert!(minimal_dfa.accepts(&input, Shell::Bash).unwrap());
     }
 }

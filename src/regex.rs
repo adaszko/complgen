@@ -1,6 +1,6 @@
 use crate::{Error, Result};
 use hashbrown::HashSet;
-use indexmap::IndexSet;
+use indexmap::IndexMap;
 use std::{
     collections::{BTreeMap, BTreeSet},
     io::Write,
@@ -334,7 +334,6 @@ fn do_from_expr(
     expr_arena: &[Expr],
     specs: &UstrMap<Specialization>,
     arena: &mut Vec<RegexNode>,
-    symbols: &mut IndexSet<Input>,
     input_from_position: &mut Vec<Input>,
 ) -> RegexNodeId {
     match &expr_arena[e] {
@@ -356,7 +355,6 @@ fn do_from_expr(
                 span: *span,
             };
             input_from_position.push(input.clone());
-            symbols.insert(input);
             alloc(arena, result)
         }
         Expr::Subword {
@@ -375,7 +373,6 @@ fn do_from_expr(
                 span: *span,
             };
             input_from_position.push(input.clone());
-            symbols.insert(input);
             alloc(arena, result)
         }
         Expr::NontermRef {
@@ -393,7 +390,6 @@ fn do_from_expr(
                 span: *span,
             };
             input_from_position.push(input.clone());
-            symbols.insert(input);
             alloc(arena, result)
         }
         Expr::Command {
@@ -411,27 +407,14 @@ fn do_from_expr(
                 span: *span,
             };
             input_from_position.push(input.clone());
-            symbols.insert(input);
             alloc(arena, result)
         }
         Expr::Sequence(subexprs) => {
-            let mut left_regex_id = do_from_expr(
-                subexprs[0],
-                expr_arena,
-                specs,
-                arena,
-                symbols,
-                input_from_position,
-            );
+            let mut left_regex_id =
+                do_from_expr(subexprs[0], expr_arena, specs, arena, input_from_position);
             for right_expr in &subexprs[1..] {
-                let right_regex_id = do_from_expr(
-                    *right_expr,
-                    expr_arena,
-                    specs,
-                    arena,
-                    symbols,
-                    input_from_position,
-                );
+                let right_regex_id =
+                    do_from_expr(*right_expr, expr_arena, specs, arena, input_from_position);
                 let left_regex = RegexNode::Cat(left_regex_id, right_regex_id);
                 left_regex_id = alloc(arena, left_regex);
             }
@@ -440,35 +423,20 @@ fn do_from_expr(
         Expr::Alternative(subexprs) => {
             let mut subregexes: Vec<RegexNodeId> = Default::default();
             for e in subexprs {
-                let subregex =
-                    do_from_expr(*e, expr_arena, specs, arena, symbols, input_from_position);
+                let subregex = do_from_expr(*e, expr_arena, specs, arena, input_from_position);
                 subregexes.push(subregex);
             }
             let result = RegexNode::Or(subregexes.into_boxed_slice(), false);
             alloc(arena, result)
         }
         Expr::Optional(subexpr) => {
-            let subregex = do_from_expr(
-                *subexpr,
-                expr_arena,
-                specs,
-                arena,
-                symbols,
-                input_from_position,
-            );
+            let subregex = do_from_expr(*subexpr, expr_arena, specs, arena, input_from_position);
             let epsid = alloc(arena, RegexNode::Epsilon);
             let result = RegexNode::Or(Box::new([subregex, epsid]), false);
             alloc(arena, result)
         }
         Expr::Many1(subexpr) => {
-            let subregex_id = do_from_expr(
-                *subexpr,
-                expr_arena,
-                specs,
-                arena,
-                symbols,
-                input_from_position,
-            );
+            let subregex_id = do_from_expr(*subexpr, expr_arena, specs, arena, input_from_position);
             let star = RegexNode::Star(subregex_id);
             let starid = alloc(arena, star);
             let result = RegexNode::Cat(subregex_id, starid);
@@ -480,8 +448,7 @@ fn do_from_expr(
         Expr::Fallback(subexprs) => {
             let mut subregexes: Vec<RegexNodeId> = Default::default();
             for e in subexprs {
-                let subregex =
-                    do_from_expr(*e, expr_arena, specs, arena, symbols, input_from_position);
+                let subregex = do_from_expr(*e, expr_arena, specs, arena, input_from_position);
                 subregexes.push(subregex);
             }
             let result = RegexNode::Or(subregexes.into_boxed_slice(), true);
@@ -493,7 +460,6 @@ fn do_from_expr(
 #[derive(Debug)]
 pub struct Regex {
     pub root_id: RegexNodeId,
-    pub input_symbols: IndexSet<Input>,
     pub input_from_position: Vec<Input>,
     pub endmarker_position: Position,
     pub arena: Vec<RegexNode>,
@@ -724,17 +690,9 @@ impl Regex {
         expr_arena: &[Expr],
         specs: &UstrMap<Specialization>,
     ) -> Result<Self> {
-        let mut input_symbols: IndexSet<Input> = Default::default();
         let mut input_from_position: Vec<Input> = Default::default();
         let mut arena: Vec<RegexNode> = Default::default();
-        let regex = do_from_expr(
-            e,
-            expr_arena,
-            specs,
-            &mut arena,
-            &mut input_symbols,
-            &mut input_from_position,
-        );
+        let regex = do_from_expr(e, expr_arena, specs, &mut arena, &mut input_from_position);
         let endmarker_position = input_from_position.len() as Position;
         let endmarkerid = alloc(&mut arena, RegexNode::EndMarker(endmarker_position));
         let root = RegexNode::Cat(regex, endmarkerid);
@@ -742,7 +700,6 @@ impl Regex {
 
         let retval = Self {
             root_id,
-            input_symbols,
             endmarker_position,
             input_from_position,
             arena,
@@ -750,6 +707,13 @@ impl Regex {
         Ok(retval)
     }
 
+    pub fn get_unique_inputs(&self) -> IndexMap<Input, Position> {
+        let mut result: IndexMap<Input, Position> = Default::default();
+        for (id, input) in self.input_from_position.iter().enumerate() {
+            result.entry(input.clone()).or_insert(id as Position);
+        }
+        result
+    }
     pub fn ensure_ambiguous_inputs_tail_only(&self, shell: Shell) -> Result<()> {
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);
