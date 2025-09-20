@@ -1,4 +1,4 @@
-use crate::{Error, Result};
+use crate::{Error, Result, grammar::ValidGrammar};
 use hashbrown::HashSet;
 use indexmap::IndexMap;
 use std::{
@@ -685,6 +685,13 @@ fn do_to_dot<W: Write>(
 }
 
 impl Regex {
+    pub fn from_valid_grammar(v: &ValidGrammar, shell: Shell) -> Result<Self> {
+        let regex = Self::from_expr(v.expr, &v.arena, &v.specializations)?;
+        regex.ensure_ambiguous_inputs_tail_only(shell)?;
+        regex.check_clashing_variants()?;
+        Ok(regex)
+    }
+
     pub fn from_expr(
         e: ExprId,
         expr_arena: &[Expr],
@@ -714,6 +721,7 @@ impl Regex {
         }
         result
     }
+
     pub fn ensure_ambiguous_inputs_tail_only(&self, shell: Shell) -> Result<()> {
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);

@@ -68,12 +68,11 @@ fn handle_parse_error(input: &str) -> anyhow::Result<Grammar> {
     }
 }
 
-fn handle_validation_error(e: Error, input: &str) -> anyhow::Result<ValidGrammar> {
+fn handle_validation_error(e: Error, input: &str) -> anyhow::Result<()> {
     match e {
         Error::VaryingCommandNames(cmds) => {
             let joined = itertools::join(cmds.into_iter().map(|c| format!("{c}")), ", ");
             eprintln!("Multiple commands specified: {joined}");
-            exit(1);
         }
         Error::SubwordSpaces(left, right, trace) => {
             let HumanSpan {
@@ -127,7 +126,6 @@ fn handle_validation_error(e: Error, input: &str) -> anyhow::Result<ValidGrammar
                 );
                 eprintln!("{}:{}:{}", line_start, start, e.to_string());
             }
-            exit(1);
         }
         Error::AmbiguousMatchable(first, second) => {
             let Some(HumanSpan {
@@ -163,7 +161,6 @@ fn handle_validation_error(e: Error, input: &str) -> anyhow::Result<ValidGrammar
                 "",
             );
             eprintln!("{}:{}:{}", right_line_start, right_start, error.to_string());
-            exit(1);
         }
         Error::AmbiguousDFA(inputs) => {
             let Some(HumanSpan {
@@ -201,7 +198,6 @@ fn handle_validation_error(e: Error, input: &str) -> anyhow::Result<ValidGrammar
                 );
                 eprintln!("{}:{}:{}", right_line_start, right_start, error.to_string());
             }
-            exit(1);
         }
         Error::ClashingVariants(first, second) => {
             let Some(HumanSpan {
@@ -237,13 +233,12 @@ fn handle_validation_error(e: Error, input: &str) -> anyhow::Result<ValidGrammar
                 "",
             );
             eprintln!("{}:{}:{}", right_line_start, right_start, error.to_string());
-            exit(1);
         }
         e => {
             eprintln!("{}", e);
-            exit(1);
         }
     }
+    exit(1);
 }
 
 fn get_file_or_stdout(path: &str) -> anyhow::Result<Box<dyn Write>> {
@@ -284,31 +279,23 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
 
     let validated = match ValidGrammar::from_grammar(grammar, shell) {
         Ok(validated) => validated,
-        Err(e) => {
-            handle_validation_error(e, &input)?;
-            return Ok(());
-        }
+        Err(e) => return handle_validation_error(e, &input),
     };
 
     if !validated.undefined_nonterminals.is_empty() {
-        let joined = itertools::join(validated.undefined_nonterminals, " ");
+        let joined = itertools::join(&validated.undefined_nonterminals, " ");
         eprintln!("warning: undefined nonterminal(s): {}", joined);
     }
 
     if !validated.unused_nonterminals.is_empty() {
-        let joined = itertools::join(validated.unused_nonterminals, " ");
+        let joined = itertools::join(&validated.unused_nonterminals, " ");
         eprintln!("warning: unused nonterminal(s): {}", joined);
     }
 
-    let regex = Regex::from_expr(validated.expr, &validated.arena, &validated.specializations)?;
-
-    if let Err(e) = regex.ensure_ambiguous_inputs_tail_only(shell) {
-        handle_validation_error(e, &input)?;
-    }
-
-    if let Err(e) = regex.check_clashing_variants() {
-        handle_validation_error(e, &input)?;
-    }
+    let regex = match Regex::from_valid_grammar(&validated, shell) {
+        Ok(regex) => regex,
+        Err(e) => return handle_validation_error(e, &input),
+    };
 
     if let Some(regex_dot_file_path) = &args.regex {
         let mut dot_file = get_file_or_stdout(regex_dot_file_path)?;
@@ -319,7 +306,7 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
 
     let dfa = DFA::from_regex(regex, validated.subdfa_interner);
     if let Err(e) = dfa.best_effort_check_dfa_ambiguity() {
-        handle_validation_error(e, &input)?;
+        return handle_validation_error(e, &input);
     };
 
     let dfa = dfa.minimize();
