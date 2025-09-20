@@ -569,7 +569,7 @@ pub fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
             Input::Subword {
                 subdfa: subdfaid, ..
             } => {
-                let subdfa = dfa.subdfa_interner.lookup(*subdfaid);
+                let subdfa = dfa.subdfas.lookup(*subdfaid);
                 for input in subdfa.iter_inputs() {
                     match input {
                         Input::Nonterminal {
@@ -623,7 +623,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     if !id_from_dfa.is_empty() {
         write_generic_subword_fn(buffer, command)?;
         for (dfaid, id) in &id_from_dfa {
-            let dfa = dfa.subdfa_interner.lookup(*dfaid);
+            let dfa = dfa.subdfas.lookup(*dfaid);
             write_subword_fn(buffer, command, *id, dfa, &id_from_cmd, &id_from_regex)?;
             writeln!(buffer)?;
         }

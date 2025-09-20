@@ -25,7 +25,7 @@ pub struct DFA {
     pub accepting_states: RoaringBitmap,
 
     pub input_from_position: Vec<Input>,
-    pub subdfa_interner: DFAInternPool,
+    pub subdfas: DFAInternPool,
 }
 
 impl DFA {
@@ -123,7 +123,7 @@ fn dfa_from_regex(regex: Regex, subdfa_interner: DFAInternPool) -> DFA {
         transitions: dtran,
         accepting_states,
         input_from_position: regex.input_from_position,
-        subdfa_interner,
+        subdfas: subdfa_interner,
     }
 }
 
@@ -523,7 +523,7 @@ fn do_minimize(dfa: DFA) -> DFA {
         transitions,
         accepting_states,
         input_from_position: dfa.input_from_position,
-        subdfa_interner: dfa.subdfa_interner,
+        subdfas: dfa.subdfas,
     }
 }
 
@@ -585,7 +585,7 @@ fn do_to_dot<W: Write>(
         writeln!(output, "{indentation}\tcolor=grey91;")?;
         writeln!(output, "{indentation}\tstyle=filled;")?;
         let subdfa_identifiers_prefix = &format!("{subdfa_id}_");
-        let subdfa = dfa.subdfa_interner.lookup(*subdfaid);
+        let subdfa = dfa.subdfas.lookup(*subdfaid);
         do_to_dot(
             output,
             subdfa,
@@ -610,7 +610,7 @@ fn do_to_dot<W: Write>(
                 Input::Subword {
                     subdfa: subdfaid, ..
                 } => {
-                    let subdfa = dfa.subdfa_interner.lookup(*subdfaid);
+                    let subdfa = dfa.subdfas.lookup(*subdfaid);
                     let subdfa_id = *id_from_dfa.get(subdfaid).unwrap();
                     let subdfa_identifiers_prefix = &format!("{subdfa_id}_");
                     writeln!(
@@ -697,7 +697,7 @@ impl DFA {
                     Input::Subword {
                         subdfa: subdfa_id, ..
                     } => {
-                        let subdfa = self.subdfa_interner.lookup(*subdfa_id);
+                        let subdfa = self.subdfas.lookup(*subdfa_id);
                         subdfa.best_effort_check_dfa_ambiguity()?
                     }
                     Input::Command { regex: None, .. } => ambiguous_inputs.push(*input_id),
@@ -769,7 +769,7 @@ impl DFA {
                     Input::Subword {
                         subdfa: subdfaid, ..
                     } => {
-                        let subdfa = self.subdfa_interner.lookup(*subdfaid);
+                        let subdfa = self.subdfas.lookup(*subdfaid);
                         if subdfas.contains_key(subdfaid) {
                             continue;
                         }
@@ -1052,7 +1052,7 @@ mod tests {
                 for (transition_input_id, to) in self.iter_transitions_from(current_state) {
                     let transition_input = self.get_input(transition_input_id);
                     if let Input::Subword { subdfa, .. } = transition_input {
-                        let dfa = self.subdfa_interner.lookup(*subdfa);
+                        let dfa = self.subdfas.lookup(*subdfa);
                         if dfa.accepts_str(inputs[input_index], shell) {
                             input_index += 1;
                             current_state = to;
@@ -1701,7 +1701,7 @@ mod tests {
                 transitions,
                 accepting_states,
                 input_from_position: input_symbols,
-                subdfa_interner: DFAInternPool::default(),
+                subdfas: DFAInternPool::default(),
             }
         };
         let minimized = dfa.minimize();
