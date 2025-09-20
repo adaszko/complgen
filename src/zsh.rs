@@ -635,7 +635,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
     writeln!(buffer, r#"    declare -A subword_transitions=()"#)?;
     for state in dfa.get_all_states() {
-        let subword_transitions = dfa.get_subword_transitions_from(state.try_into().unwrap());
+        let subword_transitions = dfa.get_subword_transitions_from(state);
         if subword_transitions.is_empty() {
             continue;
         }

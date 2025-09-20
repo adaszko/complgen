@@ -311,7 +311,7 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
     }
 
     if let Some(regex_dot_file_path) = &args.regex {
-        let mut dot_file = get_file_or_stdout(&regex_dot_file_path)?;
+        let mut dot_file = get_file_or_stdout(regex_dot_file_path)?;
         regex
             .to_dot(&mut dot_file)
             .context(regex_dot_file_path.clone())?;

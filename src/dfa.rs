@@ -88,7 +88,7 @@ fn dfa_from_regex(regex: Regex, subdfa_interner: DFAInternPool) -> DFA {
         for (input, input_id) in &unique_inputs {
             let mut u = RoaringBitmap::new();
             for pos in &combined_state {
-                if regex.input_from_position.get(*pos as usize) == Some(&input)
+                if regex.input_from_position.get(*pos as usize) == Some(input)
                     && let Some(positions) = followpos.get(pos)
                 {
                     u |= positions;
@@ -112,7 +112,7 @@ fn dfa_from_regex(regex: Regex, subdfa_interner: DFAInternPool) -> DFA {
         let mut accepting_states = RoaringBitmap::default();
         for (combined_state, state_id) in &dstates {
             if combined_state.contains(&regex.endmarker_position) {
-                accepting_states.insert((*state_id).into());
+                accepting_states.insert(*state_id);
             }
         }
         accepting_states
@@ -191,15 +191,12 @@ fn keep_only_states_with_input_transitions(
     transitions: &[Transition],
     accepting_states: &RoaringBitmap,
 ) -> (Vec<Transition>, RoaringBitmap) {
-    let states_with_input_transition = RoaringBitmap::from_iter(
-        transitions
-            .iter()
-            .map(|transition| u32::from(transition.to)),
-    );
+    let states_with_input_transition =
+        RoaringBitmap::from_iter(transitions.iter().map(|transition| transition.to));
 
     let alive_accepting_states =
         RoaringBitmap::from_sorted_iter(accepting_states.iter().filter(|state| {
-            *state == starting_state.into() || states_with_input_transition.contains(*state)
+            *state == starting_state || states_with_input_transition.contains(*state)
         }))
         .unwrap();
 
@@ -209,8 +206,8 @@ fn keep_only_states_with_input_transitions(
             if transition.from == starting_state {
                 return true;
             }
-            if !states_with_input_transition.contains(transition.from.into())
-                || !states_with_input_transition.contains(transition.to.into())
+            if !states_with_input_transition.contains(transition.from)
+                || !states_with_input_transition.contains(transition.to)
             {
                 return false;
             }
@@ -231,8 +228,8 @@ fn eliminate_nonaccepting_states_without_output_transitions(
     let alive_transitions: Vec<Transition> = transitions
         .iter()
         .filter(|transition| {
-            accepting_states.contains(transition.to.into())
-                || states_with_output_transition.contains(transition.to.into())
+            accepting_states.contains(transition.to)
+                || states_with_output_transition.contains(transition.to)
         })
         .cloned()
         .collect();
@@ -282,7 +279,7 @@ fn renumber_states(
         .map(|Transition { from, to, input }| Transition {
             from: *new_from_old_state_id.get(from).unwrap(),
             to: *new_from_old_state_id.get(to).unwrap(),
-            input: input.clone(),
+            input: *input,
         })
         .collect();
 
@@ -347,11 +344,10 @@ fn find_bounds(
     group_max: u32,
 ) -> Option<&[Transition]> {
     let inbetween_index = match transitions.binary_search_by(|transition| {
-        let to: u32 = transition.to.into();
-        if to < group_min {
+        if transition.to < group_min {
             return Ordering::Less;
         }
-        if to > group_max {
+        if transition.to > group_max {
             return Ordering::Greater;
         }
         Ordering::Equal
@@ -361,16 +357,14 @@ fn find_bounds(
     };
     let lower_bound = {
         let mut lower_bound = inbetween_index;
-        while lower_bound > 0 && u32::from(transitions[lower_bound - 1].to) >= group_min {
+        while lower_bound > 0 && transitions[lower_bound - 1].to >= group_min {
             lower_bound -= 1;
         }
         lower_bound
     };
     let upper_bound = {
         let mut upper_bound = inbetween_index;
-        while upper_bound < transitions.len() - 1
-            && u32::from(transitions[upper_bound + 1].to) <= group_max
-        {
+        while upper_bound < transitions.len() - 1 && transitions[upper_bound + 1].to <= group_max {
             upper_bound += 1;
         }
         upper_bound
@@ -386,7 +380,7 @@ fn find_bounds(
 fn do_minimize(dfa: DFA) -> DFA {
     let mut pool = SetInternPool::default();
     let mut partitions: HashSet<SetId> = {
-        let dead_state_group = RoaringBitmap::from_iter([u32::from(DEAD_STATE_ID)]);
+        let dead_state_group = RoaringBitmap::from_iter([DEAD_STATE_ID]);
         let all_states = dfa.get_all_states();
         let nonaccepting_states =
             [&all_states, &dfa.accepting_states, &dead_state_group].difference();
@@ -420,11 +414,11 @@ fn do_minimize(dfa: DFA) -> DFA {
         let transitions_to_group: HashMap<Position, RoaringBitmap> = {
             let mut group_transitions: HashMap<Position, RoaringBitmap> = Default::default();
             for transition in transitions {
-                if group.contains(transition.to.into()) {
+                if group.contains(transition.to) {
                     group_transitions
                         .entry(transition.input)
                         .or_default()
-                        .insert(transition.from.into());
+                        .insert(transition.from);
                 }
             }
             group_transitions
@@ -490,8 +484,7 @@ fn do_minimize(dfa: DFA) -> DFA {
     let accepting_states = {
         let mut accepting_states: RoaringBitmap = Default::default();
         for state_id in &dfa.accepting_states {
-            accepting_states
-                .insert((*representative_id_from_state_id.get(&state_id).unwrap()).into());
+            accepting_states.insert(*representative_id_from_state_id.get(&state_id).unwrap());
         }
         accepting_states
     };
@@ -504,7 +497,7 @@ fn do_minimize(dfa: DFA) -> DFA {
                 transitions.push(Transition {
                     from: *from,
                     to: *representative,
-                    input: input.clone(),
+                    input: *input,
                 });
             }
         }
@@ -537,7 +530,7 @@ fn do_to_dot<W: Write>(
 
     let id_from_dfa = dfa.get_subwords(0);
 
-    if dfa.accepting_states.contains(dfa.starting_state.into()) {
+    if dfa.accepting_states.contains(dfa.starting_state) {
         writeln!(output, "{indentation}node [shape=doubleoctagon];")?;
     } else {
         writeln!(output, "{indentation}node [shape=octagon];")?;
@@ -550,7 +543,7 @@ fn do_to_dot<W: Write>(
 
     let regular_states = {
         let mut states = [&dfa.get_all_states(), &dfa.accepting_states].difference();
-        states.remove(dfa.starting_state.into());
+        states.remove(dfa.starting_state);
         states
     };
 
@@ -682,7 +675,7 @@ impl DFA {
 
             break;
         }
-        self.accepting_states.contains(current_state.into())
+        self.accepting_states.contains(current_state)
     }
 
     /// Best-effort only!  This isn't able to detect ambiguities arising from use of overlapping shell
@@ -919,10 +912,7 @@ impl DFA {
 
     pub fn has_subword_transitions(&self) -> bool {
         for state in self.get_all_states() {
-            if !self
-                .get_subword_transitions_from(state.try_into().unwrap())
-                .is_empty()
-            {
+            if !self.get_subword_transitions_from(state).is_empty() {
                 return true;
             }
         }
@@ -932,10 +922,10 @@ impl DFA {
     pub fn get_all_states(&self) -> RoaringBitmap {
         let mut states: RoaringBitmap = Default::default();
         self.iter_transitions().for_each(|(from, _, to)| {
-            states.insert(from.into());
-            states.insert(to.into());
+            states.insert(from);
+            states.insert(to);
         });
-        states.insert(DEAD_STATE_ID.into());
+        states.insert(DEAD_STATE_ID);
         states
     }
 
