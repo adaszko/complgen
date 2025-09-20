@@ -1085,8 +1085,7 @@ fn compile_subword_exprs(
             let regex = Regex::from_expr(subword_expr, arena, specs).unwrap();
             regex.ensure_ambiguous_inputs_tail_only_subword(shell)?;
             regex.check_clashing_variants()?;
-            let dfa = DFA::from_regex(regex, DFAInternPool::default());
-            dfa.best_effort_check_dfa_ambiguity()?;
+            let dfa = DFA::from_regex_strict(regex, DFAInternPool::default())?;
             let dfa = dfa.minimize();
             let subdfaid = subdfa_interner.intern(dfa);
             alloc(

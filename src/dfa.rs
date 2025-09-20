@@ -642,6 +642,12 @@ fn do_get_subdfa_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)
 }
 
 impl DFA {
+    pub fn from_regex_strict(regex: Regex, subdfas: DFAInternPool) -> crate::Result<Self> {
+        let dfa = Self::from_regex(regex, subdfas);
+        dfa.best_effort_check_dfa_ambiguity()?;
+        Ok(dfa)
+    }
+
     pub fn from_regex(regex: Regex, subdfa_interner: DFAInternPool) -> Self {
         dfa_from_regex(regex, subdfa_interner)
     }
@@ -1090,8 +1096,7 @@ mod tests {
             Ok(())
         ));
         assert!(matches!(regex.check_clashing_variants(), Ok(())));
-        let dfa = DFA::from_regex(regex, DFAInternPool::default());
-        assert!(matches!(dfa.best_effort_check_dfa_ambiguity(), Ok(_)));
+        let dfa = DFA::from_regex_strict(regex, DFAInternPool::default()).unwrap();
         let foo = Input::literal("foo");
         let (foo_id, _) = dfa
             .input_from_position
@@ -1626,9 +1631,8 @@ mod tests {
         assert!(matches!(regex.check_clashing_variants(), Ok(())));
 
         //regex.to_dot_file("regex.dot").unwrap();
-        let dfa = DFA::from_regex(regex, DFAInternPool::default());
         assert!(matches!(
-            dfa.best_effort_check_dfa_ambiguity(),
+            DFA::from_regex_strict(regex, DFAInternPool::default()),
             Err(Error::AmbiguousDFA(_))
         ));
         //dfa.to_dot_file("dfa.dot").unwrap();

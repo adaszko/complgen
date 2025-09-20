@@ -304,9 +304,9 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
             .context(regex_dot_file_path.clone())?;
     }
 
-    let dfa = DFA::from_regex(regex, validated.subdfa_interner);
-    if let Err(e) = dfa.best_effort_check_dfa_ambiguity() {
-        return handle_validation_error(e, &input);
+    let dfa = match DFA::from_regex_strict(regex, validated.subdfa_interner) {
+        Ok(dfa) => dfa,
+        Err(e) => return handle_validation_error(e, &input),
     };
 
     let dfa = dfa.minimize();
