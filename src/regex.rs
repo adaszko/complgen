@@ -718,8 +718,8 @@ impl Regex {
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);
         do_ensure_ambiguous_inputs_tail_only(
-            &RoaringBitmap::from_iter(&self.get_root().firstpos(&self.arena)),
-            &self.get_root().followpos(&self.arena),
+            &RoaringBitmap::from_iter(&self.firstpos()),
+            &self.followpos(),
             &self.input_from_position,
             shell,
             &mut visited,
@@ -730,8 +730,8 @@ impl Regex {
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);
         do_ensure_ambiguous_inputs_tail_only_subword(
-            &RoaringBitmap::from_iter(&self.get_root().firstpos(&self.arena)),
-            &self.get_root().followpos(&self.arena),
+            &RoaringBitmap::from_iter(&self.firstpos()),
+            &self.followpos(),
             &self.input_from_position,
             shell,
             None,
@@ -744,8 +744,8 @@ impl Regex {
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);
         do_check_clashing_variants(
-            &RoaringBitmap::from_iter(&self.get_root().firstpos(&self.arena)),
-            &self.get_root().followpos(&self.arena),
+            &RoaringBitmap::from_iter(&self.firstpos()),
+            &self.followpos(),
             &self.input_from_position,
             &mut visited,
         )
