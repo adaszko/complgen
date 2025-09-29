@@ -1664,6 +1664,7 @@ mod tests {
             //println!("{:?}", input);
             let specs = UstrMap::default();
             let regex = Regex::from_expr(expr, &arena.borrow(), &specs).unwrap();
+            //dbg!(&regex.input_from_position);
             prop_assume!(matches!(regex.ensure_ambiguous_inputs_tail_only(Shell::Bash), Ok(())));
             prop_assume!(matches!(regex.check_clashing_variants(), Ok(())));
             let dfa = DFA::from_regex(regex, DFAInternPool::default());

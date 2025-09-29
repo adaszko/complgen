@@ -475,6 +475,7 @@ Ambiguous matching arises from:
 fn do_ensure_ambiguous_inputs_tail_only(
     firstpos: &RoaringBitmap,
     followpos: &BTreeMap<Position, RoaringBitmap>,
+    endmarker_position: Position,
     input_from_position: &Vec<Input>,
     shell: Shell,
     visited: &mut RoaringBitmap,
@@ -484,8 +485,9 @@ fn do_ensure_ambiguous_inputs_tail_only(
         return Ok(());
     }
 
-    let inputs: Vec<Input> = unvisited
+    let inputs: Vec<Input> = firstpos
         .iter()
+        .filter(|pos| *pos != endmarker_position)
         .map(|pos| input_from_position[pos as usize].clone())
         .collect();
 
@@ -507,6 +509,7 @@ fn do_ensure_ambiguous_inputs_tail_only(
         do_ensure_ambiguous_inputs_tail_only(
             follow,
             followpos,
+            endmarker_position,
             input_from_position,
             shell,
             visited,
@@ -723,10 +726,10 @@ impl Regex {
 
     pub fn ensure_ambiguous_inputs_tail_only(&self, shell: Shell) -> Result<()> {
         let mut visited: RoaringBitmap = Default::default();
-        visited.insert(self.endmarker_position);
         do_ensure_ambiguous_inputs_tail_only(
             &RoaringBitmap::from_iter(&self.firstpos()),
             &self.followpos(),
+            self.endmarker_position,
             &self.input_from_position,
             shell,
             &mut visited,

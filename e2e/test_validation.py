@@ -287,7 +287,14 @@ darcs <SOURCE> ... <DESTINATION>;
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 warning: undefined nonterminal(s): SOURCE DESTINATION
-Ambiguity:
-  darcs <SOURCE> <SOURCE>
-  darcs <SOURCE> <DESTINATION>
+1:6:error: Ambiguous grammar.  Matching can't differentiate:
+  |
+1 | darcs <SOURCE> ... <DESTINATION>;
+  |       ^^^^^^^^
+  |
+1:19:error: and:
+  |
+1 | darcs <SOURCE> ... <DESTINATION>;
+  |                    ^^^^^^^^^^^^^
+  |
 """)
