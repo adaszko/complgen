@@ -837,7 +837,7 @@ pub struct ValidGrammar {
     pub specializations: UstrMap<Specialization>,
     pub undefined_nonterminals: UstrSet,
     pub unused_nonterminals: UstrSet,
-    pub subdfa_interner: DFAInternPool,
+    pub subdfas: DFAInternPool,
 }
 
 fn make_specializations_map(
@@ -1069,7 +1069,7 @@ fn compile_subword_exprs(
     expr_id: ExprId,
     specs: &UstrMap<Specialization>,
     shell: Shell,
-    subdfa_interner: &mut DFAInternPool,
+    subdfas: &mut DFAInternPool,
 ) -> Result<ExprId> {
     let retval = match arena[expr_id].clone() {
         Expr::Subword {
@@ -1087,7 +1087,7 @@ fn compile_subword_exprs(
             regex.check_clashing_variants()?;
             let dfa = DFA::from_regex_strict(regex, DFAInternPool::default())?;
             let dfa = dfa.minimize();
-            let subdfaid = subdfa_interner.intern(dfa);
+            let subdfaid = subdfas.intern(dfa);
             alloc(
                 arena,
                 Expr::Subword {
@@ -1101,7 +1101,7 @@ fn compile_subword_exprs(
         Expr::Sequence(children) => {
             let new_children: Vec<ExprId> = children
                 .iter()
-                .map(|e| compile_subword_exprs(arena, *e, specs, shell, subdfa_interner))
+                .map(|e| compile_subword_exprs(arena, *e, specs, shell, subdfas))
                 .collect::<Result<_>>()?;
             if children == new_children {
                 expr_id
@@ -1112,7 +1112,7 @@ fn compile_subword_exprs(
         Expr::Alternative(children) => {
             let new_children: Vec<ExprId> = children
                 .iter()
-                .map(|e| compile_subword_exprs(arena, *e, specs, shell, subdfa_interner))
+                .map(|e| compile_subword_exprs(arena, *e, specs, shell, subdfas))
                 .collect::<Result<_>>()?;
             if children == new_children {
                 expr_id
@@ -1121,7 +1121,7 @@ fn compile_subword_exprs(
             }
         }
         Expr::Optional(child) => {
-            let new_child = compile_subword_exprs(arena, child, specs, shell, subdfa_interner)?;
+            let new_child = compile_subword_exprs(arena, child, specs, shell, subdfas)?;
             if child == new_child {
                 expr_id
             } else {
@@ -1129,7 +1129,7 @@ fn compile_subword_exprs(
             }
         }
         Expr::Many1(child) => {
-            let new_child = compile_subword_exprs(arena, child, specs, shell, subdfa_interner)?;
+            let new_child = compile_subword_exprs(arena, child, specs, shell, subdfas)?;
             if child == new_child {
                 expr_id
             } else {
@@ -1142,7 +1142,7 @@ fn compile_subword_exprs(
         Expr::Fallback(children) => {
             let new_children: Vec<ExprId> = children
                 .iter()
-                .map(|e| compile_subword_exprs(arena, *e, specs, shell, subdfa_interner))
+                .map(|e| compile_subword_exprs(arena, *e, specs, shell, subdfas))
                 .collect::<Result<_>>()?;
             if children == new_children {
                 expr_id
@@ -1463,13 +1463,13 @@ impl ValidGrammar {
             nonterms
         };
 
-        let mut subdfa_interner = DFAInternPool::default();
+        let mut subdfas = DFAInternPool::default();
         let expr = compile_subword_exprs(
             &mut grammar.arena,
             expr,
             &specializations,
             shell,
-            &mut subdfa_interner,
+            &mut subdfas,
         )?;
 
         let g = ValidGrammar {
@@ -1479,7 +1479,7 @@ impl ValidGrammar {
             undefined_nonterminals,
             specializations,
             unused_nonterminals,
-            subdfa_interner,
+            subdfas,
         };
         Ok(g)
     }

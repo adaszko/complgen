@@ -65,7 +65,7 @@ impl std::hash::Hash for DFA {
 
 // Reference:
 //  * The Dragon Book: 3.9.5 Converting a Regular Expression Directly to a DFA
-fn dfa_from_regex(regex: Regex, subdfa_interner: DFAInternPool) -> DFA {
+fn dfa_from_regex(regex: Regex, subdfas: DFAInternPool) -> DFA {
     let mut unallocated_state_id = FIRST_STATE_ID;
     let combined_starting_state: BTreeSet<Position> = regex.firstpos();
     let combined_starting_state_id = unallocated_state_id;
@@ -123,7 +123,7 @@ fn dfa_from_regex(regex: Regex, subdfa_interner: DFAInternPool) -> DFA {
         transitions: dtran,
         accepting_states,
         input_from_position: regex.input_from_position,
-        subdfas: subdfa_interner,
+        subdfas,
     }
 }
 
@@ -652,8 +652,8 @@ impl DFA {
         Ok(dfa)
     }
 
-    pub fn from_regex(regex: Regex, subdfa_interner: DFAInternPool) -> Self {
-        dfa_from_regex(regex, subdfa_interner)
+    pub fn from_regex(regex: Regex, subdfas: DFAInternPool) -> Self {
+        dfa_from_regex(regex, subdfas)
     }
 
     pub fn minimize(self) -> Self {
