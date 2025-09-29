@@ -6,7 +6,7 @@ use roaring::{MultiOps, RoaringBitmap};
 use ustr::{Ustr, ustr};
 
 use crate::grammar::{CmdRegex, DFAId, DFAInternPool, Shell};
-use crate::regex::{Input, Position, Regex};
+use crate::regex::{Input, Position, Regex, diagnostic_display_input};
 use crate::{Error, StateId};
 
 // Every state in a DFA is formally defined to have a transition on *every* input symbol.  In
@@ -525,7 +525,7 @@ fn do_to_dot<W: Write>(
     dfa: &DFA,
     identifiers_prefix: &str,
     recursion_level: usize,
-) -> std::result::Result<(), std::io::Error> {
+) -> crate::Result<()> {
     let indentation = format!("\t{}", str::repeat("\t", recursion_level));
 
     let id_from_dfa = dfa.get_subwords(0);
@@ -593,7 +593,11 @@ fn do_to_dot<W: Write>(
             let input = dfa.get_input(*input_id);
             match input {
                 Input::Literal { .. } | Input::Nonterminal { .. } | Input::Command { .. } => {
-                    let label = format!("{}", input).replace('\"', "\\\"");
+                    let label = {
+                        let mut buffer = String::new();
+                        diagnostic_display_input(&mut buffer, input)?;
+                        buffer.replace('\"', "\\\"")
+                    };
                     writeln!(
                         output,
                         "{indentation}_{identifiers_prefix}{} -> _{identifiers_prefix}{} [label=\"{}\"];",
@@ -644,7 +648,7 @@ fn do_get_subdfa_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)
 impl DFA {
     pub fn from_regex_strict(regex: Regex, subdfas: DFAInternPool) -> crate::Result<Self> {
         let dfa = Self::from_regex(regex, subdfas);
-        dfa.best_effort_check_dfa_ambiguity()?;
+        dfa.check_ambiguity_best_effort()?;
         Ok(dfa)
     }
 
@@ -684,35 +688,52 @@ impl DFA {
         self.accepting_states.contains(current_state)
     }
 
-    /// Best-effort only!  This isn't able to detect ambiguities arising from use of overlapping shell
-    /// regexes!
-    pub fn best_effort_check_dfa_ambiguity(&self) -> crate::Result<()> {
-        for (_, tos) in &self.transitions {
-            let mut ambiguous_inputs: Vec<Position> = Default::default();
-            for (input_id, _) in tos {
-                match self.get_input(*input_id) {
-                    Input::Literal { .. } => {}
-                    Input::Nonterminal { .. } => ambiguous_inputs.push(*input_id),
-                    Input::Subword {
-                        subdfa: subdfa_id, ..
-                    } => {
-                        let subdfa = self.subdfas.lookup(*subdfa_id);
-                        subdfa.best_effort_check_dfa_ambiguity()?
-                    }
-                    Input::Command { regex: None, .. } => ambiguous_inputs.push(*input_id),
-                    Input::Command {
-                        regex: Some(..), ..
-                    } => {}
+    fn do_check_ambiguity_best_effort(
+        &self,
+        state: StateId,
+        visited: &mut RoaringBitmap,
+        path: &mut Vec<Input>,
+    ) -> crate::Result<()> {
+        let mut ambiguous_inputs: Vec<Input> = Default::default();
+        for (input_id, _) in self.iter_transitions_from(state) {
+            let input = self.get_input(input_id);
+            match input {
+                Input::Literal { .. } => {}
+                Input::Nonterminal { .. } => ambiguous_inputs.push(input.clone()),
+                Input::Subword {
+                    subdfa: subdfa_id, ..
+                } => {
+                    let subdfa = self.subdfas.lookup(*subdfa_id);
+                    subdfa.check_ambiguity_best_effort()?
                 }
-            }
-            if ambiguous_inputs.len() >= 2 {
-                let inputs: Box<[Input]> = ambiguous_inputs
-                    .into_iter()
-                    .map(|id| self.get_input(id).clone())
-                    .collect();
-                return Err(Error::AmbiguousDFA(inputs));
+                Input::Command { regex: None, .. } => ambiguous_inputs.push(input.clone()),
+                Input::Command {
+                    regex: Some(..), ..
+                } => {}
             }
         }
+        if ambiguous_inputs.len() >= 2 {
+            return Err(Error::AmbiguousDFA(
+                path.to_owned().into_boxed_slice(),
+                ambiguous_inputs.into_boxed_slice(),
+            ));
+        }
+        for (input_id, to) in self.iter_transitions_from(state) {
+            if !visited.contains(to) {
+                visited.insert(to);
+                let input = self.get_input(input_id);
+                path.push(input.clone());
+                self.do_check_ambiguity_best_effort(to, visited, path)?;
+                path.pop();
+            }
+        }
+        Ok(())
+    }
+
+    pub fn check_ambiguity_best_effort(&self) -> crate::Result<()> {
+        let mut visited: RoaringBitmap = Default::default();
+        let mut path: Vec<Input> = Default::default();
+        self.do_check_ambiguity_best_effort(self.starting_state, &mut visited, &mut path)?;
         Ok(())
     }
 
@@ -977,7 +998,7 @@ impl DFA {
             .max()
     }
 
-    pub fn to_dot<W: Write>(&self, output: &mut W) -> std::result::Result<(), std::io::Error> {
+    pub fn to_dot<W: Write>(&self, output: &mut W) -> crate::Result<()> {
         writeln!(output, "digraph dfa {{")?;
         writeln!(output, "\trankdir=LR;")?;
         do_to_dot(output, self, "", 0)?;
@@ -986,10 +1007,7 @@ impl DFA {
     }
 
     #[allow(dead_code)]
-    pub fn to_dot_file<P: AsRef<std::path::Path>>(
-        &self,
-        path: P,
-    ) -> std::result::Result<(), std::io::Error> {
+    pub fn to_dot_file<P: AsRef<std::path::Path>>(&self, path: P) -> crate::Result<()> {
         let mut file = std::fs::File::create(path)?;
         self.to_dot(&mut file)?;
         Ok(())
@@ -1633,7 +1651,7 @@ mod tests {
         //regex.to_dot_file("regex.dot").unwrap();
         assert!(matches!(
             DFA::from_regex_strict(regex, DFAInternPool::default()),
-            Err(Error::AmbiguousDFA(_))
+            Err(Error::AmbiguousDFA(..))
         ));
         //dfa.to_dot_file("dfa.dot").unwrap();
     }
@@ -1649,7 +1667,7 @@ mod tests {
             prop_assume!(matches!(regex.ensure_ambiguous_inputs_tail_only(Shell::Bash), Ok(())));
             prop_assume!(matches!(regex.check_clashing_variants(), Ok(())));
             let dfa = DFA::from_regex(regex, DFAInternPool::default());
-            prop_assume!(matches!(dfa.best_effort_check_dfa_ambiguity(), Ok(_)));
+            prop_assume!(dfa.check_ambiguity_best_effort().is_ok());
             let input: Vec<&str> = input.iter().map(|s| s.as_str()).collect();
             prop_assert!(dfa.accepts(&input, Shell::Bash)?);
         }
@@ -1663,7 +1681,7 @@ mod tests {
             prop_assume!(matches!(regex.ensure_ambiguous_inputs_tail_only(Shell::Bash), Ok(())));
             prop_assume!(matches!(regex.check_clashing_variants(), Ok(())));
             let dfa = DFA::from_regex(regex, DFAInternPool::default());
-            prop_assume!(matches!(dfa.best_effort_check_dfa_ambiguity(), Ok(_)));
+            prop_assume!(dfa.check_ambiguity_best_effort().is_ok());
             let input: Vec<&str> = input.iter().map(|s| s.as_str()).collect();
             prop_assert!(dfa.accepts(&input, Shell::Bash)?);
             let minimal_dfa = dfa.minimize();

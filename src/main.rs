@@ -10,7 +10,7 @@ use complgen::grammar::{Grammar, HumanSpan, Shell, ValidGrammar};
 
 use complgen::Error;
 use complgen::dfa::DFA;
-use complgen::regex::Regex;
+use complgen::regex::{Regex, diagnostic_display_input};
 
 #[derive(clap::Parser)]
 struct Cli {
@@ -68,7 +68,7 @@ fn handle_parse_error(input: &str) -> anyhow::Result<Grammar> {
     }
 }
 
-fn handle_validation_error(e: Error, input: &str) -> anyhow::Result<()> {
+fn handle_validation_error(e: Error, input: &str, command: &str) -> anyhow::Result<()> {
     match e {
         Error::VaryingCommandNames(cmds) => {
             let joined = itertools::join(cmds.into_iter().map(|c| format!("{c}")), ", ");
@@ -162,41 +162,22 @@ fn handle_validation_error(e: Error, input: &str) -> anyhow::Result<()> {
             );
             eprintln!("{}:{}:{}", right_line_start, right_start, error.to_string());
         }
-        Error::AmbiguousDFA(inputs) => {
-            let Some(HumanSpan {
-                line_start: left_line_start,
-                start: left_start,
-                end: left_end,
-            }) = inputs[0].get_span()
-            else {
-                unreachable!()
+        Error::AmbiguousDFA(path, ambiguous_inputs) => {
+            let joined_path = {
+                let mut buf = String::new();
+                for (i, inp) in path.iter().enumerate() {
+                    diagnostic_display_input(&mut buf, &inp)?;
+                    if i < path.len() - 1 {
+                        buf.push_str(" ");
+                    }
+                }
+                buf
             };
-            let error = chic::Error::new("Ambiguous grammar.  Matching DFA can't differentiate:")
-                .error(
-                    left_line_start,
-                    left_start,
-                    left_end,
-                    input.lines().nth(left_line_start).unwrap(),
-                    "",
-                );
-            eprintln!("{}:{}:{}", left_line_start, left_start, error.to_string());
-            for inp in &inputs[1..] {
-                let Some(HumanSpan {
-                    line_start: right_line_start,
-                    start: right_start,
-                    end: right_end,
-                }) = inp.get_span()
-                else {
-                    unreachable!()
-                };
-                let error = chic::Error::new("and:").error(
-                    right_line_start,
-                    right_start,
-                    right_end,
-                    input.lines().nth(right_line_start).unwrap(),
-                    "",
-                );
-                eprintln!("{}:{}:{}", right_line_start, right_start, error.to_string());
+            eprintln!("Ambiguity:");
+            for input in ambiguous_inputs {
+                let mut buffer = String::new();
+                diagnostic_display_input(&mut buffer, &input)?;
+                eprintln!("  {command} {joined_path} {buffer}");
             }
         }
         Error::ClashingVariants(first, second) => {
@@ -279,7 +260,7 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
 
     let validated = match ValidGrammar::from_grammar(grammar, shell) {
         Ok(validated) => validated,
-        Err(e) => return handle_validation_error(e, &input),
+        Err(e) => return handle_validation_error(e, &input, "dummy"),
     };
 
     if !validated.undefined_nonterminals.is_empty() {
@@ -294,7 +275,7 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
 
     let regex = match Regex::from_valid_grammar(&validated, shell) {
         Ok(regex) => regex,
-        Err(e) => return handle_validation_error(e, &input),
+        Err(e) => return handle_validation_error(e, &input, &validated.command),
     };
 
     if let Some(regex_dot_file_path) = &args.regex {
@@ -306,7 +287,7 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
 
     let dfa = match DFA::from_regex_strict(regex, validated.subdfa_interner) {
         Ok(dfa) => dfa,
-        Err(e) => return handle_validation_error(e, &input),
+        Err(e) => return handle_validation_error(e, &input, &validated.command),
     };
 
     let dfa = dfa.minimize();

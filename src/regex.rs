@@ -86,15 +86,14 @@ impl Input {
     }
 }
 
-impl std::fmt::Display for Input {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Subword { subdfa, .. } => write!(f, r#"{subdfa:?}"#),
-            Self::Literal { literal, .. } => write!(f, r#"{literal}"#),
-            Self::Nonterminal { nonterm, .. } => write!(f, r#"<{nonterm}>"#),
-            Self::Command { cmd: command, .. } => write!(f, r#"{{{{{{ {command} }}}}}}"#),
-        }
+pub fn diagnostic_display_input<W: std::fmt::Write>(w: &mut W, input: &Input) -> crate::Result<()> {
+    match input {
+        Input::Literal { literal, .. } => write!(w, r#"{literal}"#)?,
+        Input::Nonterminal { nonterm, .. } => write!(w, r#"<{nonterm}>"#)?,
+        Input::Command { cmd, .. } => write!(w, r#"{{{{{{ {cmd} }}}}}}"#)?,
+        Input::Subword { .. } => unreachable!(),
     }
+    Ok(())
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
