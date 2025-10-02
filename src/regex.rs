@@ -46,7 +46,7 @@ impl Input {
     pub fn is_ambiguous(&self, shell: Shell) -> bool {
         match self {
             Self::Literal { .. } => false,
-            Self::Subword { .. } => false,
+            Self::Subword { .. } => false, // XXX inaccurate
             Self::Nonterminal { .. } => true,
             Self::Command { regex: None, .. } => true,
             Self::Command {
@@ -86,14 +86,115 @@ impl Input {
     }
 }
 
-pub fn diagnostic_display_input<W: std::fmt::Write>(w: &mut W, input: &Input) -> crate::Result<()> {
+pub fn diagnostic_display_input<W: std::fmt::Write>(w: &mut W, input: &Inp) -> crate::Result<()> {
     match input {
-        Input::Literal { literal, .. } => write!(w, r#"{literal}"#)?,
-        Input::Nonterminal { nonterm, .. } => write!(w, r#"<{nonterm}>"#)?,
-        Input::Command { cmd, .. } => write!(w, r#"{{{{{{ {cmd} }}}}}}"#)?,
-        Input::Subword { .. } => unreachable!(),
+        Inp::Literal { literal, .. } => write!(w, r#"{literal}"#)?,
+        Inp::Nonterminal { nonterm, .. } => write!(w, r#"<{nonterm}>"#)?,
+        Inp::Command { cmd, .. } => write!(w, r#"{{{{{{ {cmd} }}}}}}"#)?,
+        Inp::Subword { .. } => unreachable!(),
     }
     Ok(())
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Inp {
+    Literal {
+        literal: Ustr,
+        description: Option<Ustr>,
+        fallback_level: usize,
+    },
+    Subword {
+        subdfa: DFAId,
+        fallback_level: usize,
+    },
+    Nonterminal {
+        nonterm: Ustr,
+        spec: Option<Specialization>,
+        fallback_level: usize,
+    },
+    Command {
+        cmd: Ustr,
+        regex: Option<CmdRegex>,
+        fallback_level: usize,
+    },
+}
+
+impl Inp {
+    pub fn from_input(input: &Input) -> Self {
+        match input.clone() {
+            Input::Literal {
+                literal,
+                description,
+                fallback_level,
+                ..
+            } => Self::Literal {
+                literal,
+                description,
+                fallback_level,
+            },
+            Input::Subword {
+                subdfa,
+                fallback_level,
+                ..
+            } => Self::Subword {
+                subdfa,
+                fallback_level,
+            },
+            Input::Nonterminal {
+                nonterm,
+                spec,
+                fallback_level,
+                ..
+            } => Self::Nonterminal {
+                nonterm,
+                spec,
+                fallback_level,
+            },
+            Input::Command {
+                cmd,
+                regex,
+                fallback_level,
+                ..
+            } => Self::Command {
+                cmd,
+                regex,
+                fallback_level,
+            },
+        }
+    }
+
+    pub fn is_ambiguous(&self, shell: Shell) -> bool {
+        match self {
+            Self::Literal { .. } => false,
+            Self::Subword { .. } => false, // XXX inaccurate
+            Self::Nonterminal { .. } => true,
+            Self::Command { regex: None, .. } => true,
+            Self::Command {
+                regex: Some(regex), ..
+            } => regex.matches_anything(shell),
+        }
+    }
+
+    pub fn get_fallback_level(&self) -> usize {
+        match self {
+            Self::Literal {
+                fallback_level: level,
+                ..
+            } => *level,
+            Self::Subword {
+                fallback_level: level,
+                ..
+            } => *level,
+            Self::Nonterminal {
+                fallback_level: level,
+                ..
+            } => *level,
+            Self::Command {
+                fallback_level: level,
+                ..
+            } => *level,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]

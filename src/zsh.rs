@@ -2,7 +2,7 @@ use std::io::Write;
 
 use crate::dfa::DFA;
 use crate::grammar::{CmdRegex, Shell, Specialization};
-use crate::regex::Input;
+use crate::regex::Inp;
 use crate::{Result, StateId};
 use hashbrown::HashMap;
 use indexmap::{IndexMap, IndexSet};
@@ -384,7 +384,7 @@ pub fn write_subword_fn<W: Write>(
 
     for (from, input_id, _) in dfa.iter_transitions() {
         match dfa.get_input(input_id).clone() {
-            Input::Literal {
+            Inp::Literal {
                 literal: lit,
                 description,
                 fallback_level,
@@ -398,7 +398,7 @@ pub fn write_subword_fn<W: Write>(
                     .or_default()
                     .push(literal_id);
             }
-            Input::Command {
+            Inp::Command {
                 cmd,
                 regex: None,
                 fallback_level,
@@ -410,7 +410,7 @@ pub fn write_subword_fn<W: Write>(
                     .or_default()
                     .push(command_id);
             }
-            Input::Command {
+            Inp::Command {
                 cmd,
                 regex:
                     Some(CmdRegex {
@@ -427,7 +427,7 @@ pub fn write_subword_fn<W: Write>(
                     .or_default()
                     .push((cmd_id, regex_id));
             }
-            Input::Nonterminal {
+            Inp::Nonterminal {
                 spec: Some(Specialization { zsh: Some(cmd), .. }),
                 fallback_level,
                 ..
@@ -549,14 +549,14 @@ pub fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
 
     for input in dfa.iter_inputs() {
         match input {
-            Input::Nonterminal {
+            Inp::Nonterminal {
                 nonterm: _,
                 spec: Some(Specialization { zsh: Some(cmd), .. }),
                 ..
             } => {
                 id_from_cmd.insert(*cmd);
             }
-            Input::Command { cmd, regex, .. } => {
+            Inp::Command { cmd, regex, .. } => {
                 id_from_cmd.insert(*cmd);
                 if let Some(CmdRegex {
                     zsh: Some(zsh_regex),
@@ -566,19 +566,19 @@ pub fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
                     id_from_regex.insert(*zsh_regex);
                 }
             }
-            Input::Subword {
+            Inp::Subword {
                 subdfa: subdfaid, ..
             } => {
                 let subdfa = dfa.subdfas.lookup(*subdfaid);
                 for input in subdfa.iter_inputs() {
                     match input {
-                        Input::Nonterminal {
+                        Inp::Nonterminal {
                             spec: Some(Specialization { zsh: Some(cmd), .. }),
                             ..
                         } => {
                             id_from_cmd.insert(*cmd);
                         }
-                        Input::Command { cmd, regex, .. } => {
+                        Inp::Command { cmd, regex, .. } => {
                             id_from_cmd.insert(*cmd);
                             if let Some(CmdRegex {
                                 zsh: Some(zsh_regex),
@@ -764,7 +764,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
     for (from, input_id, _) in dfa.iter_transitions() {
         match dfa.get_input(input_id).clone() {
-            Input::Literal {
+            Inp::Literal {
                 literal: lit,
                 description,
                 fallback_level,
@@ -778,7 +778,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                     .or_default()
                     .push(literal_id);
             }
-            Input::Subword {
+            Inp::Subword {
                 subdfa: dfa,
                 fallback_level,
                 ..
@@ -789,7 +789,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                     .or_default()
                     .push(subword_id);
             }
-            Input::Command {
+            Inp::Command {
                 cmd,
                 regex: None,
                 fallback_level,
@@ -801,7 +801,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                     .or_default()
                     .push(command_id);
             }
-            Input::Command {
+            Inp::Command {
                 cmd,
                 regex:
                     Some(CmdRegex {
@@ -818,7 +818,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                     .or_default()
                     .push((cmd_id, regex_id));
             }
-            Input::Nonterminal {
+            Inp::Nonterminal {
                 spec: Some(Specialization { zsh: Some(cmd), .. }),
                 fallback_level,
                 ..

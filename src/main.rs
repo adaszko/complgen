@@ -166,9 +166,9 @@ fn handle_validation_error(e: Error, input: &str, command: &str) -> anyhow::Resu
             let joined_path = {
                 let mut buf = String::new();
                 for (i, inp) in path.iter().enumerate() {
-                    diagnostic_display_input(&mut buf, &inp)?;
+                    diagnostic_display_input(&mut buf, inp)?;
                     if i < path.len() - 1 {
-                        buf.push_str(" ");
+                        buf.push(' ');
                     }
                 }
                 buf

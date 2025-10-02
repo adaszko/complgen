@@ -6,7 +6,7 @@ use crate::dfa::DFA;
 use crate::grammar::CmdRegex;
 use crate::grammar::Shell;
 use crate::grammar::Specialization;
-use crate::regex::Input;
+use crate::regex::Inp;
 use hashbrown::HashMap;
 use indexmap::IndexSet;
 use ustr::{Ustr, ustr};
@@ -325,7 +325,7 @@ pub fn write_subword_fn<W: Write>(
 
     for (from, input_id, _) in dfa.iter_transitions() {
         match dfa.get_input(input_id) {
-            Input::Literal {
+            Inp::Literal {
                 literal: lit,
                 description: descr,
                 fallback_level,
@@ -339,7 +339,7 @@ pub fn write_subword_fn<W: Write>(
                     .or_default()
                     .push(literal_id);
             }
-            Input::Command {
+            Inp::Command {
                 cmd,
                 regex: None,
                 fallback_level,
@@ -351,7 +351,7 @@ pub fn write_subword_fn<W: Write>(
                     .or_default()
                     .push(command_id);
             }
-            Input::Command {
+            Inp::Command {
                 cmd,
                 regex:
                     Some(CmdRegex {
@@ -368,7 +368,7 @@ pub fn write_subword_fn<W: Write>(
                     .or_default()
                     .push((cmd_id, regex_id));
             }
-            Input::Nonterminal {
+            Inp::Nonterminal {
                 nonterm: _,
                 spec:
                     Some(Specialization {
@@ -469,7 +469,7 @@ pub fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
 
     for input in dfa.iter_inputs() {
         match input {
-            Input::Nonterminal {
+            Inp::Nonterminal {
                 nonterm: _,
                 spec:
                     Some(Specialization {
@@ -479,7 +479,7 @@ pub fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
             } => {
                 id_from_cmd.insert(*cmd);
             }
-            Input::Command { cmd, regex, .. } => {
+            Inp::Command { cmd, regex, .. } => {
                 id_from_cmd.insert(*cmd);
                 if let Some(CmdRegex {
                     bash: Some(bash_regex),
@@ -489,13 +489,13 @@ pub fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
                     id_from_regex.insert(*bash_regex);
                 }
             }
-            Input::Subword {
+            Inp::Subword {
                 subdfa: subdfaid, ..
             } => {
                 let subdfa = dfa.subdfas.lookup(*subdfaid);
                 for input in subdfa.iter_inputs() {
                     match input {
-                        Input::Nonterminal {
+                        Inp::Nonterminal {
                             spec:
                                 Some(Specialization {
                                     bash: Some(cmd), ..
@@ -504,7 +504,7 @@ pub fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
                         } => {
                             id_from_cmd.insert(*cmd);
                         }
-                        Input::Command { cmd, regex, .. } => {
+                        Inp::Command { cmd, regex, .. } => {
                             id_from_cmd.insert(*cmd);
                             if let Some(CmdRegex {
                                 bash: Some(bash_regex),
@@ -684,7 +684,7 @@ fi
 
     for (from, input_id, _) in dfa.iter_transitions() {
         match dfa.get_input(input_id).clone() {
-            Input::Literal {
+            Inp::Literal {
                 literal: lit,
                 description,
                 fallback_level,
@@ -698,7 +698,7 @@ fi
                     .or_default()
                     .push(literal_id);
             }
-            Input::Subword {
+            Inp::Subword {
                 subdfa: dfa,
                 fallback_level,
                 ..
@@ -709,7 +709,7 @@ fi
                     .or_default()
                     .push(subword_id);
             }
-            Input::Command {
+            Inp::Command {
                 cmd,
                 regex: None,
                 fallback_level,
@@ -721,7 +721,7 @@ fi
                     .or_default()
                     .push(command_id);
             }
-            Input::Command {
+            Inp::Command {
                 cmd,
                 regex:
                     Some(CmdRegex {
@@ -738,7 +738,7 @@ fi
                     .or_default()
                     .push((cmd_id, regex_id));
             }
-            Input::Nonterminal {
+            Inp::Nonterminal {
                 spec:
                     Some(Specialization {
                         bash: Some(cmd), ..

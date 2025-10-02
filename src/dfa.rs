@@ -6,7 +6,7 @@ use roaring::{MultiOps, RoaringBitmap};
 use ustr::{Ustr, ustr};
 
 use crate::grammar::{CmdRegex, DFAId, DFAInternPool, Shell};
-use crate::regex::{Input, Position, Regex, diagnostic_display_input};
+use crate::regex::{Inp, Position, Regex, diagnostic_display_input};
 use crate::{Error, StateId};
 
 // Every state in a DFA is formally defined to have a transition on *every* input symbol.  In
@@ -21,16 +21,16 @@ pub struct DFA {
 
     // IndexMap is used to keep complgen deterministic
     // https://github.com/adaszko/complgen/issues/60
-    pub transitions: IndexMap<StateId, IndexMap<Position, StateId>>,
+    pub transitions: IndexMap<StateId, IndexMap<InpId, StateId>>,
     pub accepting_states: RoaringBitmap,
 
-    pub input_from_position: Vec<Input>,
+    pub inputs: InpInternPool,
     pub subdfas: DFAInternPool,
 }
 
 impl DFA {
-    pub fn get_input(&self, id: Position) -> &Input {
-        &self.input_from_position[id as usize]
+    pub fn get_input(&self, id: InpId) -> &Inp {
+        self.inputs.lookup(id)
     }
 }
 
@@ -39,7 +39,7 @@ impl PartialEq for DFA {
         self.starting_state == other.starting_state
             && self.transitions == other.transitions
             && self.accepting_states == other.accepting_states
-            && self.input_from_position == other.input_from_position
+            && self.inputs == other.inputs
     }
 }
 
@@ -57,8 +57,60 @@ impl std::hash::Hash for DFA {
         for elem in &self.accepting_states {
             elem.hash(state);
         }
-        for sym in &self.input_from_position {
-            sym.hash(state);
+        self.inputs.hash(state);
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct InpId(u32);
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct InpInternPool {
+    store: IndexSet<Inp>,
+}
+
+impl std::hash::Hash for InpInternPool {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        for elem in &self.store {
+            elem.hash(state);
+        }
+    }
+}
+
+impl InpInternPool {
+    pub fn intern(&mut self, value: Inp) -> InpId {
+        let (id, _) = self.store.insert_full(value);
+        InpId(id as _)
+    }
+
+    pub fn lookup(&self, id: InpId) -> &Inp {
+        self.store.get_index(id.0 as _).unwrap()
+    }
+
+    pub fn find(&self, inp: &Inp) -> Option<InpId> {
+        self.store.get_index_of(inp).map(|i| InpId(i as _))
+    }
+
+    pub fn ids(&self) -> impl Iterator<Item = InpId> {
+        (0..self.store.len()).map(|i| InpId(i as _))
+    }
+
+    pub fn elems(&self) -> impl Iterator<Item = &Inp> {
+        self.store.iter()
+    }
+
+    pub fn pairs(&self) -> impl Iterator<Item = (InpId, &Inp)> {
+        self.store
+            .iter()
+            .enumerate()
+            .map(|(i, inp)| (InpId(i as _), inp))
+    }
+}
+
+impl FromIterator<Inp> for InpInternPool {
+    fn from_iter<T: IntoIterator<Item = Inp>>(iter: T) -> Self {
+        Self {
+            store: IndexSet::from_iter(iter),
         }
     }
 }
@@ -71,38 +123,42 @@ fn dfa_from_regex(regex: Regex, subdfas: DFAInternPool) -> DFA {
     let combined_starting_state_id = unallocated_state_id;
     unallocated_state_id += 1;
 
-    let mut dstates: IndexMap<BTreeSet<Position>, StateId> =
+    let mut state_id_from_set_of_positions: IndexMap<BTreeSet<Position>, StateId> =
         IndexMap::from_iter([(combined_starting_state.clone(), combined_starting_state_id)]);
 
     let followpos = regex.followpos();
-    let unique_inputs = regex.get_unique_inputs();
+    let inputs = InpInternPool::from_iter(regex.input_from_position.iter().map(Inp::from_input));
 
-    let mut dtran: IndexMap<StateId, IndexMap<Position, StateId>> = Default::default();
+    let mut transitions: IndexMap<StateId, IndexMap<InpId, StateId>> = Default::default();
     let mut unmarked_states: HashSet<BTreeSet<Position>> = Default::default();
     unmarked_states.insert(combined_starting_state.clone());
     while let Some(state) = unmarked_states.iter().next() {
         let combined_state = state.clone();
         unmarked_states.remove(&combined_state);
-        let from_combined_state_id = *dstates.get(&combined_state).unwrap();
-        let from_entry = dtran.entry(from_combined_state_id).or_default();
-        for (input, input_id) in &unique_inputs {
-            let mut u = RoaringBitmap::new();
+        let from_combined_state_id = *state_id_from_set_of_positions.get(&combined_state).unwrap();
+        let state_transitions = transitions.entry(from_combined_state_id).or_default();
+        for (inp_id, inp) in inputs.pairs() {
+            let mut set_of_positions = RoaringBitmap::new();
             for pos in &combined_state {
-                if regex.input_from_position.get(*pos as usize) == Some(input)
+                if let Some(input) = regex.input_from_position.get(*pos as usize)
+                    && Inp::from_input(input) == *inp
                     && let Some(positions) = followpos.get(pos)
                 {
-                    u |= positions;
+                    set_of_positions |= positions;
                 }
             }
-            if !u.is_empty() {
-                let u = BTreeSet::from_iter(u);
-                if !dstates.contains_key(&u) {
-                    dstates.insert(u.clone(), unallocated_state_id);
+            if !set_of_positions.is_empty() {
+                let set_of_positions = BTreeSet::from_iter(set_of_positions);
+                if !state_id_from_set_of_positions.contains_key(&set_of_positions) {
+                    state_id_from_set_of_positions
+                        .insert(set_of_positions.clone(), unallocated_state_id);
                     unallocated_state_id += 1;
-                    unmarked_states.insert(u.clone());
+                    unmarked_states.insert(set_of_positions.clone());
                 }
-                let to_combined_state_id = dstates.get(&u).unwrap();
-                from_entry.insert(*input_id as _, *to_combined_state_id);
+                let to_combined_state_id = state_id_from_set_of_positions
+                    .get(&set_of_positions)
+                    .unwrap();
+                state_transitions.insert(inp_id, *to_combined_state_id);
             }
         }
     }
@@ -110,7 +166,7 @@ fn dfa_from_regex(regex: Regex, subdfas: DFAInternPool) -> DFA {
     // The accepting states are those containing the position for the endmarker symbol #.
     let accepting_states: RoaringBitmap = {
         let mut accepting_states = RoaringBitmap::default();
-        for (combined_state, state_id) in &dstates {
+        for (combined_state, state_id) in &state_id_from_set_of_positions {
             if combined_state.contains(&regex.endmarker_position) {
                 accepting_states.insert(*state_id);
             }
@@ -119,10 +175,12 @@ fn dfa_from_regex(regex: Regex, subdfas: DFAInternPool) -> DFA {
     };
 
     DFA {
-        starting_state: *dstates.get(&combined_starting_state).unwrap(),
-        transitions: dtran,
+        starting_state: *state_id_from_set_of_positions
+            .get(&combined_starting_state)
+            .unwrap(),
+        transitions,
         accepting_states,
-        input_from_position: regex.input_from_position,
+        inputs,
         subdfas,
     }
 }
@@ -183,7 +241,7 @@ impl SetInternPool {
 struct Transition {
     from: StateId,
     to: StateId,
-    input: Position,
+    input: InpId,
 }
 
 fn keep_only_states_with_input_transitions(
@@ -294,8 +352,8 @@ fn renumber_states(
 
 fn hashmap_transitions_from_vec(
     transitions: &[Transition],
-) -> IndexMap<StateId, IndexMap<Position, StateId>> {
-    let mut result: IndexMap<StateId, IndexMap<Position, StateId>> = Default::default();
+) -> IndexMap<StateId, IndexMap<InpId, StateId>> {
+    let mut result: IndexMap<StateId, IndexMap<InpId, StateId>> = Default::default();
 
     for transition in transitions {
         result
@@ -304,37 +362,6 @@ fn hashmap_transitions_from_vec(
             .insert(transition.input, transition.to);
     }
 
-    result
-}
-
-fn make_transitions_image(
-    transitions: &IndexMap<StateId, IndexMap<Position, StateId>>,
-    input_symbols: &[Input],
-) -> Vec<Transition> {
-    let mut result: Vec<Transition> = Default::default();
-    for (from, tos) in transitions {
-        let meaningful_inputs: IndexSet<Position> = tos.keys().cloned().collect();
-        for (input, to) in tos {
-            result.push(Transition {
-                from: *from,
-                to: *to,
-                input: *input,
-            });
-        }
-        for input_id in 0..input_symbols.len() {
-            if meaningful_inputs.contains(&(input_id as Position)) {
-                continue;
-            }
-            result.push(Transition {
-                from: *from,
-                to: DEAD_STATE_ID,
-                input: input_id as _,
-            });
-        }
-    }
-
-    result.sort_unstable_by_key(|transition| transition.to);
-    result.dedup(); // should be redundant
     result
 }
 
@@ -398,7 +425,7 @@ fn do_minimize(dfa: DFA) -> DFA {
         ])
     };
     let mut worklist = partitions.clone();
-    let transitions_image = make_transitions_image(&dfa.transitions, &dfa.input_from_position);
+    let transitions_image = dfa.make_transitions_image();
     while let Some(group_id) = worklist.iter().next() {
         let group_id = *group_id;
         worklist.remove(&group_id);
@@ -411,8 +438,8 @@ fn do_minimize(dfa: DFA) -> DFA {
             None => continue,
         };
 
-        let transitions_to_group: HashMap<Position, RoaringBitmap> = {
-            let mut group_transitions: HashMap<Position, RoaringBitmap> = Default::default();
+        let transitions_to_group: HashMap<InpId, RoaringBitmap> = {
+            let mut group_transitions: HashMap<InpId, RoaringBitmap> = Default::default();
             for transition in transitions {
                 if group.contains(transition.to) {
                     group_transitions
@@ -515,7 +542,7 @@ fn do_minimize(dfa: DFA) -> DFA {
         starting_state,
         transitions,
         accepting_states,
-        input_from_position: dfa.input_from_position,
+        inputs: dfa.inputs,
         subdfas: dfa.subdfas,
     }
 }
@@ -592,7 +619,7 @@ fn do_to_dot<W: Write>(
         for (input_id, to) in tos {
             let input = dfa.get_input(*input_id);
             match input {
-                Input::Literal { .. } | Input::Nonterminal { .. } | Input::Command { .. } => {
+                Inp::Literal { .. } | Inp::Nonterminal { .. } | Inp::Command { .. } => {
                     let label = {
                         let mut buffer = String::new();
                         diagnostic_display_input(&mut buffer, input)?;
@@ -604,7 +631,7 @@ fn do_to_dot<W: Write>(
                         from, to, label
                     )?;
                 }
-                Input::Subword {
+                Inp::Subword {
                     subdfa: subdfaid, ..
                 } => {
                     let subdfa = dfa.subdfas.lookup(*subdfaid);
@@ -635,10 +662,10 @@ fn do_get_subdfa_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)
         for (input_id, _) in tos {
             let input = dfa.get_input(*input_id);
             let cmd = match input {
-                Input::Command { cmd, .. } => *cmd,
-                Input::Subword { .. } => unreachable!(),
-                Input::Nonterminal { .. } => continue,
-                Input::Literal { .. } => continue,
+                Inp::Command { cmd, .. } => *cmd,
+                Inp::Subword { .. } => unreachable!(),
+                Inp::Nonterminal { .. } => continue,
+                Inp::Literal { .. } => continue,
             };
             result.push((*from, cmd));
         }
@@ -656,6 +683,34 @@ impl DFA {
         dfa_from_regex(regex, subdfas)
     }
 
+    fn make_transitions_image(&self) -> Vec<Transition> {
+        let mut result: Vec<Transition> = Default::default();
+        for (from, tos) in &self.transitions {
+            let meaningful_inputs: IndexSet<InpId> = tos.keys().cloned().collect();
+            for (input, to) in tos {
+                result.push(Transition {
+                    from: *from,
+                    to: *to,
+                    input: *input,
+                });
+            }
+            for inp_id in self.inputs.ids() {
+                if meaningful_inputs.contains(&inp_id) {
+                    continue;
+                }
+                result.push(Transition {
+                    from: *from,
+                    to: DEAD_STATE_ID,
+                    input: inp_id,
+                });
+            }
+        }
+
+        result.sort_unstable_by_key(|transition| transition.to);
+        result.dedup(); // should be redundant
+        result
+    }
+
     pub fn minimize(self) -> Self {
         do_minimize(self)
     }
@@ -665,7 +720,7 @@ impl DFA {
         'outer: while !input.is_empty() {
             for (transition_input_id, to) in self.iter_transitions_from(current_state) {
                 let transition_input = self.get_input(transition_input_id);
-                if let Input::Literal { literal, .. } = transition_input {
+                if let Inp::Literal { literal, .. } = transition_input {
                     let s = literal.as_str();
                     if input.starts_with(s) {
                         input = &input[s.len()..];
@@ -692,22 +747,22 @@ impl DFA {
         &self,
         state: StateId,
         visited: &mut RoaringBitmap,
-        path: &mut Vec<Input>,
+        path: &mut Vec<Inp>,
     ) -> crate::Result<()> {
-        let mut ambiguous_inputs: Vec<Input> = Default::default();
+        let mut ambiguous_inputs: Vec<Inp> = Default::default();
         for (input_id, _) in self.iter_transitions_from(state) {
             let input = self.get_input(input_id);
             match input {
-                Input::Literal { .. } => {}
-                Input::Nonterminal { .. } => ambiguous_inputs.push(input.clone()),
-                Input::Subword {
+                Inp::Literal { .. } => {}
+                Inp::Nonterminal { .. } => ambiguous_inputs.push(input.clone()),
+                Inp::Subword {
                     subdfa: subdfa_id, ..
                 } => {
                     let subdfa = self.subdfas.lookup(*subdfa_id);
                     subdfa.check_ambiguity_best_effort()?
                 }
-                Input::Command { regex: None, .. } => ambiguous_inputs.push(input.clone()),
-                Input::Command {
+                Inp::Command { regex: None, .. } => ambiguous_inputs.push(input.clone()),
+                Inp::Command {
                     regex: Some(..), ..
                 } => {}
             }
@@ -732,50 +787,47 @@ impl DFA {
 
     pub fn check_ambiguity_best_effort(&self) -> crate::Result<()> {
         let mut visited: RoaringBitmap = Default::default();
-        let mut path: Vec<Input> = Default::default();
+        let mut path: Vec<Inp> = Default::default();
         self.do_check_ambiguity_best_effort(self.starting_state, &mut visited, &mut path)?;
         Ok(())
     }
 
-    pub fn iter_inputs(&self) -> impl Iterator<Item = &Input> + '_ {
+    pub fn iter_inputs(&self) -> impl Iterator<Item = &Inp> + '_ {
         self.iter_transitions()
             .map(|(_, input_id, _)| self.get_input(input_id))
     }
 
-    pub fn iter_froms_inputs(&self) -> impl Iterator<Item = (StateId, Position)> + '_ {
+    pub fn iter_froms_inputs(&self) -> impl Iterator<Item = (StateId, InpId)> + '_ {
         self.transitions
             .iter()
             .flat_map(|(from, tos)| tos.iter().map(|(input, _)| (*from, *input)))
     }
 
-    pub fn iter_transitions_from(
-        &self,
-        from: StateId,
-    ) -> impl Iterator<Item = (Position, StateId)> {
+    pub fn iter_transitions_from(&self, from: StateId) -> impl Iterator<Item = (InpId, StateId)> {
         match self.transitions.get(&from) {
             Some(transitions) => transitions.clone().into_iter(),
-            None => IndexMap::<Position, StateId>::default().into_iter(),
+            None => IndexMap::<InpId, StateId>::default().into_iter(),
         }
     }
 
-    pub fn iter_transitions(&self) -> impl Iterator<Item = (StateId, Position, StateId)> + '_ {
+    pub fn iter_transitions(&self) -> impl Iterator<Item = (StateId, InpId, StateId)> + '_ {
         self.transitions
             .iter()
             .flat_map(|(from, tos)| tos.iter().map(|(input, to)| (*from, *input, *to)))
     }
 
     pub fn get_all_literals(&self) -> Vec<(Ustr, Option<Ustr>)> {
-        self.input_from_position
-            .iter()
+        self.inputs
+            .elems()
             .filter_map(|input| match input {
-                Input::Literal {
+                Inp::Literal {
                     literal: input,
                     description,
                     ..
                 } => Some((*input, *description)),
-                Input::Subword { .. } => None,
-                Input::Nonterminal { .. } => None,
-                Input::Command { .. } => None,
+                Inp::Subword { .. } => None,
+                Inp::Nonterminal { .. } => None,
+                Inp::Command { .. } => None,
             })
             .collect()
     }
@@ -786,7 +838,7 @@ impl DFA {
             for (input_id, _) in tos {
                 let input = self.get_input(*input_id);
                 match input {
-                    Input::Subword {
+                    Inp::Subword {
                         subdfa: subdfaid, ..
                     } => {
                         let subdfa = self.subdfas.lookup(*subdfaid);
@@ -797,9 +849,9 @@ impl DFA {
                         do_get_subdfa_command_transitions(subdfa, transitions);
                         continue;
                     }
-                    Input::Command { .. } => continue,
-                    Input::Nonterminal { .. } => continue,
-                    Input::Literal { .. } => continue,
+                    Inp::Command { .. } => continue,
+                    Inp::Nonterminal { .. } => continue,
+                    Inp::Literal { .. } => continue,
                 }
             }
         }
@@ -816,14 +868,14 @@ impl DFA {
             .filter_map(|(input_id, to)| {
                 let input = self.get_input(*input_id);
                 match input {
-                    Input::Literal {
+                    Inp::Literal {
                         literal: input,
                         description,
                         ..
                     } => Some((*input, description.unwrap_or(ustr("")), *to)),
-                    Input::Subword { .. } => None,
-                    Input::Nonterminal { .. } => None,
-                    Input::Command { .. } => None,
+                    Inp::Subword { .. } => None,
+                    Inp::Nonterminal { .. } => None,
+                    Inp::Command { .. } => None,
                 }
             })
             .collect();
@@ -840,7 +892,7 @@ impl DFA {
             .filter_map(|(input_id, to)| {
                 let input = self.get_input(*input_id);
                 match input {
-                    Input::Command {
+                    Inp::Command {
                         cmd: _,
                         regex:
                             Some(CmdRegex {
@@ -848,14 +900,14 @@ impl DFA {
                             }),
                         ..
                     } => Some((*regex, *to)),
-                    Input::Command { regex: None, .. } => None,
-                    Input::Command {
+                    Inp::Command { regex: None, .. } => None,
+                    Inp::Command {
                         regex: Some(CmdRegex { bash: None, .. }),
                         ..
                     } => None,
-                    Input::Literal { .. } => None,
-                    Input::Subword { .. } => None,
-                    Input::Nonterminal { .. } => None,
+                    Inp::Literal { .. } => None,
+                    Inp::Subword { .. } => None,
+                    Inp::Nonterminal { .. } => None,
                 }
             })
             .collect();
@@ -870,7 +922,7 @@ impl DFA {
         let transitions: Vec<(Ustr, StateId)> = map
             .iter()
             .filter_map(|(input_id, to)| match self.get_input(*input_id) {
-                Input::Command {
+                Inp::Command {
                     cmd: _,
                     regex:
                         Some(CmdRegex {
@@ -878,14 +930,14 @@ impl DFA {
                         }),
                     ..
                 } => Some((*regex, *to)),
-                Input::Command { regex: None, .. } => None,
-                Input::Command {
+                Inp::Command { regex: None, .. } => None,
+                Inp::Command {
                     regex: Some(CmdRegex { fish: None, .. }),
                     ..
                 } => None,
-                Input::Literal { .. } => None,
-                Input::Subword { .. } => None,
-                Input::Nonterminal { .. } => None,
+                Inp::Literal { .. } => None,
+                Inp::Subword { .. } => None,
+                Inp::Nonterminal { .. } => None,
             })
             .collect();
         transitions
@@ -899,7 +951,7 @@ impl DFA {
         let transitions: Vec<(Ustr, StateId)> = map
             .iter()
             .filter_map(|(input_id, to)| match self.get_input(*input_id) {
-                Input::Command {
+                Inp::Command {
                     cmd: _,
                     regex:
                         Some(CmdRegex {
@@ -907,14 +959,14 @@ impl DFA {
                         }),
                     ..
                 } => Some((*regex, *to)),
-                Input::Command { regex: None, .. } => None,
-                Input::Command {
+                Inp::Command { regex: None, .. } => None,
+                Inp::Command {
                     regex: Some(CmdRegex { zsh: None, .. }),
                     ..
                 } => None,
-                Input::Literal { .. } => None,
-                Input::Subword { .. } => None,
-                Input::Nonterminal { .. } => None,
+                Inp::Literal { .. } => None,
+                Inp::Subword { .. } => None,
+                Inp::Nonterminal { .. } => None,
             })
             .collect();
         transitions
@@ -928,10 +980,10 @@ impl DFA {
         let transitions: Vec<(DFAId, StateId)> = map
             .iter()
             .filter_map(|(input_id, to)| match self.get_input(*input_id) {
-                Input::Subword { subdfa: dfa, .. } => Some((*dfa, *to)),
-                Input::Literal { .. } => None,
-                Input::Nonterminal { .. } => None,
-                Input::Command { .. } => None,
+                Inp::Subword { subdfa: dfa, .. } => Some((*dfa, *to)),
+                Inp::Literal { .. } => None,
+                Inp::Nonterminal { .. } => None,
+                Inp::Command { .. } => None,
             })
             .collect();
         transitions
@@ -977,10 +1029,10 @@ impl DFA {
         for (_, tos) in &self.transitions {
             for (input_id, _) in tos {
                 let dfa = match self.get_input(*input_id) {
-                    Input::Subword { subdfa, .. } => subdfa,
-                    Input::Nonterminal { .. } => continue,
-                    Input::Command { .. } => continue,
-                    Input::Literal { .. } => continue,
+                    Inp::Subword { subdfa, .. } => subdfa,
+                    Inp::Nonterminal { .. } => continue,
+                    Inp::Command { .. } => continue,
+                    Inp::Literal { .. } => continue,
                 };
                 result.entry(*dfa).or_insert_with(|| {
                     let save = unallocated_id;
@@ -1032,13 +1084,12 @@ mod tests {
     use proptest::prelude::*;
     use ustr::UstrMap;
 
-    impl Input {
+    impl Inp {
         fn literal(s: &str) -> Self {
-            Input::Literal {
+            Inp::Literal {
                 literal: ustr(s),
                 description: None,
                 fallback_level: 0,
-                span: None,
             }
         }
     }
@@ -1054,7 +1105,7 @@ mod tests {
 
                 for (transition_input_id, to) in self.iter_transitions_from(current_state) {
                     let transition_input = self.get_input(transition_input_id);
-                    if let Input::Literal { literal, .. } = transition_input {
+                    if let Inp::Literal { literal, .. } = transition_input {
                         if inputs[input_index] == literal.as_str() {
                             input_index += 1;
                             current_state = to;
@@ -1065,7 +1116,7 @@ mod tests {
 
                 for (transition_input_id, to) in self.iter_transitions_from(current_state) {
                     let transition_input = self.get_input(transition_input_id);
-                    if let Input::Subword { subdfa, .. } = transition_input {
+                    if let Inp::Subword { subdfa, .. } = transition_input {
                         let dfa = self.subdfas.lookup(*subdfa);
                         if dfa.accepts_str(inputs[input_index], shell) {
                             input_index += 1;
@@ -1075,7 +1126,7 @@ mod tests {
                     }
                 }
 
-                let anys: Vec<(Position, StateId)> = self
+                let anys: Vec<(InpId, StateId)> = self
                     .iter_transitions_from(current_state)
                     .filter(|(input_id, _)| self.get_input(*input_id).is_ambiguous(shell))
                     .map(|(k, v)| (k.clone(), v))
@@ -1098,7 +1149,7 @@ mod tests {
             Ok(self.accepting_states.contains(current_state.into()))
         }
 
-        pub fn has_transition(&self, from: StateId, input: Position, to: StateId) -> bool {
+        pub fn has_transition(&self, from: StateId, input: InpId, to: StateId) -> bool {
             *self.transitions.get(&from).unwrap().get(&input).unwrap() == to
         }
     }
@@ -1115,14 +1166,10 @@ mod tests {
         ));
         assert!(matches!(regex.check_clashing_variants(), Ok(())));
         let dfa = DFA::from_regex_strict(regex, DFAInternPool::default()).unwrap();
-        let foo = Input::literal("foo");
-        let (foo_id, _) = dfa
-            .input_from_position
-            .iter()
-            .find_position(|e| e == &&foo)
-            .unwrap();
+        let foo = Inp::literal("foo");
+        let foo_id = dfa.inputs.find(&foo).unwrap();
         assert_eq!(dfa.transitions.len(), 2);
-        let tos: IndexMap<Position, StateId> = IndexMap::from_iter([(foo_id as _, 2)]);
+        let tos: IndexMap<InpId, StateId> = IndexMap::from_iter([(foo_id, 2)]);
         assert_eq!(*dfa.transitions.get(&1).unwrap(), tos);
         assert_eq!(dfa.accepting_states, RoaringBitmap::from_iter([2]));
         assert_eq!(dfa.starting_state, 1);
@@ -1692,17 +1739,13 @@ mod tests {
 
     #[test]
     fn engineering_a_compiler_book_dfa_minimization_example() {
-        let f = Input::literal("f");
-        let e = Input::literal("e");
-        let i = Input::literal("i");
-        let input_symbols = vec![f.clone(), e.clone(), i.clone()];
-        let f_id = 0;
-        let e_id = 1;
-        let i_id = 2;
+        let mut inputs: InpInternPool = Default::default();
+        let f_id = inputs.intern(Inp::literal("f"));
+        let e_id = inputs.intern(Inp::literal("e"));
+        let i_id = inputs.intern(Inp::literal("i"));
         let dfa = {
             let starting_state = 0;
-            let mut transitions: IndexMap<StateId, IndexMap<Position, StateId>> =
-                Default::default();
+            let mut transitions: IndexMap<StateId, IndexMap<InpId, StateId>> = Default::default();
             transitions.entry(0).or_default().insert(f_id, 1);
             transitions.entry(1).or_default().insert(e_id, 2);
             transitions.entry(1).or_default().insert(i_id, 4);
@@ -1713,7 +1756,7 @@ mod tests {
                 starting_state,
                 transitions,
                 accepting_states,
-                input_from_position: input_symbols,
+                inputs,
                 subdfas: DFAInternPool::default(),
             }
         };

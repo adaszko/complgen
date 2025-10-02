@@ -3,6 +3,8 @@ use regex::Input;
 use std::string::FromUtf8Error;
 use ustr::Ustr;
 
+use crate::regex::Inp;
+
 pub mod bash;
 pub mod dfa;
 pub mod fish;
@@ -38,7 +40,7 @@ pub enum Error {
     AmbiguousMatchable(Box<Input>, Box<Input>),
 
     #[error("Ambiguous DFA: {:?} {:?}", .0, .1)]
-    AmbiguousDFA(Box<[Input]>, Box<[Input]>),
+    AmbiguousDFA(Box<[Inp]>, Box<[Inp]>),
 
     #[error("Clashing variants: {:?} {:?}", .0, .1)]
     ClashingVariants(Option<HumanSpan>, Option<HumanSpan>),
