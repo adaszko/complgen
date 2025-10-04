@@ -1723,4 +1723,21 @@ mod tests {
         assert!(minimized.has_transition(1, i_id, 2));
         assert!(minimized.has_transition(2, e_id, 3));
     }
+
+    #[test]
+    fn grammar_terms_get_deduped() {
+        const INPUT: &str = r#"
+foo DUPLICATED_TERM;
+foo DUPLICATED_TERM;
+"#;
+        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
+        let vg = ValidGrammar::from_grammar(g, Shell::Bash).unwrap();
+        let regex = Regex::from_valid_grammar(&vg, Shell::Bash).unwrap();
+        let dfa = DFA::from_regex(regex, vg.subdfas).unwrap();
+
+        // There should be only one tansition on input Term("DUPLICATED_TERM")
+        let transitions = dfa.get_literal_transitions_from(dfa.starting_state);
+        assert_eq!(transitions.len(), 1);
+        assert_eq!(transitions[0].0, "DUPLICATED_TERM");
+    }
 }
