@@ -253,7 +253,7 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
         (None, None, Some(path)) => (Shell::Zsh, path),
 
         _ => {
-            eprintln!("Please specify at least one of: --bash, --fish, --zsh");
+            eprintln!("Please specify exactly one of: --bash, --fish, --zsh");
             exit(1);
         }
     };

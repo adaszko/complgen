@@ -626,7 +626,7 @@ fn do_to_dot<W: Write>(
         for (input_id, to) in tos {
             let input = dfa.get_input(*input_id);
             match input {
-                Inp::Literal { .. } | Inp::Nonterminal { .. } | Inp::Command { .. } => {
+                Inp::Literal { .. } | Inp::Star { .. } | Inp::Command { .. } => {
                     let label = {
                         let mut buffer = String::new();
                         diagnostic_display_input(&mut buffer, input)?;
@@ -714,7 +714,7 @@ impl DFA {
             let input = self.get_input(input_id);
             match input {
                 Inp::Literal { .. } => {}
-                Inp::Nonterminal { .. } => ambiguous_inputs.push(input.clone()),
+                Inp::Star => ambiguous_inputs.push(input.clone()),
                 Inp::Subword {
                     subdfa: subdfa_id, ..
                 } => {
@@ -780,7 +780,7 @@ impl DFA {
                     ..
                 } => Some((*input, *description)),
                 Inp::Subword { .. } => None,
-                Inp::Nonterminal { .. } => None,
+                Inp::Star { .. } => None,
                 Inp::Command { .. } => None,
             })
             .collect()
@@ -802,7 +802,7 @@ impl DFA {
                         ..
                     } => Some((*input, description.unwrap_or(ustr("")), *to)),
                     Inp::Subword { .. } => None,
-                    Inp::Nonterminal { .. } => None,
+                    Inp::Star => None,
                     Inp::Command { .. } => None,
                 }
             })
@@ -821,14 +821,12 @@ impl DFA {
                 let input = self.get_input(*input_id);
                 match input {
                     Inp::Command {
-                        cmd: _,
-                        regex: Some(regex),
-                        ..
+                        regex: Some(regex), ..
                     } => Some((*regex, *to)),
                     Inp::Command { regex: None, .. } => None,
                     Inp::Literal { .. } => None,
                     Inp::Subword { .. } => None,
-                    Inp::Nonterminal { .. } => None,
+                    Inp::Star { .. } => None,
                 }
             })
             .collect();
@@ -845,7 +843,7 @@ impl DFA {
             .filter_map(|(input_id, to)| match self.get_input(*input_id) {
                 Inp::Subword { subdfa: dfa, .. } => Some((*dfa, *to)),
                 Inp::Literal { .. } => None,
-                Inp::Nonterminal { .. } => None,
+                Inp::Star => None,
                 Inp::Command { .. } => None,
             })
             .collect();
@@ -892,7 +890,7 @@ impl DFA {
             for (input_id, _) in tos {
                 let dfa = match self.get_input(*input_id) {
                     Inp::Subword { subdfa, .. } => subdfa,
-                    Inp::Nonterminal { .. } => continue,
+                    Inp::Star => continue,
                     Inp::Command { .. } => continue,
                     Inp::Literal { .. } => continue,
                 };
@@ -909,6 +907,7 @@ impl DFA {
     pub(crate) fn get_max_fallback_level(&self) -> Option<usize> {
         self.iter_inputs()
             .map(|input| input.get_fallback_level())
+            .filter_map(|level| level)
             .max()
     }
 

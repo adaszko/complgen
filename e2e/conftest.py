@@ -28,6 +28,7 @@ def complgen_binary_path(cargo_manifest_path: Path) -> Path:
         cwd="..",
         stdout=sys.stdout,
         stderr=sys.stderr,
+        check=True,
     )
     binary_path = cargo_manifest_path.parent / "target/release/complgen"
     assert binary_path.exists()

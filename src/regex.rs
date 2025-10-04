@@ -67,7 +67,7 @@ impl Input {
 pub fn diagnostic_display_input<W: std::fmt::Write>(w: &mut W, input: &Inp) -> crate::Result<()> {
     match input {
         Inp::Literal { literal, .. } => write!(w, r#"{literal}"#)?,
-        Inp::Nonterminal { .. } => write!(w, r#"<NONTERM>"#)?,
+        Inp::Star { .. } => write!(w, r#"*"#)?,
         Inp::Command { cmd, .. } => write!(w, r#"{{{{{{ {cmd} }}}}}}"#)?,
         Inp::Subword { .. } => unreachable!(),
     }
@@ -85,15 +85,13 @@ pub enum Inp {
         subdfa: DFAId,
         fallback_level: usize,
     },
-    Nonterminal {
-        spec: Option<Ustr>,
-        fallback_level: usize,
-    },
     Command {
         cmd: Ustr,
         regex: Option<Ustr>,
+        zsh_compadd: bool,
         fallback_level: usize,
     },
+    Star,
 }
 
 impl Inp {
@@ -117,27 +115,25 @@ impl Inp {
                 subdfa,
                 fallback_level,
             },
-            Input::Nonterminal {
-                spec: None,
-                fallback_level,
-                ..
-            } => Self::Nonterminal {
-                spec: None,
-                fallback_level,
-            },
+            Input::Nonterminal { spec: None, .. } => Self::Star,
             Input::Nonterminal {
                 spec: Some(spec),
                 fallback_level,
                 ..
             } => {
-                let cmd = match shell {
-                    Shell::Bash => spec.bash.or(spec.generic),
-                    Shell::Fish => spec.fish.or(spec.generic),
-                    Shell::Zsh => spec.zsh.or(spec.generic),
+                let (cmd, zsh_compadd) = match shell {
+                    Shell::Bash => (spec.bash.or(spec.generic), false),
+                    Shell::Fish => (spec.fish.or(spec.generic), false),
+                    Shell::Zsh => (spec.zsh.or(spec.generic), true),
                 };
-                Self::Nonterminal {
-                    spec: cmd,
-                    fallback_level,
+                match cmd {
+                    None => Self::Star,
+                    Some(cmd) => Self::Command {
+                        cmd,
+                        regex: None,
+                        zsh_compadd,
+                        fallback_level,
+                    },
                 }
             }
             Input::Command {
@@ -148,6 +144,7 @@ impl Inp {
             } => Self::Command {
                 cmd,
                 regex: None,
+                zsh_compadd: false,
                 fallback_level,
             },
             Input::Command {
@@ -164,6 +161,7 @@ impl Inp {
                 Self::Command {
                     cmd,
                     regex: rx,
+                    zsh_compadd: false,
                     fallback_level,
                 }
             }
@@ -174,7 +172,7 @@ impl Inp {
         match self {
             Self::Literal { .. } => false,
             Self::Subword { .. } => false, // XXX inaccurate
-            Self::Nonterminal { .. } => true,
+            Self::Star => true,
             Self::Command { regex: None, .. } => true,
             Self::Command {
                 regex: Some(..), ..
@@ -182,24 +180,21 @@ impl Inp {
         }
     }
 
-    pub(crate) fn get_fallback_level(&self) -> usize {
+    pub(crate) fn get_fallback_level(&self) -> Option<usize> {
         match self {
             Self::Literal {
                 fallback_level: level,
                 ..
-            } => *level,
+            } => Some(*level),
             Self::Subword {
                 fallback_level: level,
                 ..
-            } => *level,
-            Self::Nonterminal {
-                fallback_level: level,
-                ..
-            } => *level,
+            } => Some(*level),
+            Self::Star => None,
             Self::Command {
                 fallback_level: level,
                 ..
-            } => *level,
+            } => Some(*level),
         }
     }
 }
