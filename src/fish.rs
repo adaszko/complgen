@@ -22,7 +22,7 @@ use ustr::{Ustr, ustr};
 // TODO Optimization: Do not emit __complgen_match if there's just one fallback level as it's
 // unnecessary in that case.
 
-pub fn make_string_constant(s: &str) -> String {
+fn make_string_constant(s: &str) -> String {
     if s.is_empty() {
         return r#""""#.to_string();
     }
@@ -41,7 +41,7 @@ pub fn make_string_constant(s: &str) -> String {
 }
 
 pub const MATCH_FN_NAME: &str = "__complgen_match";
-pub fn write_match_fn<W: Write>(output: &mut W) -> anyhow::Result<()> {
+fn write_match_fn<W: Write>(output: &mut W) -> anyhow::Result<()> {
     // Unzip candidates from stdin into two arrays -- candidates and descriptions
     writeln!(
         output,
@@ -285,7 +285,7 @@ fn write_subword_lookup_tables<W: Write>(
     Ok(literal_id_from_input_description)
 }
 
-pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<()> {
+fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<()> {
     write!(
         buffer,
         r#"function _{command}_subword
@@ -445,7 +445,7 @@ end
     Ok(())
 }
 
-pub fn write_subword_fn<W: Write>(
+fn write_subword_fn<W: Write>(
     buffer: &mut W,
     command: &str,
     id: usize,
@@ -802,7 +802,7 @@ fn write_lookup_tables<W: Write>(
     Ok(literal_id_from_input_description)
 }
 
-pub fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
+fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
     let mut id_from_cmd: IndexSet<Ustr> = Default::default();
 
     let mut id_from_regex: IndexSet<Ustr> = Default::default();
@@ -865,7 +865,7 @@ pub fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
     (id_from_cmd, id_from_regex)
 }
 
-pub fn validate_command_name(command: &str) -> crate::Result<()> {
+fn validate_command_name(command: &str) -> crate::Result<()> {
     if command.contains('/') {
         return Err(crate::Error::InvalidCommandName(command.to_owned()));
     }

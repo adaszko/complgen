@@ -29,7 +29,7 @@ pub struct DFA {
 }
 
 impl DFA {
-    pub fn get_input(&self, id: InpId) -> &Inp {
+    pub(crate) fn get_input(&self, id: InpId) -> &Inp {
         self.inputs.lookup(id)
     }
 }
@@ -78,28 +78,30 @@ impl std::hash::Hash for InpInternPool {
 }
 
 impl InpInternPool {
-    pub fn intern(&mut self, value: Inp) -> InpId {
+    #[allow(dead_code)]
+    fn intern(&mut self, value: Inp) -> InpId {
         let (id, _) = self.store.insert_full(value);
         InpId(id as _)
     }
 
-    pub fn lookup(&self, id: InpId) -> &Inp {
+    fn lookup(&self, id: InpId) -> &Inp {
         self.store.get_index(id.0 as _).unwrap()
     }
 
-    pub fn find(&self, inp: &Inp) -> Option<InpId> {
+    #[allow(dead_code)]
+    fn find(&self, inp: &Inp) -> Option<InpId> {
         self.store.get_index_of(inp).map(|i| InpId(i as _))
     }
 
-    pub fn ids(&self) -> impl Iterator<Item = InpId> {
+    fn ids(&self) -> impl Iterator<Item = InpId> {
         (0..self.store.len()).map(|i| InpId(i as _))
     }
 
-    pub fn elems(&self) -> impl Iterator<Item = &Inp> {
+    fn elems(&self) -> impl Iterator<Item = &Inp> {
         self.store.iter()
     }
 
-    pub fn pairs(&self) -> impl Iterator<Item = (InpId, &Inp)> {
+    fn pairs(&self) -> impl Iterator<Item = (InpId, &Inp)> {
         self.store
             .iter()
             .enumerate()
@@ -657,30 +659,11 @@ fn do_to_dot<W: Write>(
     Ok(())
 }
 
-fn do_get_subdfa_command_transitions(dfa: &DFA, result: &mut Vec<(StateId, Ustr)>) {
-    for (from, tos) in &dfa.transitions {
-        for (input_id, _) in tos {
-            let input = dfa.get_input(*input_id);
-            let cmd = match input {
-                Inp::Command { cmd, .. } => *cmd,
-                Inp::Subword { .. } => unreachable!(),
-                Inp::Nonterminal { .. } => continue,
-                Inp::Literal { .. } => continue,
-            };
-            result.push((*from, cmd));
-        }
-    }
-}
-
 impl DFA {
-    pub fn from_regex_strict(regex: Regex, subdfas: DFAInternPool) -> crate::Result<Self> {
-        let dfa = Self::from_regex(regex, subdfas);
+    pub fn from_regex(regex: Regex, subdfas: DFAInternPool) -> crate::Result<Self> {
+        let dfa = dfa_from_regex(regex, subdfas);
         dfa.check_ambiguity_best_effort()?;
         Ok(dfa)
-    }
-
-    pub fn from_regex(regex: Regex, subdfas: DFAInternPool) -> Self {
-        dfa_from_regex(regex, subdfas)
     }
 
     fn make_transitions_image(&self) -> Vec<Transition> {
@@ -713,34 +696,6 @@ impl DFA {
 
     pub fn minimize(self) -> Self {
         do_minimize(self)
-    }
-
-    pub fn accepts_str(&self, mut input: &str, shell: Shell) -> bool {
-        let mut current_state = self.starting_state;
-        'outer: while !input.is_empty() {
-            for (transition_input_id, to) in self.iter_transitions_from(current_state) {
-                let transition_input = self.get_input(transition_input_id);
-                if let Inp::Literal { literal, .. } = transition_input {
-                    let s = literal.as_str();
-                    if input.starts_with(s) {
-                        input = &input[s.len()..];
-                        current_state = to;
-                        continue 'outer;
-                    }
-                }
-            }
-
-            for (transition_input_id, to) in self.iter_transitions_from(current_state) {
-                let transition_input = self.get_input(transition_input_id);
-                if transition_input.is_ambiguous(shell) {
-                    current_state = to;
-                    break 'outer;
-                }
-            }
-
-            break;
-        }
-        self.accepting_states.contains(current_state)
     }
 
     fn do_check_ambiguity_best_effort(
@@ -785,38 +740,32 @@ impl DFA {
         Ok(())
     }
 
-    pub fn check_ambiguity_best_effort(&self) -> crate::Result<()> {
+    fn check_ambiguity_best_effort(&self) -> crate::Result<()> {
         let mut visited: RoaringBitmap = Default::default();
         let mut path: Vec<Inp> = Default::default();
         self.do_check_ambiguity_best_effort(self.starting_state, &mut visited, &mut path)?;
         Ok(())
     }
 
-    pub fn iter_inputs(&self) -> impl Iterator<Item = &Inp> + '_ {
+    pub(crate) fn iter_inputs(&self) -> impl Iterator<Item = &Inp> + '_ {
         self.iter_transitions()
             .map(|(_, input_id, _)| self.get_input(input_id))
     }
 
-    pub fn iter_froms_inputs(&self) -> impl Iterator<Item = (StateId, InpId)> + '_ {
-        self.transitions
-            .iter()
-            .flat_map(|(from, tos)| tos.iter().map(|(input, _)| (*from, *input)))
-    }
-
-    pub fn iter_transitions_from(&self, from: StateId) -> impl Iterator<Item = (InpId, StateId)> {
+    fn iter_transitions_from(&self, from: StateId) -> impl Iterator<Item = (InpId, StateId)> {
         match self.transitions.get(&from) {
             Some(transitions) => transitions.clone().into_iter(),
             None => IndexMap::<InpId, StateId>::default().into_iter(),
         }
     }
 
-    pub fn iter_transitions(&self) -> impl Iterator<Item = (StateId, InpId, StateId)> + '_ {
+    pub(crate) fn iter_transitions(&self) -> impl Iterator<Item = (StateId, InpId, StateId)> + '_ {
         self.transitions
             .iter()
             .flat_map(|(from, tos)| tos.iter().map(|(input, to)| (*from, *input, *to)))
     }
 
-    pub fn get_all_literals(&self) -> Vec<(Ustr, Option<Ustr>)> {
+    pub(crate) fn get_all_literals(&self) -> Vec<(Ustr, Option<Ustr>)> {
         self.inputs
             .elems()
             .filter_map(|input| match input {
@@ -832,33 +781,7 @@ impl DFA {
             .collect()
     }
 
-    pub fn get_subword_command_transitions(&self) -> HashMap<DFAId, Vec<(StateId, Ustr)>> {
-        let mut subdfas: HashMap<DFAId, Vec<(StateId, Ustr)>> = Default::default();
-        for (_, tos) in &self.transitions {
-            for (input_id, _) in tos {
-                let input = self.get_input(*input_id);
-                match input {
-                    Inp::Subword {
-                        subdfa: subdfaid, ..
-                    } => {
-                        let subdfa = self.subdfas.lookup(*subdfaid);
-                        if subdfas.contains_key(subdfaid) {
-                            continue;
-                        }
-                        let transitions = subdfas.entry(*subdfaid).or_default();
-                        do_get_subdfa_command_transitions(subdfa, transitions);
-                        continue;
-                    }
-                    Inp::Command { .. } => continue,
-                    Inp::Nonterminal { .. } => continue,
-                    Inp::Literal { .. } => continue,
-                }
-            }
-        }
-        subdfas
-    }
-
-    pub fn get_literal_transitions_from(&self, from: StateId) -> Vec<(Ustr, Ustr, StateId)> {
+    pub(crate) fn get_literal_transitions_from(&self, from: StateId) -> Vec<(Ustr, Ustr, StateId)> {
         let map = match self.transitions.get(&from) {
             Some(map) => map,
             None => return vec![],
@@ -882,7 +805,7 @@ impl DFA {
         transitions
     }
 
-    pub fn get_bash_nontail_transitions_from(&self, from: StateId) -> Vec<(Ustr, StateId)> {
+    pub(crate) fn get_bash_nontail_transitions_from(&self, from: StateId) -> Vec<(Ustr, StateId)> {
         let map = match self.transitions.get(&from) {
             Some(map) => map,
             None => return vec![],
@@ -914,7 +837,7 @@ impl DFA {
         transitions
     }
 
-    pub fn get_fish_nontail_transitions_from(&self, from: StateId) -> Vec<(Ustr, StateId)> {
+    pub(crate) fn get_fish_nontail_transitions_from(&self, from: StateId) -> Vec<(Ustr, StateId)> {
         let map = match self.transitions.get(&from) {
             Some(map) => map,
             None => return vec![],
@@ -943,7 +866,7 @@ impl DFA {
         transitions
     }
 
-    pub fn get_zsh_nontail_transitions_from(&self, from: StateId) -> Vec<(Ustr, StateId)> {
+    pub(crate) fn get_zsh_nontail_transitions_from(&self, from: StateId) -> Vec<(Ustr, StateId)> {
         let map = match self.transitions.get(&from) {
             Some(map) => map,
             None => return vec![],
@@ -972,7 +895,7 @@ impl DFA {
         transitions
     }
 
-    pub fn get_subword_transitions_from(&self, from: StateId) -> Vec<(DFAId, StateId)> {
+    pub(crate) fn get_subword_transitions_from(&self, from: StateId) -> Vec<(DFAId, StateId)> {
         let map = match self.transitions.get(&from) {
             Some(map) => map,
             None => return vec![],
@@ -989,7 +912,7 @@ impl DFA {
         transitions
     }
 
-    pub fn has_subword_transitions(&self) -> bool {
+    pub(crate) fn has_subword_transitions(&self) -> bool {
         for state in self.get_all_states() {
             if !self.get_subword_transitions_from(state).is_empty() {
                 return true;
@@ -998,7 +921,7 @@ impl DFA {
         false
     }
 
-    pub fn get_all_states(&self) -> RoaringBitmap {
+    pub(crate) fn get_all_states(&self) -> RoaringBitmap {
         let mut states: RoaringBitmap = Default::default();
         self.iter_transitions().for_each(|(from, _, to)| {
             states.insert(from);
@@ -1008,7 +931,7 @@ impl DFA {
         states
     }
 
-    pub fn iter_match_anything_transitions(
+    pub(crate) fn iter_match_anything_transitions(
         &self,
         shell: Shell,
     ) -> impl Iterator<Item = (StateId, StateId)> + '_ {
@@ -1023,7 +946,7 @@ impl DFA {
             })
     }
 
-    pub fn get_subwords(&self, first_id: usize) -> IndexMap<DFAId, usize> {
+    pub(crate) fn get_subwords(&self, first_id: usize) -> IndexMap<DFAId, usize> {
         let mut unallocated_id = first_id;
         let mut result: IndexMap<DFAId, usize> = Default::default();
         for (_, tos) in &self.transitions {
@@ -1044,7 +967,7 @@ impl DFA {
         result
     }
 
-    pub fn get_max_fallback_level(&self) -> Option<usize> {
+    pub(crate) fn get_max_fallback_level(&self) -> Option<usize> {
         self.iter_inputs()
             .map(|input| input.get_fallback_level())
             .max()
@@ -1072,7 +995,7 @@ mod tests {
     use std::ops::Rem;
     use std::rc::Rc;
 
-    use crate::grammar::{Expr, ExprId, SubwordCompilationPhase, alloc};
+    use crate::grammar::{Expr, ExprId, Grammar, SubwordCompilationPhase, ValidGrammar, alloc};
     use crate::regex::Regex;
     use Expr::*;
     use itertools::Itertools;
@@ -1095,7 +1018,39 @@ mod tests {
     }
 
     impl DFA {
-        pub fn accepts(&self, inputs: &[&str], shell: Shell) -> Result<bool, TestCaseError> {
+        fn from_regex_lenient(regex: Regex, subdfas: DFAInternPool) -> Self {
+            dfa_from_regex(regex, subdfas)
+        }
+
+        fn accepts_str(&self, mut input: &str, shell: Shell) -> bool {
+            let mut current_state = self.starting_state;
+            'outer: while !input.is_empty() {
+                for (transition_input_id, to) in self.iter_transitions_from(current_state) {
+                    let transition_input = self.get_input(transition_input_id);
+                    if let Inp::Literal { literal, .. } = transition_input {
+                        let s = literal.as_str();
+                        if input.starts_with(s) {
+                            input = &input[s.len()..];
+                            current_state = to;
+                            continue 'outer;
+                        }
+                    }
+                }
+
+                for (transition_input_id, to) in self.iter_transitions_from(current_state) {
+                    let transition_input = self.get_input(transition_input_id);
+                    if transition_input.is_ambiguous(shell) {
+                        current_state = to;
+                        break 'outer;
+                    }
+                }
+
+                break;
+            }
+            self.accepting_states.contains(current_state)
+        }
+
+        fn accepts(&self, inputs: &[&str], shell: Shell) -> Result<bool, TestCaseError> {
             let mut input_index = 0;
             let mut current_state = self.starting_state;
             'outer: loop {
@@ -1149,7 +1104,7 @@ mod tests {
             Ok(self.accepting_states.contains(current_state.into()))
         }
 
-        pub fn has_transition(&self, from: StateId, input: InpId, to: StateId) -> bool {
+        fn has_transition(&self, from: StateId, input: InpId, to: StateId) -> bool {
             *self.transitions.get(&from).unwrap().get(&input).unwrap() == to
         }
     }
@@ -1161,11 +1116,11 @@ mod tests {
         let specs = UstrMap::default();
         let regex = Regex::from_expr(expr, &arena, &specs).unwrap();
         assert!(matches!(
-            regex.ensure_ambiguous_inputs_tail_only(Shell::Bash),
+            regex.check_ambiguous_inputs_tail_only(Shell::Bash),
             Ok(())
         ));
         assert!(matches!(regex.check_clashing_variants(), Ok(())));
-        let dfa = DFA::from_regex_strict(regex, DFAInternPool::default()).unwrap();
+        let dfa = DFA::from_regex(regex, DFAInternPool::default()).unwrap();
         let foo = Inp::literal("foo");
         let foo_id = dfa.inputs.find(&foo).unwrap();
         assert_eq!(dfa.transitions.len(), 2);
@@ -1291,7 +1246,7 @@ mod tests {
             .boxed()
     }
 
-    pub fn arb_expr(
+    fn arb_expr(
         arena: Rc<RefCell<Vec<Expr>>>,
         inputs: Rc<Vec<Ustr>>,
         nonterminals: Rc<Vec<Ustr>>,
@@ -1341,7 +1296,7 @@ mod tests {
         }
     }
 
-    pub fn do_arb_match(
+    fn do_arb_match(
         arena: Rc<RefCell<Vec<Expr>>>,
         expr: ExprId,
         rng: &mut TestRng,
@@ -1395,7 +1350,7 @@ mod tests {
         }
     }
 
-    pub fn arb_match(
+    fn arb_match(
         arena: Rc<RefCell<Vec<Expr>>>,
         e: ExprId,
         mut rng: TestRng,
@@ -1407,7 +1362,7 @@ mod tests {
     }
 
     // Produce an arbitrary sequence matching `e`.
-    pub fn arb_expr_match(
+    fn arb_expr_match(
         remaining_depth: usize,
         max_width: usize,
         inputs: Rc<Vec<Ustr>>,
@@ -1690,14 +1645,14 @@ mod tests {
         //dbg!(&regex.input_from_position);
 
         assert!(matches!(
-            regex.ensure_ambiguous_inputs_tail_only(Shell::Bash),
+            regex.check_ambiguous_inputs_tail_only(Shell::Bash),
             Ok(())
         ));
         assert!(matches!(regex.check_clashing_variants(), Ok(())));
 
         //regex.to_dot_file("regex.dot").unwrap();
         assert!(matches!(
-            DFA::from_regex_strict(regex, DFAInternPool::default()),
+            DFA::from_regex(regex, DFAInternPool::default()),
             Err(Error::AmbiguousDFA(..))
         ));
         //dfa.to_dot_file("dfa.dot").unwrap();
@@ -1712,9 +1667,9 @@ mod tests {
             let specs = UstrMap::default();
             let regex = Regex::from_expr(expr, &arena.borrow(), &specs).unwrap();
             //dbg!(&regex.input_from_position);
-            prop_assume!(matches!(regex.ensure_ambiguous_inputs_tail_only(Shell::Bash), Ok(())));
+            prop_assume!(matches!(regex.check_ambiguous_inputs_tail_only(Shell::Bash), Ok(())));
             prop_assume!(matches!(regex.check_clashing_variants(), Ok(())));
-            let dfa = DFA::from_regex(regex, DFAInternPool::default());
+            let dfa = DFA::from_regex_lenient(regex, DFAInternPool::default());
             prop_assume!(dfa.check_ambiguity_best_effort().is_ok());
             let input: Vec<&str> = input.iter().map(|s| s.as_str()).collect();
             prop_assert!(dfa.accepts(&input, Shell::Bash)?);
@@ -1726,9 +1681,9 @@ mod tests {
             println!("{:?}", input);
             let specs = UstrMap::default();
             let regex = Regex::from_expr(expr, &arena.borrow(), &specs).unwrap();
-            prop_assume!(matches!(regex.ensure_ambiguous_inputs_tail_only(Shell::Bash), Ok(())));
+            prop_assume!(matches!(regex.check_ambiguous_inputs_tail_only(Shell::Bash), Ok(())));
             prop_assume!(matches!(regex.check_clashing_variants(), Ok(())));
-            let dfa = DFA::from_regex(regex, DFAInternPool::default());
+            let dfa = DFA::from_regex_lenient(regex, DFAInternPool::default());
             prop_assume!(dfa.check_ambiguity_best_effort().is_ok());
             let input: Vec<&str> = input.iter().map(|s| s.as_str()).collect();
             prop_assert!(dfa.accepts(&input, Shell::Bash)?);

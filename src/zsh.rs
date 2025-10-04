@@ -14,7 +14,7 @@ use ustr::{Ustr, ustr};
 // is used as slightly less misleading (!)
 
 // TODO DO not produce quotes if not necessary to save space
-pub fn make_string_constant(s: &str) -> String {
+fn make_string_constant(s: &str) -> String {
     format!(
         r#""{}""#,
         s.replace('\\', "\\\\")
@@ -152,7 +152,7 @@ fn write_lookup_tables<W: Write>(
     Ok(literal_id_from_input_description)
 }
 
-pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<()> {
+fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<()> {
     write!(
         buffer,
         r#"_{command}_subword () {{
@@ -355,7 +355,7 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
     Ok(())
 }
 
-pub fn write_subword_fn<W: Write>(
+fn write_subword_fn<W: Write>(
     buffer: &mut W,
     command: &str,
     id: usize,
@@ -542,7 +542,7 @@ pub fn write_subword_fn<W: Write>(
     Ok(())
 }
 
-pub fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
+fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
     let mut id_from_cmd: IndexSet<Ustr> = Default::default();
 
     let mut id_from_regex: IndexSet<Ustr> = Default::default();

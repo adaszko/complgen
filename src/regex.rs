@@ -1,6 +1,5 @@
 use crate::{Error, Result, grammar::ValidGrammar};
 use hashbrown::HashSet;
-use indexmap::IndexMap;
 use std::{
     collections::{BTreeMap, BTreeSet},
     io::Write,
@@ -43,7 +42,7 @@ pub enum Input {
 }
 
 impl Input {
-    pub fn is_ambiguous(&self, shell: Shell) -> bool {
+    fn is_ambiguous(&self, shell: Shell) -> bool {
         match self {
             Self::Literal { .. } => false,
             Self::Subword { .. } => false, // XXX inaccurate
@@ -52,27 +51,6 @@ impl Input {
             Self::Command {
                 regex: Some(regex), ..
             } => regex.matches_anything(shell),
-        }
-    }
-
-    pub fn get_fallback_level(&self) -> usize {
-        match self {
-            Self::Literal {
-                fallback_level: level,
-                ..
-            } => *level,
-            Self::Subword {
-                fallback_level: level,
-                ..
-            } => *level,
-            Self::Nonterminal {
-                fallback_level: level,
-                ..
-            } => *level,
-            Self::Command {
-                fallback_level: level,
-                ..
-            } => *level,
         }
     }
 
@@ -120,7 +98,7 @@ pub enum Inp {
 }
 
 impl Inp {
-    pub fn from_input(input: &Input) -> Self {
+    pub(crate) fn from_input(input: &Input) -> Self {
         match input.clone() {
             Input::Literal {
                 literal,
@@ -163,7 +141,7 @@ impl Inp {
         }
     }
 
-    pub fn is_ambiguous(&self, shell: Shell) -> bool {
+    pub(crate) fn is_ambiguous(&self, shell: Shell) -> bool {
         match self {
             Self::Literal { .. } => false,
             Self::Subword { .. } => false, // XXX inaccurate
@@ -175,7 +153,7 @@ impl Inp {
         }
     }
 
-    pub fn get_fallback_level(&self) -> usize {
+    pub(crate) fn get_fallback_level(&self) -> usize {
         match self {
             Self::Literal {
                 fallback_level: level,
@@ -410,7 +388,7 @@ impl RegexNode {
         }
     }
 
-    pub fn firstpos(&self, arena: &[RegexNode]) -> BTreeSet<Position> {
+    fn firstpos(&self, arena: &[RegexNode]) -> BTreeSet<Position> {
         let mut result: BTreeSet<Position> = Default::default();
         do_firstpos(self, arena, &mut result);
         result
@@ -422,7 +400,7 @@ impl RegexNode {
         result
     }
 
-    pub fn followpos(&self, arena: &[RegexNode]) -> BTreeMap<Position, RoaringBitmap> {
+    fn followpos(&self, arena: &[RegexNode]) -> BTreeMap<Position, RoaringBitmap> {
         let mut result: BTreeMap<Position, RoaringBitmap> = Default::default();
         do_followpos(self, arena, &mut result);
         result
@@ -790,12 +768,12 @@ fn do_to_dot<W: Write>(
 impl Regex {
     pub fn from_valid_grammar(v: &ValidGrammar, shell: Shell) -> Result<Self> {
         let regex = Self::from_expr(v.expr, &v.arena, &v.specializations)?;
-        regex.ensure_ambiguous_inputs_tail_only(shell)?;
+        regex.check_ambiguous_inputs_tail_only(shell)?;
         regex.check_clashing_variants()?;
         Ok(regex)
     }
 
-    pub fn from_expr(
+    pub(crate) fn from_expr(
         e: ExprId,
         expr_arena: &[Expr],
         specs: &UstrMap<Specialization>,
@@ -817,15 +795,7 @@ impl Regex {
         Ok(retval)
     }
 
-    pub fn get_unique_inputs(&self) -> IndexMap<Input, Position> {
-        let mut result: IndexMap<Input, Position> = Default::default();
-        for (id, input) in self.input_from_position.iter().enumerate() {
-            result.entry(input.clone()).or_insert(id as Position);
-        }
-        result
-    }
-
-    pub fn ensure_ambiguous_inputs_tail_only(&self, shell: Shell) -> Result<()> {
+    pub(crate) fn check_ambiguous_inputs_tail_only(&self, shell: Shell) -> Result<()> {
         let mut visited: RoaringBitmap = Default::default();
         do_ensure_ambiguous_inputs_tail_only(
             &RoaringBitmap::from_iter(&self.firstpos()),
@@ -837,7 +807,7 @@ impl Regex {
         )
     }
 
-    pub fn ensure_ambiguous_inputs_tail_only_subword(&self, shell: Shell) -> Result<()> {
+    pub fn check_ambiguous_inputs_tail_only_subword(&self, shell: Shell) -> Result<()> {
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);
         do_ensure_ambiguous_inputs_tail_only_subword(
@@ -851,7 +821,7 @@ impl Regex {
     }
 
     // e.g. git (subcommand "description" | subcommand --option);
-    pub fn check_clashing_variants(&self) -> Result<()> {
+    pub(crate) fn check_clashing_variants(&self) -> Result<()> {
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);
         do_check_clashing_variants(
@@ -862,7 +832,7 @@ impl Regex {
         )
     }
 
-    pub fn get_root(&self) -> &RegexNode {
+    fn get_root(&self) -> &RegexNode {
         &self.arena[self.root_id]
     }
 
@@ -870,7 +840,7 @@ impl Regex {
         self.get_root().firstpos(&self.arena)
     }
 
-    pub fn followpos(&self) -> BTreeMap<Position, RoaringBitmap> {
+    pub(crate) fn followpos(&self) -> BTreeMap<Position, RoaringBitmap> {
         self.get_root().followpos(&self.arena)
     }
 
@@ -973,7 +943,7 @@ mod tests {
         let validated = crate::grammar::ValidGrammar::from_grammar(g, Shell::Bash)?;
         let specs = UstrMap::default();
         let regex = Regex::from_expr(validated.expr, &validated.arena, &specs).unwrap();
-        regex.ensure_ambiguous_inputs_tail_only(Shell::Bash)?;
+        regex.check_ambiguous_inputs_tail_only(Shell::Bash)?;
         regex.check_clashing_variants()?;
         Ok(validated)
     }

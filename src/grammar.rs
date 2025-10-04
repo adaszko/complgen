@@ -26,12 +26,12 @@ pub struct DFAInternPool {
 }
 
 impl DFAInternPool {
-    pub fn intern(&mut self, value: DFA) -> DFAId {
+    fn intern(&mut self, value: DFA) -> DFAId {
         let (id, _) = self.store.insert_full(value);
         DFAId(id)
     }
 
-    pub fn lookup(&self, id: DFAId) -> &DFA {
+    pub(crate) fn lookup(&self, id: DFAId) -> &DFA {
         self.store.get_index(id.0).unwrap()
     }
 }
@@ -78,7 +78,7 @@ impl std::ops::Index<ExprId> for [Expr] {
     }
 }
 
-pub fn alloc(arena: &mut Vec<Expr>, elem: Expr) -> ExprId {
+pub(crate) fn alloc(arena: &mut Vec<Expr>, elem: Expr) -> ExprId {
     let id = arena.len();
     arena.push(elem);
     ExprId(id)
@@ -158,7 +158,7 @@ pub enum Shell {
 }
 
 impl CmdRegex {
-    pub fn matches_anything(&self, shell: Shell) -> bool {
+    pub(crate) fn matches_anything(&self, shell: Shell) -> bool {
         match shell {
             Shell::Bash => self.bash.is_none(),
             Shell::Fish => self.fish.is_none(),
@@ -303,7 +303,7 @@ fn do_expr_to_dot<W: Write>(
     Ok(())
 }
 
-pub fn expr_to_dot<W: Write>(
+fn expr_to_dot<W: Write>(
     output: &mut W,
     root_id: ExprId,
     arena: &[Expr],
@@ -1083,9 +1083,9 @@ fn compile_subword_exprs(
             };
             let subword_expr = flatten_expr(arena, subword_expr);
             let regex = Regex::from_expr(subword_expr, arena, specs).unwrap();
-            regex.ensure_ambiguous_inputs_tail_only_subword(shell)?;
+            regex.check_ambiguous_inputs_tail_only_subword(shell)?;
             regex.check_clashing_variants()?;
-            let dfa = DFA::from_regex_strict(regex, DFAInternPool::default())?;
+            let dfa = DFA::from_regex(regex, DFAInternPool::default())?;
             let dfa = dfa.minimize();
             let subdfaid = subdfas.intern(dfa);
             alloc(
@@ -1805,7 +1805,7 @@ fn get_expression_nonterminals(arena: &[Expr], expr_id: ExprId) -> UstrSet {
     result
 }
 
-pub fn get_not_depended_on_nonterminals(dependency_graph: &UstrMap<UstrSet>) -> UstrSet {
+fn get_not_depended_on_nonterminals(dependency_graph: &UstrMap<UstrSet>) -> UstrSet {
     let num_depending_nonterminals = {
         let mut num_depending_nonterminals: UstrMap<usize> =
             dependency_graph.keys().map(|vertex| (*vertex, 0)).collect();
@@ -1946,7 +1946,7 @@ pub mod tests {
     use Expr::*;
 
     impl Expr {
-        pub fn term(s: &str) -> Self {
+        pub(crate) fn term(s: &str) -> Self {
             Self::Terminal {
                 term: ustr(s),
                 descr: None,
@@ -1964,7 +1964,7 @@ pub mod tests {
             }
         }
 
-        pub fn nontermref(s: &str) -> Self {
+        pub(crate) fn nontermref(s: &str) -> Self {
             Self::NontermRef {
                 nonterm: ustr(s),
                 fallback: 0,

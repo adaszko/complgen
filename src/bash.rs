@@ -15,7 +15,7 @@ use ustr::{Ustr, ustr};
 // Associative arrays are local by default.
 // Bash uses *dynamic* scoping for local variables (!)
 
-pub fn make_string_constant(s: &str) -> String {
+fn make_string_constant(s: &str) -> String {
     if s.is_empty() {
         return r#""""#.to_string();
     }
@@ -34,7 +34,7 @@ pub fn make_string_constant(s: &str) -> String {
 }
 
 pub const MATCH_FN_NAME: &str = "__complgen_match";
-pub fn write_match_fn<W: Write>(buffer: &mut W) -> Result<()> {
+fn write_match_fn<W: Write>(buffer: &mut W) -> Result<()> {
     writeln!(
         buffer,
         r#"{MATCH_FN_NAME} () {{
@@ -153,7 +153,7 @@ fn write_lookup_tables<W: Write>(
     Ok(literal_id_from_input_description)
 }
 
-pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<()> {
+fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<()> {
     writeln!(
         buffer,
         r#"_{command}_subword () {{
@@ -300,7 +300,7 @@ pub fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Resu
     Ok(())
 }
 
-pub fn write_subword_fn<W: Write>(
+fn write_subword_fn<W: Write>(
     buffer: &mut W,
     command: &str,
     id: usize,
@@ -461,7 +461,7 @@ pub fn write_subword_fn<W: Write>(
     Ok(())
 }
 
-pub fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
+fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
     // IndexSet's internal index is used for storing command id
     let mut id_from_cmd: IndexSet<Ustr> = Default::default();
 
