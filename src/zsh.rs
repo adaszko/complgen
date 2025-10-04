@@ -1,7 +1,6 @@
 use std::io::Write;
 
 use crate::dfa::DFA;
-use crate::grammar::{CmdRegex, Shell, Specialization};
 use crate::regex::Inp;
 use crate::{Result, StateId};
 use hashbrown::HashMap;
@@ -119,7 +118,7 @@ fn write_lookup_tables<W: Write>(
 
     writeln!(buffer, r#"    declare -A {prefix}nontail_transitions=()"#)?;
     for state in dfa.get_all_states() {
-        let nontail_transitions = dfa.get_zsh_nontail_transitions_from(state as StateId);
+        let nontail_transitions = dfa.get_nontail_transitions_from(state as StateId);
         if !nontail_transitions.is_empty() {
             let nontail_command_transitions: Vec<(usize, StateId)> = nontail_transitions
                 .into_iter()
@@ -140,7 +139,7 @@ fn write_lookup_tables<W: Write>(
     }
 
     let match_anything_transitions = itertools::join(
-        dfa.iter_match_anything_transitions(Shell::Zsh)
+        dfa.iter_match_anything_transitions()
             .map(|(from, to)| format!("[{}]={}", from + 1, to + 1)),
         " ",
     );
@@ -412,23 +411,19 @@ fn write_subword_fn<W: Write>(
             }
             Inp::Command {
                 cmd,
-                regex:
-                    Some(CmdRegex {
-                        zsh: Some(zsh_regex),
-                        ..
-                    }),
+                regex: Some(rx),
                 fallback_level,
                 ..
             } => {
                 let cmd_id = id_from_cmd.get_index_of(&cmd).unwrap();
-                let regex_id = id_from_regex.get_index_of(&zsh_regex).unwrap();
+                let regex_id = id_from_regex.get_index_of(&rx).unwrap();
                 fallback_nontails[fallback_level]
                     .entry(from)
                     .or_default()
                     .push((cmd_id, regex_id));
             }
             Inp::Nonterminal {
-                spec: Some(Specialization { zsh: Some(cmd), .. }),
+                spec: Some(cmd),
                 fallback_level,
                 ..
             } => {
@@ -550,20 +545,14 @@ fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
     for input in dfa.iter_inputs() {
         match input {
             Inp::Nonterminal {
-                nonterm: _,
-                spec: Some(Specialization { zsh: Some(cmd), .. }),
-                ..
+                spec: Some(cmd), ..
             } => {
                 id_from_cmd.insert(*cmd);
             }
             Inp::Command { cmd, regex, .. } => {
                 id_from_cmd.insert(*cmd);
-                if let Some(CmdRegex {
-                    zsh: Some(zsh_regex),
-                    ..
-                }) = regex
-                {
-                    id_from_regex.insert(*zsh_regex);
+                if let Some(rx) = regex {
+                    id_from_regex.insert(*rx);
                 }
             }
             Inp::Subword {
@@ -573,19 +562,14 @@ fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
                 for input in subdfa.iter_inputs() {
                     match input {
                         Inp::Nonterminal {
-                            spec: Some(Specialization { zsh: Some(cmd), .. }),
-                            ..
+                            spec: Some(cmd), ..
                         } => {
                             id_from_cmd.insert(*cmd);
                         }
                         Inp::Command { cmd, regex, .. } => {
                             id_from_cmd.insert(*cmd);
-                            if let Some(CmdRegex {
-                                zsh: Some(zsh_regex),
-                                ..
-                            }) = regex
-                            {
-                                id_from_regex.insert(*zsh_regex);
+                            if let Some(rx) = regex {
+                                id_from_regex.insert(*rx);
                             }
                         }
                         _ => {}
@@ -803,23 +787,19 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             }
             Inp::Command {
                 cmd,
-                regex:
-                    Some(CmdRegex {
-                        zsh: Some(zsh_regex),
-                        ..
-                    }),
+                regex: Some(rx),
                 fallback_level,
                 ..
             } => {
                 let cmd_id = id_from_cmd.get_index_of(&cmd).unwrap();
-                let regex_id = id_from_regex.get_index_of(&zsh_regex).unwrap();
+                let regex_id = id_from_regex.get_index_of(&rx).unwrap();
                 fallback_nontails[fallback_level]
                     .entry(from)
                     .or_default()
                     .push((cmd_id, regex_id));
             }
             Inp::Nonterminal {
-                spec: Some(Specialization { zsh: Some(cmd), .. }),
+                spec: Some(cmd),
                 fallback_level,
                 ..
             } => {

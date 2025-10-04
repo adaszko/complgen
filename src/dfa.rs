@@ -5,7 +5,7 @@ use std::{cmp::Ordering, collections::BTreeSet, hash::Hash, io::Write, rc::Rc};
 use roaring::{MultiOps, RoaringBitmap};
 use ustr::{Ustr, ustr};
 
-use crate::grammar::{CmdRegex, DFAId, DFAInternPool, Shell};
+use crate::grammar::{DFAId, DFAInternPool, Shell};
 use crate::regex::{Inp, Position, Regex, diagnostic_display_input};
 use crate::{Error, StateId};
 
@@ -119,7 +119,7 @@ impl FromIterator<Inp> for InpInternPool {
 
 // Reference:
 //  * The Dragon Book: 3.9.5 Converting a Regular Expression Directly to a DFA
-fn dfa_from_regex(regex: Regex, subdfas: DFAInternPool) -> DFA {
+fn dfa_from_regex(shell: Shell, regex: Regex, subdfas: DFAInternPool) -> DFA {
     let mut unallocated_state_id = FIRST_STATE_ID;
     let combined_starting_state: BTreeSet<Position> = regex.firstpos();
     let combined_starting_state_id = unallocated_state_id;
@@ -129,7 +129,12 @@ fn dfa_from_regex(regex: Regex, subdfas: DFAInternPool) -> DFA {
         IndexMap::from_iter([(combined_starting_state.clone(), combined_starting_state_id)]);
 
     let followpos = regex.followpos();
-    let inputs = InpInternPool::from_iter(regex.input_from_position.iter().map(Inp::from_input));
+    let inputs = InpInternPool::from_iter(
+        regex
+            .input_from_position
+            .iter()
+            .map(|input| Inp::from_input(input, shell)),
+    );
 
     let mut transitions: IndexMap<StateId, IndexMap<InpId, StateId>> = Default::default();
     let mut unmarked_states: HashSet<BTreeSet<Position>> = Default::default();
@@ -143,7 +148,7 @@ fn dfa_from_regex(regex: Regex, subdfas: DFAInternPool) -> DFA {
             let mut set_of_positions = RoaringBitmap::new();
             for pos in &combined_state {
                 if let Some(input) = regex.input_from_position.get(*pos as usize)
-                    && Inp::from_input(input) == *inp
+                    && Inp::from_input(input, shell) == *inp
                     && let Some(positions) = followpos.get(pos)
                 {
                     set_of_positions |= positions;
@@ -660,8 +665,8 @@ fn do_to_dot<W: Write>(
 }
 
 impl DFA {
-    pub fn from_regex(regex: Regex, subdfas: DFAInternPool) -> crate::Result<Self> {
-        let dfa = dfa_from_regex(regex, subdfas);
+    pub fn from_regex(shell: Shell, regex: Regex, subdfas: DFAInternPool) -> crate::Result<Self> {
+        let dfa = dfa_from_regex(shell, regex, subdfas);
         dfa.check_ambiguity_best_effort()?;
         Ok(dfa)
     }
@@ -805,7 +810,7 @@ impl DFA {
         transitions
     }
 
-    pub(crate) fn get_bash_nontail_transitions_from(&self, from: StateId) -> Vec<(Ustr, StateId)> {
+    pub(crate) fn get_nontail_transitions_from(&self, from: StateId) -> Vec<(Ustr, StateId)> {
         let map = match self.transitions.get(&from) {
             Some(map) => map,
             None => return vec![],
@@ -817,79 +822,14 @@ impl DFA {
                 match input {
                     Inp::Command {
                         cmd: _,
-                        regex:
-                            Some(CmdRegex {
-                                bash: Some(regex), ..
-                            }),
+                        regex: Some(regex),
                         ..
                     } => Some((*regex, *to)),
                     Inp::Command { regex: None, .. } => None,
-                    Inp::Command {
-                        regex: Some(CmdRegex { bash: None, .. }),
-                        ..
-                    } => None,
                     Inp::Literal { .. } => None,
                     Inp::Subword { .. } => None,
                     Inp::Nonterminal { .. } => None,
                 }
-            })
-            .collect();
-        transitions
-    }
-
-    pub(crate) fn get_fish_nontail_transitions_from(&self, from: StateId) -> Vec<(Ustr, StateId)> {
-        let map = match self.transitions.get(&from) {
-            Some(map) => map,
-            None => return vec![],
-        };
-        let transitions: Vec<(Ustr, StateId)> = map
-            .iter()
-            .filter_map(|(input_id, to)| match self.get_input(*input_id) {
-                Inp::Command {
-                    cmd: _,
-                    regex:
-                        Some(CmdRegex {
-                            fish: Some(regex), ..
-                        }),
-                    ..
-                } => Some((*regex, *to)),
-                Inp::Command { regex: None, .. } => None,
-                Inp::Command {
-                    regex: Some(CmdRegex { fish: None, .. }),
-                    ..
-                } => None,
-                Inp::Literal { .. } => None,
-                Inp::Subword { .. } => None,
-                Inp::Nonterminal { .. } => None,
-            })
-            .collect();
-        transitions
-    }
-
-    pub(crate) fn get_zsh_nontail_transitions_from(&self, from: StateId) -> Vec<(Ustr, StateId)> {
-        let map = match self.transitions.get(&from) {
-            Some(map) => map,
-            None => return vec![],
-        };
-        let transitions: Vec<(Ustr, StateId)> = map
-            .iter()
-            .filter_map(|(input_id, to)| match self.get_input(*input_id) {
-                Inp::Command {
-                    cmd: _,
-                    regex:
-                        Some(CmdRegex {
-                            zsh: Some(regex), ..
-                        }),
-                    ..
-                } => Some((*regex, *to)),
-                Inp::Command { regex: None, .. } => None,
-                Inp::Command {
-                    regex: Some(CmdRegex { zsh: None, .. }),
-                    ..
-                } => None,
-                Inp::Literal { .. } => None,
-                Inp::Subword { .. } => None,
-                Inp::Nonterminal { .. } => None,
             })
             .collect();
         transitions
@@ -933,12 +873,11 @@ impl DFA {
 
     pub(crate) fn iter_match_anything_transitions(
         &self,
-        shell: Shell,
     ) -> impl Iterator<Item = (StateId, StateId)> + '_ {
         self.iter_transitions()
             .filter_map(move |(from, input_id, to)| {
                 let input = self.get_input(input_id);
-                if input.is_ambiguous(shell) {
+                if input.is_ambiguous() {
                     Some((from, to))
                 } else {
                     None
@@ -1018,11 +957,11 @@ mod tests {
     }
 
     impl DFA {
-        fn from_regex_lenient(regex: Regex, subdfas: DFAInternPool) -> Self {
-            dfa_from_regex(regex, subdfas)
+        fn from_regex_lenient(shell: Shell, regex: Regex, subdfas: DFAInternPool) -> Self {
+            dfa_from_regex(shell, regex, subdfas)
         }
 
-        fn accepts_str(&self, mut input: &str, shell: Shell) -> bool {
+        fn accepts_str(&self, mut input: &str) -> bool {
             let mut current_state = self.starting_state;
             'outer: while !input.is_empty() {
                 for (transition_input_id, to) in self.iter_transitions_from(current_state) {
@@ -1039,7 +978,7 @@ mod tests {
 
                 for (transition_input_id, to) in self.iter_transitions_from(current_state) {
                     let transition_input = self.get_input(transition_input_id);
-                    if transition_input.is_ambiguous(shell) {
+                    if transition_input.is_ambiguous() {
                         current_state = to;
                         break 'outer;
                     }
@@ -1050,7 +989,7 @@ mod tests {
             self.accepting_states.contains(current_state)
         }
 
-        fn accepts(&self, inputs: &[&str], shell: Shell) -> Result<bool, TestCaseError> {
+        fn accepts(&self, inputs: &[&str]) -> Result<bool, TestCaseError> {
             let mut input_index = 0;
             let mut current_state = self.starting_state;
             'outer: loop {
@@ -1073,7 +1012,7 @@ mod tests {
                     let transition_input = self.get_input(transition_input_id);
                     if let Inp::Subword { subdfa, .. } = transition_input {
                         let dfa = self.subdfas.lookup(*subdfa);
-                        if dfa.accepts_str(inputs[input_index], shell) {
+                        if dfa.accepts_str(inputs[input_index]) {
                             input_index += 1;
                             current_state = to;
                             continue 'outer;
@@ -1083,7 +1022,7 @@ mod tests {
 
                 let anys: Vec<(InpId, StateId)> = self
                     .iter_transitions_from(current_state)
-                    .filter(|(input_id, _)| self.get_input(*input_id).is_ambiguous(shell))
+                    .filter(|(input_id, _)| self.get_input(*input_id).is_ambiguous())
                     .map(|(k, v)| (k.clone(), v))
                     .collect();
                 // It's ambiguous which transition to take if there are two transitions
@@ -1092,7 +1031,7 @@ mod tests {
 
                 for (transition_input_id, to) in anys {
                     let transition_input = self.get_input(transition_input_id);
-                    if transition_input.is_ambiguous(shell) {
+                    if transition_input.is_ambiguous() {
                         input_index += 1;
                         current_state = to;
                         continue 'outer;
@@ -1120,7 +1059,7 @@ mod tests {
             Ok(())
         ));
         assert!(matches!(regex.check_clashing_variants(), Ok(())));
-        let dfa = DFA::from_regex(regex, DFAInternPool::default()).unwrap();
+        let dfa = DFA::from_regex(Shell::Bash, regex, DFAInternPool::default()).unwrap();
         let foo = Inp::literal("foo");
         let foo_id = dfa.inputs.find(&foo).unwrap();
         assert_eq!(dfa.transitions.len(), 2);
@@ -1652,7 +1591,7 @@ mod tests {
 
         //regex.to_dot_file("regex.dot").unwrap();
         assert!(matches!(
-            DFA::from_regex(regex, DFAInternPool::default()),
+            DFA::from_regex(Shell::Bash, regex, DFAInternPool::default()),
             Err(Error::AmbiguousDFA(..))
         ));
         //dfa.to_dot_file("dfa.dot").unwrap();
@@ -1669,10 +1608,10 @@ mod tests {
             //dbg!(&regex.input_from_position);
             prop_assume!(matches!(regex.check_ambiguous_inputs_tail_only(Shell::Bash), Ok(())));
             prop_assume!(matches!(regex.check_clashing_variants(), Ok(())));
-            let dfa = DFA::from_regex_lenient(regex, DFAInternPool::default());
+            let dfa = DFA::from_regex_lenient(Shell::Bash, regex, DFAInternPool::default());
             prop_assume!(dfa.check_ambiguity_best_effort().is_ok());
             let input: Vec<&str> = input.iter().map(|s| s.as_str()).collect();
-            prop_assert!(dfa.accepts(&input, Shell::Bash)?);
+            prop_assert!(dfa.accepts(&input)?);
         }
 
         #[test]
@@ -1683,12 +1622,12 @@ mod tests {
             let regex = Regex::from_expr(expr, &arena.borrow(), &specs).unwrap();
             prop_assume!(matches!(regex.check_ambiguous_inputs_tail_only(Shell::Bash), Ok(())));
             prop_assume!(matches!(regex.check_clashing_variants(), Ok(())));
-            let dfa = DFA::from_regex_lenient(regex, DFAInternPool::default());
+            let dfa = DFA::from_regex_lenient(Shell::Bash, regex, DFAInternPool::default());
             prop_assume!(dfa.check_ambiguity_best_effort().is_ok());
             let input: Vec<&str> = input.iter().map(|s| s.as_str()).collect();
-            prop_assert!(dfa.accepts(&input, Shell::Bash)?);
+            prop_assert!(dfa.accepts(&input)?);
             let minimal_dfa = dfa.minimize();
-            prop_assert!(minimal_dfa.accepts(&input, Shell::Bash)?);
+            prop_assert!(minimal_dfa.accepts(&input)?);
         }
     }
 
@@ -1733,7 +1672,7 @@ foo DUPLICATED_TERM;
         let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         let vg = ValidGrammar::from_grammar(g, Shell::Bash).unwrap();
         let regex = Regex::from_valid_grammar(&vg, Shell::Bash).unwrap();
-        let dfa = DFA::from_regex(regex, vg.subdfas).unwrap();
+        let dfa = DFA::from_regex(Shell::Bash, regex, vg.subdfas).unwrap();
 
         // There should be only one tansition on input Term("DUPLICATED_TERM")
         let transitions = dfa.get_literal_transitions_from(dfa.starting_state);

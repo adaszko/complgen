@@ -285,7 +285,7 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
             .context(regex_dot_file_path.clone())?;
     }
 
-    let dfa = match DFA::from_regex(regex, validated.subdfas) {
+    let dfa = match DFA::from_regex(shell, regex, validated.subdfas) {
         Ok(dfa) => dfa,
         Err(e) => return handle_validation_error(e, &input, &validated.command),
     };

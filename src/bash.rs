@@ -3,9 +3,6 @@ use std::io::Write;
 use crate::Result;
 use crate::StateId;
 use crate::dfa::DFA;
-use crate::grammar::CmdRegex;
-use crate::grammar::Shell;
-use crate::grammar::Specialization;
 use crate::regex::Inp;
 use hashbrown::HashMap;
 use indexmap::IndexSet;
@@ -121,7 +118,7 @@ fn write_lookup_tables<W: Write>(
             )?;
         }
 
-        let nontail_transitions = dfa.get_bash_nontail_transitions_from(state as StateId);
+        let nontail_transitions = dfa.get_nontail_transitions_from(state as StateId);
         if !nontail_transitions.is_empty() {
             let nontail_command_transitions: Vec<(usize, StateId)> = nontail_transitions
                 .into_iter()
@@ -141,7 +138,7 @@ fn write_lookup_tables<W: Write>(
     }
 
     let match_anything_transitions = itertools::join(
-        dfa.iter_match_anything_transitions(Shell::Bash)
+        dfa.iter_match_anything_transitions()
             .map(|(from, to)| format!("[{from}]={to}")),
         " ",
     );
@@ -353,27 +350,19 @@ fn write_subword_fn<W: Write>(
             }
             Inp::Command {
                 cmd,
-                regex:
-                    Some(CmdRegex {
-                        bash: Some(bash_regex),
-                        ..
-                    }),
+                regex: Some(rx),
                 fallback_level,
                 ..
             } => {
                 let cmd_id = id_from_cmd.get_index_of(cmd).unwrap();
-                let regex_id = id_from_regex.get_index_of(bash_regex).unwrap();
+                let regex_id = id_from_regex.get_index_of(rx).unwrap();
                 fallback_nontails[*fallback_level]
                     .entry(from)
                     .or_default()
                     .push((cmd_id, regex_id));
             }
             Inp::Nonterminal {
-                nonterm: _,
-                spec:
-                    Some(Specialization {
-                        bash: Some(cmd), ..
-                    }),
+                spec: Some(cmd),
                 fallback_level,
                 ..
             } => {
@@ -464,29 +453,19 @@ fn write_subword_fn<W: Write>(
 fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
     // IndexSet's internal index is used for storing command id
     let mut id_from_cmd: IndexSet<Ustr> = Default::default();
-
     let mut id_from_regex: IndexSet<Ustr> = Default::default();
 
     for input in dfa.iter_inputs() {
         match input {
             Inp::Nonterminal {
-                nonterm: _,
-                spec:
-                    Some(Specialization {
-                        bash: Some(cmd), ..
-                    }),
-                ..
+                spec: Some(cmd), ..
             } => {
                 id_from_cmd.insert(*cmd);
             }
             Inp::Command { cmd, regex, .. } => {
                 id_from_cmd.insert(*cmd);
-                if let Some(CmdRegex {
-                    bash: Some(bash_regex),
-                    ..
-                }) = regex
-                {
-                    id_from_regex.insert(*bash_regex);
+                if let Some(rx) = regex {
+                    id_from_regex.insert(*rx);
                 }
             }
             Inp::Subword {
@@ -496,22 +475,14 @@ fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
                 for input in subdfa.iter_inputs() {
                     match input {
                         Inp::Nonterminal {
-                            spec:
-                                Some(Specialization {
-                                    bash: Some(cmd), ..
-                                }),
-                            ..
+                            spec: Some(cmd), ..
                         } => {
                             id_from_cmd.insert(*cmd);
                         }
                         Inp::Command { cmd, regex, .. } => {
                             id_from_cmd.insert(*cmd);
-                            if let Some(CmdRegex {
-                                bash: Some(bash_regex),
-                                ..
-                            }) = regex
-                            {
-                                id_from_regex.insert(*bash_regex);
+                            if let Some(rx) = regex {
+                                id_from_regex.insert(*rx);
                             }
                         }
                         _ => {}
@@ -723,26 +694,19 @@ fi
             }
             Inp::Command {
                 cmd,
-                regex:
-                    Some(CmdRegex {
-                        bash: Some(bash_regex),
-                        ..
-                    }),
+                regex: Some(rx),
                 fallback_level,
                 ..
             } => {
                 let cmd_id = id_from_cmd.get_index_of(&cmd).unwrap();
-                let regex_id = id_from_regex.get_index_of(&bash_regex).unwrap();
+                let regex_id = id_from_regex.get_index_of(&rx).unwrap();
                 fallback_nontails[fallback_level]
                     .entry(from)
                     .or_default()
                     .push((cmd_id, regex_id));
             }
             Inp::Nonterminal {
-                spec:
-                    Some(Specialization {
-                        bash: Some(cmd), ..
-                    }),
+                spec: Some(cmd),
                 fallback_level,
                 ..
             } => {

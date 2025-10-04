@@ -67,7 +67,7 @@ impl Input {
 pub fn diagnostic_display_input<W: std::fmt::Write>(w: &mut W, input: &Inp) -> crate::Result<()> {
     match input {
         Inp::Literal { literal, .. } => write!(w, r#"{literal}"#)?,
-        Inp::Nonterminal { nonterm, .. } => write!(w, r#"<{nonterm}>"#)?,
+        Inp::Nonterminal { .. } => write!(w, r#"<NONTERM>"#)?,
         Inp::Command { cmd, .. } => write!(w, r#"{{{{{{ {cmd} }}}}}}"#)?,
         Inp::Subword { .. } => unreachable!(),
     }
@@ -86,19 +86,18 @@ pub enum Inp {
         fallback_level: usize,
     },
     Nonterminal {
-        nonterm: Ustr,
-        spec: Option<Specialization>,
+        spec: Option<Ustr>,
         fallback_level: usize,
     },
     Command {
         cmd: Ustr,
-        regex: Option<CmdRegex>,
+        regex: Option<Ustr>,
         fallback_level: usize,
     },
 }
 
 impl Inp {
-    pub(crate) fn from_input(input: &Input) -> Self {
+    pub(crate) fn from_input(input: &Input, shell: Shell) -> Self {
         match input.clone() {
             Input::Literal {
                 literal,
@@ -119,37 +118,67 @@ impl Inp {
                 fallback_level,
             },
             Input::Nonterminal {
-                nonterm,
-                spec,
+                spec: None,
                 fallback_level,
                 ..
             } => Self::Nonterminal {
-                nonterm,
-                spec,
+                spec: None,
                 fallback_level,
             },
+            Input::Nonterminal {
+                spec: Some(spec),
+                fallback_level,
+                ..
+            } => {
+                let cmd = match shell {
+                    Shell::Bash => spec.bash.or(spec.generic),
+                    Shell::Fish => spec.fish.or(spec.generic),
+                    Shell::Zsh => spec.zsh.or(spec.generic),
+                };
+                Self::Nonterminal {
+                    spec: cmd,
+                    fallback_level,
+                }
+            }
             Input::Command {
                 cmd,
-                regex,
+                regex: None,
                 fallback_level,
                 ..
             } => Self::Command {
                 cmd,
-                regex,
+                regex: None,
                 fallback_level,
             },
+            Input::Command {
+                cmd,
+                regex: Some(regex),
+                fallback_level,
+                ..
+            } => {
+                let rx = match shell {
+                    Shell::Bash => regex.bash,
+                    Shell::Fish => regex.fish,
+                    Shell::Zsh => regex.zsh,
+                };
+                Self::Command {
+                    cmd,
+                    regex: rx,
+                    fallback_level,
+                }
+            }
         }
     }
 
-    pub(crate) fn is_ambiguous(&self, shell: Shell) -> bool {
+    pub(crate) fn is_ambiguous(&self) -> bool {
         match self {
             Self::Literal { .. } => false,
             Self::Subword { .. } => false, // XXX inaccurate
             Self::Nonterminal { .. } => true,
             Self::Command { regex: None, .. } => true,
             Self::Command {
-                regex: Some(regex), ..
-            } => regex.matches_anything(shell),
+                regex: Some(..), ..
+            } => false,
         }
     }
 
