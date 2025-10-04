@@ -543,172 +543,6 @@ pub struct Regex {
     pub arena: Vec<RegexNode>,
 }
 
-/*
-
-Ambiguous matching arises from:
-
-1) ({{{ ... }}} | foo), i.e. commands at non-tail position; (foo | {{{ ... }}}) is fine
-2) Same with <NONTERM>, where <NONTERM> is undefined, because it matches anything then
-
-*/
-fn do_ensure_ambiguous_inputs_tail_only(
-    firstpos: &RoaringBitmap,
-    followpos: &BTreeMap<Position, RoaringBitmap>,
-    endmarker_position: Position,
-    input_from_position: &Vec<Input>,
-    shell: Shell,
-    visited: &mut RoaringBitmap,
-) -> Result<()> {
-    let unvisited = firstpos - visited.clone();
-    if unvisited.is_empty() {
-        return Ok(());
-    }
-
-    let inputs: Vec<Input> = firstpos
-        .iter()
-        .filter(|pos| *pos != endmarker_position)
-        .map(|pos| input_from_position[pos as usize].clone())
-        .collect();
-
-    let mut prev_ambiguous: Option<Input> = None;
-    for inp in inputs {
-        if inp.is_ambiguous(shell) {
-            if let Some(prev_inp) = prev_ambiguous {
-                return Err(Error::AmbiguousMatchable(Box::new(prev_inp), Box::new(inp)));
-            }
-            prev_ambiguous = Some(inp);
-        }
-    }
-
-    for pos in unvisited {
-        let Some(follow) = followpos.get(&pos) else {
-            continue;
-        };
-        visited.insert(pos);
-        do_ensure_ambiguous_inputs_tail_only(
-            follow,
-            followpos,
-            endmarker_position,
-            input_from_position,
-            shell,
-            visited,
-        )?;
-    }
-    Ok(())
-}
-
-// Subword ambiguity checker is stricter than the word-based one.  Any matches_anything() input
-// followed by any input is ambiguous since we can't tell where the matches_anything() one ends.
-fn do_ensure_ambiguous_inputs_tail_only_subword(
-    firstpos: &RoaringBitmap,
-    followpos: &BTreeMap<Position, RoaringBitmap>,
-    input_from_position: &Vec<Input>,
-    shell: Shell,
-    path_prev_ambiguous: Option<Input>,
-    visited: &mut RoaringBitmap,
-) -> Result<()> {
-    let unvisited = firstpos - visited.clone();
-    if unvisited.is_empty() {
-        return Ok(());
-    }
-
-    let inputs: Vec<Input> = unvisited
-        .iter()
-        .filter_map(|pos| input_from_position.get(pos as usize).cloned())
-        .collect();
-
-    let mut prev_ambiguous: Option<Input> = None;
-    for inp in inputs {
-        if let Some(ref prev_inp) = path_prev_ambiguous {
-            return Err(Error::AmbiguousMatchable(
-                Box::new(prev_inp.clone()),
-                Box::new(inp),
-            ));
-        }
-
-        if let Some(prev_inp) = prev_ambiguous {
-            return Err(Error::AmbiguousMatchable(Box::new(prev_inp), Box::new(inp)));
-        }
-        if inp.is_ambiguous(shell) {
-            prev_ambiguous = Some(inp);
-        }
-    }
-
-    for pos in unvisited {
-        let Some(follow) = followpos.get(&pos) else {
-            continue;
-        };
-        visited.insert(pos);
-        do_ensure_ambiguous_inputs_tail_only_subword(
-            follow,
-            followpos,
-            input_from_position,
-            shell,
-            path_prev_ambiguous.clone().or(prev_ambiguous.clone()),
-            visited,
-        )?;
-    }
-    Ok(())
-}
-
-fn do_check_clashing_variants(
-    firstpos: &RoaringBitmap,
-    followpos: &BTreeMap<Position, RoaringBitmap>,
-    input_from_position: &Vec<Input>,
-    visited: &mut RoaringBitmap,
-) -> Result<()> {
-    let unvisited = firstpos - visited.clone();
-    if unvisited.is_empty() {
-        return Ok(());
-    }
-
-    let mut inputs: Vec<(Ustr, Option<Ustr>, Option<HumanSpan>)> = unvisited
-        .iter()
-        .filter_map(|pos| input_from_position.get(pos as usize).cloned())
-        .filter_map(|inp| match inp {
-            Input::Literal {
-                literal,
-                description,
-                span,
-                ..
-            } => Some((literal, description, span)),
-            _ => None,
-        })
-        .collect();
-
-    inputs.sort_by_key(|(literal, _, _)| *literal);
-    inputs.dedup_by_key(|(literal, description, _)| (*literal, *description));
-
-    for slice in inputs.windows(2) {
-        let [
-            (left_literal, left_description, left_span),
-            (right_literal, right_description, right_span),
-        ] = slice
-        else {
-            unreachable!()
-        };
-
-        if left_literal != right_literal {
-            continue;
-        }
-
-        if left_description == right_description {
-            continue;
-        }
-
-        return Err(Error::ClashingVariants(*left_span, *right_span));
-    }
-
-    for pos in unvisited {
-        let Some(follow) = followpos.get(&pos) else {
-            continue;
-        };
-        visited.insert(pos);
-        do_check_clashing_variants(follow, followpos, input_from_position, visited)?;
-    }
-    Ok(())
-}
-
 fn do_to_dot<W: Write>(
     output: &mut W,
     node_id: RegexNodeId,
@@ -795,39 +629,192 @@ impl Regex {
         Ok(retval)
     }
 
+    /*
+
+    Ambiguous matching arises from:
+
+    1) ({{{ ... }}} | foo), i.e. commands at non-tail position; (foo | {{{ ... }}}) is fine
+    2) Same with <NONTERM>, where <NONTERM> is undefined, because it matches anything then
+
+    */
+    fn do_check_ambiguous_inputs_tail_only(
+        &self,
+        firstpos: &RoaringBitmap,
+        followpos: &BTreeMap<Position, RoaringBitmap>,
+        shell: Shell,
+        visited: &mut RoaringBitmap,
+    ) -> Result<()> {
+        let unvisited = firstpos - visited.clone();
+        if unvisited.is_empty() {
+            return Ok(());
+        }
+
+        let inputs: Vec<Input> = firstpos
+            .iter()
+            .filter(|pos| *pos != self.endmarker_position)
+            .map(|pos| self.input_from_position[pos as usize].clone())
+            .collect();
+
+        let mut prev_ambiguous: Option<Input> = None;
+        for inp in inputs {
+            if inp.is_ambiguous(shell) {
+                if let Some(prev_inp) = prev_ambiguous {
+                    return Err(Error::AmbiguousMatchable(Box::new(prev_inp), Box::new(inp)));
+                }
+                prev_ambiguous = Some(inp);
+            }
+        }
+
+        for pos in unvisited {
+            let Some(follow) = followpos.get(&pos) else {
+                continue;
+            };
+            visited.insert(pos);
+            self.do_check_ambiguous_inputs_tail_only(follow, followpos, shell, visited)?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn check_ambiguous_inputs_tail_only(&self, shell: Shell) -> Result<()> {
         let mut visited: RoaringBitmap = Default::default();
-        do_ensure_ambiguous_inputs_tail_only(
+        self.do_check_ambiguous_inputs_tail_only(
             &RoaringBitmap::from_iter(&self.firstpos()),
             &self.followpos(),
-            self.endmarker_position,
-            &self.input_from_position,
             shell,
             &mut visited,
         )
     }
 
+    // Subword ambiguity checker is stricter than the word-based one.  Any matches_anything() input
+    // followed by any input is ambiguous since we can't tell where the matches_anything() one ends.
+    fn do_check_ambiguous_inputs_tail_only_subword(
+        &self,
+        firstpos: &RoaringBitmap,
+        followpos: &BTreeMap<Position, RoaringBitmap>,
+        shell: Shell,
+        path_prev_ambiguous: Option<Input>,
+        visited: &mut RoaringBitmap,
+    ) -> Result<()> {
+        let unvisited = firstpos - visited.clone();
+        if unvisited.is_empty() {
+            return Ok(());
+        }
+
+        let inputs: Vec<Input> = unvisited
+            .iter()
+            .filter_map(|pos| self.input_from_position.get(pos as usize).cloned())
+            .collect();
+
+        let mut prev_ambiguous: Option<Input> = None;
+        for inp in inputs {
+            if let Some(ref prev_inp) = path_prev_ambiguous {
+                return Err(Error::AmbiguousMatchable(
+                    Box::new(prev_inp.clone()),
+                    Box::new(inp),
+                ));
+            }
+
+            if let Some(prev_inp) = prev_ambiguous {
+                return Err(Error::AmbiguousMatchable(Box::new(prev_inp), Box::new(inp)));
+            }
+            if inp.is_ambiguous(shell) {
+                prev_ambiguous = Some(inp);
+            }
+        }
+
+        for pos in unvisited {
+            let Some(follow) = followpos.get(&pos) else {
+                continue;
+            };
+            visited.insert(pos);
+            self.do_check_ambiguous_inputs_tail_only_subword(
+                follow,
+                followpos,
+                shell,
+                path_prev_ambiguous.clone().or(prev_ambiguous.clone()),
+                visited,
+            )?;
+        }
+        Ok(())
+    }
+
     pub fn check_ambiguous_inputs_tail_only_subword(&self, shell: Shell) -> Result<()> {
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);
-        do_ensure_ambiguous_inputs_tail_only_subword(
+        self.do_check_ambiguous_inputs_tail_only_subword(
             &RoaringBitmap::from_iter(&self.firstpos()),
             &self.followpos(),
-            &self.input_from_position,
             shell,
             None,
             &mut visited,
         )
     }
 
+    fn do_check_clashing_variants(
+        &self,
+        firstpos: &RoaringBitmap,
+        followpos: &BTreeMap<Position, RoaringBitmap>,
+        visited: &mut RoaringBitmap,
+    ) -> Result<()> {
+        let unvisited = firstpos - visited.clone();
+        if unvisited.is_empty() {
+            return Ok(());
+        }
+
+        let mut inputs: Vec<(Ustr, Option<Ustr>, Option<HumanSpan>)> = unvisited
+            .iter()
+            .filter_map(|pos| self.input_from_position.get(pos as usize).cloned())
+            .filter_map(|inp| match inp {
+                Input::Literal {
+                    literal,
+                    description,
+                    span,
+                    ..
+                } => Some((literal, description, span)),
+                _ => None,
+            })
+            .collect();
+
+        inputs.sort_by_key(|(literal, _, _)| *literal);
+        inputs.dedup_by_key(|(literal, description, _)| (*literal, *description));
+
+        for slice in inputs.windows(2) {
+            let [
+                (left_literal, left_description, left_span),
+                (right_literal, right_description, right_span),
+            ] = slice
+            else {
+                unreachable!()
+            };
+
+            if left_literal != right_literal {
+                continue;
+            }
+
+            if left_description == right_description {
+                continue;
+            }
+
+            return Err(Error::ClashingVariants(*left_span, *right_span));
+        }
+
+        for pos in unvisited {
+            let Some(follow) = followpos.get(&pos) else {
+                continue;
+            };
+            visited.insert(pos);
+            self.do_check_clashing_variants(follow, followpos, visited)?;
+        }
+        Ok(())
+    }
+
     // e.g. git (subcommand "description" | subcommand --option);
     pub(crate) fn check_clashing_variants(&self) -> Result<()> {
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);
-        do_check_clashing_variants(
+        self.do_check_clashing_variants(
             &RoaringBitmap::from_iter(&self.firstpos()),
             &self.followpos(),
-            &self.input_from_position,
             &mut visited,
         )
     }
