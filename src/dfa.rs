@@ -764,6 +764,11 @@ impl DFA {
         }
     }
 
+    pub(crate) fn iter_initial_inputs(&self) -> impl Iterator<Item = InpId> {
+        self.iter_transitions_from(self.starting_state)
+            .map(|(inp_id, _)| inp_id)
+    }
+
     pub(crate) fn iter_transitions(&self) -> impl Iterator<Item = (StateId, InpId, StateId)> + '_ {
         self.transitions
             .iter()
@@ -875,7 +880,7 @@ impl DFA {
         self.iter_transitions()
             .filter_map(move |(from, input_id, to)| {
                 let input = self.get_input(input_id);
-                if input.is_ambiguous() {
+                if input.is_ambiguous(&self.subdfas) {
                     Some((from, to))
                 } else {
                     None
@@ -977,7 +982,7 @@ mod tests {
 
                 for (transition_input_id, to) in self.iter_transitions_from(current_state) {
                     let transition_input = self.get_input(transition_input_id);
-                    if transition_input.is_ambiguous() {
+                    if transition_input.is_ambiguous(&self.subdfas) {
                         current_state = to;
                         break 'outer;
                     }
@@ -1021,7 +1026,7 @@ mod tests {
 
                 let anys: Vec<(InpId, StateId)> = self
                     .iter_transitions_from(current_state)
-                    .filter(|(input_id, _)| self.get_input(*input_id).is_ambiguous())
+                    .filter(|(input_id, _)| self.get_input(*input_id).is_ambiguous(&self.subdfas))
                     .map(|(k, v)| (k.clone(), v))
                     .collect();
                 // It's ambiguous which transition to take if there are two transitions
@@ -1030,7 +1035,7 @@ mod tests {
 
                 for (transition_input_id, to) in anys {
                     let transition_input = self.get_input(transition_input_id);
-                    if transition_input.is_ambiguous() {
+                    if transition_input.is_ambiguous(&self.subdfas) {
                         input_index += 1;
                         current_state = to;
                         continue 'outer;
@@ -1053,8 +1058,9 @@ mod tests {
         let expr = alloc(&mut arena, Expr::term("foo"));
         let specs = UstrMap::default();
         let regex = Regex::from_expr(expr, &arena, &specs).unwrap();
+        let subdfas = DFAInternPool::default();
         assert!(matches!(
-            regex.check_ambiguous_inputs_tail_only(Shell::Bash),
+            regex.check_ambiguous_inputs_tail_only(&subdfas, Shell::Bash),
             Ok(())
         ));
         assert!(matches!(regex.check_clashing_variants(), Ok(())));
@@ -1327,7 +1333,8 @@ mod tests {
             let specs = UstrMap::default();
             let regex = Regex::from_expr(expr, &arena.borrow(), &specs).unwrap();
             //dbg!(&regex.input_from_position);
-            prop_assume!(matches!(regex.check_ambiguous_inputs_tail_only(Shell::Bash), Ok(())));
+            let subdfas = DFAInternPool::default();
+            prop_assume!(matches!(regex.check_ambiguous_inputs_tail_only(&subdfas, Shell::Bash), Ok(())));
             prop_assume!(matches!(regex.check_clashing_variants(), Ok(())));
             let dfa = DFA::from_regex_lenient(Shell::Bash, regex, DFAInternPool::default());
             prop_assume!(dfa.check_ambiguity_best_effort().is_ok());
@@ -1341,7 +1348,8 @@ mod tests {
             println!("{:?}", input);
             let specs = UstrMap::default();
             let regex = Regex::from_expr(expr, &arena.borrow(), &specs).unwrap();
-            prop_assume!(matches!(regex.check_ambiguous_inputs_tail_only(Shell::Bash), Ok(())));
+            let subdfas = DFAInternPool::default();
+            prop_assume!(matches!(regex.check_ambiguous_inputs_tail_only(&subdfas, Shell::Bash), Ok(())));
             prop_assume!(matches!(regex.check_clashing_variants(), Ok(())));
             let dfa = DFA::from_regex_lenient(Shell::Bash, regex, DFAInternPool::default());
             prop_assume!(dfa.check_ambiguity_best_effort().is_ok());

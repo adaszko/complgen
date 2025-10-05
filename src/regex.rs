@@ -1,4 +1,7 @@
-use crate::{Error, Result, grammar::ValidGrammar};
+use crate::{
+    Error, Result,
+    grammar::{DFAInternPool, ValidGrammar},
+};
 use hashbrown::HashSet;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -42,15 +45,36 @@ pub enum Input {
 }
 
 impl Input {
-    fn is_ambiguous(&self, shell: Shell) -> bool {
+    fn is_ambiguous(&self, subdfas: &DFAInternPool, shell: Shell) -> bool {
         match self {
             Self::Literal { .. } => false,
-            Self::Subword { .. } => false, // XXX inaccurate
+            Self::Subword { subdfa: id, .. } => {
+                let subdfa = subdfas.lookup(*id);
+                for inp_id in subdfa.iter_initial_inputs() {
+                    let inp = subdfa.get_input(inp_id);
+                    if inp.is_ambiguous(&subdfas) {
+                        return true;
+                    }
+                }
+                false
+            }
             Self::Nonterminal { .. } => true,
             Self::Command { regex: None, .. } => true,
             Self::Command {
                 regex: Some(regex), ..
             } => regex.matches_anything(shell),
+        }
+    }
+
+    fn is_ambiguous_subword(&self, shell: Shell) -> bool {
+        match self {
+            Self::Literal { .. } => false,
+            Self::Nonterminal { .. } => true,
+            Self::Command { regex: None, .. } => true,
+            Self::Command {
+                regex: Some(regex), ..
+            } => regex.matches_anything(shell),
+            Self::Subword { .. } => unreachable!(),
         }
     }
 
@@ -168,10 +192,19 @@ impl Inp {
         }
     }
 
-    pub(crate) fn is_ambiguous(&self) -> bool {
+    pub(crate) fn is_ambiguous(&self, subdfas: &DFAInternPool) -> bool {
         match self {
             Self::Literal { .. } => false,
-            Self::Subword { .. } => false, // XXX inaccurate
+            Self::Subword { subdfa: id, .. } => {
+                let subdfa = subdfas.lookup(*id);
+                for inp_id in subdfa.iter_initial_inputs() {
+                    let inp = subdfa.get_input(inp_id);
+                    if inp.is_ambiguous(subdfas) {
+                        return true;
+                    }
+                }
+                false
+            }
             Self::Star => true,
             Self::Command { regex: None, .. } => true,
             Self::Command {
@@ -626,7 +659,7 @@ fn do_to_dot<W: Write>(
 impl Regex {
     pub fn from_valid_grammar(v: &ValidGrammar, shell: Shell) -> Result<Self> {
         let regex = Self::from_expr(v.expr, &v.arena, &v.specializations)?;
-        regex.check_ambiguous_inputs_tail_only(shell)?;
+        regex.check_ambiguous_inputs_tail_only(&v.subdfas, shell)?;
         regex.check_clashing_variants()?;
         Ok(regex)
     }
@@ -666,6 +699,7 @@ impl Regex {
         firstpos: &RoaringBitmap,
         followpos: &BTreeMap<Position, RoaringBitmap>,
         shell: Shell,
+        subdfas: &DFAInternPool,
         visited: &mut RoaringBitmap,
     ) -> Result<()> {
         let unvisited = firstpos - visited.clone();
@@ -681,7 +715,7 @@ impl Regex {
 
         let mut prev_ambiguous: Option<Input> = None;
         for inp in inputs {
-            if inp.is_ambiguous(shell) {
+            if inp.is_ambiguous(subdfas, shell) {
                 if let Some(prev_inp) = prev_ambiguous {
                     return Err(Error::AmbiguousMatchable(Box::new(prev_inp), Box::new(inp)));
                 }
@@ -694,17 +728,22 @@ impl Regex {
                 continue;
             };
             visited.insert(pos);
-            self.do_check_ambiguous_inputs_tail_only(follow, followpos, shell, visited)?;
+            self.do_check_ambiguous_inputs_tail_only(follow, followpos, shell, subdfas, visited)?;
         }
         Ok(())
     }
 
-    pub(crate) fn check_ambiguous_inputs_tail_only(&self, shell: Shell) -> Result<()> {
+    pub(crate) fn check_ambiguous_inputs_tail_only(
+        &self,
+        subdfas: &DFAInternPool,
+        shell: Shell,
+    ) -> Result<()> {
         let mut visited: RoaringBitmap = Default::default();
         self.do_check_ambiguous_inputs_tail_only(
             &RoaringBitmap::from_iter(&self.firstpos()),
             &self.followpos(),
             shell,
+            subdfas,
             &mut visited,
         )
     }
@@ -741,7 +780,7 @@ impl Regex {
             if let Some(prev_inp) = prev_ambiguous {
                 return Err(Error::AmbiguousMatchable(Box::new(prev_inp), Box::new(inp)));
             }
-            if inp.is_ambiguous(shell) {
+            if inp.is_ambiguous_subword(shell) {
                 prev_ambiguous = Some(inp);
             }
         }
@@ -952,10 +991,7 @@ mod tests {
             .map_err(|e| e.to_string())
             .unwrap();
         let validated = crate::grammar::ValidGrammar::from_grammar(g, Shell::Bash)?;
-        let specs = UstrMap::default();
-        let regex = Regex::from_expr(validated.expr, &validated.arena, &specs).unwrap();
-        regex.check_ambiguous_inputs_tail_only(Shell::Bash)?;
-        regex.check_clashing_variants()?;
+        let _ = Regex::from_valid_grammar(&validated, Shell::Bash)?;
         Ok(validated)
     }
 

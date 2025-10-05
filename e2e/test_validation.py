@@ -298,3 +298,32 @@ warning: undefined nonterminal(s): SOURCE DESTINATION
   |                    ^^^^^^^^^^^^^
   |
 """)
+
+
+def test_ambiguous_subword_leader(complgen_binary_path: Path):
+    r = complgen_check(complgen_binary_path, """
+foo <BAR>=bar;
+foo baz;
+""")
+    assert r.returncode == 1
+    assert r.stderr == snapshot("""\
+1:4:error: Ambiguous grammar.  Matching can't differentiate:
+  |
+1 | foo <BAR>=bar;
+  |     ^^^^^
+  |
+1:9:error: and:
+  |
+1 | foo <BAR>=bar;
+  |          ^^^^
+  |
+""")
+
+
+def test_unambiguous_subword_leaders(complgen_binary_path: Path):
+    r = complgen_check(complgen_binary_path, """
+darcs foo={{{ echo first }}};
+darcs foo=bar{{{ echo second }}};
+""")
+    assert r.returncode == 0
+    assert r.stderr == snapshot("""""")
