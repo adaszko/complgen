@@ -45,6 +45,9 @@ pub enum Error {
     #[error("Clashing variants: {:?} {:?}", .0, .1)]
     ClashingVariants(Option<HumanSpan>, Option<HumanSpan>),
 
+    #[error("Clashing subword leaders: {:?} {:?}", .0, .1)]
+    ClashingSubwordLeaders(Option<HumanSpan>, Option<HumanSpan>),
+
     #[error("Two adjacent terminals in a subword expression: {:?}", .0)]
     SubwordSpaces(Option<HumanSpan>, Option<HumanSpan>, Vec<HumanSpan>),
 

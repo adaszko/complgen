@@ -326,4 +326,25 @@ darcs foo={{{ echo first }}};
 darcs foo=bar{{{ echo second }}};
 """)
     assert r.returncode == 0
-    assert r.stderr == snapshot("""""")
+    assert r.stderr == snapshot('')
+
+
+def test_duplicated_subword_leader(complgen_binary_path: Path):
+    r = complgen_check(complgen_binary_path, """
+foo bar=<BAR>;
+foo bar=<BAZ>;
+""")
+    assert r.returncode == 1
+    assert r.stderr == snapshot("""\
+warning: undefined nonterminal(s): BAZ BAR
+1:4:error: Clashing subword leaders.  Completion can't differentiate:
+  |
+1 | foo bar=<BAR>;
+  |     ^^^^^^^^^
+  |
+2:4:error: and:
+  |
+2 | foo bar=<BAZ>;
+  |     ^^^^^^^^^
+  |
+""")

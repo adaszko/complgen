@@ -50,7 +50,7 @@ impl Input {
             Self::Literal { .. } => false,
             Self::Subword { subdfa: id, .. } => {
                 let subdfa = subdfas.lookup(*id);
-                for inp_id in subdfa.iter_initial_inputs() {
+                for inp_id in subdfa.iter_leaders() {
                     let inp = subdfa.get_input(inp_id);
                     if inp.is_ambiguous(&subdfas) {
                         return true;
@@ -197,7 +197,7 @@ impl Inp {
             Self::Literal { .. } => false,
             Self::Subword { subdfa: id, .. } => {
                 let subdfa = subdfas.lookup(*id);
-                for inp_id in subdfa.iter_initial_inputs() {
+                for inp_id in subdfa.iter_leaders() {
                     let inp = subdfa.get_input(inp_id);
                     if inp.is_ambiguous(subdfas) {
                         return true;
@@ -659,8 +659,7 @@ fn do_to_dot<W: Write>(
 impl Regex {
     pub fn from_valid_grammar(v: &ValidGrammar, shell: Shell) -> Result<Self> {
         let regex = Self::from_expr(v.expr, &v.arena, &v.specializations)?;
-        regex.check_ambiguous_inputs_tail_only(&v.subdfas, shell)?;
-        regex.check_clashing_variants()?;
+        regex.check_ambiguities(&v.subdfas, shell)?;
         Ok(regex)
     }
 
@@ -733,7 +732,7 @@ impl Regex {
         Ok(())
     }
 
-    pub(crate) fn check_ambiguous_inputs_tail_only(
+    fn check_ambiguous_inputs_tail_only(
         &self,
         subdfas: &DFAInternPool,
         shell: Shell,
@@ -801,7 +800,7 @@ impl Regex {
         Ok(())
     }
 
-    pub fn check_ambiguous_inputs_tail_only_subword(&self, shell: Shell) -> Result<()> {
+    fn check_ambiguous_inputs_tail_only_subword(&self, shell: Shell) -> Result<()> {
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);
         self.do_check_ambiguous_inputs_tail_only_subword(
@@ -813,7 +812,7 @@ impl Regex {
         )
     }
 
-    fn do_check_clashing_variants(
+    fn do_check_descr_no_descr_clashes(
         &self,
         firstpos: &RoaringBitmap,
         followpos: &BTreeMap<Position, RoaringBitmap>,
@@ -866,20 +865,111 @@ impl Regex {
                 continue;
             };
             visited.insert(pos);
-            self.do_check_clashing_variants(follow, followpos, visited)?;
+            self.do_check_descr_no_descr_clashes(follow, followpos, visited)?;
         }
         Ok(())
     }
 
     // e.g. git (subcommand "description" | subcommand --option);
-    pub(crate) fn check_clashing_variants(&self) -> Result<()> {
+    fn check_descr_no_descr_clashes(&self) -> Result<()> {
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);
-        self.do_check_clashing_variants(
+        self.do_check_descr_no_descr_clashes(
             &RoaringBitmap::from_iter(&self.firstpos()),
             &self.followpos(),
             &mut visited,
         )
+    }
+
+    fn do_check_clashing_subword_leaders(
+        &self,
+        firstpos: &RoaringBitmap,
+        followpos: &BTreeMap<Position, RoaringBitmap>,
+        subdfas: &DFAInternPool,
+        visited: &mut RoaringBitmap,
+    ) -> Result<()> {
+        let unvisited = firstpos - visited.clone();
+        if unvisited.is_empty() {
+            return Ok(());
+        }
+
+        let mut leaders: Vec<(Ustr, Option<HumanSpan>)> = unvisited
+            .iter()
+            .filter_map(|pos| self.input_from_position.get(pos as usize).cloned())
+            .filter_map(|inp| match inp {
+                Input::Subword {
+                    subdfa: id, span, ..
+                } => {
+                    let subdfa = subdfas.lookup(id);
+                    let literals: Vec<Ustr> = subdfa
+                        .iter_leaders()
+                        .map(|inp_id| subdfa.get_input(inp_id).clone())
+                        .filter_map(|inp| match inp {
+                            Inp::Literal { literal, .. } => Some(literal),
+                            Inp::Subword { .. } => None,
+                            Inp::Command { .. } => None,
+                            Inp::Star => None,
+                        })
+                        .collect();
+                    Some((literals, span))
+                }
+                Input::Literal { .. } | Input::Nonterminal { .. } | Input::Command { .. } => None,
+            })
+            .flat_map(|(literals, span)| {
+                literals
+                    .iter()
+                    .map(|lit| (lit.clone(), span.clone()))
+                    .collect::<Vec<(Ustr, Option<HumanSpan>)>>()
+            })
+            .collect();
+
+        leaders.sort_by_key(|(literal, _)| *literal);
+
+        for slice in leaders.windows(2) {
+            let [(left_literal, left_span), (right_literal, right_span)] = slice else {
+                unreachable!()
+            };
+
+            if left_literal != right_literal {
+                continue;
+            }
+
+            return Err(Error::ClashingSubwordLeaders(*left_span, *right_span));
+        }
+
+        for pos in unvisited {
+            let Some(follow) = followpos.get(&pos) else {
+                continue;
+            };
+            visited.insert(pos);
+            self.do_check_clashing_subword_leaders(follow, followpos, subdfas, visited)?;
+        }
+        Ok(())
+    }
+
+    // e.g. git (subcommand "description" | subcommand --option);
+    fn check_clashing_subword_leaders(&self, subdfas: &DFAInternPool) -> Result<()> {
+        let mut visited: RoaringBitmap = Default::default();
+        visited.insert(self.endmarker_position);
+        self.do_check_clashing_subword_leaders(
+            &RoaringBitmap::from_iter(&self.firstpos()),
+            &self.followpos(),
+            subdfas,
+            &mut visited,
+        )
+    }
+
+    pub(crate) fn check_ambiguities(&self, subdfas: &DFAInternPool, shell: Shell) -> Result<()> {
+        self.check_ambiguous_inputs_tail_only(&subdfas, shell)?;
+        self.check_descr_no_descr_clashes()?;
+        self.check_clashing_subword_leaders(subdfas)?;
+        Ok(())
+    }
+
+    pub(crate) fn check_ambiguities_subword(&self, shell: Shell) -> Result<()> {
+        self.check_ambiguous_inputs_tail_only_subword(shell)?;
+        self.check_descr_no_descr_clashes()?;
+        Ok(())
     }
 
     fn get_root(&self) -> &RegexNode {

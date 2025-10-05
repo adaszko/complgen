@@ -215,6 +215,42 @@ fn handle_validation_error(e: Error, input: &str, command: &str) -> anyhow::Resu
             );
             eprintln!("{}:{}:{}", right_line_start, right_start, error.to_string());
         }
+        Error::ClashingSubwordLeaders(first, second) => {
+            let Some(HumanSpan {
+                line_start: left_line_start,
+                start: left_start,
+                end: left_end,
+            }) = first
+            else {
+                unreachable!()
+            };
+            let Some(HumanSpan {
+                line_start: right_line_start,
+                start: right_start,
+                end: right_end,
+            }) = second
+            else {
+                unreachable!()
+            };
+            let error =
+                chic::Error::new("Clashing subword leaders.  Completion can't differentiate:")
+                    .error(
+                        left_line_start,
+                        left_start,
+                        left_end,
+                        input.lines().nth(left_line_start).unwrap(),
+                        "",
+                    );
+            eprintln!("{}:{}:{}", left_line_start, left_start, error.to_string());
+            let error = chic::Error::new("and:").error(
+                right_line_start,
+                right_start,
+                right_end,
+                input.lines().nth(right_line_start).unwrap(),
+                "",
+            );
+            eprintln!("{}:{}:{}", right_line_start, right_start, error.to_string());
+        }
         e => {
             eprintln!("{}", e);
         }

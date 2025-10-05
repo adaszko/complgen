@@ -764,7 +764,7 @@ impl DFA {
         }
     }
 
-    pub(crate) fn iter_initial_inputs(&self) -> impl Iterator<Item = InpId> {
+    pub(crate) fn iter_leaders(&self) -> impl Iterator<Item = InpId> {
         self.iter_transitions_from(self.starting_state)
             .map(|(inp_id, _)| inp_id)
     }
@@ -780,10 +780,10 @@ impl DFA {
             .elems()
             .filter_map(|input| match input {
                 Inp::Literal {
-                    literal: input,
+                    literal,
                     description,
                     ..
-                } => Some((*input, *description)),
+                } => Some((*literal, *description)),
                 Inp::Subword { .. } => None,
                 Inp::Star { .. } => None,
                 Inp::Command { .. } => None,
@@ -1059,11 +1059,7 @@ mod tests {
         let specs = UstrMap::default();
         let regex = Regex::from_expr(expr, &arena, &specs).unwrap();
         let subdfas = DFAInternPool::default();
-        assert!(matches!(
-            regex.check_ambiguous_inputs_tail_only(&subdfas, Shell::Bash),
-            Ok(())
-        ));
-        assert!(matches!(regex.check_clashing_variants(), Ok(())));
+        assert!(regex.check_ambiguities(&subdfas, Shell::Bash).is_ok());
         let dfa = DFA::from_regex(Shell::Bash, regex, DFAInternPool::default()).unwrap();
         let foo = Inp::literal("foo");
         let foo_id = dfa.inputs.find(&foo).unwrap();
@@ -1334,8 +1330,7 @@ mod tests {
             let regex = Regex::from_expr(expr, &arena.borrow(), &specs).unwrap();
             //dbg!(&regex.input_from_position);
             let subdfas = DFAInternPool::default();
-            prop_assume!(matches!(regex.check_ambiguous_inputs_tail_only(&subdfas, Shell::Bash), Ok(())));
-            prop_assume!(matches!(regex.check_clashing_variants(), Ok(())));
+            prop_assume!(regex.check_ambiguities(&subdfas, Shell::Bash).is_ok());
             let dfa = DFA::from_regex_lenient(Shell::Bash, regex, DFAInternPool::default());
             prop_assume!(dfa.check_ambiguity_best_effort().is_ok());
             let input: Vec<&str> = input.iter().map(|s| s.as_str()).collect();
@@ -1349,8 +1344,7 @@ mod tests {
             let specs = UstrMap::default();
             let regex = Regex::from_expr(expr, &arena.borrow(), &specs).unwrap();
             let subdfas = DFAInternPool::default();
-            prop_assume!(matches!(regex.check_ambiguous_inputs_tail_only(&subdfas, Shell::Bash), Ok(())));
-            prop_assume!(matches!(regex.check_clashing_variants(), Ok(())));
+            prop_assume!(regex.check_ambiguities(&subdfas, Shell::Bash).is_ok());
             let dfa = DFA::from_regex_lenient(Shell::Bash, regex, DFAInternPool::default());
             prop_assume!(dfa.check_ambiguity_best_effort().is_ok());
             let input: Vec<&str> = input.iter().map(|s| s.as_str()).collect();
