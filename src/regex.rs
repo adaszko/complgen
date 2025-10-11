@@ -66,7 +66,7 @@ impl Input {
         }
     }
 
-    fn is_ambiguous_subword(&self, shell: Shell) -> bool {
+    fn is_star_subword(&self, shell: Shell) -> bool {
         match self {
             Self::Literal { .. } => false,
             Self::Nonterminal { .. } => true,
@@ -695,20 +695,18 @@ impl Regex {
         subdfas: &DFAInternPool,
         visited: &mut RoaringBitmap,
     ) -> Result<()> {
-        let inputs: Vec<Input> = firstpos
+        let stars: Vec<Input> = firstpos
             .iter()
             .filter(|pos| *pos != self.endmarker_position)
             .map(|pos| self.input_from_position[pos as usize].clone())
+            .filter(|input| input.is_star(subdfas, shell))
             .collect();
 
-        let mut prev_ambiguous: Option<Input> = None;
-        for inp in inputs {
-            if inp.is_star(subdfas, shell) {
-                if let Some(prev_inp) = prev_ambiguous {
-                    return Err(Error::AmbiguousMatchable(Box::new(prev_inp), Box::new(inp)));
-                }
-                prev_ambiguous = Some(inp);
-            }
+        if stars.len() >= 2 {
+            return Err(Error::AmbiguousMatchable(
+                Box::new(stars[0].clone()),
+                Box::new(stars[1].clone()),
+            ));
         }
 
         let unvisited = firstpos - visited.clone();
@@ -740,20 +738,18 @@ impl Regex {
         shell: Shell,
         visited: &mut RoaringBitmap,
     ) -> Result<()> {
-        let inputs: Vec<Input> = firstpos
+        let stars: Vec<Input> = firstpos
             .iter()
             .filter(|pos| *pos != self.endmarker_position)
             .map(|pos| self.input_from_position[pos as usize].clone())
+            .filter(|input| input.is_star_subword(shell))
             .collect();
 
-        let mut prev_ambiguous: Option<Input> = None;
-        for inp in inputs {
-            if let Some(prev_inp) = prev_ambiguous {
-                return Err(Error::AmbiguousMatchable(Box::new(prev_inp), Box::new(inp)));
-            }
-            if inp.is_ambiguous_subword(shell) {
-                prev_ambiguous = Some(inp);
-            }
+        if stars.len() >= 2 {
+            return Err(Error::AmbiguousMatchable(
+                Box::new(stars[0].clone()),
+                Box::new(stars[1].clone()),
+            ));
         }
 
         let unvisited = firstpos - visited.clone();
@@ -801,7 +797,7 @@ impl Regex {
                 ));
             }
 
-            if inp.is_ambiguous_subword(shell) {
+            if inp.is_star_subword(shell) {
                 prev_ambiguous = Some(inp);
             }
         }
