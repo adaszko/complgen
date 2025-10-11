@@ -23,24 +23,24 @@ pub enum Input {
         literal: Ustr,
         description: Option<Ustr>,
         fallback_level: usize,
-        span: Option<HumanSpan>,
+        span: HumanSpan,
     },
     Subword {
         subdfa: DFAId,
         fallback_level: usize,
-        span: Option<HumanSpan>,
+        span: HumanSpan,
     },
     Nonterminal {
         nonterm: Ustr,
         spec: Option<Specialization>,
         fallback_level: usize,
-        span: Option<HumanSpan>,
+        span: HumanSpan,
     },
     Command {
         cmd: Ustr,
         regex: Option<CmdRegex>,
         fallback_level: usize,
-        span: Option<HumanSpan>,
+        span: HumanSpan,
     },
 }
 
@@ -78,7 +78,7 @@ impl Input {
         }
     }
 
-    pub fn get_span(&self) -> Option<HumanSpan> {
+    pub fn get_span(&self) -> HumanSpan {
         match self {
             Self::Literal { span, .. } => *span,
             Self::Subword { span, .. } => *span,
@@ -855,7 +855,7 @@ impl Regex {
             return Ok(());
         }
 
-        let mut inputs: Vec<(Ustr, Option<Ustr>, Option<HumanSpan>)> = unvisited
+        let mut inputs: Vec<(Ustr, Option<Ustr>, HumanSpan)> = unvisited
             .iter()
             .filter_map(|pos| self.input_from_position.get(pos as usize).cloned())
             .filter_map(|inp| match inp {
@@ -925,7 +925,7 @@ impl Regex {
             return Ok(());
         }
 
-        let mut leaders: Vec<(Ustr, Option<HumanSpan>)> = unvisited
+        let mut leaders: Vec<(Ustr, HumanSpan)> = unvisited
             .iter()
             .filter_map(|pos| self.input_from_position.get(pos as usize).cloned())
             .filter_map(|inp| match inp {
@@ -951,7 +951,7 @@ impl Regex {
                 literals
                     .iter()
                     .map(|lit| (lit.clone(), span.clone()))
-                    .collect::<Vec<(Ustr, Option<HumanSpan>)>>()
+                    .collect::<Vec<(Ustr, HumanSpan)>>()
             })
             .collect();
 

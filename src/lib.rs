@@ -46,13 +46,13 @@ pub enum Error {
     AmbiguousDFA(Box<[Inp]>, Box<[Inp]>),
 
     #[error("Clashing variants: {:?} {:?}", .0, .1)]
-    ClashingVariants(Option<HumanSpan>, Option<HumanSpan>),
+    ClashingVariants(HumanSpan, HumanSpan),
 
     #[error("Clashing subword leaders: {:?} {:?}", .0, .1)]
-    ClashingSubwordLeaders(Option<HumanSpan>, Option<HumanSpan>),
+    ClashingSubwordLeaders(HumanSpan, HumanSpan),
 
     #[error("Two adjacent terminals in a subword expression: {:?}", .0)]
-    SubwordSpaces(Option<HumanSpan>, Option<HumanSpan>, Vec<HumanSpan>),
+    SubwordSpaces(HumanSpan, HumanSpan, Vec<HumanSpan>),
 
     #[error("UTF-8 conversion error")]
     FromUtf8Error(#[from] FromUtf8Error),

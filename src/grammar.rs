@@ -91,14 +91,14 @@ pub enum Expr {
         term: Ustr,
         descr: Option<Ustr>,
         fallback: usize,
-        span: Option<HumanSpan>,
+        span: HumanSpan,
     },
 
     // `<PATH>`, `<DIRECTORY>`, etc.
     NontermRef {
         nonterm: Ustr,
         fallback: usize,
-        span: Option<HumanSpan>,
+        span: HumanSpan,
     },
 
     // `{{{ ls }}}`
@@ -108,7 +108,7 @@ pub enum Expr {
         cmd: Ustr,
         regex: Option<CmdRegex>,
         fallback: usize,
-        span: Option<HumanSpan>,
+        span: HumanSpan,
     },
 
     // `foo bar`
@@ -138,7 +138,7 @@ pub enum Expr {
     Subword {
         phase: SubwordCompilationPhase,
         fallback: usize,
-        span: Option<HumanSpan>,
+        span: HumanSpan,
     },
 }
 
@@ -328,7 +328,7 @@ pub fn expr_to_dot_file<P: AsRef<std::path::Path>>(
 use nom_locate::LocatedSpan;
 pub type Span<'a> = LocatedSpan<&'a str>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct HumanSpan {
     pub line_start: usize,
     pub start: usize,
@@ -463,7 +463,7 @@ fn terminal_opt_description_expr<'s>(
         term: ustr(&term),
         descr: descr.map(|span| ustr(&span)),
         fallback: 0,
-        span: Some(HumanSpan::new(input, after)),
+        span: HumanSpan::new(input, after),
     };
     let id = alloc(arena, expr);
     Ok((after, id))
@@ -482,7 +482,7 @@ fn nonterm_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>,
     let e = Expr::NontermRef {
         nonterm: ustr(nonterm.into_fragment()),
         fallback: 0,
-        span: Some(diagnostic_span),
+        span: diagnostic_span,
     };
     let id = alloc(arena, e);
     Ok((after, id))
@@ -502,7 +502,7 @@ fn command_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>,
         cmd: ustr(cmd.into_fragment()),
         regex: None,
         fallback: 0,
-        span: Some(command_span),
+        span: command_span,
     };
     let id = alloc(arena, e);
     Ok((after, id))
@@ -555,7 +555,7 @@ fn nontail_command_expr<'s>(
         cmd: ustr(cmd.into_fragment()),
         regex: Some(regex_decl),
         fallback: 0,
-        span: Some(command_span),
+        span: command_span,
     };
     let id = alloc(arena, e);
     Ok((input, id))
@@ -640,7 +640,7 @@ fn subword_sequence_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<
         let subword_expr = Expr::Subword {
             phase: SubwordCompilationPhase::Expr(subword_id),
             fallback: 0,
-            span: Some(span),
+            span,
         };
         alloc(arena, subword_expr)
     };
@@ -1588,13 +1588,9 @@ fn do_check_subword_spaces(
             let Some(expn) = nonterms.get(nonterm) else {
                 return Ok(());
             };
-            if let Some(span) = *span {
-                nonterm_expn_trace.push(span);
-            }
+            nonterm_expn_trace.push(*span);
             do_check_subword_spaces(arena, *expn, nonterms, nonterm_expn_trace, within_subword)?;
-            if span.is_some() {
-                nonterm_expn_trace.pop();
-            }
+            nonterm_expn_trace.pop();
             Ok(())
         }
         Expr::Command { .. } => Ok(()),
@@ -1950,7 +1946,7 @@ pub mod tests {
                 term: ustr(s),
                 descr: None,
                 fallback: 0,
-                span: None,
+                span: HumanSpan::default(),
             }
         }
 
@@ -1959,7 +1955,7 @@ pub mod tests {
                 term: ustr(s),
                 descr: Some(ustr(d)),
                 fallback: 0,
-                span: None,
+                span: HumanSpan::default(),
             }
         }
 
@@ -1967,7 +1963,7 @@ pub mod tests {
             Self::NontermRef {
                 nonterm: ustr(s),
                 fallback: 0,
-                span: None,
+                span: HumanSpan::default(),
             }
         }
 
@@ -1975,7 +1971,7 @@ pub mod tests {
             Self::Subword {
                 phase: SubwordCompilationPhase::Expr(expr),
                 fallback: 0,
-                span: None,
+                span: HumanSpan::default(),
             }
         }
     }
@@ -2089,7 +2085,7 @@ pub mod tests {
             Expr::Subword {
                 phase: SubwordCompilationPhase::Expr(e1),
                 fallback: 0,
-                span: None,
+                span: HumanSpan::default(),
             },
         );
         assert!(teq(actual, expected, &arena));
@@ -2110,7 +2106,7 @@ pub mod tests {
         let subword_expr = Subword {
             phase: SubwordCompilationPhase::Expr(sequence_id),
             fallback: 0,
-            span: None,
+            span: HumanSpan::default(),
         };
         let subword_id = alloc(&mut arena, subword_expr);
         let expected = alloc(
@@ -2215,7 +2211,7 @@ pub mod tests {
                     zsh: None,
                 }),
                 fallback: 0,
-                span: None,
+                span: HumanSpan::default(),
             },
         );
         assert!(teq(actual, expected, &arena));
@@ -2233,7 +2229,7 @@ pub mod tests {
                 cmd: ustr("rad patch list | awk '{print $3}' | grep . | grep -vw ID"),
                 regex: None,
                 fallback: 0,
-                span: None,
+                span: HumanSpan::default(),
             },
         );
         assert!(teq(actual, expected, &arena));
@@ -2619,7 +2615,7 @@ cargo [+{{{ rustup toolchain list | cut -d' ' -f1 }}}]
                 cmd: ustr("rustup toolchain list | cut -d' ' -f1"),
                 regex: None,
                 fallback: 0,
-                span: None,
+                span: HumanSpan::default(),
             },
         );
         let subword_seq_id = alloc(&mut g.arena, Sequence(vec![plus_id, cmd_id]));
@@ -2942,7 +2938,7 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
                 cmd: ustr("rustup toolchain list | cut -d' ' -f1"),
                 regex: None,
                 fallback: 0,
-                span: None,
+                span: HumanSpan::default(),
             },
         );
         assert!(teq(*expr_id, expected_expr2_id, &g.arena));
@@ -3089,7 +3085,7 @@ ls <FILE>;
                 cmd: ustr(r#"compgen -A file "$1""#),
                 regex: None,
                 fallback: 0,
-                span: None,
+                span: HumanSpan::default(),
             },
         );
         assert!(teq(*expr_id, expected_expr2_id, &g.arena));
@@ -3110,7 +3106,7 @@ ls <FILE>;
                 cmd: ustr(r#"__fish_complete_path "$1""#),
                 regex: None,
                 fallback: 0,
-                span: None,
+                span: HumanSpan::default(),
             },
         );
         assert!(teq(*expr_id, expected_expr3_id, &g.arena));
@@ -3250,7 +3246,7 @@ ls <FILE>;
                 cmd: ustr("git tag"),
                 regex: None,
                 fallback: 0,
-                span: None,
+                span: HumanSpan::default(),
             },
         );
         let dotdot_id = alloc(&mut arena, Expr::term(".."));
@@ -3260,7 +3256,7 @@ ls <FILE>;
                 cmd: ustr("git tag"),
                 regex: None,
                 fallback: 0,
-                span: None,
+                span: HumanSpan::default(),
             },
         );
         let seq_id = alloc(
@@ -3304,7 +3300,7 @@ ls <FILE>;
                     zsh: Some(ustr("quux")),
                 }),
                 fallback: 0,
-                span: None,
+                span: HumanSpan::default(),
             },
         );
         let expected_expr_id = alloc(&mut arena, Sequence(vec![cmd_id, echo_id]));

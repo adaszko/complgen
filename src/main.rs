@@ -79,12 +79,12 @@ fn handle_validation_error(e: Error, input: &str, command: &str) -> anyhow::Resu
                 line_start: left_line_start,
                 start: left_start,
                 end: left_end,
-            } = left.unwrap();
+            } = left;
             let HumanSpan {
                 line_start: right_line_start,
                 end: right_end,
                 start: right_start,
-            } = right.unwrap();
+            } = right;
             let error = chic::Error::new(
                 "Adjacent literals in expression used in a subword context.  First one:",
             )
@@ -128,22 +128,16 @@ fn handle_validation_error(e: Error, input: &str, command: &str) -> anyhow::Resu
             }
         }
         Error::AmbiguousMatchable(first, second) => {
-            let Some(HumanSpan {
+            let HumanSpan {
                 line_start: left_line_start,
                 start: left_start,
                 end: left_end,
-            }) = first.get_span()
-            else {
-                unreachable!()
-            };
-            let Some(HumanSpan {
+            } = first.get_span();
+            let HumanSpan {
                 line_start: right_line_start,
                 start: right_start,
                 end: right_end,
-            }) = second.get_span()
-            else {
-                unreachable!()
-            };
+            } = second.get_span();
             let error = chic::Error::new("Ambiguous grammar.  Matching can't differentiate:")
                 .error(
                     left_line_start,
@@ -163,22 +157,16 @@ fn handle_validation_error(e: Error, input: &str, command: &str) -> anyhow::Resu
             eprintln!("{}:{}:{}", right_line_start, right_start, error.to_string());
         }
         Error::UnboundedMatchable(first, second) => {
-            let Some(HumanSpan {
+            let HumanSpan {
                 line_start: left_line_start,
                 start: left_start,
                 end: left_end,
-            }) = first.get_span()
-            else {
-                unreachable!()
-            };
-            let Some(HumanSpan {
+            } = first.get_span();
+            let HumanSpan {
                 line_start: right_line_start,
                 start: right_start,
                 end: right_end,
-            }) = second.get_span()
-            else {
-                unreachable!()
-            };
+            } = second.get_span();
             let error = chic::Error::new("Ambiguous grammar.  Matching can't ascertain where:")
                 .error(
                     left_line_start,
@@ -216,22 +204,16 @@ fn handle_validation_error(e: Error, input: &str, command: &str) -> anyhow::Resu
             }
         }
         Error::ClashingVariants(first, second) => {
-            let Some(HumanSpan {
+            let HumanSpan {
                 line_start: left_line_start,
                 start: left_start,
                 end: left_end,
-            }) = first
-            else {
-                unreachable!()
-            };
-            let Some(HumanSpan {
+            } = first;
+            let HumanSpan {
                 line_start: right_line_start,
                 start: right_start,
                 end: right_end,
-            }) = second
-            else {
-                unreachable!()
-            };
+            } = second;
             let error = chic::Error::new("Clashing variants.  Completion can't differentiate:")
                 .error(
                     left_line_start,
@@ -251,22 +233,16 @@ fn handle_validation_error(e: Error, input: &str, command: &str) -> anyhow::Resu
             eprintln!("{}:{}:{}", right_line_start, right_start, error.to_string());
         }
         Error::ClashingSubwordLeaders(first, second) => {
-            let Some(HumanSpan {
+            let HumanSpan {
                 line_start: left_line_start,
                 start: left_start,
                 end: left_end,
-            }) = first
-            else {
-                unreachable!()
-            };
-            let Some(HumanSpan {
+            } = first;
+            let HumanSpan {
                 line_start: right_line_start,
                 start: right_start,
                 end: right_end,
-            }) = second
-            else {
-                unreachable!()
-            };
+            } = second;
             let error =
                 chic::Error::new("Clashing subword leaders.  Completion can't differentiate:")
                     .error(
