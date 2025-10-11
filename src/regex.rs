@@ -695,11 +695,6 @@ impl Regex {
         subdfas: &DFAInternPool,
         visited: &mut RoaringBitmap,
     ) -> Result<()> {
-        let unvisited = firstpos - visited.clone();
-        if unvisited.is_empty() {
-            return Ok(());
-        }
-
         let inputs: Vec<Input> = firstpos
             .iter()
             .filter(|pos| *pos != self.endmarker_position)
@@ -716,6 +711,7 @@ impl Regex {
             }
         }
 
+        let unvisited = firstpos - visited.clone();
         for pos in unvisited {
             let Some(follow) = followpos.get(&pos) else {
                 continue;
@@ -744,14 +740,10 @@ impl Regex {
         shell: Shell,
         visited: &mut RoaringBitmap,
     ) -> Result<()> {
-        let unvisited = firstpos - visited.clone();
-        if unvisited.is_empty() {
-            return Ok(());
-        }
-
-        let inputs: Vec<Input> = unvisited
+        let inputs: Vec<Input> = firstpos
             .iter()
-            .filter_map(|pos| self.input_from_position.get(pos as usize).cloned())
+            .filter(|pos| *pos != self.endmarker_position)
+            .map(|pos| self.input_from_position[pos as usize].clone())
             .collect();
 
         let mut prev_ambiguous: Option<Input> = None;
@@ -764,6 +756,7 @@ impl Regex {
             }
         }
 
+        let unvisited = firstpos - visited.clone();
         for pos in unvisited {
             let Some(follow) = followpos.get(&pos) else {
                 continue;
@@ -793,14 +786,10 @@ impl Regex {
         path_prev_ambiguous: Option<Input>,
         visited: &mut RoaringBitmap,
     ) -> Result<()> {
-        let unvisited = firstpos - visited.clone();
-        if unvisited.is_empty() {
-            return Ok(());
-        }
-
-        let inputs: Vec<Input> = unvisited
+        let inputs: Vec<Input> = firstpos
             .iter()
-            .filter_map(|pos| self.input_from_position.get(pos as usize).cloned())
+            .filter(|pos| *pos != self.endmarker_position)
+            .map(|pos| self.input_from_position[pos as usize].clone())
             .collect();
 
         let mut prev_ambiguous: Option<Input> = None;
@@ -817,6 +806,7 @@ impl Regex {
             }
         }
 
+        let unvisited = firstpos - visited.clone();
         for pos in unvisited {
             let Some(follow) = followpos.get(&pos) else {
                 continue;
@@ -849,20 +839,17 @@ impl Regex {
             &mut visited,
         )
     }
+
     fn do_check_descr_no_descr_clashes(
         &self,
         firstpos: &RoaringBitmap,
         followpos: &BTreeMap<Position, RoaringBitmap>,
         visited: &mut RoaringBitmap,
     ) -> Result<()> {
-        let unvisited = firstpos - visited.clone();
-        if unvisited.is_empty() {
-            return Ok(());
-        }
-
-        let mut inputs: Vec<(Ustr, Option<Ustr>, HumanSpan)> = unvisited
+        let mut inputs: Vec<(Ustr, Option<Ustr>, HumanSpan)> = firstpos
             .iter()
-            .filter_map(|pos| self.input_from_position.get(pos as usize).cloned())
+            .filter(|pos| *pos != self.endmarker_position)
+            .map(|pos| self.input_from_position[pos as usize].clone())
             .filter_map(|inp| match inp {
                 Input::Literal {
                     literal,
@@ -897,6 +884,7 @@ impl Regex {
             return Err(Error::ClashingVariants(*left_span, *right_span));
         }
 
+        let unvisited = firstpos - visited.clone();
         for pos in unvisited {
             let Some(follow) = followpos.get(&pos) else {
                 continue;
@@ -925,14 +913,10 @@ impl Regex {
         subdfas: &DFAInternPool,
         visited: &mut RoaringBitmap,
     ) -> Result<()> {
-        let unvisited = firstpos - visited.clone();
-        if unvisited.is_empty() {
-            return Ok(());
-        }
-
-        let mut leaders: Vec<(Ustr, HumanSpan)> = unvisited
+        let mut leaders: Vec<(Ustr, HumanSpan)> = firstpos
             .iter()
-            .filter_map(|pos| self.input_from_position.get(pos as usize).cloned())
+            .filter(|pos| *pos != self.endmarker_position)
+            .map(|pos| self.input_from_position[pos as usize].clone())
             .filter_map(|inp| match inp {
                 Input::Subword {
                     subdfa: id, span, ..
@@ -974,6 +958,7 @@ impl Regex {
             return Err(Error::ClashingSubwordLeaders(*left_span, *right_span));
         }
 
+        let unvisited = firstpos - visited.clone();
         for pos in unvisited {
             let Some(follow) = followpos.get(&pos) else {
                 continue;
