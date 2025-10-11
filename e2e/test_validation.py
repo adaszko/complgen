@@ -87,12 +87,12 @@ mygit (<command> || [-c <name>=<value>] <command>);
     r = complgen_check(complgen_binary_path, GRAMMAR)
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
-1:24:error: Ambiguous grammar.  Matching can't differentiate:
+1:24:error: Ambiguous grammar.  Matching can't ascertain where:
   |
 1 | mygit (<command> || [-c <name>=<value>] <command>);
   |                         ^^^^^^
   |
-1:30:error: and:
+1:30:error: ends and begins:
   |
 1 | mygit (<command> || [-c <name>=<value>] <command>);
   |                               ^
@@ -307,12 +307,12 @@ foo baz;
 """)
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
-1:4:error: Ambiguous grammar.  Matching can't differentiate:
+1:4:error: Ambiguous grammar.  Matching can't ascertain where:
   |
 1 | foo <BAR>=bar;
   |     ^^^^^
   |
-1:9:error: and:
+1:9:error: ends and begins:
   |
 1 | foo <BAR>=bar;
   |          ^^^^

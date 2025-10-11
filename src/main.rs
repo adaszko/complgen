@@ -162,6 +162,41 @@ fn handle_validation_error(e: Error, input: &str, command: &str) -> anyhow::Resu
             );
             eprintln!("{}:{}:{}", right_line_start, right_start, error.to_string());
         }
+        Error::UnboundedMatchable(first, second) => {
+            let Some(HumanSpan {
+                line_start: left_line_start,
+                start: left_start,
+                end: left_end,
+            }) = first.get_span()
+            else {
+                unreachable!()
+            };
+            let Some(HumanSpan {
+                line_start: right_line_start,
+                start: right_start,
+                end: right_end,
+            }) = second.get_span()
+            else {
+                unreachable!()
+            };
+            let error = chic::Error::new("Ambiguous grammar.  Matching can't ascertain where:")
+                .error(
+                    left_line_start,
+                    left_start,
+                    left_end,
+                    input.lines().nth(left_line_start).unwrap(),
+                    "",
+                );
+            eprintln!("{}:{}:{}", left_line_start, left_start, error.to_string());
+            let error = chic::Error::new("ends and begins:").error(
+                right_line_start,
+                right_start,
+                right_end,
+                input.lines().nth(right_line_start).unwrap(),
+                "",
+            );
+            eprintln!("{}:{}:{}", right_line_start, right_start, error.to_string());
+        }
         Error::AmbiguousDFA(path, ambiguous_inputs) => {
             let joined_path = {
                 let mut buf = String::new();

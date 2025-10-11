@@ -39,6 +39,9 @@ pub enum Error {
     #[error("Ambiguity in matching: {:?} {:?}", .0, .1)]
     AmbiguousMatchable(Box<Input>, Box<Input>),
 
+    #[error("Ambiguity in matching: {:?} {:?}", .0, .1)]
+    UnboundedMatchable(Box<Input>, Box<Input>),
+
     #[error("Ambiguous DFA: {:?} {:?}", .0, .1)]
     AmbiguousDFA(Box<[Inp]>, Box<[Inp]>),
 

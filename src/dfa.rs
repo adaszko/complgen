@@ -880,7 +880,7 @@ impl DFA {
         self.iter_transitions()
             .filter_map(move |(from, input_id, to)| {
                 let input = self.get_input(input_id);
-                if input.is_ambiguous(&self.subdfas) {
+                if input.is_star(&self.subdfas) {
                     Some((from, to))
                 } else {
                     None
@@ -982,7 +982,7 @@ mod tests {
 
                 for (transition_input_id, to) in self.iter_transitions_from(current_state) {
                     let transition_input = self.get_input(transition_input_id);
-                    if transition_input.is_ambiguous(&self.subdfas) {
+                    if transition_input.is_star(&self.subdfas) {
                         current_state = to;
                         break 'outer;
                     }
@@ -1026,7 +1026,7 @@ mod tests {
 
                 let anys: Vec<(InpId, StateId)> = self
                     .iter_transitions_from(current_state)
-                    .filter(|(input_id, _)| self.get_input(*input_id).is_ambiguous(&self.subdfas))
+                    .filter(|(input_id, _)| self.get_input(*input_id).is_star(&self.subdfas))
                     .map(|(k, v)| (k.clone(), v))
                     .collect();
                 // It's ambiguous which transition to take if there are two transitions
@@ -1035,7 +1035,7 @@ mod tests {
 
                 for (transition_input_id, to) in anys {
                     let transition_input = self.get_input(transition_input_id);
-                    if transition_input.is_ambiguous(&self.subdfas) {
+                    if transition_input.is_star(&self.subdfas) {
                         input_index += 1;
                         current_state = to;
                         continue 'outer;

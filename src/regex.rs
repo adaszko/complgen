@@ -45,14 +45,14 @@ pub enum Input {
 }
 
 impl Input {
-    fn is_ambiguous(&self, subdfas: &DFAInternPool, shell: Shell) -> bool {
+    fn is_star(&self, subdfas: &DFAInternPool, shell: Shell) -> bool {
         match self {
             Self::Literal { .. } => false,
             Self::Subword { subdfa: id, .. } => {
                 let subdfa = subdfas.lookup(*id);
                 for inp_id in subdfa.iter_leaders() {
                     let inp = subdfa.get_input(inp_id);
-                    if inp.is_ambiguous(&subdfas) {
+                    if inp.is_star(&subdfas) {
                         return true;
                     }
                 }
@@ -192,14 +192,14 @@ impl Inp {
         }
     }
 
-    pub(crate) fn is_ambiguous(&self, subdfas: &DFAInternPool) -> bool {
+    pub(crate) fn is_star(&self, subdfas: &DFAInternPool) -> bool {
         match self {
             Self::Literal { .. } => false,
             Self::Subword { subdfa: id, .. } => {
                 let subdfa = subdfas.lookup(*id);
                 for inp_id in subdfa.iter_leaders() {
                     let inp = subdfa.get_input(inp_id);
-                    if inp.is_ambiguous(subdfas) {
+                    if inp.is_star(subdfas) {
                         return true;
                     }
                 }
@@ -685,15 +685,9 @@ impl Regex {
         Ok(retval)
     }
 
-    /*
-
-    Ambiguous matching arises from:
-
-    1) ({{{ ... }}} | foo), i.e. commands at non-tail position; (foo | {{{ ... }}}) is fine
-    2) Same with <NONTERM>, where <NONTERM> is undefined, because it matches anything then
-
-    */
-    fn do_check_ambiguous_inputs_tail_only(
+    // Fail if there's a state with 2 outgoing transitions, where both transitions have "star"
+    // inputs.  Meaning it's not possible to tell which transition to take next at matching time.
+    fn do_check_transitions_unambiguous(
         &self,
         firstpos: &RoaringBitmap,
         followpos: &BTreeMap<Position, RoaringBitmap>,
@@ -714,7 +708,7 @@ impl Regex {
 
         let mut prev_ambiguous: Option<Input> = None;
         for inp in inputs {
-            if inp.is_ambiguous(subdfas, shell) {
+            if inp.is_star(subdfas, shell) {
                 if let Some(prev_inp) = prev_ambiguous {
                     return Err(Error::AmbiguousMatchable(Box::new(prev_inp), Box::new(inp)));
                 }
@@ -727,18 +721,14 @@ impl Regex {
                 continue;
             };
             visited.insert(pos);
-            self.do_check_ambiguous_inputs_tail_only(follow, followpos, shell, subdfas, visited)?;
+            self.do_check_transitions_unambiguous(follow, followpos, shell, subdfas, visited)?;
         }
         Ok(())
     }
 
-    fn check_ambiguous_inputs_tail_only(
-        &self,
-        subdfas: &DFAInternPool,
-        shell: Shell,
-    ) -> Result<()> {
+    fn check_transitions_unambiguous(&self, subdfas: &DFAInternPool, shell: Shell) -> Result<()> {
         let mut visited: RoaringBitmap = Default::default();
-        self.do_check_ambiguous_inputs_tail_only(
+        self.do_check_transitions_unambiguous(
             &RoaringBitmap::from_iter(&self.firstpos()),
             &self.followpos(),
             shell,
@@ -747,8 +737,54 @@ impl Regex {
         )
     }
 
-    // Subword ambiguity checker is stricter than the word-based one.  Any matches_anything() input
-    // followed by any input is ambiguous since we can't tell where the matches_anything() one ends.
+    fn do_check_transitions_unambiguous_subword(
+        &self,
+        firstpos: &RoaringBitmap,
+        followpos: &BTreeMap<Position, RoaringBitmap>,
+        shell: Shell,
+        visited: &mut RoaringBitmap,
+    ) -> Result<()> {
+        let unvisited = firstpos - visited.clone();
+        if unvisited.is_empty() {
+            return Ok(());
+        }
+
+        let inputs: Vec<Input> = unvisited
+            .iter()
+            .filter_map(|pos| self.input_from_position.get(pos as usize).cloned())
+            .collect();
+
+        let mut prev_ambiguous: Option<Input> = None;
+        for inp in inputs {
+            if let Some(prev_inp) = prev_ambiguous {
+                return Err(Error::AmbiguousMatchable(Box::new(prev_inp), Box::new(inp)));
+            }
+            if inp.is_ambiguous_subword(shell) {
+                prev_ambiguous = Some(inp);
+            }
+        }
+
+        for pos in unvisited {
+            let Some(follow) = followpos.get(&pos) else {
+                continue;
+            };
+            visited.insert(pos);
+            self.do_check_transitions_unambiguous_subword(follow, followpos, shell, visited)?;
+        }
+        Ok(())
+    }
+
+    fn check_transitions_unambiguous_subword(&self, shell: Shell) -> Result<()> {
+        let mut visited: RoaringBitmap = Default::default();
+        visited.insert(self.endmarker_position);
+        self.do_check_transitions_unambiguous_subword(
+            &RoaringBitmap::from_iter(&self.firstpos()),
+            &self.followpos(),
+            shell,
+            &mut visited,
+        )
+    }
+
     fn do_check_ambiguous_inputs_tail_only_subword(
         &self,
         firstpos: &RoaringBitmap,
@@ -770,15 +806,12 @@ impl Regex {
         let mut prev_ambiguous: Option<Input> = None;
         for inp in inputs {
             if let Some(ref prev_inp) = path_prev_ambiguous {
-                return Err(Error::AmbiguousMatchable(
+                return Err(Error::UnboundedMatchable(
                     Box::new(prev_inp.clone()),
                     Box::new(inp),
                 ));
             }
 
-            if let Some(prev_inp) = prev_ambiguous {
-                return Err(Error::AmbiguousMatchable(Box::new(prev_inp), Box::new(inp)));
-            }
             if inp.is_ambiguous_subword(shell) {
                 prev_ambiguous = Some(inp);
             }
@@ -811,7 +844,6 @@ impl Regex {
             &mut visited,
         )
     }
-
     fn do_check_descr_no_descr_clashes(
         &self,
         firstpos: &RoaringBitmap,
@@ -960,13 +992,14 @@ impl Regex {
     }
 
     pub(crate) fn check_ambiguities(&self, subdfas: &DFAInternPool, shell: Shell) -> Result<()> {
-        self.check_ambiguous_inputs_tail_only(&subdfas, shell)?;
+        self.check_transitions_unambiguous(&subdfas, shell)?;
         self.check_descr_no_descr_clashes()?;
         self.check_clashing_subword_leaders(subdfas)?;
         Ok(())
     }
 
     pub(crate) fn check_ambiguities_subword(&self, shell: Shell) -> Result<()> {
+        self.check_transitions_unambiguous_subword(shell)?;
         self.check_ambiguous_inputs_tail_only_subword(shell)?;
         self.check_descr_no_descr_clashes()?;
         Ok(())
@@ -1089,7 +1122,7 @@ mod tests {
     fn detects_nontail_command_subword() {
         assert!(matches!(
             get_validated_grammar(r#"cmd {{{ git tag }}}..{{{ git tag }}};"#),
-            Err(Error::AmbiguousMatchable(_, _))
+            Err(Error::UnboundedMatchable(_, _))
         ));
         assert!(matches!(
             get_validated_grammar(r#"cmd --option={{{ echo foo }}};"#),
@@ -1097,7 +1130,7 @@ mod tests {
         ));
         assert!(matches!(
             get_validated_grammar(r#"cmd {{{ echo foo }}}{{{ echo bar }}};"#),
-            Err(Error::AmbiguousMatchable(_, _))
+            Err(Error::UnboundedMatchable(_, _))
         ));
 
         // https://github.com/adaszko/complgen/issues/49
@@ -1105,19 +1138,19 @@ mod tests {
             get_validated_grammar(
                 r#"build <PLATFORM>-(amd64|arm64); <PLATFORM> ::= {{{ echo foo }}};"#
             ),
-            Err(Error::AmbiguousMatchable(_, _))
+            Err(Error::UnboundedMatchable(_, _))
         ));
         assert!(matches!(
             get_validated_grammar(
                 r#"build <PLATFORM>[-(amd64|arm64)]; <PLATFORM> ::= {{{ echo foo }}};"#
             ),
-            Err(Error::AmbiguousMatchable(_, _))
+            Err(Error::UnboundedMatchable(_, _))
         ));
 
         // https://github.com/adaszko/complgen/issues/53
         assert!(matches!(
             get_validated_grammar(r#"cmd <DUMMY>,<DUMMY>; <DUMMY@bash> ::= {{{ echo dummy }}};"#),
-            Err(Error::AmbiguousMatchable(_, _))
+            Err(Error::UnboundedMatchable(_, _))
         ));
         assert!(matches!(
             get_validated_grammar(r#"cmd --option=<FOO>; <FOO@bash> ::= {{{ echo bash }}};"#),
@@ -1130,7 +1163,7 @@ duf -hide-fs <FS>[,<FS>]...;
 <FS@fish> ::= {{{ string split ' ' --fields 3 </proc/mounts | sort --unique }}};
 "#
             ),
-            Err(Error::AmbiguousMatchable(_, _))
+            Err(Error::UnboundedMatchable(_, _))
         ));
     }
 }
