@@ -726,11 +726,16 @@ impl Regex {
         Ok(())
     }
 
-    fn check_transitions_unambiguous(&self, subdfas: &DFAInternPool, shell: Shell) -> Result<()> {
+    fn check_transitions_unambiguous(
+        &self,
+        followpos: &BTreeMap<Position, RoaringBitmap>,
+        subdfas: &DFAInternPool,
+        shell: Shell,
+    ) -> Result<()> {
         let mut visited: RoaringBitmap = Default::default();
         self.do_check_transitions_unambiguous(
             &RoaringBitmap::from_iter(&self.firstpos()),
-            &self.followpos(),
+            followpos,
             shell,
             subdfas,
             &mut visited,
@@ -774,12 +779,16 @@ impl Regex {
         Ok(())
     }
 
-    fn check_transitions_unambiguous_subword(&self, shell: Shell) -> Result<()> {
+    fn check_transitions_unambiguous_subword(
+        &self,
+        followpos: &BTreeMap<Position, RoaringBitmap>,
+        shell: Shell,
+    ) -> Result<()> {
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);
         self.do_check_transitions_unambiguous_subword(
             &RoaringBitmap::from_iter(&self.firstpos()),
-            &self.followpos(),
+            followpos,
             shell,
             &mut visited,
         )
@@ -833,12 +842,16 @@ impl Regex {
         Ok(())
     }
 
-    fn check_ambiguous_inputs_tail_only_subword(&self, shell: Shell) -> Result<()> {
+    fn check_ambiguous_inputs_tail_only_subword(
+        &self,
+        followpos: &BTreeMap<Position, RoaringBitmap>,
+        shell: Shell,
+    ) -> Result<()> {
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);
         self.do_check_ambiguous_inputs_tail_only_subword(
             &RoaringBitmap::from_iter(&self.firstpos()),
-            &self.followpos(),
+            followpos,
             shell,
             None,
             &mut visited,
@@ -903,12 +916,15 @@ impl Regex {
     }
 
     // e.g. git (subcommand "description" | subcommand --option);
-    fn check_descr_no_descr_clashes(&self) -> Result<()> {
+    fn check_descr_no_descr_clashes(
+        &self,
+        followpos: &BTreeMap<Position, RoaringBitmap>,
+    ) -> Result<()> {
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);
         self.do_check_descr_no_descr_clashes(
             &RoaringBitmap::from_iter(&self.firstpos()),
-            &self.followpos(),
+            followpos,
             &mut visited,
         )
     }
@@ -980,28 +996,34 @@ impl Regex {
     }
 
     // e.g. git (subcommand "description" | subcommand --option);
-    fn check_clashing_subword_leaders(&self, subdfas: &DFAInternPool) -> Result<()> {
+    fn check_clashing_subword_leaders(
+        &self,
+        followpos: &BTreeMap<Position, RoaringBitmap>,
+        subdfas: &DFAInternPool,
+    ) -> Result<()> {
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);
         self.do_check_clashing_subword_leaders(
             &RoaringBitmap::from_iter(&self.firstpos()),
-            &self.followpos(),
+            followpos,
             subdfas,
             &mut visited,
         )
     }
 
     pub(crate) fn check_ambiguities(&self, subdfas: &DFAInternPool, shell: Shell) -> Result<()> {
-        self.check_transitions_unambiguous(&subdfas, shell)?;
-        self.check_descr_no_descr_clashes()?;
-        self.check_clashing_subword_leaders(subdfas)?;
+        let followpos = self.followpos();
+        self.check_transitions_unambiguous(&followpos, &subdfas, shell)?;
+        self.check_descr_no_descr_clashes(&followpos)?;
+        self.check_clashing_subword_leaders(&followpos, subdfas)?;
         Ok(())
     }
 
     pub(crate) fn check_ambiguities_subword(&self, shell: Shell) -> Result<()> {
-        self.check_transitions_unambiguous_subword(shell)?;
-        self.check_ambiguous_inputs_tail_only_subword(shell)?;
-        self.check_descr_no_descr_clashes()?;
+        let followpos = self.followpos();
+        self.check_transitions_unambiguous_subword(&followpos, shell)?;
+        self.check_ambiguous_inputs_tail_only_subword(&followpos, shell)?;
+        self.check_descr_no_descr_clashes(&followpos)?;
         Ok(())
     }
 
