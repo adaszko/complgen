@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 ## 0.6.0
+### Changed
+
+ - Error message location are now 1-based to make them easier to use in a text editor
+
 ### Added
 
  - Added `--regex` option for writing generated regular expression into a .dot file for debugging

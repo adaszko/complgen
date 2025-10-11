@@ -704,8 +704,8 @@ impl Regex {
 
         if stars.len() >= 2 {
             return Err(Error::AmbiguousMatchable(
-                Box::new(stars[0].clone()),
-                Box::new(stars[1].clone()),
+                stars[0].get_span(),
+                stars[1].get_span(),
             ));
         }
 
@@ -747,8 +747,8 @@ impl Regex {
 
         if stars.len() >= 2 {
             return Err(Error::AmbiguousMatchable(
-                Box::new(stars[0].clone()),
-                Box::new(stars[1].clone()),
+                stars[0].get_span(),
+                stars[1].get_span(),
             ));
         }
 
@@ -792,8 +792,8 @@ impl Regex {
         for inp in inputs {
             if let Some(ref prev_inp) = path_prev_ambiguous {
                 return Err(Error::UnboundedMatchable(
-                    Box::new(prev_inp.clone()),
-                    Box::new(inp),
+                    prev_inp.get_span(),
+                    inp.get_span(),
                 ));
             }
 

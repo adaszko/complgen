@@ -1,5 +1,4 @@
 use grammar::HumanSpan;
-use regex::Input;
 use std::string::FromUtf8Error;
 use ustr::Ustr;
 
@@ -15,6 +14,9 @@ pub mod zsh;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
+    #[error("Parse error")]
+    ParseError(HumanSpan),
+
     #[error("Grammar needs to contain at least one call variant, e.g. grep;")]
     MissingCallVariants,
 
@@ -37,10 +39,10 @@ pub enum Error {
     NonCommandSpecialization(Ustr, Option<Ustr>),
 
     #[error("Ambiguity in matching: {:?} {:?}", .0, .1)]
-    AmbiguousMatchable(Box<Input>, Box<Input>),
+    AmbiguousMatchable(HumanSpan, HumanSpan),
 
     #[error("Ambiguity in matching: {:?} {:?}", .0, .1)]
-    UnboundedMatchable(Box<Input>, Box<Input>),
+    UnboundedMatchable(HumanSpan, HumanSpan),
 
     #[error("Ambiguous DFA: {:?} {:?}", .0, .1)]
     AmbiguousDFA(Box<[Inp]>, Box<[Inp]>),

@@ -11,6 +11,7 @@ use nom::{
     multi::{fold_many0, many0},
     sequence::preceded,
 };
+use nom_locate::LocatedSpan;
 
 use crate::{Error, Result};
 use ustr::{Ustr, UstrMap, UstrSet, ustr};
@@ -325,24 +326,43 @@ pub fn expr_to_dot_file<P: AsRef<std::path::Path>>(
     Ok(())
 }
 
-use nom_locate::LocatedSpan;
 pub type Span<'a> = LocatedSpan<&'a str>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct HumanSpan {
-    pub line_start: usize,
-    pub start: usize,
-    pub end: usize,
+    pub line: usize,
+    pub column_start: usize,
+    pub column_end: usize,
 }
 
+// XXX Doesn't handle tabs
 impl HumanSpan {
-    fn new(before: Span, after: Span) -> Self {
-        // XXX Doesn't handle tabs
+    fn from_range(before: Span, after: Span) -> Self {
         Self {
-            line_start: before.location_line() as usize - 1,
-            start: before.get_column() - 1,
-            end: after.get_column() - 1,
+            line: before.location_line() as usize,
+            column_start: before.get_column(),
+            column_end: after.get_column(),
         }
+    }
+
+    fn from_machine(span: Span) -> Self {
+        Self {
+            line: span.location_line() as usize,
+            column_start: span.get_column(),
+            column_end: span.get_column() + 1,
+        }
+    }
+
+    pub fn line_machine(&self) -> usize {
+        self.line - 1
+    }
+
+    pub fn column_start_machine(&self) -> usize {
+        self.column_start - 1
+    }
+
+    pub fn column_end_machine(&self) -> usize {
+        self.column_end - 1
     }
 }
 
@@ -463,7 +483,7 @@ fn terminal_opt_description_expr<'s>(
         term: ustr(&term),
         descr: descr.map(|span| ustr(&span)),
         fallback: 0,
-        span: HumanSpan::new(input, after),
+        span: HumanSpan::from_range(input, after),
     };
     let id = alloc(arena, expr);
     Ok((after, id))
@@ -478,7 +498,7 @@ fn nonterm(input: Span) -> IResult<Span, Span> {
 
 fn nonterm_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
     let (after, nonterm) = context("nonterminal", nonterm)(input)?;
-    let diagnostic_span = HumanSpan::new(input, after);
+    let diagnostic_span = HumanSpan::from_range(input, after);
     let e = Expr::NontermRef {
         nonterm: ustr(nonterm.into_fragment()),
         fallback: 0,
@@ -497,7 +517,7 @@ fn triple_bracket_command(input: Span) -> IResult<Span, Span> {
 
 fn command_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
     let (after, cmd) = triple_bracket_command(input)?;
-    let command_span = HumanSpan::new(input, after);
+    let command_span = HumanSpan::from_range(input, after);
     let e = Expr::Command {
         cmd: ustr(cmd.into_fragment()),
         regex: None,
@@ -548,7 +568,7 @@ fn nontail_command_expr<'s>(
     mut input: Span<'s>,
 ) -> IResult<Span<'s>, ExprId> {
     let (after, cmd) = triple_bracket_command(input)?;
-    let command_span = HumanSpan::new(input, after);
+    let command_span = HumanSpan::from_range(input, after);
     input = after;
     let (input, regex_decl) = cmd_regex_decl(input)?;
     let e = Expr::Command {
@@ -635,7 +655,7 @@ fn subword_sequence_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<
             .map(|e| flatten_expr(arena, e))
             .collect();
         let e = Expr::Sequence(flattened_factors);
-        let span = HumanSpan::new(input, after);
+        let span = HumanSpan::from_range(input, after);
         let subword_id = alloc(arena, e);
         let subword_expr = Expr::Subword {
             phase: SubwordCompilationPhase::Expr(subword_id),
@@ -1897,36 +1917,18 @@ fn get_nonterminals_resolution_order(
 }
 
 impl Grammar {
-    pub fn parse(input_before: &str) -> std::result::Result<Self, chic::Error> {
+    pub fn parse(input_before: &str) -> crate::Result<Self> {
         let (input_after, (arena, statements)) = match grammar(Span::new(input_before)).finish() {
             Ok((input, statements)) => (input, statements),
             Err(e) => {
-                let line_start = e.input.location_line() as usize - 1;
-                let start = e.input.get_column() - 1;
-                let end = start + 1;
-                let error = chic::Error::new(e.to_string()).error(
-                    line_start,
-                    start,
-                    end,
-                    input_before.lines().nth(line_start).unwrap(),
-                    "",
-                );
-                return Err(error);
+                let span = HumanSpan::from_machine(e.input);
+                return Err(Error::ParseError(span));
             }
         };
 
         if !input_after.is_empty() {
-            let line_start = input_after.location_line() as usize - 1;
-            let start = input_after.get_column() - 1;
-            let end = start + 1;
-            let error = chic::Error::new("Parsing failed").error(
-                line_start,
-                start,
-                end,
-                input_before.lines().nth(line_start).unwrap(),
-                "",
-            );
-            return Err(error);
+            let span = HumanSpan::from_machine(input_after);
+            return Err(Error::ParseError(span));
         }
 
         let g = Grammar { arena, statements };

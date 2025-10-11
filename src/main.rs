@@ -58,132 +58,87 @@ fn get_file_or_stdin(path: &str) -> anyhow::Result<Box<dyn Read>> {
     Ok(result)
 }
 
-fn handle_parse_error(input: &str) -> anyhow::Result<Grammar> {
-    match Grammar::parse(input) {
-        Ok(g) => Ok(g),
-        Err(e) => {
-            eprintln!("{}", e.to_string());
-            exit(1);
+struct ErrMsg {
+    err: chic::Error,
+}
+
+impl ErrMsg {
+    fn new(label: &str) -> Self {
+        Self {
+            err: chic::Error::new(label),
         }
+    }
+
+    fn error(self, span: &HumanSpan, source: &str, what: &str) -> Self {
+        Self {
+            err: self.err.error(
+                span.line,
+                span.column_start_machine(),
+                span.column_end_machine(),
+                source.lines().nth(span.line_machine()).unwrap(),
+                what,
+            ),
+        }
+    }
+
+    fn help(self, label: &str) -> Self {
+        Self {
+            err: self.err.help(label),
+        }
+    }
+
+    fn to_string(self, span: &HumanSpan) -> String {
+        format!(
+            "{}:{}:{}",
+            span.line,
+            span.column_start,
+            self.err.to_string()
+        )
     }
 }
 
-fn handle_validation_error(e: Error, input: &str, command: &str) -> anyhow::Result<()> {
+fn handle_error(e: Error, source: &str, command: &str) -> anyhow::Result<()> {
     match e {
+        Error::ParseError(span) => {
+            let err = ErrMsg::new("Parse error").error(&span, source, "");
+            eprintln!("{}", err.to_string(&span));
+        }
         Error::VaryingCommandNames(cmds) => {
             let joined = itertools::join(cmds.into_iter().map(|c| format!("{c}")), ", ");
             eprintln!("Multiple commands specified: {joined}");
         }
         Error::SubwordSpaces(left, right, trace) => {
-            let HumanSpan {
-                line_start: left_line_start,
-                start: left_start,
-                end: left_end,
-            } = left;
-            let HumanSpan {
-                line_start: right_line_start,
-                end: right_end,
-                start: right_start,
-            } = right;
-            let error = chic::Error::new(
-                "Adjacent literals in expression used in a subword context.  First one:",
-            )
-            .error(
-                left_line_start,
-                left_start,
-                left_end,
-                input.lines().nth(left_line_start).unwrap(),
-                "",
-            );
-            eprintln!("{}:{}:{}", left_line_start, left_start, error.to_string());
+            let err = ErrMsg::new("Adjacent literals in expression used in a subword context")
+                .error(&left, source, "First one");
+            eprintln!("{}", err.to_string(&left));
 
-            let right_error = chic::Error::new("Second one:").error(
-                right_line_start,
-                right_start,
-                right_end,
-                input.lines().nth(right_line_start).unwrap(),
-                "",
-            ).help("Join the adjacent literals into one as spaces are invalid in a subword context");
-            eprintln!(
-                "{}:{}:{}",
-                right_line_start,
-                right_start,
-                right_error.to_string()
+            let err = ErrMsg::new("").error(&right, source, "Second one").help(
+                "Join the adjacent literals into one as spaces are invalid in a subword context",
             );
+            eprintln!("{}", err.to_string(&right));
 
             for t in trace {
-                let HumanSpan {
-                    line_start,
-                    start,
-                    end,
-                } = t;
-                let e = chic::Error::new("Referenced in a subword context at").error(
-                    line_start,
-                    start,
-                    end,
-                    input.lines().nth(line_start).unwrap(),
-                    "",
-                );
-                eprintln!("{}:{}:{}", line_start, start, e.to_string());
+                let err = ErrMsg::new("Referenced in a subword context at").error(&t, source, "");
+                eprintln!("{}", err.to_string(&t));
             }
         }
-        Error::AmbiguousMatchable(first, second) => {
-            let HumanSpan {
-                line_start: left_line_start,
-                start: left_start,
-                end: left_end,
-            } = first.get_span();
-            let HumanSpan {
-                line_start: right_line_start,
-                start: right_start,
-                end: right_end,
-            } = second.get_span();
-            let error = chic::Error::new("Ambiguous grammar.  Matching can't differentiate:")
-                .error(
-                    left_line_start,
-                    left_start,
-                    left_end,
-                    input.lines().nth(left_line_start).unwrap(),
-                    "",
-                );
-            eprintln!("{}:{}:{}", left_line_start, left_start, error.to_string());
-            let error = chic::Error::new("and:").error(
-                right_line_start,
-                right_start,
-                right_end,
-                input.lines().nth(right_line_start).unwrap(),
-                "",
-            );
-            eprintln!("{}:{}:{}", right_line_start, right_start, error.to_string());
+        Error::AmbiguousMatchable(left, right) => {
+            let err = ErrMsg::new("Ambiguous grammar.  Matching can't differentiate:")
+                .error(&left, source, "");
+            eprintln!("{}", err.to_string(&left));
+
+            let err = ErrMsg::new("and:").error(&right, source, "");
+            eprintln!("{}", err.to_string(&right));
         }
-        Error::UnboundedMatchable(first, second) => {
-            let HumanSpan {
-                line_start: left_line_start,
-                start: left_start,
-                end: left_end,
-            } = first.get_span();
-            let HumanSpan {
-                line_start: right_line_start,
-                start: right_start,
-                end: right_end,
-            } = second.get_span();
-            let error = chic::Error::new("Ambiguous grammar.  Matching can't ascertain where:")
-                .error(
-                    left_line_start,
-                    left_start,
-                    left_end,
-                    input.lines().nth(left_line_start).unwrap(),
-                    "",
-                );
-            eprintln!("{}:{}:{}", left_line_start, left_start, error.to_string());
-            let error = chic::Error::new("ends and begins:").error(
-                right_line_start,
-                right_start,
-                right_end,
-                input.lines().nth(right_line_start).unwrap(),
-                "",
-            );
-            eprintln!("{}:{}:{}", right_line_start, right_start, error.to_string());
+        Error::UnboundedMatchable(left, right) => {
+            let err = ErrMsg::new(
+                "Ambiguous grammar.  Matching can't ascertain where below element ends:",
+            )
+            .error(&left, source, "");
+            eprintln!("{}", err.to_string(&left));
+
+            let err = ErrMsg::new("...and where below element begins:").error(&right, source, "");
+            eprintln!("{}", err.to_string(&right));
         }
         Error::AmbiguousDFA(path, ambiguous_inputs) => {
             let joined_path = {
@@ -203,64 +158,21 @@ fn handle_validation_error(e: Error, input: &str, command: &str) -> anyhow::Resu
                 eprintln!("  {command} {joined_path} {buffer}");
             }
         }
-        Error::ClashingVariants(first, second) => {
-            let HumanSpan {
-                line_start: left_line_start,
-                start: left_start,
-                end: left_end,
-            } = first;
-            let HumanSpan {
-                line_start: right_line_start,
-                start: right_start,
-                end: right_end,
-            } = second;
-            let error = chic::Error::new("Clashing variants.  Completion can't differentiate:")
-                .error(
-                    left_line_start,
-                    left_start,
-                    left_end,
-                    input.lines().nth(left_line_start).unwrap(),
-                    "",
-                );
-            eprintln!("{}:{}:{}", left_line_start, left_start, error.to_string());
-            let error = chic::Error::new("and:").error(
-                right_line_start,
-                right_start,
-                right_end,
-                input.lines().nth(right_line_start).unwrap(),
-                "",
-            );
-            eprintln!("{}:{}:{}", right_line_start, right_start, error.to_string());
+        Error::ClashingVariants(left, right) => {
+            let err = ErrMsg::new("Clashing variants.  Completion can't differentiate:")
+                .error(&left, source, "");
+            eprintln!("{}", err.to_string(&left));
+
+            let err = ErrMsg::new("and:").error(&right, source, "");
+            eprintln!("{}", err.to_string(&right));
         }
-        Error::ClashingSubwordLeaders(first, second) => {
-            let HumanSpan {
-                line_start: left_line_start,
-                start: left_start,
-                end: left_end,
-            } = first;
-            let HumanSpan {
-                line_start: right_line_start,
-                start: right_start,
-                end: right_end,
-            } = second;
-            let error =
-                chic::Error::new("Clashing subword leaders.  Completion can't differentiate:")
-                    .error(
-                        left_line_start,
-                        left_start,
-                        left_end,
-                        input.lines().nth(left_line_start).unwrap(),
-                        "",
-                    );
-            eprintln!("{}:{}:{}", left_line_start, left_start, error.to_string());
-            let error = chic::Error::new("and:").error(
-                right_line_start,
-                right_start,
-                right_end,
-                input.lines().nth(right_line_start).unwrap(),
-                "",
-            );
-            eprintln!("{}:{}:{}", right_line_start, right_start, error.to_string());
+        Error::ClashingSubwordLeaders(left, right) => {
+            let err = ErrMsg::new("Clashing subword leaders.  Completion can't differentiate:")
+                .error(&left, source, "");
+            eprintln!("{}", err.to_string(&left));
+
+            let err = ErrMsg::new("and:").error(&right, source, "");
+            eprintln!("{}", err.to_string(&right));
         }
         e => {
             eprintln!("{}", e);
@@ -292,7 +204,10 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
         input
     };
 
-    let grammar = handle_parse_error(&input)?;
+    let grammar = match Grammar::parse(&input) {
+        Ok(grammar) => grammar,
+        Err(e) => return handle_error(e, &input, "dummy"),
+    };
 
     let (shell, path) = match (&args.bash, &args.fish, &args.zsh) {
         (Some(path), None, None) => (Shell::Bash, path),
@@ -307,7 +222,7 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
 
     let validated = match ValidGrammar::from_grammar(grammar, shell) {
         Ok(validated) => validated,
-        Err(e) => return handle_validation_error(e, &input, "dummy"),
+        Err(e) => return handle_error(e, &input, "dummy"),
     };
 
     if !validated.undefined_nonterminals.is_empty() {
@@ -322,7 +237,7 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
 
     let regex = match Regex::from_valid_grammar(&validated, shell) {
         Ok(regex) => regex,
-        Err(e) => return handle_validation_error(e, &input, &validated.command),
+        Err(e) => return handle_error(e, &input, &validated.command),
     };
 
     if let Some(regex_dot_file_path) = &args.regex {
@@ -334,7 +249,7 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
 
     let dfa = match DFA::from_regex(shell, regex, validated.subdfas) {
         Ok(dfa) => dfa,
-        Err(e) => return handle_validation_error(e, &input, &validated.command),
+        Err(e) => return handle_error(e, &input, &validated.command),
     };
 
     let dfa = dfa.minimize();
