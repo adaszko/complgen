@@ -529,7 +529,9 @@ fn do_from_expr(
         }
         Expr::Command {
             cmd,
-            regex,
+            bash_regex,
+            fish_regex,
+            zsh_regex,
             fallback,
             span,
         } => {
@@ -537,7 +539,11 @@ fn do_from_expr(
                 RegexNode::Command(*cmd, Position::try_from(input_from_position.len()).unwrap());
             let input = Input::Command {
                 cmd: *cmd,
-                regex: *regex,
+                regex: Some(CmdRegex {
+                    bash: *bash_regex,
+                    fish: *fish_regex,
+                    zsh: *zsh_regex,
+                }),
                 fallback_level: *fallback,
                 span: *span,
             };

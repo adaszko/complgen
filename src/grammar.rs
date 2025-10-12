@@ -107,7 +107,9 @@ pub enum Expr {
     // `{{{ ls }}}@bash"foo"@fish"bar"`
     Command {
         cmd: Ustr,
-        regex: Option<CmdRegex>,
+        bash_regex: Option<Ustr>,
+        fish_regex: Option<Ustr>,
+        zsh_regex: Option<Ustr>,
         fallback: usize,
         span: HumanSpan,
     },
@@ -208,11 +210,13 @@ impl std::fmt::Debug for Expr {
             )),
             Self::Command {
                 cmd,
-                regex,
+                bash_regex,
+                fish_regex,
+                zsh_regex,
                 fallback,
                 span,
             } => f.write_fmt(format_args!(
-                r#"Command(ustr({cmd:?}), {regex:?}, {fallback}, {span:?})"#
+                r#"Command(ustr({cmd:?}), {bash_regex:?}, {fish_regex:?}, {zsh_regex:?}, {fallback}, {span:?})"#
             )),
             Self::Sequence(children) => {
                 f.write_fmt(format_args!(r#"Sequence(vec!{:?})"#, children))
@@ -520,7 +524,9 @@ fn command_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>,
     let command_span = HumanSpan::from_range(input, after);
     let e = Expr::Command {
         cmd: ustr(cmd.into_fragment()),
-        regex: None,
+        bash_regex: None,
+        fish_regex: None,
+        zsh_regex: None,
         fallback: 0,
         span: command_span,
     };
@@ -563,17 +569,16 @@ fn cmd_regex_decl(mut input: Span) -> IResult<Span, CmdRegex> {
     Ok((input, spec))
 }
 
-fn nontail_command_expr<'s>(
-    arena: &mut Vec<Expr>,
-    mut input: Span<'s>,
-) -> IResult<Span<'s>, ExprId> {
+fn command_regex_expr<'s>(arena: &mut Vec<Expr>, mut input: Span<'s>) -> IResult<Span<'s>, ExprId> {
     let (after, cmd) = triple_bracket_command(input)?;
     let command_span = HumanSpan::from_range(input, after);
     input = after;
     let (input, regex_decl) = cmd_regex_decl(input)?;
     let e = Expr::Command {
         cmd: ustr(cmd.into_fragment()),
-        regex: Some(regex_decl),
+        bash_regex: regex_decl.bash,
+        fish_regex: regex_decl.fish,
+        zsh_regex: regex_decl.zsh,
         fallback: 0,
         span: command_span,
     };
@@ -620,7 +625,7 @@ fn unary_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, E
             break 'alt (input, e);
         }
 
-        if let Ok((input, e)) = nontail_command_expr(arena, input) {
+        if let Ok((input, e)) = command_regex_expr(arena, input) {
             break 'alt (input, e);
         }
 
@@ -2014,17 +2019,27 @@ pub mod tests {
             (
                 Expr::Command {
                     cmd: l,
-                    regex: l_regex,
+                    bash_regex: l_bash_regex,
+                    fish_regex: l_fish_regex,
+                    zsh_regex: l_zsh_regex,
                     fallback: l_fallback,
                     span: _,
                 },
                 Expr::Command {
                     cmd: r,
-                    regex: r_regex,
+                    bash_regex: r_bash_regex,
+                    fish_regex: r_fish_regex,
+                    zsh_regex: r_zsh_regex,
                     fallback: r_fallback,
                     span: _,
                 },
-            ) => l == r && l_regex == r_regex && l_fallback == r_fallback,
+            ) => {
+                l == r
+                    && l_bash_regex == r_bash_regex
+                    && l_fish_regex == r_fish_regex
+                    && l_zsh_regex == r_zsh_regex
+                    && l_fallback == r_fallback
+            }
             (Expr::Sequence(l), Expr::Sequence(r))
             | (Expr::Alternative(l), Expr::Alternative(r))
             | (Expr::Fallback(l), Expr::Fallback(r)) => {
@@ -2193,7 +2208,7 @@ pub mod tests {
         let (s, e) = command_expr(&mut arena, Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
         assert!(
-            matches!(arena[e], Command { cmd: s, regex: None, fallback: 0, .. } if s == "rustup toolchain list | cut -d' ' -f1")
+            matches!(arena[e], Command { cmd, fallback: 0, .. } if cmd == "rustup toolchain list | cut -d' ' -f1")
         );
     }
 
@@ -2201,17 +2216,15 @@ pub mod tests {
     fn parses_nontail_command() {
         const INPUT: &str = r#"{{{ foo }}}@bash"bar""#;
         let mut arena: Vec<Expr> = Default::default();
-        let (s, actual) = nontail_command_expr(&mut arena, Span::new(INPUT)).unwrap();
+        let (s, actual) = command_regex_expr(&mut arena, Span::new(INPUT)).unwrap();
         assert!(s.is_empty(), "{:?}", s.fragment());
         let expected = alloc(
             &mut arena,
             Command {
                 cmd: ustr("foo"),
-                regex: Some(CmdRegex {
-                    bash: Some(ustr("bar")),
-                    fish: None,
-                    zsh: None,
-                }),
+                bash_regex: Some(ustr("bar")),
+                fish_regex: None,
+                zsh_regex: None,
                 fallback: 0,
                 span: HumanSpan::default(),
             },
@@ -2229,7 +2242,9 @@ pub mod tests {
             &mut arena,
             Command {
                 cmd: ustr("rad patch list | awk '{print $3}' | grep . | grep -vw ID"),
-                regex: None,
+                bash_regex: None,
+                fish_regex: None,
+                zsh_regex: None,
                 fallback: 0,
                 span: HumanSpan::default(),
             },
@@ -2615,7 +2630,9 @@ cargo [+{{{ rustup toolchain list | cut -d' ' -f1 }}}]
             &mut g.arena,
             Command {
                 cmd: ustr("rustup toolchain list | cut -d' ' -f1"),
-                regex: None,
+                bash_regex: None,
+                fish_regex: None,
+                zsh_regex: None,
                 fallback: 0,
                 span: HumanSpan::default(),
             },
@@ -2938,7 +2955,9 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
             &mut g.arena,
             Command {
                 cmd: ustr("rustup toolchain list | cut -d' ' -f1"),
-                regex: None,
+                bash_regex: None,
+                fish_regex: None,
+                zsh_regex: None,
                 fallback: 0,
                 span: HumanSpan::default(),
             },
@@ -3085,7 +3104,9 @@ ls <FILE>;
             &mut g.arena,
             Command {
                 cmd: ustr(r#"compgen -A file "$1""#),
-                regex: None,
+                bash_regex: None,
+                fish_regex: None,
+                zsh_regex: None,
                 fallback: 0,
                 span: HumanSpan::default(),
             },
@@ -3106,7 +3127,9 @@ ls <FILE>;
             &mut g.arena,
             Command {
                 cmd: ustr(r#"__fish_complete_path "$1""#),
-                regex: None,
+                bash_regex: None,
+                fish_regex: None,
+                zsh_regex: None,
                 fallback: 0,
                 span: HumanSpan::default(),
             },
@@ -3246,7 +3269,9 @@ ls <FILE>;
             &mut arena,
             Command {
                 cmd: ustr("git tag"),
-                regex: None,
+                bash_regex: None,
+                fish_regex: None,
+                zsh_regex: None,
                 fallback: 0,
                 span: HumanSpan::default(),
             },
@@ -3256,7 +3281,9 @@ ls <FILE>;
             &mut arena,
             Command {
                 cmd: ustr("git tag"),
-                regex: None,
+                bash_regex: None,
+                fish_regex: None,
+                zsh_regex: None,
                 fallback: 0,
                 span: HumanSpan::default(),
             },
@@ -3296,11 +3323,9 @@ ls <FILE>;
             &mut arena,
             Command {
                 cmd: ustr("echo foo"),
-                regex: Some(CmdRegex {
-                    bash: Some(ustr("bar")),
-                    fish: Some(ustr("baz")),
-                    zsh: Some(ustr("quux")),
-                }),
+                bash_regex: Some(ustr("bar")),
+                fish_regex: Some(ustr("baz")),
+                zsh_regex: Some(ustr("quux")),
                 fallback: 0,
                 span: HumanSpan::default(),
             },
