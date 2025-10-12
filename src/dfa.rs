@@ -1056,7 +1056,7 @@ mod tests {
         let mut arena: Vec<Expr> = Default::default();
         let expr = alloc(&mut arena, Expr::term("foo"));
         let specs = UstrMap::default();
-        let regex = Regex::from_expr(expr, &arena, &specs).unwrap();
+        let regex = Regex::from_expr(expr, &arena, Shell::Bash, &specs).unwrap();
         let subdfas = DFAInternPool::default();
         assert!(regex.check_ambiguities(&subdfas, Shell::Bash).is_ok());
         let dfa = DFA::from_regex(Shell::Bash, regex, DFAInternPool::default()).unwrap();
@@ -1326,7 +1326,7 @@ mod tests {
             //println!("{:?}", arena);
             //println!("{:?}", input);
             let specs = UstrMap::default();
-            let regex = Regex::from_expr(expr, &arena.borrow(), &specs).unwrap();
+            let regex = Regex::from_expr(expr, &arena.borrow(), Shell::Bash, &specs).unwrap();
             //dbg!(&regex.input_from_position);
             let subdfas = DFAInternPool::default();
             prop_assume!(regex.check_ambiguities(&subdfas, Shell::Bash).is_ok());
@@ -1341,7 +1341,7 @@ mod tests {
             println!("{:?}", expr);
             println!("{:?}", input);
             let specs = UstrMap::default();
-            let regex = Regex::from_expr(expr, &arena.borrow(), &specs).unwrap();
+            let regex = Regex::from_expr(expr, &arena.borrow(), Shell::Bash, &specs).unwrap();
             let subdfas = DFAInternPool::default();
             prop_assume!(regex.check_ambiguities(&subdfas, Shell::Bash).is_ok());
             let dfa = DFA::from_regex_lenient(Shell::Bash, regex, DFAInternPool::default());

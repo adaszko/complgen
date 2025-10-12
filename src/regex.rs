@@ -12,7 +12,7 @@ use roaring::RoaringBitmap;
 use ustr::{Ustr, UstrMap};
 
 use crate::grammar::{
-    CmdRegex, DFAId, Expr, ExprId, HumanSpan, Shell, Specialization, SubwordCompilationPhase,
+    DFAId, Expr, ExprId, HumanSpan, Shell, Specialization, SubwordCompilationPhase,
 };
 
 pub type Position = u32;
@@ -38,14 +38,14 @@ pub enum Input {
     },
     Command {
         cmd: Ustr,
-        regex: Option<CmdRegex>,
+        regex: Option<Ustr>,
         fallback_level: usize,
         span: HumanSpan,
     },
 }
 
 impl Input {
-    fn is_star(&self, subdfas: &DFAInternPool, shell: Shell) -> bool {
+    fn is_star(&self, subdfas: &DFAInternPool) -> bool {
         match self {
             Self::Literal { .. } => false,
             Self::Subword { subdfa: id, .. } => {
@@ -60,20 +60,16 @@ impl Input {
             }
             Self::Nonterminal { .. } => true,
             Self::Command { regex: None, .. } => true,
-            Self::Command {
-                regex: Some(regex), ..
-            } => regex.matches_anything(shell),
+            Self::Command { .. } => false,
         }
     }
 
-    fn is_star_subword(&self, shell: Shell) -> bool {
+    fn is_star_subword(&self) -> bool {
         match self {
             Self::Literal { .. } => false,
             Self::Nonterminal { .. } => true,
             Self::Command { regex: None, .. } => true,
-            Self::Command {
-                regex: Some(regex), ..
-            } => regex.matches_anything(shell),
+            Self::Command { .. } => false,
             Self::Subword { .. } => unreachable!(),
         }
     }
@@ -162,33 +158,15 @@ impl Inp {
             }
             Input::Command {
                 cmd,
-                regex: None,
+                regex,
                 fallback_level,
                 ..
             } => Self::Command {
                 cmd,
-                regex: None,
+                regex,
                 zsh_compadd: false,
                 fallback_level,
             },
-            Input::Command {
-                cmd,
-                regex: Some(regex),
-                fallback_level,
-                ..
-            } => {
-                let rx = match shell {
-                    Shell::Bash => regex.bash,
-                    Shell::Fish => regex.fish,
-                    Shell::Zsh => regex.zsh,
-                };
-                Self::Command {
-                    cmd,
-                    regex: rx,
-                    zsh_compadd: false,
-                    fallback_level,
-                }
-            }
         }
     }
 
@@ -467,6 +445,7 @@ impl RegexNode {
 fn do_from_expr(
     e: ExprId,
     expr_arena: &[Expr],
+    shell: Shell,
     specs: &UstrMap<Specialization>,
     arena: &mut Vec<RegexNode>,
     input_from_position: &mut Vec<Input>,
@@ -537,13 +516,14 @@ fn do_from_expr(
         } => {
             let result =
                 RegexNode::Command(*cmd, Position::try_from(input_from_position.len()).unwrap());
+            let rx = match shell {
+                Shell::Bash => bash_regex,
+                Shell::Fish => fish_regex,
+                Shell::Zsh => zsh_regex,
+            };
             let input = Input::Command {
                 cmd: *cmd,
-                regex: Some(CmdRegex {
-                    bash: *bash_regex,
-                    fish: *fish_regex,
-                    zsh: *zsh_regex,
-                }),
+                regex: *rx,
                 fallback_level: *fallback,
                 span: *span,
             };
@@ -551,11 +531,23 @@ fn do_from_expr(
             alloc(arena, result)
         }
         Expr::Sequence(subexprs) => {
-            let mut left_regex_id =
-                do_from_expr(subexprs[0], expr_arena, specs, arena, input_from_position);
+            let mut left_regex_id = do_from_expr(
+                subexprs[0],
+                expr_arena,
+                shell,
+                specs,
+                arena,
+                input_from_position,
+            );
             for right_expr in &subexprs[1..] {
-                let right_regex_id =
-                    do_from_expr(*right_expr, expr_arena, specs, arena, input_from_position);
+                let right_regex_id = do_from_expr(
+                    *right_expr,
+                    expr_arena,
+                    shell,
+                    specs,
+                    arena,
+                    input_from_position,
+                );
                 let left_regex = RegexNode::Cat(left_regex_id, right_regex_id);
                 left_regex_id = alloc(arena, left_regex);
             }
@@ -564,20 +556,35 @@ fn do_from_expr(
         Expr::Alternative(subexprs) => {
             let mut subregexes: Vec<RegexNodeId> = Default::default();
             for e in subexprs {
-                let subregex = do_from_expr(*e, expr_arena, specs, arena, input_from_position);
+                let subregex =
+                    do_from_expr(*e, expr_arena, shell, specs, arena, input_from_position);
                 subregexes.push(subregex);
             }
             let result = RegexNode::Or(subregexes.into_boxed_slice(), false);
             alloc(arena, result)
         }
         Expr::Optional(subexpr) => {
-            let subregex = do_from_expr(*subexpr, expr_arena, specs, arena, input_from_position);
+            let subregex = do_from_expr(
+                *subexpr,
+                expr_arena,
+                shell,
+                specs,
+                arena,
+                input_from_position,
+            );
             let epsid = alloc(arena, RegexNode::Epsilon);
             let result = RegexNode::Or(Box::new([subregex, epsid]), false);
             alloc(arena, result)
         }
         Expr::Many1(subexpr) => {
-            let subregex_id = do_from_expr(*subexpr, expr_arena, specs, arena, input_from_position);
+            let subregex_id = do_from_expr(
+                *subexpr,
+                expr_arena,
+                shell,
+                specs,
+                arena,
+                input_from_position,
+            );
             let star = RegexNode::Star(subregex_id);
             let starid = alloc(arena, star);
             let result = RegexNode::Cat(subregex_id, starid);
@@ -589,7 +596,8 @@ fn do_from_expr(
         Expr::Fallback(subexprs) => {
             let mut subregexes: Vec<RegexNodeId> = Default::default();
             for e in subexprs {
-                let subregex = do_from_expr(*e, expr_arena, specs, arena, input_from_position);
+                let subregex =
+                    do_from_expr(*e, expr_arena, shell, specs, arena, input_from_position);
                 subregexes.push(subregex);
             }
             let result = RegexNode::Or(subregexes.into_boxed_slice(), true);
@@ -664,7 +672,7 @@ fn do_to_dot<W: Write>(
 
 impl Regex {
     pub fn from_valid_grammar(v: &ValidGrammar, shell: Shell) -> Result<Self> {
-        let regex = Self::from_expr(v.expr, &v.arena, &v.specializations)?;
+        let regex = Self::from_expr(v.expr, &v.arena, shell, &v.specializations)?;
         regex.check_ambiguities(&v.subdfas, shell)?;
         Ok(regex)
     }
@@ -672,11 +680,19 @@ impl Regex {
     pub(crate) fn from_expr(
         e: ExprId,
         expr_arena: &[Expr],
+        shell: Shell,
         specs: &UstrMap<Specialization>,
     ) -> Result<Self> {
         let mut input_from_position: Vec<Input> = Default::default();
         let mut arena: Vec<RegexNode> = Default::default();
-        let regex = do_from_expr(e, expr_arena, specs, &mut arena, &mut input_from_position);
+        let regex = do_from_expr(
+            e,
+            expr_arena,
+            shell,
+            specs,
+            &mut arena,
+            &mut input_from_position,
+        );
         let endmarker_position = input_from_position.len() as Position;
         let endmarkerid = alloc(&mut arena, RegexNode::EndMarker(endmarker_position));
         let root = RegexNode::Cat(regex, endmarkerid);
@@ -705,7 +721,7 @@ impl Regex {
             .iter()
             .filter(|pos| *pos != self.endmarker_position)
             .map(|pos| self.input_from_position[pos as usize].clone())
-            .filter(|input| input.is_star(subdfas, shell))
+            .filter(|input| input.is_star(subdfas))
             .collect();
 
         if stars.len() >= 2 {
@@ -748,7 +764,7 @@ impl Regex {
             .iter()
             .filter(|pos| *pos != self.endmarker_position)
             .map(|pos| self.input_from_position[pos as usize].clone())
-            .filter(|input| input.is_star_subword(shell))
+            .filter(|input| input.is_star_subword())
             .collect();
 
         if stars.len() >= 2 {
@@ -803,7 +819,7 @@ impl Regex {
                 ));
             }
 
-            if inp.is_star_subword(shell) {
+            if inp.is_star_subword() {
                 prev_ambiguous = Some(inp);
             }
         }

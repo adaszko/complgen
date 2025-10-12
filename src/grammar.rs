@@ -160,16 +160,6 @@ pub enum Shell {
     Zsh,
 }
 
-impl CmdRegex {
-    pub(crate) fn matches_anything(&self, shell: Shell) -> bool {
-        match shell {
-            Shell::Bash => self.bash.is_none(),
-            Shell::Fish => self.fish.is_none(),
-            Shell::Zsh => self.zsh.is_none(),
-        }
-    }
-}
-
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Specialization {
     pub bash: Option<Ustr>,
@@ -1107,7 +1097,7 @@ fn compile_subword_exprs(
                 SubwordCompilationPhase::DFA(_) => unreachable!(),
             };
             let subword_expr = flatten_expr(arena, subword_expr);
-            let regex = Regex::from_expr(subword_expr, arena, specs).unwrap();
+            let regex = Regex::from_expr(subword_expr, arena, shell, specs).unwrap();
             regex.check_ambiguities_subword(shell)?;
             let dfa = DFA::from_regex(shell, regex, DFAInternPool::default())?;
             let dfa = dfa.minimize();
