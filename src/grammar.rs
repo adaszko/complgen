@@ -145,14 +145,6 @@ pub enum Expr {
     },
 }
 
-// Invariant: At least one field must be Some(_)
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct CmdRegex {
-    pub bash: Option<Ustr>,
-    pub fish: Option<Ustr>,
-    pub zsh: Option<Ustr>,
-}
-
 #[derive(Copy, Clone)]
 pub enum Shell {
     Bash,
@@ -535,40 +527,38 @@ fn at_shell_regex(input: Span) -> IResult<Span, (String, String)> {
     Ok((input, (shell, regex)))
 }
 
-fn cmd_regex_decl(mut input: Span) -> IResult<Span, CmdRegex> {
-    let mut spec = CmdRegex::default();
-    while let Ok((rest, (shell, regex))) = at_shell_regex(input) {
-        match shell.as_ref() {
-            "bash" => spec.bash = Some(ustr(regex.as_ref())),
-            "fish" => spec.fish = Some(ustr(regex.as_ref())),
-            "zsh" => spec.zsh = Some(ustr(regex.as_ref())),
-            _ => unreachable!(),
-        }
-        input = rest;
-    }
-
-    if let CmdRegex {
-        bash: None,
-        fish: None,
-        zsh: None,
-    } = spec
-    {
-        return fail(input);
-    }
-
-    Ok((input, spec))
-}
-
 fn command_regex_expr<'s>(arena: &mut Vec<Expr>, mut input: Span<'s>) -> IResult<Span<'s>, ExprId> {
     let (after, cmd) = triple_bracket_command(input)?;
     let command_span = HumanSpan::from_range(input, after);
     input = after;
-    let (input, regex_decl) = cmd_regex_decl(input)?;
+
+    let (input, bash_regex, fish_regex, zsh_regex) = {
+        let mut input = input;
+        let mut bash_regex = None;
+        let mut fish_regex = None;
+        let mut zsh_regex = None;
+        while let Ok((rest, (shell, regex))) = at_shell_regex(input) {
+            match shell.as_ref() {
+                "bash" => bash_regex = Some(ustr(regex.as_ref())),
+                "fish" => fish_regex = Some(ustr(regex.as_ref())),
+                "zsh" => zsh_regex = Some(ustr(regex.as_ref())),
+                _ => unreachable!(),
+            }
+            input = rest;
+        }
+
+        if bash_regex.is_none() && fish_regex.is_none() && zsh_regex.is_none() {
+            return fail(input);
+        }
+
+        Ok((input, bash_regex, fish_regex, zsh_regex))
+    }?;
+
     let e = Expr::Command {
         cmd: ustr(cmd.into_fragment()),
-        bash_regex: regex_decl.bash,
-        fish_regex: regex_decl.fish,
-        zsh_regex: regex_decl.zsh,
+        bash_regex,
+        fish_regex,
+        zsh_regex,
         fallback: 0,
         span: command_span,
     };
