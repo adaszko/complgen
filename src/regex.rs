@@ -52,7 +52,7 @@ impl Input {
                 let subdfa = subdfas.lookup(*id);
                 for inp_id in subdfa.iter_leaders() {
                     let inp = subdfa.get_input(inp_id);
-                    if inp.is_star(&subdfas) {
+                    if inp.is_star(subdfas) {
                         return true;
                     }
                 }
@@ -91,7 +91,7 @@ impl Input {
 pub fn diagnostic_display_input<W: std::fmt::Write>(w: &mut W, input: &Inp) -> crate::Result<()> {
     match input {
         Inp::Literal { literal, .. } => write!(w, r#"{literal}"#)?,
-        Inp::Star { .. } => write!(w, r#"*"#)?,
+        Inp::Star => write!(w, r#"*"#)?,
         Inp::Command { cmd, .. } => write!(w, r#"{{{{{{ {cmd} }}}}}}"#)?,
         Inp::Subword { .. } => unreachable!(),
     }
@@ -935,7 +935,7 @@ impl Regex {
             .flat_map(|(literals, span)| {
                 literals
                     .iter()
-                    .map(|lit| (lit.clone(), span.clone()))
+                    .map(|lit| (*lit, span))
                     .collect::<Vec<(Ustr, HumanSpan)>>()
             })
             .collect();
@@ -980,7 +980,7 @@ impl Regex {
     pub(crate) fn check_ambiguities(&self, subdfas: &DFAInternPool, shell: Shell) -> Result<()> {
         let firstpos = RoaringBitmap::from_iter(&self.firstpos());
         let followpos = self.followpos();
-        self.check_transitions_unambiguous(&firstpos, &followpos, &subdfas, shell)?;
+        self.check_transitions_unambiguous(&firstpos, &followpos, subdfas, shell)?;
         self.check_descr_no_descr_clashes(&firstpos, &followpos)?;
         self.check_clashing_subword_leaders(&firstpos, &followpos, subdfas)?;
         Ok(())

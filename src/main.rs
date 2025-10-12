@@ -87,7 +87,7 @@ impl ErrMsg {
         }
     }
 
-    fn to_string(self, span: &HumanSpan) -> String {
+    fn into_string(self, span: &HumanSpan) -> String {
         format!(
             "{}:{}:{}",
             span.line,
@@ -101,7 +101,7 @@ fn handle_error(e: Error, source: &str, command: &str) -> anyhow::Result<()> {
     match e {
         Error::ParseError(span) => {
             let err = ErrMsg::new("Parse error").error(&span, source, "");
-            eprintln!("{}", err.to_string(&span));
+            eprintln!("{}", err.into_string(&span));
         }
         Error::VaryingCommandNames(cmds) => {
             let joined = itertools::join(cmds.into_iter().map(|c| format!("{c}")), ", ");
@@ -110,35 +110,35 @@ fn handle_error(e: Error, source: &str, command: &str) -> anyhow::Result<()> {
         Error::SubwordSpaces(left, right, trace) => {
             let err = ErrMsg::new("Adjacent literals in expression used in a subword context")
                 .error(&left, source, "First one");
-            eprintln!("{}", err.to_string(&left));
+            eprintln!("{}", err.into_string(&left));
 
             let err = ErrMsg::new("").error(&right, source, "Second one").help(
                 "Join the adjacent literals into one as spaces are invalid in a subword context",
             );
-            eprintln!("{}", err.to_string(&right));
+            eprintln!("{}", err.into_string(&right));
 
             for t in trace {
                 let err = ErrMsg::new("Referenced in a subword context at").error(&t, source, "");
-                eprintln!("{}", err.to_string(&t));
+                eprintln!("{}", err.into_string(&t));
             }
         }
         Error::AmbiguousMatchable(left, right) => {
             let err = ErrMsg::new("Ambiguous grammar.  Matching can't differentiate:")
                 .error(&left, source, "");
-            eprintln!("{}", err.to_string(&left));
+            eprintln!("{}", err.into_string(&left));
 
             let err = ErrMsg::new("and:").error(&right, source, "");
-            eprintln!("{}", err.to_string(&right));
+            eprintln!("{}", err.into_string(&right));
         }
         Error::UnboundedMatchable(left, right) => {
             let err = ErrMsg::new(
                 "Ambiguous grammar.  Matching can't ascertain where below element ends:",
             )
             .error(&left, source, "");
-            eprintln!("{}", err.to_string(&left));
+            eprintln!("{}", err.into_string(&left));
 
             let err = ErrMsg::new("...and where below element begins:").error(&right, source, "");
-            eprintln!("{}", err.to_string(&right));
+            eprintln!("{}", err.into_string(&right));
         }
         Error::AmbiguousDFA(path, ambiguous_inputs) => {
             let joined_path = {
@@ -161,18 +161,18 @@ fn handle_error(e: Error, source: &str, command: &str) -> anyhow::Result<()> {
         Error::ClashingVariants(left, right) => {
             let err = ErrMsg::new("Clashing variants.  Completion can't differentiate:")
                 .error(&left, source, "");
-            eprintln!("{}", err.to_string(&left));
+            eprintln!("{}", err.into_string(&left));
 
             let err = ErrMsg::new("and:").error(&right, source, "");
-            eprintln!("{}", err.to_string(&right));
+            eprintln!("{}", err.into_string(&right));
         }
         Error::ClashingSubwordLeaders(left, right) => {
             let err = ErrMsg::new("Clashing subword leaders.  Completion can't differentiate:")
                 .error(&left, source, "");
-            eprintln!("{}", err.to_string(&left));
+            eprintln!("{}", err.into_string(&left));
 
             let err = ErrMsg::new("and:").error(&right, source, "");
-            eprintln!("{}", err.to_string(&right));
+            eprintln!("{}", err.into_string(&right));
         }
         e => {
             eprintln!("{}", e);

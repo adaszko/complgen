@@ -626,7 +626,7 @@ fn do_to_dot<W: Write>(
         for (input_id, to) in tos {
             let input = dfa.get_input(*input_id);
             match input {
-                Inp::Literal { .. } | Inp::Star { .. } | Inp::Command { .. } => {
+                Inp::Literal { .. } | Inp::Star | Inp::Command { .. } => {
                     let label = {
                         let mut buffer = String::new();
                         diagnostic_display_input(&mut buffer, input)?;
@@ -785,7 +785,7 @@ impl DFA {
                     ..
                 } => Some((*literal, *description)),
                 Inp::Subword { .. } => None,
-                Inp::Star { .. } => None,
+                Inp::Star => None,
                 Inp::Command { .. } => None,
             })
             .collect()
@@ -831,7 +831,7 @@ impl DFA {
                     Inp::Command { regex: None, .. } => None,
                     Inp::Literal { .. } => None,
                     Inp::Subword { .. } => None,
-                    Inp::Star { .. } => None,
+                    Inp::Star => None,
                 }
             })
             .collect();
@@ -911,8 +911,7 @@ impl DFA {
 
     pub(crate) fn get_max_fallback_level(&self) -> Option<usize> {
         self.iter_inputs()
-            .map(|input| input.get_fallback_level())
-            .filter_map(|level| level)
+            .filter_map(|input| input.get_fallback_level())
             .max()
     }
 
