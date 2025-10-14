@@ -39,12 +39,12 @@ def test_ambiguous_transition2(complgen_binary_path: Path):
     r = complgen_check(complgen_binary_path, """cmd {{{ echo foo }}} | {{{ echo bar }}};""")
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
-1:5:error: Ambiguous grammar.  Matching can't differentiate:
+-:1:5:error: Ambiguous grammar.  Matching can't differentiate:
   |
 1 | cmd {{{ echo foo }}} | {{{ echo bar }}};
   |     ^^^^^^^^^^^^^^^^
   |
-1:24:error: and:
+-:1:24:error: and:
   |
 1 | cmd {{{ echo foo }}} | {{{ echo bar }}};
   |                        ^^^^^^^^^^^^^^^^
@@ -58,12 +58,12 @@ def test_ambiguous_transition4(complgen_binary_path: Path):
     r = complgen_check(complgen_binary_path, """cmd {{{ echo foo }}} || {{{ echo bar }}};""")
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
-1:5:error: Ambiguous grammar.  Matching can't differentiate:
+-:1:5:error: Ambiguous grammar.  Matching can't differentiate:
   |
 1 | cmd {{{ echo foo }}} || {{{ echo bar }}};
   |     ^^^^^^^^^^^^^^^^
   |
-1:25:error: and:
+-:1:25:error: and:
   |
 1 | cmd {{{ echo foo }}} || {{{ echo bar }}};
   |                         ^^^^^^^^^^^^^^^^
@@ -87,12 +87,12 @@ mygit (<command> || [-c <name>=<value>] <command>);
     r = complgen_check(complgen_binary_path, GRAMMAR)
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
-2:25:error: Ambiguous grammar.  Matching can't ascertain where below element ends:
+-:2:25:error: Ambiguous grammar.  Matching can't ascertain where below element ends:
   |
 2 | mygit (<command> || [-c <name>=<value>] <command>);
   |                         ^^^^^^
   |
-2:31:error: ...and where below element begins:
+-:2:31:error: ...and where below element begins:
   |
 2 | mygit (<command> || [-c <name>=<value>] <command>);
   |                               ^
@@ -118,12 +118,12 @@ def test_subword_spaces_detection1(complgen_binary_path: Path):
     r = complgen_check(complgen_binary_path, """aerc :(quit -f);""")
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
-1:8:error: Adjacent literals in expression used in a subword context
+-:1:8:error: Adjacent literals in expression used in a subword context
   |
 1 | aerc :(quit -f);
   |        ^^^^ First one
   |
-1:13:error
+-:1:13:error
   |
 1 | aerc :(quit -f);
   |             ^^ Second one
@@ -136,18 +136,18 @@ def test_subword_spaces_detection2(complgen_binary_path: Path):
     r = complgen_check(complgen_binary_path, """aerc :<COMMAND>; <COMMAND> ::= quit -f;""")
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
-1:32:error: Adjacent literals in expression used in a subword context
+-:1:32:error: Adjacent literals in expression used in a subword context
   |
 1 | aerc :<COMMAND>; <COMMAND> ::= quit -f;
   |                                ^^^^ First one
   |
-1:37:error
+-:1:37:error
   |
 1 | aerc :<COMMAND>; <COMMAND> ::= quit -f;
   |                                     ^^ Second one
   |
   = help: Join the adjacent literals into one as spaces are invalid in a subword context
-1:7:error: Referenced in a subword context at
+-:1:7:error: Referenced in a subword context at
   |
 1 | aerc :<COMMAND>; <COMMAND> ::= quit -f;
   |       ^^^^^^^^^
@@ -172,18 +172,18 @@ aerc [<OPTION>]... :<COMMAND>;
     ;""")
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
-10:8:error: Adjacent literals in expression used in a subword context
+-:10:8:error: Adjacent literals in expression used in a subword context
    |
 10 |     | (quit <QUIT_ARGS> | exit <QUIT_ARGS> | q <QUIT_ARGS>) "exit aerc"
    |        ^^^^ First one
    |
-14:19:error
+-:14:19:error
    |
 14 | <QUIT_ARGS> ::= ( -f) "force close aerc"
    |                   ^^ Second one
    |
    = help: Join the adjacent literals into one as spaces are invalid in a subword context
-4:21:error: Referenced in a subword context at
+-:4:21:error: Referenced in a subword context at
   |
 4 | aerc [<OPTION>]... :<COMMAND>;
   |                     ^^^^^^^^^
@@ -209,12 +209,12 @@ def test_bug2(complgen_binary_path: Path):
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 warning: undefined nonterminal(s): FILE
-1:9:error: Ambiguous grammar.  Matching can't differentiate:
+-:1:9:error: Ambiguous grammar.  Matching can't differentiate:
   |
 1 | darcs ( <FILE> | <DIRECTORY> );
   |         ^^^^^^
   |
-1:18:error: and:
+-:1:18:error: and:
   |
 1 | darcs ( <FILE> | <DIRECTORY> );
   |                  ^^^^^^^^^^^
@@ -230,12 +230,12 @@ aerc [<OPTION>]... foo;
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 warning: undefined nonterminal(s): OPTION
-2:7:error: Ambiguous grammar.  Matching can't differentiate:
+-:2:7:error: Ambiguous grammar.  Matching can't differentiate:
   |
 2 | aerc [<OPTION>]...;
   |       ^^^^^^^^
   |
-3:7:error: and:
+-:3:7:error: and:
   |
 3 | aerc [<OPTION>]... foo;
   |       ^^^^^^^^
@@ -248,12 +248,12 @@ def test_bug4(complgen_binary_path: Path):
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 warning: undefined nonterminal(s): INITIALIZATION COMMAND
-1:8:error: Ambiguous grammar.  Matching can't differentiate:
+-:1:8:error: Ambiguous grammar.  Matching can't differentiate:
   |
 1 | darcs [<INITIALIZATION>] <COMMAND>;
   |        ^^^^^^^^^^^^^^^^
   |
-1:26:error: and:
+-:1:26:error: and:
   |
 1 | darcs [<INITIALIZATION>] <COMMAND>;
   |                          ^^^^^^^^^
@@ -267,12 +267,12 @@ mygit (clone "Clone a repository into a new directory" | clone --bare);
 """)
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
-2:8:error: Clashing variants.  Completion can't differentiate:
+-:2:8:error: Clashing variants.  Completion can't differentiate:
   |
 2 | mygit (clone "Clone a repository into a new directory" | clone --bare);
   |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   |
-2:58:error: and:
+-:2:58:error: and:
   |
 2 | mygit (clone "Clone a repository into a new directory" | clone --bare);
   |                                                          ^^^^^
@@ -287,12 +287,12 @@ darcs <SOURCE> ... <DESTINATION>;
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 warning: undefined nonterminal(s): SOURCE DESTINATION
-2:7:error: Ambiguous grammar.  Matching can't differentiate:
+-:2:7:error: Ambiguous grammar.  Matching can't differentiate:
   |
 2 | darcs <SOURCE> ... <DESTINATION>;
   |       ^^^^^^^^
   |
-2:20:error: and:
+-:2:20:error: and:
   |
 2 | darcs <SOURCE> ... <DESTINATION>;
   |                    ^^^^^^^^^^^^^
@@ -307,12 +307,12 @@ foo baz;
 """)
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
-2:5:error: Ambiguous grammar.  Matching can't ascertain where below element ends:
+-:2:5:error: Ambiguous grammar.  Matching can't ascertain where below element ends:
   |
 2 | foo <BAR>=bar;
   |     ^^^^^
   |
-2:10:error: ...and where below element begins:
+-:2:10:error: ...and where below element begins:
   |
 2 | foo <BAR>=bar;
   |          ^^^^
@@ -337,12 +337,12 @@ foo bar=<BAZ>;
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 warning: undefined nonterminal(s): BAZ BAR
-2:5:error: Clashing subword leaders.  Completion can't differentiate:
+-:2:5:error: Clashing subword leaders.  Completion can't differentiate:
   |
 2 | foo bar=<BAR>;
   |     ^^^^^^^^^
   |
-3:5:error: and:
+-:3:5:error: and:
   |
 3 | foo bar=<BAZ>;
   |     ^^^^^^^^^

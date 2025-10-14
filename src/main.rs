@@ -87,9 +87,10 @@ impl ErrMsg {
         }
     }
 
-    fn into_string(self, span: &HumanSpan) -> String {
+    fn into_string(self, path: &str, span: &HumanSpan) -> String {
         format!(
-            "{}:{}:{}",
+            "{}:{}:{}:{}",
+            path,
             span.line,
             span.column_start,
             self.err.to_string()
@@ -97,11 +98,11 @@ impl ErrMsg {
     }
 }
 
-fn handle_error(e: Error, source: &str, command: &str) -> anyhow::Result<()> {
+fn handle_error(e: Error, path: &str, source: &str, command: &str) -> anyhow::Result<()> {
     match e {
         Error::ParseError(span) => {
             let err = ErrMsg::new("Parse error").error(&span, source, "");
-            eprintln!("{}", err.into_string(&span));
+            eprintln!("{}", err.into_string(path, &span));
         }
         Error::VaryingCommandNames(cmds) => {
             let joined = itertools::join(cmds.into_iter().map(|c| format!("{c}")), ", ");
@@ -110,35 +111,35 @@ fn handle_error(e: Error, source: &str, command: &str) -> anyhow::Result<()> {
         Error::SubwordSpaces(left, right, trace) => {
             let err = ErrMsg::new("Adjacent literals in expression used in a subword context")
                 .error(&left, source, "First one");
-            eprintln!("{}", err.into_string(&left));
+            eprintln!("{}", err.into_string(path, &left));
 
             let err = ErrMsg::new("").error(&right, source, "Second one").help(
                 "Join the adjacent literals into one as spaces are invalid in a subword context",
             );
-            eprintln!("{}", err.into_string(&right));
+            eprintln!("{}", err.into_string(path, &right));
 
             for t in trace {
                 let err = ErrMsg::new("Referenced in a subword context at").error(&t, source, "");
-                eprintln!("{}", err.into_string(&t));
+                eprintln!("{}", err.into_string(path, &t));
             }
         }
         Error::AmbiguousMatchable(left, right) => {
             let err = ErrMsg::new("Ambiguous grammar.  Matching can't differentiate:")
                 .error(&left, source, "");
-            eprintln!("{}", err.into_string(&left));
+            eprintln!("{}", err.into_string(path, &left));
 
             let err = ErrMsg::new("and:").error(&right, source, "");
-            eprintln!("{}", err.into_string(&right));
+            eprintln!("{}", err.into_string(path, &right));
         }
         Error::UnboundedMatchable(left, right) => {
             let err = ErrMsg::new(
                 "Ambiguous grammar.  Matching can't ascertain where below element ends:",
             )
             .error(&left, source, "");
-            eprintln!("{}", err.into_string(&left));
+            eprintln!("{}", err.into_string(path, &left));
 
             let err = ErrMsg::new("...and where below element begins:").error(&right, source, "");
-            eprintln!("{}", err.into_string(&right));
+            eprintln!("{}", err.into_string(path, &right));
         }
         Error::AmbiguousDFA(path, ambiguous_inputs) => {
             let joined_path = {
@@ -161,18 +162,18 @@ fn handle_error(e: Error, source: &str, command: &str) -> anyhow::Result<()> {
         Error::ClashingVariants(left, right) => {
             let err = ErrMsg::new("Clashing variants.  Completion can't differentiate:")
                 .error(&left, source, "");
-            eprintln!("{}", err.into_string(&left));
+            eprintln!("{}", err.into_string(path, &left));
 
             let err = ErrMsg::new("and:").error(&right, source, "");
-            eprintln!("{}", err.into_string(&right));
+            eprintln!("{}", err.into_string(path, &right));
         }
         Error::ClashingSubwordLeaders(left, right) => {
             let err = ErrMsg::new("Clashing subword leaders.  Completion can't differentiate:")
                 .error(&left, source, "");
-            eprintln!("{}", err.into_string(&left));
+            eprintln!("{}", err.into_string(path, &left));
 
             let err = ErrMsg::new("and:").error(&right, source, "");
-            eprintln!("{}", err.into_string(&right));
+            eprintln!("{}", err.into_string(path, &right));
         }
         e => {
             eprintln!("{}", e);
@@ -206,7 +207,7 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
 
     let grammar = match Grammar::parse(&input) {
         Ok(grammar) => grammar,
-        Err(e) => return handle_error(e, &input, "dummy"),
+        Err(e) => return handle_error(e, usage_file_path, &input, "dummy"),
     };
 
     let (shell, path) = match (&args.bash, &args.fish, &args.zsh) {
@@ -222,7 +223,7 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
 
     let validated = match ValidGrammar::from_grammar(grammar, shell) {
         Ok(validated) => validated,
-        Err(e) => return handle_error(e, &input, "dummy"),
+        Err(e) => return handle_error(e, usage_file_path, &input, "dummy"),
     };
 
     if !validated.undefined_nonterminals.is_empty() {
@@ -237,7 +238,7 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
 
     let regex = match Regex::from_valid_grammar(&validated, shell) {
         Ok(regex) => regex,
-        Err(e) => return handle_error(e, &input, &validated.command),
+        Err(e) => return handle_error(e, usage_file_path, &input, &validated.command),
     };
 
     if let Some(regex_dot_file_path) = &args.regex {
@@ -249,7 +250,7 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
 
     let dfa = match DFA::from_regex(regex, validated.subdfas) {
         Ok(dfa) => dfa,
-        Err(e) => return handle_error(e, &input, &validated.command),
+        Err(e) => return handle_error(e, usage_file_path, &input, &validated.command),
     };
 
     let dfa = dfa.minimize();
