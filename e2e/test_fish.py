@@ -131,6 +131,19 @@ def test_specializes_for_fish(complgen_binary_path: Path):
         ]
 
 
+def test_specializes_for_fish_with_regex(complgen_binary_path: Path):
+    GRAMMAR = (
+        """cmd <FOO>bar; <FOO> ::= {{{ echo foo }}}; <FOO@fish> ::= {{{ echo fish }}}@fish"fish";"""
+    )
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        input = 'complete --do-complete "cmd fish"'
+        assert get_sorted_fish_completions(completions_file_path, input) == [
+            ("fishbar", "")
+        ]
+
+
 def test_nontail_matching_alternative(complgen_binary_path: Path):
     GRAMMAR = """cmd <LEFT> | right; <LEFT> ::= {{{ echo left }}}@fish"left";"""
     with gen_fish_aot_completion_script_path(

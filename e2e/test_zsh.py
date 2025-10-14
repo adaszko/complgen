@@ -128,6 +128,15 @@ def test_specializes_for_zsh(complgen_binary_path: Path):
     )
 
 
+def test_specializes_for_zsh_with_regex(complgen_binary_path: Path):
+    GRAMMAR = (
+        """cmd <FOO>bar; <FOO> ::= {{{ echo foo }}}; <FOO@zsh> ::= {{{ compadd zsh }}}@zsh"zsh";"""
+    )
+    assert get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd zsh") == sorted(
+        ["bar"]
+    )
+
+
 def test_nontail_matching_alternative(complgen_binary_path: Path):
     GRAMMAR = """cmd <LEFT> | right; <LEFT> ::= {{{ echo left }}}@zsh"left";"""
     assert get_sorted_aot_completions(

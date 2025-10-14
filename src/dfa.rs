@@ -5,7 +5,7 @@ use std::{cmp::Ordering, collections::BTreeSet, hash::Hash, io::Write, rc::Rc};
 use roaring::{MultiOps, RoaringBitmap};
 use ustr::{Ustr, ustr};
 
-use crate::grammar::{DFAId, DFAInternPool, Shell};
+use crate::grammar::{DFAId, DFAInternPool};
 use crate::regex::{Inp, Position, Regex, diagnostic_display_input};
 use crate::{Error, StateId};
 
@@ -119,7 +119,7 @@ impl FromIterator<Inp> for InpInternPool {
 
 // Reference:
 //  * The Dragon Book: 3.9.5 Converting a Regular Expression Directly to a DFA
-fn dfa_from_regex(shell: Shell, regex: Regex, subdfas: DFAInternPool) -> DFA {
+fn dfa_from_regex(regex: Regex, subdfas: DFAInternPool) -> DFA {
     let mut unallocated_state_id = FIRST_STATE_ID;
     let combined_starting_state: BTreeSet<Position> = regex.firstpos();
     let combined_starting_state_id = unallocated_state_id;
@@ -129,12 +129,7 @@ fn dfa_from_regex(shell: Shell, regex: Regex, subdfas: DFAInternPool) -> DFA {
         IndexMap::from_iter([(combined_starting_state.clone(), combined_starting_state_id)]);
 
     let followpos = regex.followpos();
-    let inputs = InpInternPool::from_iter(
-        regex
-            .input_from_position
-            .iter()
-            .map(|input| Inp::from_input(input, shell)),
-    );
+    let inputs = InpInternPool::from_iter(regex.input_from_position.iter().map(Inp::from_input));
 
     let mut transitions: IndexMap<StateId, IndexMap<InpId, StateId>> = Default::default();
     let mut unmarked_states: HashSet<BTreeSet<Position>> = Default::default();
@@ -148,7 +143,7 @@ fn dfa_from_regex(shell: Shell, regex: Regex, subdfas: DFAInternPool) -> DFA {
             let mut set_of_positions = RoaringBitmap::new();
             for pos in &combined_state {
                 if let Some(input) = regex.input_from_position.get(*pos as usize)
-                    && Inp::from_input(input, shell) == *inp
+                    && Inp::from_input(input) == *inp
                     && let Some(positions) = followpos.get(pos)
                 {
                     set_of_positions |= positions;
@@ -665,8 +660,8 @@ fn do_to_dot<W: Write>(
 }
 
 impl DFA {
-    pub fn from_regex(shell: Shell, regex: Regex, subdfas: DFAInternPool) -> crate::Result<Self> {
-        let dfa = dfa_from_regex(shell, regex, subdfas);
+    pub fn from_regex(regex: Regex, subdfas: DFAInternPool) -> crate::Result<Self> {
+        let dfa = dfa_from_regex(regex, subdfas);
         dfa.check_ambiguity_best_effort()?;
         Ok(dfa)
     }
@@ -937,7 +932,9 @@ mod tests {
     use std::ops::Rem;
     use std::rc::Rc;
 
-    use crate::grammar::{Expr, ExprId, Grammar, SubwordCompilationPhase, ValidGrammar, alloc};
+    use crate::grammar::{
+        Expr, ExprId, Grammar, Shell, SubwordCompilationPhase, ValidGrammar, alloc,
+    };
     use crate::regex::Regex;
     use Expr::*;
     use itertools::Itertools;
@@ -947,7 +944,6 @@ mod tests {
     use super::*;
 
     use proptest::prelude::*;
-    use ustr::UstrMap;
 
     impl Inp {
         fn literal(s: &str) -> Self {
@@ -960,8 +956,8 @@ mod tests {
     }
 
     impl DFA {
-        fn from_regex_lenient(shell: Shell, regex: Regex, subdfas: DFAInternPool) -> Self {
-            dfa_from_regex(shell, regex, subdfas)
+        fn from_regex_lenient(regex: Regex, subdfas: DFAInternPool) -> Self {
+            dfa_from_regex(regex, subdfas)
         }
 
         fn accepts_str(&self, mut input: &str) -> bool {
@@ -1055,11 +1051,10 @@ mod tests {
     fn minimal_example() {
         let mut arena: Vec<Expr> = Default::default();
         let expr = alloc(&mut arena, Expr::term("foo"));
-        let specs = UstrMap::default();
-        let regex = Regex::from_expr(expr, &arena, Shell::Bash, &specs).unwrap();
+        let regex = Regex::from_expr(expr, &arena, Shell::Bash).unwrap();
         let subdfas = DFAInternPool::default();
-        assert!(regex.check_ambiguities(&subdfas, Shell::Bash).is_ok());
-        let dfa = DFA::from_regex(Shell::Bash, regex, DFAInternPool::default()).unwrap();
+        assert!(regex.check_ambiguities(&subdfas).is_ok());
+        let dfa = DFA::from_regex(regex, DFAInternPool::default()).unwrap();
         let foo = Inp::literal("foo");
         let foo_id = dfa.inputs.find(&foo).unwrap();
         assert_eq!(dfa.transitions.len(), 2);
@@ -1325,12 +1320,11 @@ mod tests {
             //println!("{:?}", expr);
             //println!("{:?}", arena);
             //println!("{:?}", input);
-            let specs = UstrMap::default();
-            let regex = Regex::from_expr(expr, &arena.borrow(), Shell::Bash, &specs).unwrap();
+            let regex = Regex::from_expr(expr, &arena.borrow(), Shell::Bash).unwrap();
             //dbg!(&regex.input_from_position);
             let subdfas = DFAInternPool::default();
-            prop_assume!(regex.check_ambiguities(&subdfas, Shell::Bash).is_ok());
-            let dfa = DFA::from_regex_lenient(Shell::Bash, regex, DFAInternPool::default());
+            prop_assume!(regex.check_ambiguities(&subdfas).is_ok());
+            let dfa = DFA::from_regex_lenient(regex, DFAInternPool::default());
             prop_assume!(dfa.check_ambiguity_best_effort().is_ok());
             let input: Vec<&str> = input.iter().map(|s| s.as_str()).collect();
             prop_assert!(dfa.accepts(&input)?);
@@ -1340,11 +1334,10 @@ mod tests {
         fn minimized_dfa_equivalent_to_input_one((expr, arena, input) in arb_expr_match(10, 3, Rc::new(TERMINALS.iter().map(|s| ustr(s)).collect()), Rc::new(NONTERMINALS.iter().map(|s| ustr(s)).collect()))) {
             println!("{:?}", expr);
             println!("{:?}", input);
-            let specs = UstrMap::default();
-            let regex = Regex::from_expr(expr, &arena.borrow(), Shell::Bash, &specs).unwrap();
+            let regex = Regex::from_expr(expr, &arena.borrow(), Shell::Bash).unwrap();
             let subdfas = DFAInternPool::default();
-            prop_assume!(regex.check_ambiguities(&subdfas, Shell::Bash).is_ok());
-            let dfa = DFA::from_regex_lenient(Shell::Bash, regex, DFAInternPool::default());
+            prop_assume!(regex.check_ambiguities(&subdfas).is_ok());
+            let dfa = DFA::from_regex_lenient(regex, DFAInternPool::default());
             prop_assume!(dfa.check_ambiguity_best_effort().is_ok());
             let input: Vec<&str> = input.iter().map(|s| s.as_str()).collect();
             prop_assert!(dfa.accepts(&input)?);
@@ -1394,7 +1387,7 @@ foo DUPLICATED_TERM;
         let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         let vg = ValidGrammar::from_grammar(g, Shell::Bash).unwrap();
         let regex = Regex::from_valid_grammar(&vg, Shell::Bash).unwrap();
-        let dfa = DFA::from_regex(Shell::Bash, regex, vg.subdfas).unwrap();
+        let dfa = DFA::from_regex(regex, vg.subdfas).unwrap();
 
         // There should be only one tansition on input Term("DUPLICATED_TERM")
         let transitions = dfa.get_literal_transitions_from(dfa.starting_state);

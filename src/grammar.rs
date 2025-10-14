@@ -110,6 +110,7 @@ pub enum Expr {
         bash_regex: Option<Ustr>,
         fish_regex: Option<Ustr>,
         zsh_regex: Option<Ustr>,
+        zsh_compadd: bool,
         fallback: usize,
         span: HumanSpan,
     },
@@ -154,9 +155,9 @@ pub enum Shell {
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Specialization {
-    pub bash: Option<Ustr>,
-    pub fish: Option<Ustr>,
-    pub zsh: Option<Ustr>,
+    pub bash: Option<(Ustr, Option<Ustr>)>,
+    pub fish: Option<(Ustr, Option<Ustr>)>,
+    pub zsh: Option<(Ustr, Option<Ustr>)>,
     pub generic: Option<Ustr>,
 }
 
@@ -195,10 +196,11 @@ impl std::fmt::Debug for Expr {
                 bash_regex,
                 fish_regex,
                 zsh_regex,
+                zsh_compadd,
                 fallback,
                 span,
             } => f.write_fmt(format_args!(
-                r#"Command(ustr({cmd:?}), {bash_regex:?}, {fish_regex:?}, {zsh_regex:?}, {fallback}, {span:?})"#
+                r#"Command(ustr({cmd:?}), {bash_regex:?}, {fish_regex:?}, {zsh_regex:?}, {zsh_compadd}, {fallback}, {span:?})"#
             )),
             Self::Sequence(children) => {
                 f.write_fmt(format_args!(r#"Sequence(vec!{:?})"#, children))
@@ -509,6 +511,7 @@ fn command_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>,
         bash_regex: None,
         fish_regex: None,
         zsh_regex: None,
+        zsh_compadd: false,
         fallback: 0,
         span: command_span,
     };
@@ -559,6 +562,7 @@ fn command_regex_expr<'s>(arena: &mut Vec<Expr>, mut input: Span<'s>) -> IResult
         bash_regex,
         fish_regex,
         zsh_regex,
+        zsh_compadd: false,
         fallback: 0,
         span: command_span,
     };
@@ -839,7 +843,6 @@ pub struct ValidGrammar {
     pub arena: Vec<Expr>,
     pub command: Ustr,
     pub expr: ExprId,
-    pub specializations: UstrMap<Specialization>,
     pub undefined_nonterminals: UstrSet,
     pub unused_nonterminals: UstrSet,
     pub subdfas: DFAInternPool,
@@ -860,8 +863,14 @@ fn make_specializations_map(
             Statement::NonterminalDefinition { shell: None, .. } => continue,
             Statement::CallVariant { .. } => continue,
         };
-        let command = match &arena[*expr] {
-            Expr::Command { cmd, .. } => cmd,
+        let (command, bash_regex, fish_regex, zsh_regex) = match &arena[*expr] {
+            Expr::Command {
+                cmd,
+                bash_regex,
+                fish_regex,
+                zsh_regex,
+                ..
+            } => (cmd, bash_regex, fish_regex, zsh_regex),
             _ => return Err(Error::NonCommandSpecialization(name, Some(*shell))),
         };
         let known_shell = matches!(shell.as_str(), "bash" | "fish" | "zsh");
@@ -874,19 +883,19 @@ fn make_specializations_map(
                 if spec.bash.is_some() {
                     return Err(Error::DuplicateNonterminalDefinition(name, Some(*shell)));
                 }
-                spec.bash = Some(*command);
+                spec.bash = Some((*command, *bash_regex));
             }
             "fish" => {
                 if spec.fish.is_some() {
                     return Err(Error::DuplicateNonterminalDefinition(name, Some(*shell)));
                 }
-                spec.fish = Some(*command);
+                spec.fish = Some((*command, *fish_regex));
             }
             "zsh" => {
                 if spec.zsh.is_some() {
                     return Err(Error::DuplicateNonterminalDefinition(name, Some(*shell)));
                 }
-                spec.zsh = Some(*command);
+                spec.zsh = Some((*command, *zsh_regex));
             }
             _ => unreachable!(),
         }
@@ -916,18 +925,18 @@ fn make_specializations_map(
     specializations
         .entry(ustr("PATH"))
         .or_insert_with(|| Specialization {
-            bash: Some(ustr(r#"compgen -A file "$1""#)),
-            fish: Some(ustr(r#"__fish_complete_path "$1""#)),
-            zsh: Some(ustr("_path_files")),
+            bash: Some((ustr(r#"compgen -A file "$1""#), None)),
+            fish: Some((ustr(r#"__fish_complete_path "$1""#), None)),
+            zsh: Some((ustr("_path_files"), None)),
             generic: None,
         });
 
     specializations
         .entry(ustr("DIRECTORY"))
         .or_insert_with(|| Specialization {
-            bash: Some(ustr(r#"compgen -A directory "$1""#)),
-            fish: Some(ustr(r#"__fish_complete_directories "$1""#)),
-            zsh: Some(ustr("_path_files -/")),
+            bash: Some((ustr(r#"compgen -A directory "$1""#), None)),
+            fish: Some((ustr(r#"__fish_complete_directories "$1""#), None)),
+            zsh: Some((ustr("_path_files -/"), None)),
             generic: None,
         });
 
@@ -935,41 +944,44 @@ fn make_specializations_map(
         .entry(ustr("PID"))
         .or_insert_with(|| Specialization {
             bash: None,
-            fish: Some(ustr(r#"__fish_complete_pids"#)),
-            zsh: Some(ustr(r#"_pids"#)),
+            fish: Some((ustr(r#"__fish_complete_pids"#), None)),
+            zsh: Some((ustr(r#"_pids"#), None)),
             generic: None,
         });
 
     specializations
         .entry(ustr("USER"))
         .or_insert_with(|| Specialization {
-            bash: Some(ustr(
-                r#"compgen -A user | while read line; do echo "$line "; done"#,
+            bash: Some((
+                ustr(r#"compgen -A user | while read line; do echo "$line "; done"#),
+                None,
             )),
-            fish: Some(ustr(r#"__fish_complete_users"#)),
-            zsh: Some(ustr(r#"_users"#)),
+            fish: Some((ustr(r#"__fish_complete_users"#), None)),
+            zsh: Some((ustr(r#"_users"#), None)),
             generic: None,
         });
 
     specializations
         .entry(ustr("GROUP"))
         .or_insert_with(|| Specialization {
-            bash: Some(ustr(
-                r#"compgen -A group | while read line; do echo "$line "; done"#,
+            bash: Some((
+                ustr(r#"compgen -A group | while read line; do echo "$line "; done"#),
+                None,
             )),
-            fish: Some(ustr(r#"__fish_complete_groups"#)),
-            zsh: Some(ustr(r#"_groups"#)),
+            fish: Some((ustr(r#"__fish_complete_groups"#), None)),
+            zsh: Some((ustr(r#"_groups"#), None)),
             generic: None,
         });
 
     specializations
         .entry(ustr("HOST"))
         .or_insert_with(|| Specialization {
-            bash: Some(ustr(
-                r#"compgen -A hostname | while read line; do echo "$line "; done"#,
+            bash: Some((
+                ustr(r#"compgen -A hostname | while read line; do echo "$line "; done"#),
+                None,
             )),
-            fish: Some(ustr(r#"__fish_complete_hostnames"#)),
-            zsh: Some(ustr(r#"_hosts"#)),
+            fish: Some((ustr(r#"__fish_complete_hostnames"#), None)),
+            zsh: Some((ustr(r#"_hosts"#), None)),
             generic: None,
         });
 
@@ -977,8 +989,8 @@ fn make_specializations_map(
         .entry(ustr("INTERFACE"))
         .or_insert_with(|| Specialization {
             bash: None,
-            fish: Some(ustr(r#"__fish_complete_interfaces"#)),
-            zsh: Some(ustr(r#"_net_interfaces"#)),
+            fish: Some((ustr(r#"__fish_complete_interfaces"#), None)),
+            zsh: Some((ustr(r#"_net_interfaces"#), None)),
             generic: None,
         });
 
@@ -986,7 +998,7 @@ fn make_specializations_map(
         .entry(ustr("PACKAGE"))
         .or_insert_with(|| Specialization {
             bash: None,
-            fish: Some(ustr(r#"__fish_complete_packages"#)),
+            fish: Some((ustr(r#"__fish_complete_packages"#), None)),
             zsh: None,
             generic: None,
         });
@@ -1072,7 +1084,6 @@ fn flatten_expr(arena: &mut Vec<Expr>, expr_id: ExprId) -> ExprId {
 fn compile_subword_exprs(
     arena: &mut Vec<Expr>,
     expr_id: ExprId,
-    specs: &UstrMap<Specialization>,
     shell: Shell,
     subdfas: &mut DFAInternPool,
 ) -> Result<ExprId> {
@@ -1087,9 +1098,9 @@ fn compile_subword_exprs(
                 SubwordCompilationPhase::DFA(_) => unreachable!(),
             };
             let subword_expr = flatten_expr(arena, subword_expr);
-            let regex = Regex::from_expr(subword_expr, arena, shell, specs).unwrap();
-            regex.check_ambiguities_subword(shell)?;
-            let dfa = DFA::from_regex(shell, regex, DFAInternPool::default())?;
+            let regex = Regex::from_expr(subword_expr, arena, shell).unwrap();
+            regex.check_ambiguities_subword()?;
+            let dfa = DFA::from_regex(regex, DFAInternPool::default())?;
             let dfa = dfa.minimize();
             let subdfaid = subdfas.intern(dfa);
             alloc(
@@ -1105,7 +1116,7 @@ fn compile_subword_exprs(
         Expr::Sequence(children) => {
             let new_children: Vec<ExprId> = children
                 .iter()
-                .map(|e| compile_subword_exprs(arena, *e, specs, shell, subdfas))
+                .map(|e| compile_subword_exprs(arena, *e, shell, subdfas))
                 .collect::<Result<_>>()?;
             if children == new_children {
                 expr_id
@@ -1116,7 +1127,7 @@ fn compile_subword_exprs(
         Expr::Alternative(children) => {
             let new_children: Vec<ExprId> = children
                 .iter()
-                .map(|e| compile_subword_exprs(arena, *e, specs, shell, subdfas))
+                .map(|e| compile_subword_exprs(arena, *e, shell, subdfas))
                 .collect::<Result<_>>()?;
             if children == new_children {
                 expr_id
@@ -1125,7 +1136,7 @@ fn compile_subword_exprs(
             }
         }
         Expr::Optional(child) => {
-            let new_child = compile_subword_exprs(arena, child, specs, shell, subdfas)?;
+            let new_child = compile_subword_exprs(arena, child, shell, subdfas)?;
             if child == new_child {
                 expr_id
             } else {
@@ -1133,7 +1144,7 @@ fn compile_subword_exprs(
             }
         }
         Expr::Many1(child) => {
-            let new_child = compile_subword_exprs(arena, child, specs, shell, subdfas)?;
+            let new_child = compile_subword_exprs(arena, child, shell, subdfas)?;
             if child == new_child {
                 expr_id
             } else {
@@ -1146,7 +1157,7 @@ fn compile_subword_exprs(
         Expr::Fallback(children) => {
             let new_children: Vec<ExprId> = children
                 .iter()
-                .map(|e| compile_subword_exprs(arena, *e, specs, shell, subdfas))
+                .map(|e| compile_subword_exprs(arena, *e, shell, subdfas))
                 .collect::<Result<_>>()?;
             if children == new_children {
                 expr_id
@@ -1431,9 +1442,18 @@ impl ValidGrammar {
 
         let expr = distribute_descriptions(&mut grammar.arena, expr);
 
-        let specializations = make_specializations_map(&grammar.arena, &grammar.statements)?;
-
         let mut unused_nonterminals: UstrSet = nonterminal_definitions.keys().copied().collect();
+
+        let expr = {
+            let specializations = make_specializations_map(&grammar.arena, &grammar.statements)?;
+            specialize_nonterminals(
+                expr,
+                &mut grammar.arena,
+                shell,
+                &specializations,
+                &mut unused_nonterminals,
+            )
+        };
 
         for nonterminal in
             get_nonterminals_resolution_order(&grammar.arena, &nonterminal_definitions)?
@@ -1443,7 +1463,6 @@ impl ValidGrammar {
                 &mut grammar.arena,
                 e,
                 &nonterminal_definitions,
-                &specializations,
                 &mut unused_nonterminals,
             );
             *nonterminal_definitions.get_mut(&nonterminal).unwrap() = new_e;
@@ -1455,33 +1474,21 @@ impl ValidGrammar {
             &mut grammar.arena,
             expr,
             &nonterminal_definitions,
-            &specializations,
             &mut unused_nonterminals,
         );
 
         let expr = propagate_fallback_levels(&mut grammar.arena, expr);
 
-        let undefined_nonterminals = {
-            let mut nonterms = get_expression_nonterminals(&grammar.arena, expr);
-            nonterms.retain(|n| !specializations.contains_key(n));
-            nonterms
-        };
+        let undefined_nonterminals = get_expression_nonterminals(&grammar.arena, expr);
 
         let mut subdfas = DFAInternPool::default();
-        let expr = compile_subword_exprs(
-            &mut grammar.arena,
-            expr,
-            &specializations,
-            shell,
-            &mut subdfas,
-        )?;
+        let expr = compile_subword_exprs(&mut grammar.arena, expr, shell, &mut subdfas)?;
 
         let g = ValidGrammar {
             arena: grammar.arena,
             command,
             expr,
             undefined_nonterminals,
-            specializations,
             unused_nonterminals,
             subdfas,
         };
@@ -1645,11 +1652,192 @@ fn do_check_subword_spaces(
     }
 }
 
+fn specialize_nonterminals(
+    expr_id: ExprId,
+    expr_arena: &mut Vec<Expr>,
+    shell: Shell,
+    specializations: &UstrMap<Specialization>,
+    unused_nonterminals: &mut UstrSet,
+) -> ExprId {
+    match expr_arena[expr_id].clone() {
+        Expr::Terminal { .. } | Expr::Command { .. } => expr_id,
+        Expr::NontermRef {
+            nonterm,
+            fallback,
+            span,
+        } => {
+            unused_nonterminals.remove(&nonterm);
+
+            let Some(spec) = specializations.get(&nonterm) else {
+                return expr_id;
+            };
+
+            let type_tetris_generic_cmd = spec.generic.map(|cmd| (cmd, None));
+            let Some((cmd, regex)) = (match shell {
+                Shell::Bash => spec.bash.or(type_tetris_generic_cmd),
+                Shell::Fish => spec.fish.or(type_tetris_generic_cmd),
+                Shell::Zsh => spec.zsh.or(type_tetris_generic_cmd),
+            }) else {
+                return expr_id;
+            };
+
+            let new_node = match shell {
+                Shell::Bash => Expr::Command {
+                    cmd,
+                    bash_regex: regex,
+                    fish_regex: None,
+                    zsh_regex: None,
+                    zsh_compadd: false,
+                    fallback,
+                    span,
+                },
+                Shell::Fish => Expr::Command {
+                    cmd,
+                    bash_regex: None,
+                    fish_regex: regex,
+                    zsh_regex: None,
+                    zsh_compadd: false,
+                    fallback,
+                    span,
+                },
+                Shell::Zsh => Expr::Command {
+                    cmd,
+                    bash_regex: None,
+                    fish_regex: None,
+                    zsh_regex: regex,
+                    zsh_compadd: spec.zsh.is_some(),
+                    fallback,
+                    span,
+                },
+            };
+
+            alloc(expr_arena, new_node)
+        }
+        Expr::Subword {
+            phase: SubwordCompilationPhase::Expr(child),
+            fallback,
+            span,
+        } => {
+            let new_child = specialize_nonterminals(
+                child,
+                expr_arena,
+                shell,
+                specializations,
+                unused_nonterminals,
+            );
+            if child == new_child {
+                expr_id
+            } else {
+                alloc(
+                    expr_arena,
+                    Expr::Subword {
+                        phase: SubwordCompilationPhase::Expr(new_child),
+                        fallback,
+                        span,
+                    },
+                )
+            }
+        }
+        Expr::Subword {
+            phase: SubwordCompilationPhase::DFA(..),
+            ..
+        } => unreachable!(),
+        Expr::Sequence(children) => {
+            let new_children: Vec<ExprId> = children
+                .iter()
+                .map(|child| {
+                    specialize_nonterminals(
+                        *child,
+                        expr_arena,
+                        shell,
+                        specializations,
+                        unused_nonterminals,
+                    )
+                })
+                .collect();
+
+            if children == new_children {
+                expr_id
+            } else {
+                alloc(expr_arena, Expr::Sequence(new_children))
+            }
+        }
+        Expr::Alternative(children) => {
+            let new_children: Vec<ExprId> = children
+                .iter()
+                .map(|child| {
+                    specialize_nonterminals(
+                        *child,
+                        expr_arena,
+                        shell,
+                        specializations,
+                        unused_nonterminals,
+                    )
+                })
+                .collect();
+
+            if children == new_children {
+                expr_id
+            } else {
+                alloc(expr_arena, Expr::Alternative(new_children))
+            }
+        }
+        Expr::Optional(child) => {
+            let new_child = specialize_nonterminals(
+                child,
+                expr_arena,
+                shell,
+                specializations,
+                unused_nonterminals,
+            );
+            if child == new_child {
+                expr_id
+            } else {
+                alloc(expr_arena, Expr::Optional(new_child))
+            }
+        }
+        Expr::Many1(child) => {
+            let new_child = specialize_nonterminals(
+                child,
+                expr_arena,
+                shell,
+                specializations,
+                unused_nonterminals,
+            );
+            if child == new_child {
+                expr_id
+            } else {
+                alloc(expr_arena, Expr::Many1(new_child))
+            }
+        }
+        Expr::DistributiveDescription { .. } => unreachable!(),
+        Expr::Fallback(children) => {
+            let new_children: Vec<ExprId> = children
+                .iter()
+                .map(|child| {
+                    specialize_nonterminals(
+                        *child,
+                        expr_arena,
+                        shell,
+                        specializations,
+                        unused_nonterminals,
+                    )
+                })
+                .collect();
+
+            if children == new_children {
+                expr_id
+            } else {
+                alloc(expr_arena, Expr::Fallback(new_children))
+            }
+        }
+    }
+}
+
 fn resolve_nonterminals(
     arena: &mut Vec<Expr>,
     expr_id: ExprId,
     vars: &UstrMap<ExprId>,
-    specializations: &UstrMap<Specialization>,
     unused_nonterminals: &mut UstrSet,
 ) -> ExprId {
     match arena[expr_id].clone() {
@@ -1659,8 +1847,7 @@ fn resolve_nonterminals(
             fallback,
             span,
         } => {
-            let new_child =
-                resolve_nonterminals(arena, child, vars, specializations, unused_nonterminals);
+            let new_child = resolve_nonterminals(arena, child, vars, unused_nonterminals);
             if child == new_child {
                 expr_id
             } else {
@@ -1678,25 +1865,17 @@ fn resolve_nonterminals(
             phase: SubwordCompilationPhase::DFA(..),
             ..
         } => unreachable!(),
-        Expr::NontermRef { nonterm: name, .. } => {
-            if specializations.contains_key(&name) {
-                // Specialized nonterminals are resolved when the target shell is known, not earlier.
-                return expr_id;
+        Expr::NontermRef { nonterm: name, .. } => match vars.get(&name) {
+            Some(replacement) => {
+                unused_nonterminals.remove(&name);
+                *replacement
             }
-            match vars.get(&name) {
-                Some(replacement) => {
-                    unused_nonterminals.remove(&name);
-                    *replacement
-                }
-                None => expr_id,
-            }
-        }
+            None => expr_id,
+        },
         Expr::Sequence(children) => {
             let new_children: Vec<ExprId> = children
                 .iter()
-                .map(|child| {
-                    resolve_nonterminals(arena, *child, vars, specializations, unused_nonterminals)
-                })
+                .map(|child| resolve_nonterminals(arena, *child, vars, unused_nonterminals))
                 .collect();
 
             if children == new_children {
@@ -1708,9 +1887,7 @@ fn resolve_nonterminals(
         Expr::Alternative(children) => {
             let new_children: Vec<ExprId> = children
                 .iter()
-                .map(|child| {
-                    resolve_nonterminals(arena, *child, vars, specializations, unused_nonterminals)
-                })
+                .map(|child| resolve_nonterminals(arena, *child, vars, unused_nonterminals))
                 .collect();
 
             if children == new_children {
@@ -1720,8 +1897,7 @@ fn resolve_nonterminals(
             }
         }
         Expr::Optional(child) => {
-            let new_child =
-                resolve_nonterminals(arena, child, vars, specializations, unused_nonterminals);
+            let new_child = resolve_nonterminals(arena, child, vars, unused_nonterminals);
             if child == new_child {
                 expr_id
             } else {
@@ -1729,8 +1905,7 @@ fn resolve_nonterminals(
             }
         }
         Expr::Many1(child) => {
-            let new_child =
-                resolve_nonterminals(arena, child, vars, specializations, unused_nonterminals);
+            let new_child = resolve_nonterminals(arena, child, vars, unused_nonterminals);
             if child == new_child {
                 expr_id
             } else {
@@ -1743,9 +1918,7 @@ fn resolve_nonterminals(
         Expr::Fallback(children) => {
             let new_children: Vec<ExprId> = children
                 .iter()
-                .map(|child| {
-                    resolve_nonterminals(arena, *child, vars, specializations, unused_nonterminals)
-                })
+                .map(|child| resolve_nonterminals(arena, *child, vars, unused_nonterminals))
                 .collect();
 
             if children == new_children {
@@ -2002,6 +2175,7 @@ pub mod tests {
                     bash_regex: l_bash_regex,
                     fish_regex: l_fish_regex,
                     zsh_regex: l_zsh_regex,
+                    zsh_compadd: l_zsh_compadd,
                     fallback: l_fallback,
                     span: _,
                 },
@@ -2010,6 +2184,7 @@ pub mod tests {
                     bash_regex: r_bash_regex,
                     fish_regex: r_fish_regex,
                     zsh_regex: r_zsh_regex,
+                    zsh_compadd: r_zsh_compadd,
                     fallback: r_fallback,
                     span: _,
                 },
@@ -2018,6 +2193,7 @@ pub mod tests {
                     && l_bash_regex == r_bash_regex
                     && l_fish_regex == r_fish_regex
                     && l_zsh_regex == r_zsh_regex
+                    && l_zsh_compadd == r_zsh_compadd
                     && l_fallback == r_fallback
             }
             (Expr::Sequence(l), Expr::Sequence(r))
@@ -2205,6 +2381,7 @@ pub mod tests {
                 bash_regex: Some(ustr("bar")),
                 fish_regex: None,
                 zsh_regex: None,
+                zsh_compadd: false,
                 fallback: 0,
                 span: HumanSpan::default(),
             },
@@ -2225,6 +2402,7 @@ pub mod tests {
                 bash_regex: None,
                 fish_regex: None,
                 zsh_regex: None,
+                zsh_compadd: false,
                 fallback: 0,
                 span: HumanSpan::default(),
             },
@@ -2613,6 +2791,7 @@ cargo [+{{{ rustup toolchain list | cut -d' ' -f1 }}}]
                 bash_regex: None,
                 fish_regex: None,
                 zsh_regex: None,
+                zsh_compadd: false,
                 fallback: 0,
                 span: HumanSpan::default(),
             },
@@ -2938,6 +3117,7 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
                 bash_regex: None,
                 fish_regex: None,
                 zsh_regex: None,
+                zsh_compadd: false,
                 fallback: 0,
                 span: HumanSpan::default(),
             },
@@ -3087,6 +3267,7 @@ ls <FILE>;
                 bash_regex: None,
                 fish_regex: None,
                 zsh_regex: None,
+                zsh_compadd: false,
                 fallback: 0,
                 span: HumanSpan::default(),
             },
@@ -3110,17 +3291,14 @@ ls <FILE>;
                 bash_regex: None,
                 fish_regex: None,
                 zsh_regex: None,
+                zsh_compadd: false,
                 fallback: 0,
                 span: HumanSpan::default(),
             },
         );
         assert!(teq(*expr_id, expected_expr3_id, &g.arena));
 
-        let v = ValidGrammar::from_grammar(g, Shell::Bash).unwrap();
-        let spec = v.specializations.get(&ustr("FILE")).unwrap();
-        assert_eq!(spec.bash, Some(ustr(r#"compgen -A file "$1""#)));
-        assert_eq!(spec.fish, Some(ustr(r#"__fish_complete_path "$1""#)));
-        assert_eq!(spec.zsh, None);
+        assert!(ValidGrammar::from_grammar(g, Shell::Bash).is_ok());
     }
 
     #[test]
@@ -3252,6 +3430,7 @@ ls <FILE>;
                 bash_regex: None,
                 fish_regex: None,
                 zsh_regex: None,
+                zsh_compadd: false,
                 fallback: 0,
                 span: HumanSpan::default(),
             },
@@ -3264,6 +3443,7 @@ ls <FILE>;
                 bash_regex: None,
                 fish_regex: None,
                 zsh_regex: None,
+                zsh_compadd: false,
                 fallback: 0,
                 span: HumanSpan::default(),
             },
@@ -3306,6 +3486,7 @@ ls <FILE>;
                 bash_regex: Some(ustr("bar")),
                 fish_regex: Some(ustr("baz")),
                 zsh_regex: Some(ustr("quux")),
+                zsh_compadd: false,
                 fallback: 0,
                 span: HumanSpan::default(),
             },

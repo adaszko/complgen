@@ -9,11 +9,9 @@ use std::{
 };
 
 use roaring::RoaringBitmap;
-use ustr::{Ustr, UstrMap};
+use ustr::Ustr;
 
-use crate::grammar::{
-    DFAId, Expr, ExprId, HumanSpan, Shell, Specialization, SubwordCompilationPhase,
-};
+use crate::grammar::{DFAId, Expr, ExprId, HumanSpan, Shell, SubwordCompilationPhase};
 
 pub type Position = u32;
 
@@ -32,13 +30,13 @@ pub enum Input {
     },
     Nonterminal {
         nonterm: Ustr,
-        spec: Option<Specialization>,
         fallback_level: usize,
         span: HumanSpan,
     },
     Command {
         cmd: Ustr,
         regex: Option<Ustr>,
+        zsh_compadd: bool,
         fallback_level: usize,
         span: HumanSpan,
     },
@@ -88,7 +86,26 @@ pub fn diagnostic_display_input<W: std::fmt::Write>(w: &mut W, input: &Inp) -> c
     match input {
         Inp::Literal { literal, .. } => write!(w, r#"{literal}"#)?,
         Inp::Star => write!(w, r#"*"#)?,
-        Inp::Command { cmd, .. } => write!(w, r#"{{{{{{ {cmd} }}}}}}"#)?,
+        Inp::Command {
+            cmd,
+            regex: None,
+            zsh_compadd,
+            ..
+        } => write!(
+            w,
+            r#"{{{{{{ {cmd} }}}}}}{}"#,
+            if *zsh_compadd { "compadd" } else { "" }
+        )?,
+        Inp::Command {
+            cmd,
+            regex: Some(regex),
+            zsh_compadd,
+            ..
+        } => write!(
+            w,
+            r#"{{{{{{ {cmd} }}}}}}@shell"{regex}"{}"#,
+            if *zsh_compadd { "compadd" } else { "" }
+        )?,
         Inp::Subword { .. } => unreachable!(),
     }
     Ok(())
@@ -115,13 +132,13 @@ pub enum Inp {
 }
 
 impl Inp {
-    pub(crate) fn from_input(input: &Input, shell: Shell) -> Self {
+    pub(crate) fn from_input(input: &Input) -> Self {
         match input.clone() {
             Input::Literal {
                 literal,
                 description,
                 fallback_level,
-                ..
+                span: _,
             } => Self::Literal {
                 literal,
                 description,
@@ -130,41 +147,22 @@ impl Inp {
             Input::Subword {
                 subdfa,
                 fallback_level,
-                ..
+                span: _,
             } => Self::Subword {
                 subdfa,
                 fallback_level,
             },
-            Input::Nonterminal { spec: None, .. } => Self::Star,
-            Input::Nonterminal {
-                spec: Some(spec),
-                fallback_level,
-                ..
-            } => {
-                let (cmd, zsh_compadd) = match shell {
-                    Shell::Bash => (spec.bash.or(spec.generic), false),
-                    Shell::Fish => (spec.fish.or(spec.generic), false),
-                    Shell::Zsh => (spec.zsh.or(spec.generic), true),
-                };
-                match cmd {
-                    None => Self::Star,
-                    Some(cmd) => Self::Command {
-                        cmd,
-                        regex: None,
-                        zsh_compadd,
-                        fallback_level,
-                    },
-                }
-            }
+            Input::Nonterminal { .. } => Self::Star,
             Input::Command {
                 cmd,
                 regex,
                 fallback_level,
-                ..
+                zsh_compadd,
+                span: _,
             } => Self::Command {
                 cmd,
                 regex,
-                zsh_compadd: false,
+                zsh_compadd,
                 fallback_level,
             },
         }
@@ -446,7 +444,6 @@ fn do_from_expr(
     e: ExprId,
     expr_arena: &[Expr],
     shell: Shell,
-    specs: &UstrMap<Specialization>,
     arena: &mut Vec<RegexNode>,
     input_from_position: &mut Vec<Input>,
 ) -> RegexNodeId {
@@ -496,10 +493,8 @@ fn do_from_expr(
         } => {
             let result =
                 RegexNode::Nonterminal(Position::try_from(input_from_position.len()).unwrap());
-            let specialization = specs.get(nonterm);
             let input = Input::Nonterminal {
                 nonterm: *nonterm,
-                spec: specialization.copied(),
                 fallback_level: *fallback,
                 span: *span,
             };
@@ -511,6 +506,7 @@ fn do_from_expr(
             bash_regex,
             fish_regex,
             zsh_regex,
+            zsh_compadd,
             fallback,
             span,
         } => {
@@ -524,6 +520,7 @@ fn do_from_expr(
             let input = Input::Command {
                 cmd: *cmd,
                 regex: *rx,
+                zsh_compadd: *zsh_compadd,
                 fallback_level: *fallback,
                 span: *span,
             };
@@ -531,23 +528,11 @@ fn do_from_expr(
             alloc(arena, result)
         }
         Expr::Sequence(subexprs) => {
-            let mut left_regex_id = do_from_expr(
-                subexprs[0],
-                expr_arena,
-                shell,
-                specs,
-                arena,
-                input_from_position,
-            );
+            let mut left_regex_id =
+                do_from_expr(subexprs[0], expr_arena, shell, arena, input_from_position);
             for right_expr in &subexprs[1..] {
-                let right_regex_id = do_from_expr(
-                    *right_expr,
-                    expr_arena,
-                    shell,
-                    specs,
-                    arena,
-                    input_from_position,
-                );
+                let right_regex_id =
+                    do_from_expr(*right_expr, expr_arena, shell, arena, input_from_position);
                 let left_regex = RegexNode::Cat(left_regex_id, right_regex_id);
                 left_regex_id = alloc(arena, left_regex);
             }
@@ -556,35 +541,20 @@ fn do_from_expr(
         Expr::Alternative(subexprs) => {
             let mut subregexes: Vec<RegexNodeId> = Default::default();
             for e in subexprs {
-                let subregex =
-                    do_from_expr(*e, expr_arena, shell, specs, arena, input_from_position);
+                let subregex = do_from_expr(*e, expr_arena, shell, arena, input_from_position);
                 subregexes.push(subregex);
             }
             let result = RegexNode::Or(subregexes.into_boxed_slice(), false);
             alloc(arena, result)
         }
         Expr::Optional(subexpr) => {
-            let subregex = do_from_expr(
-                *subexpr,
-                expr_arena,
-                shell,
-                specs,
-                arena,
-                input_from_position,
-            );
+            let subregex = do_from_expr(*subexpr, expr_arena, shell, arena, input_from_position);
             let epsid = alloc(arena, RegexNode::Epsilon);
             let result = RegexNode::Or(Box::new([subregex, epsid]), false);
             alloc(arena, result)
         }
         Expr::Many1(subexpr) => {
-            let subregex_id = do_from_expr(
-                *subexpr,
-                expr_arena,
-                shell,
-                specs,
-                arena,
-                input_from_position,
-            );
+            let subregex_id = do_from_expr(*subexpr, expr_arena, shell, arena, input_from_position);
             let star = RegexNode::Star(subregex_id);
             let starid = alloc(arena, star);
             let result = RegexNode::Cat(subregex_id, starid);
@@ -596,8 +566,7 @@ fn do_from_expr(
         Expr::Fallback(subexprs) => {
             let mut subregexes: Vec<RegexNodeId> = Default::default();
             for e in subexprs {
-                let subregex =
-                    do_from_expr(*e, expr_arena, shell, specs, arena, input_from_position);
+                let subregex = do_from_expr(*e, expr_arena, shell, arena, input_from_position);
                 subregexes.push(subregex);
             }
             let result = RegexNode::Or(subregexes.into_boxed_slice(), true);
@@ -672,27 +641,15 @@ fn do_to_dot<W: Write>(
 
 impl Regex {
     pub fn from_valid_grammar(v: &ValidGrammar, shell: Shell) -> Result<Self> {
-        let regex = Self::from_expr(v.expr, &v.arena, shell, &v.specializations)?;
-        regex.check_ambiguities(&v.subdfas, shell)?;
+        let regex = Self::from_expr(v.expr, &v.arena, shell)?;
+        regex.check_ambiguities(&v.subdfas)?;
         Ok(regex)
     }
 
-    pub(crate) fn from_expr(
-        e: ExprId,
-        expr_arena: &[Expr],
-        shell: Shell,
-        specs: &UstrMap<Specialization>,
-    ) -> Result<Self> {
+    pub(crate) fn from_expr(e: ExprId, expr_arena: &[Expr], shell: Shell) -> Result<Self> {
         let mut input_from_position: Vec<Input> = Default::default();
         let mut arena: Vec<RegexNode> = Default::default();
-        let regex = do_from_expr(
-            e,
-            expr_arena,
-            shell,
-            specs,
-            &mut arena,
-            &mut input_from_position,
-        );
+        let regex = do_from_expr(e, expr_arena, shell, &mut arena, &mut input_from_position);
         let endmarker_position = input_from_position.len() as Position;
         let endmarkerid = alloc(&mut arena, RegexNode::EndMarker(endmarker_position));
         let root = RegexNode::Cat(regex, endmarkerid);
@@ -713,7 +670,6 @@ impl Regex {
         &self,
         firstpos: &RoaringBitmap,
         followpos: &BTreeMap<Position, RoaringBitmap>,
-        shell: Shell,
         subdfas: &DFAInternPool,
         visited: &mut RoaringBitmap,
     ) -> Result<()> {
@@ -737,7 +693,7 @@ impl Regex {
                 continue;
             };
             visited.insert(pos);
-            self.do_check_transitions_unambiguous(follow, followpos, shell, subdfas, visited)?;
+            self.do_check_transitions_unambiguous(follow, followpos, subdfas, visited)?;
         }
         Ok(())
     }
@@ -747,17 +703,15 @@ impl Regex {
         firstpos: &RoaringBitmap,
         followpos: &BTreeMap<Position, RoaringBitmap>,
         subdfas: &DFAInternPool,
-        shell: Shell,
     ) -> Result<()> {
         let mut visited: RoaringBitmap = Default::default();
-        self.do_check_transitions_unambiguous(firstpos, followpos, shell, subdfas, &mut visited)
+        self.do_check_transitions_unambiguous(firstpos, followpos, subdfas, &mut visited)
     }
 
     fn do_check_transitions_unambiguous_subword(
         &self,
         firstpos: &RoaringBitmap,
         followpos: &BTreeMap<Position, RoaringBitmap>,
-        shell: Shell,
         visited: &mut RoaringBitmap,
     ) -> Result<()> {
         let stars: Vec<Input> = firstpos
@@ -780,7 +734,7 @@ impl Regex {
                 continue;
             };
             visited.insert(pos);
-            self.do_check_transitions_unambiguous_subword(follow, followpos, shell, visited)?;
+            self.do_check_transitions_unambiguous_subword(follow, followpos, visited)?;
         }
         Ok(())
     }
@@ -789,18 +743,16 @@ impl Regex {
         &self,
         firstpos: &RoaringBitmap,
         followpos: &BTreeMap<Position, RoaringBitmap>,
-        shell: Shell,
     ) -> Result<()> {
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);
-        self.do_check_transitions_unambiguous_subword(firstpos, followpos, shell, &mut visited)
+        self.do_check_transitions_unambiguous_subword(firstpos, followpos, &mut visited)
     }
 
     fn do_check_ambiguous_inputs_tail_only_subword(
         &self,
         firstpos: &RoaringBitmap,
         followpos: &BTreeMap<Position, RoaringBitmap>,
-        shell: Shell,
         path_prev_ambiguous: Option<Input>,
         visited: &mut RoaringBitmap,
     ) -> Result<()> {
@@ -833,7 +785,6 @@ impl Regex {
             self.do_check_ambiguous_inputs_tail_only_subword(
                 follow,
                 followpos,
-                shell,
                 path_prev_ambiguous.clone().or(prev_ambiguous.clone()),
                 visited,
             )?;
@@ -845,17 +796,10 @@ impl Regex {
         &self,
         firstpos: &RoaringBitmap,
         followpos: &BTreeMap<Position, RoaringBitmap>,
-        shell: Shell,
     ) -> Result<()> {
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);
-        self.do_check_ambiguous_inputs_tail_only_subword(
-            firstpos,
-            followpos,
-            shell,
-            None,
-            &mut visited,
-        )
+        self.do_check_ambiguous_inputs_tail_only_subword(firstpos, followpos, None, &mut visited)
     }
 
     fn do_check_descr_no_descr_clashes(
@@ -999,20 +943,20 @@ impl Regex {
         self.do_check_clashing_subword_leaders(firstpos, followpos, subdfas, &mut visited)
     }
 
-    pub(crate) fn check_ambiguities(&self, subdfas: &DFAInternPool, shell: Shell) -> Result<()> {
+    pub(crate) fn check_ambiguities(&self, subdfas: &DFAInternPool) -> Result<()> {
         let firstpos = RoaringBitmap::from_iter(&self.firstpos());
         let followpos = self.followpos();
-        self.check_transitions_unambiguous(&firstpos, &followpos, subdfas, shell)?;
+        self.check_transitions_unambiguous(&firstpos, &followpos, subdfas)?;
         self.check_descr_no_descr_clashes(&firstpos, &followpos)?;
         self.check_clashing_subword_leaders(&firstpos, &followpos, subdfas)?;
         Ok(())
     }
 
-    pub(crate) fn check_ambiguities_subword(&self, shell: Shell) -> Result<()> {
+    pub(crate) fn check_ambiguities_subword(&self) -> Result<()> {
         let firstpos = RoaringBitmap::from_iter(&self.firstpos());
         let followpos = self.followpos();
-        self.check_transitions_unambiguous_subword(&firstpos, &followpos, shell)?;
-        self.check_ambiguous_inputs_tail_only_subword(&firstpos, &followpos, shell)?;
+        self.check_transitions_unambiguous_subword(&firstpos, &followpos)?;
+        self.check_ambiguous_inputs_tail_only_subword(&firstpos, &followpos)?;
         self.check_descr_no_descr_clashes(&firstpos, &followpos)?;
         Ok(())
     }
