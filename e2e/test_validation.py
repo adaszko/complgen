@@ -348,3 +348,23 @@ warning: undefined nonterminal(s): BAZ BAR
   |     ^^^^^^^^^
   |
 """)
+
+
+def test_varying_command_names(complgen_binary_path: Path):
+    r = complgen_check(complgen_binary_path, """
+foo quux;
+bar quux;
+""")
+    assert r.returncode == 1
+    assert r.stderr == snapshot("""\
+-:2:1:error: Varying command names:
+  |
+2 | foo quux;
+  | ^^^
+  |
+-:3:1:error: Varying command names:
+  |
+3 | bar quux;
+  | ^^^
+  |
+""")

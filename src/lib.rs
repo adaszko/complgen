@@ -20,8 +20,8 @@ pub enum Error {
     #[error("Grammar needs to contain at least one call variant, e.g. grep;")]
     MissingCallVariants,
 
-    #[error("Multiple commands: {:?}", .0)]
-    VaryingCommandNames(Vec<Ustr>),
+    #[error("Multiple commands")]
+    VaryingCommandNames(Vec<HumanSpan>),
 
     #[error("Invalid command name: {}", .0)]
     InvalidCommandName(String),
@@ -53,7 +53,7 @@ pub enum Error {
     #[error("Clashing subword leaders: {:?} {:?}", .0, .1)]
     ClashingSubwordLeaders(HumanSpan, HumanSpan),
 
-    #[error("Two adjacent terminals in a subword expression: {:?}", .0)]
+    #[error("Two adjacent terminals in a subword expression")]
     SubwordSpaces(HumanSpan, HumanSpan, Vec<HumanSpan>),
 
     #[error("UTF-8 conversion error")]

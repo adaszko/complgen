@@ -1,5 +1,6 @@
 use std::{debug_assert, io::Write};
 
+use hashbrown::HashSet;
 use indexmap::IndexSet;
 use nom::{
     Finish, IResult, Parser,
@@ -316,7 +317,7 @@ pub fn expr_to_dot_file<P: AsRef<std::path::Path>>(
 
 pub type Span<'a> = LocatedSpan<&'a str>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, PartialOrd, Ord)]
 pub struct HumanSpan {
     pub line: usize,
     pub column_start: usize,
@@ -746,7 +747,8 @@ fn expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId>
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     CallVariant {
-        head: Ustr,
+        name: Ustr,
+        name_span: HumanSpan,
         expr: ExprId,
     },
     NonterminalDefinition {
@@ -757,18 +759,20 @@ pub enum Statement {
 }
 
 fn call_variant<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, Statement> {
-    let (input, name) = terminal(input)?;
-    let (input, _) = multiblanks1(input)?;
-    let (input, expr) = expr(arena, input)?;
-    let (input, _) = multiblanks0(input)?;
-    let (input, _) = char(';')(input)?;
+    let (after, name) = terminal(input)?;
+    let name_span = HumanSpan::from_range(input, after);
+    let (after, _) = multiblanks1(after)?;
+    let (after, expr) = expr(arena, after)?;
+    let (after, _) = multiblanks0(after)?;
+    let (after, _) = char(';')(after)?;
 
     let production = Statement::CallVariant {
-        head: ustr(&name),
+        name: ustr(&name),
+        name_span,
         expr,
     };
 
-    Ok((input, production))
+    Ok((after, production))
 }
 
 fn nonterm_specialization(input: Span) -> IResult<Span, (Span, Span)> {
@@ -1378,14 +1382,23 @@ fn propagate_fallback_levels(arena: &mut Vec<Expr>, expr_id: ExprId) -> ExprId {
     do_propagate_fallback_levels(arena, expr_id, 0)
 }
 
+fn stable_dedup_by<T, F: Fn(&T) -> D, D: std::hash::Hash + Eq + Copy>(f: F, v: &mut Vec<T>) {
+    let mut set = HashSet::new();
+    v.retain(|x| set.insert(f(x)));
+}
+
 impl ValidGrammar {
     pub fn from_grammar(mut grammar: Grammar, shell: Shell) -> Result<Self> {
         let command = {
-            let mut commands: Vec<Ustr> = grammar
+            let mut commands: Vec<(Ustr, HumanSpan)> = grammar
                 .statements
                 .iter()
                 .filter_map(|v| match v {
-                    Statement::CallVariant { head: lhs, .. } => Some(*lhs),
+                    Statement::CallVariant {
+                        name,
+                        name_span,
+                        expr: _,
+                    } => Some((*name, *name_span)),
                     Statement::NonterminalDefinition { .. } => None,
                 })
                 .collect();
@@ -1394,13 +1407,14 @@ impl ValidGrammar {
                 return Err(Error::MissingCallVariants);
             }
 
-            commands.sort_unstable();
-            commands.dedup();
+            stable_dedup_by(|(name, _)| *name, &mut commands);
 
             if commands.len() > 1 {
-                return Err(Error::VaryingCommandNames(commands.into_iter().collect()));
+                return Err(Error::VaryingCommandNames(
+                    commands.into_iter().map(|(_, span)| span).collect(),
+                ));
             }
-            commands[0]
+            commands[0].0
         };
 
         let expr = {
@@ -2478,7 +2492,12 @@ pub mod tests {
         let mut arena: Vec<Expr> = Default::default();
         let (s, v) = call_variant(&mut arena, Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
-        let Statement::CallVariant { head, expr: actual } = v else {
+        let Statement::CallVariant {
+            name: head,
+            expr: actual,
+            name_span: _,
+        } = v
+        else {
             unreachable!()
         };
         assert_eq!(head, ustr("foo"));
@@ -2497,7 +2516,11 @@ foo baz;
 
         // Statement 1
         let (head, actual_expr_id) = match &g.statements[0] {
-            Statement::CallVariant { head, expr } => (head, expr),
+            Statement::CallVariant {
+                name: head,
+                expr,
+                name_span: _,
+            } => (head, expr),
             _ => panic!("Expected CallVariant"),
         };
         assert_eq!(*head, ustr("foo"));
@@ -2506,7 +2529,11 @@ foo baz;
 
         // Statement 2
         let (head, actual_expr_id) = match &g.statements[1] {
-            Statement::CallVariant { head, expr } => (head, expr),
+            Statement::CallVariant {
+                name: head,
+                expr,
+                name_span: _,
+            } => (head, expr),
             _ => panic!("Expected CallVariant"),
         };
         assert_eq!(*head, ustr("foo"));
@@ -2522,7 +2549,11 @@ foo baz;
         assert_eq!(g.statements.len(), 1);
 
         let (head, expr_id) = match &g.statements[0] {
-            Statement::CallVariant { head, expr } => (*head, *expr),
+            Statement::CallVariant {
+                name: head,
+                expr,
+                name_span: _,
+            } => (*head, *expr),
             _ => panic!("Expected CallVariant"),
         };
 
@@ -2611,7 +2642,11 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
 
         // Statement 1: grep ...
         let (head, expr_id) = match &g.statements[0] {
-            Statement::CallVariant { head, expr } => (head, expr),
+            Statement::CallVariant {
+                name: head,
+                expr,
+                name_span: _,
+            } => (head, expr),
             _ => panic!("Expected CallVariant"),
         };
         assert_eq!(*head, ustr("grep"));
@@ -2778,7 +2813,11 @@ cargo [+{{{ rustup toolchain list | cut -d' ' -f1 }}}]
         let mut g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements.len(), 1);
         let (head, expr_id) = match &g.statements[0] {
-            Statement::CallVariant { head, expr } => (head, expr),
+            Statement::CallVariant {
+                name: head,
+                expr,
+                name_span: _,
+            } => (head, expr),
             _ => panic!("Expected CallVariant"),
         };
         assert_eq!(*head, ustr("cargo"));
@@ -2825,7 +2864,11 @@ grep --color=<WHEN> --version;
 
         // Statement 1: grep ...
         let (head, expr_id) = match &g.statements[0] {
-            Statement::CallVariant { head, expr } => (head, expr),
+            Statement::CallVariant {
+                name: head,
+                expr,
+                name_span: _,
+            } => (head, expr),
             _ => panic!("Expected CallVariant"),
         };
         assert_eq!(*head, ustr("grep"));
@@ -2869,7 +2912,11 @@ grep --color=(always | never | auto);
         assert_eq!(g.statements.len(), 1);
 
         let (head, expr_id) = match &g.statements[0] {
-            Statement::CallVariant { head, expr } => (head, expr),
+            Statement::CallVariant {
+                name: head,
+                expr,
+                name_span: _,
+            } => (head, expr),
             _ => panic!("Expected CallVariant"),
         };
         assert_eq!(*head, ustr("grep"));
@@ -2902,7 +2949,11 @@ strace -e <EXPR>;
 
         // Statement 1
         let (head, expr_id) = match &g.statements[0] {
-            CallVariant { head, expr } => (head, expr),
+            CallVariant {
+                name: head,
+                expr,
+                name_span: _,
+            } => (head, expr),
             _ => panic!("Expected CallVariant"),
         };
         assert_eq!(*head, ustr("strace"));
@@ -2997,7 +3048,11 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
 
         // Statement 1
         let (head, expr_id) = match &g.statements[0] {
-            CallVariant { head, expr } => (head, expr),
+            CallVariant {
+                name: head,
+                expr,
+                name_span: _,
+            } => (head, expr),
             _ => panic!("Expected CallVariant"),
         };
         assert_eq!(*head, ustr("lsof"));
@@ -3079,7 +3134,11 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
 
         // Statement 1
         let (head, expr_id) = match &g.statements[0] {
-            Statement::CallVariant { head, expr } => (head, expr),
+            Statement::CallVariant {
+                name: head,
+                expr,
+                name_span: _,
+            } => (head, expr),
             _ => panic!("Expected CallVariant"),
         };
         assert_eq!(*head, ustr("cargo"));
@@ -3180,7 +3239,11 @@ grep --extended-regexp "PATTERNS are extended regular expressions";
         let mut g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements.len(), 1);
         let (head, actual) = match &g.statements[0] {
-            Statement::CallVariant { head, expr } => (head, *expr),
+            Statement::CallVariant {
+                name: head,
+                expr,
+                name_span: _,
+            } => (head, *expr),
             _ => panic!("Expected CallVariant"),
         };
         assert_eq!(*head, ustr("grep"));
@@ -3213,7 +3276,11 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
         let mut g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements.len(), 1);
         let (head, expr_id) = match &g.statements[0] {
-            Statement::CallVariant { head, expr } => (head, expr),
+            Statement::CallVariant {
+                name: head,
+                expr,
+                name_span: _,
+            } => (head, expr),
             _ => panic!("Expected CallVariant"),
         };
         assert_eq!(*head, ustr("foo.sh"));
@@ -3243,7 +3310,11 @@ ls <FILE>;
         assert_eq!(g.statements.len(), 3);
 
         let (head, expr_id) = match &g.statements[0] {
-            CallVariant { head, expr } => (head, expr),
+            CallVariant {
+                name: head,
+                expr,
+                name_span: _,
+            } => (head, expr),
             _ => panic!("Expected CallVariant"),
         };
         assert_eq!(*head, ustr("ls"));
