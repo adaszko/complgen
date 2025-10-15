@@ -839,7 +839,7 @@ fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
     (id_from_cmd, id_from_regex)
 }
 
-fn validate_command_name(command: &str) -> crate::Result<()> {
+fn validate_command_name(command: &str) -> Result<()> {
     if command.contains('/') {
         return Err(crate::Error::InvalidCommandName(command.to_owned()));
     }

@@ -1,3 +1,4 @@
+use crate::Result;
 use itertools::PutBack;
 use regex::Regex;
 use std::io::Write;
@@ -26,7 +27,7 @@ fn take_lines_while_descr<'a>(
     itertools::join(descr_lines, " ")
 }
 
-pub fn scrape<W: Write>(input: &str, output: &mut W) -> crate::Result<()> {
+pub fn scrape<W: Write>(input: &str, output: &mut W) -> Result<()> {
     let short_long_opt_triangle_arg_descr =
         Regex::new(r#"^\s*(-\S),\s*(--\S+) \[<([^>]+)>\]\s+(.+)$"#).unwrap();
     let short_long_triangle_arg_descr =

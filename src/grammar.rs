@@ -2075,7 +2075,7 @@ fn get_nonterminals_resolution_order(
 }
 
 impl Grammar {
-    pub fn parse(input_before: &str) -> crate::Result<Self> {
+    pub fn parse(input_before: &str) -> Result<Self> {
         let (input_after, (arena, statements)) = match grammar(Span::new(input_before)).finish() {
             Ok((input, statements)) => (input, statements),
             Err(e) => {

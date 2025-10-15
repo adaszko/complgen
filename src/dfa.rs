@@ -7,7 +7,7 @@ use ustr::{Ustr, ustr};
 
 use crate::grammar::{DFAId, DFAInternPool};
 use crate::regex::{Inp, Position, Regex, diagnostic_display_input};
-use crate::{Error, StateId};
+use crate::{Error, Result, StateId};
 
 // Every state in a DFA is formally defined to have a transition on *every* input symbol.  In
 // our applications that's not the case, so we add artificial transitions to a special, designated
@@ -554,7 +554,7 @@ fn do_to_dot<W: Write>(
     dfa: &DFA,
     identifiers_prefix: &str,
     recursion_level: usize,
-) -> crate::Result<()> {
+) -> Result<()> {
     let indentation = format!("\t{}", str::repeat("\t", recursion_level));
 
     let id_from_dfa = dfa.get_subwords(0);
@@ -660,7 +660,7 @@ fn do_to_dot<W: Write>(
 }
 
 impl DFA {
-    pub fn from_regex(regex: Regex, subdfas: DFAInternPool) -> crate::Result<Self> {
+    pub fn from_regex(regex: Regex, subdfas: DFAInternPool) -> Result<Self> {
         let dfa = dfa_from_regex(regex, subdfas);
         dfa.check_ambiguity_best_effort()?;
         Ok(dfa)
@@ -703,7 +703,7 @@ impl DFA {
         state: StateId,
         visited: &mut RoaringBitmap,
         path: &mut Vec<Inp>,
-    ) -> crate::Result<()> {
+    ) -> Result<()> {
         let mut ambiguous_inputs: Vec<Inp> = Default::default();
         for (input_id, _) in self.iter_transitions_from(state) {
             let input = self.get_input(input_id);
@@ -740,7 +740,7 @@ impl DFA {
         Ok(())
     }
 
-    fn check_ambiguity_best_effort(&self) -> crate::Result<()> {
+    fn check_ambiguity_best_effort(&self) -> Result<()> {
         let mut visited: RoaringBitmap = Default::default();
         let mut path: Vec<Inp> = Default::default();
         self.do_check_ambiguity_best_effort(self.starting_state, &mut visited, &mut path)?;
@@ -910,7 +910,7 @@ impl DFA {
             .max()
     }
 
-    pub fn to_dot<W: Write>(&self, output: &mut W) -> crate::Result<()> {
+    pub fn to_dot<W: Write>(&self, output: &mut W) -> Result<()> {
         writeln!(output, "digraph dfa {{")?;
         writeln!(output, "\trankdir=LR;")?;
         do_to_dot(output, self, "", 0)?;
@@ -919,7 +919,7 @@ impl DFA {
     }
 
     #[allow(dead_code)]
-    pub fn to_dot_file<P: AsRef<std::path::Path>>(&self, path: P) -> crate::Result<()> {
+    pub fn to_dot_file<P: AsRef<std::path::Path>>(&self, path: P) -> Result<()> {
         let mut file = std::fs::File::create(path)?;
         self.to_dot(&mut file)?;
         Ok(())
@@ -988,7 +988,7 @@ mod tests {
             self.accepting_states.contains(current_state)
         }
 
-        fn accepts(&self, inputs: &[&str]) -> Result<bool, TestCaseError> {
+        fn accepts(&self, inputs: &[&str]) -> std::result::Result<bool, TestCaseError> {
             let mut input_index = 0;
             let mut current_state = self.starting_state;
             'outer: loop {

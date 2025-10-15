@@ -82,7 +82,7 @@ impl Input {
     }
 }
 
-pub fn diagnostic_display_input<W: std::fmt::Write>(w: &mut W, input: &Inp) -> crate::Result<()> {
+pub fn diagnostic_display_input<W: std::fmt::Write>(w: &mut W, input: &Inp) -> Result<()> {
     match input {
         Inp::Literal { literal, .. } => write!(w, r#"{literal}"#)?,
         Inp::Star => write!(w, r#"*"#)?,
