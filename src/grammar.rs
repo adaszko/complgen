@@ -489,18 +489,20 @@ fn terminal_opt_description_expr<'s>(
     Ok((after, id))
 }
 
-fn nonterm(input: Span) -> IResult<Span, Span> {
+fn nonterm(input: Span) -> IResult<Span, (Ustr, HumanSpan)> {
+    let before_nonterm = input;
     let (input, _) = char('<')(input)?;
     let (input, name) = is_not(">")(input)?;
     let (input, _) = char('>')(input)?;
-    Ok((input, name))
+    let nonterm_span = HumanSpan::from_range(before_nonterm, input);
+    Ok((input, (ustr(name.into_fragment()), nonterm_span)))
 }
 
 fn nonterm_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
-    let (after, nonterm) = context("nonterminal", nonterm)(input)?;
+    let (after, (nonterm, _)) = context("nonterminal", nonterm)(input)?;
     let diagnostic_span = HumanSpan::from_range(input, after);
     let e = Expr::NontermRef {
-        nonterm: ustr(nonterm.into_fragment()),
+        nonterm,
         fallback: 0,
         span: diagnostic_span,
     };
@@ -763,7 +765,8 @@ pub enum Statement {
         expr: ExprId,
     },
     NonterminalDefinition {
-        symbol: Ustr,
+        name: Ustr,
+        span: HumanSpan,
         shell: Option<(Ustr, HumanSpan)>,
         expr: ExprId,
     },
@@ -786,29 +789,33 @@ fn call_variant<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>,
     Ok((after, production))
 }
 
-fn nonterm_specialization(input: Span) -> IResult<Span, (Ustr, Ustr, HumanSpan)> {
+fn nonterm_specialization(input: Span) -> IResult<Span, (Ustr, HumanSpan, Ustr, HumanSpan)> {
+    let before_name = input;
     let (input, _) = char('<')(input)?;
     let (input, name) = is_not(">@")(input)?;
     let (input, _) = char('@')(input)?;
-    let (after, shell) = is_not(">")(input)?;
-    let shell_span = HumanSpan::from_range(input, after);
-    let (after, _) = char('>')(after)?;
+    let before_shell = input;
+    let (input, shell) = is_not(">")(input)?;
+    let shell_span = HumanSpan::from_range(before_shell, input);
+    let (input, _) = char('>')(input)?;
+    let nonterm_span = HumanSpan::from_range(before_name, input);
     Ok((
-        after,
+        input,
         (
             ustr(name.into_fragment()),
+            nonterm_span,
             ustr(shell.into_fragment()),
             shell_span,
         ),
     ))
 }
 
-fn nonterm_def(input: Span) -> IResult<Span, (Ustr, Option<(Ustr, HumanSpan)>)> {
-    if let Ok((input, (name, shell, shell_span))) = nonterm_specialization(input) {
-        return Ok((input, (name, Some((shell, shell_span)))));
+fn nonterm_def(input: Span) -> IResult<Span, (Ustr, HumanSpan, Option<(Ustr, HumanSpan)>)> {
+    if let Ok((input, (name, nonterm_span, shell, shell_span))) = nonterm_specialization(input) {
+        return Ok((input, (name, nonterm_span, Some((shell, shell_span)))));
     }
-    if let Ok((input, name)) = nonterm(input) {
-        return Ok((input, (ustr(name.into_fragment()), None)));
+    if let Ok((input, (name, nonterm_span))) = nonterm(input) {
+        return Ok((input, (name, nonterm_span, None)));
     }
     fail(input)
 }
@@ -817,7 +824,7 @@ fn nonterm_def_statement<'s>(
     arena: &mut Vec<Expr>,
     input: Span<'s>,
 ) -> IResult<Span<'s>, Statement> {
-    let (input, (name, shell)) = nonterm_def(input)?;
+    let (input, (name, nonterm_span, shell)) = nonterm_def(input)?;
     let (input, _) = multiblanks0(input)?;
     let (input, _) = tag("::=")(input)?;
     let (input, _) = multiblanks0(input)?;
@@ -826,7 +833,8 @@ fn nonterm_def_statement<'s>(
     let (input, _) = char(';')(input)?;
 
     let stmt = Statement::NonterminalDefinition {
-        symbol: name,
+        name,
+        span: nonterm_span,
         shell,
         expr: e,
     };
@@ -879,10 +887,11 @@ fn make_specializations_map(
     for definition in statements {
         let (name, (shell_name, shell_span), expr) = match definition {
             Statement::NonterminalDefinition {
-                symbol,
+                name,
                 shell: Some(shell),
                 expr,
-            } => (*symbol, shell, expr),
+                span: _,
+            } => (*name, shell, expr),
             Statement::NonterminalDefinition { shell: None, .. } => continue,
             Statement::CallVariant { .. } => continue,
         };
@@ -932,9 +941,10 @@ fn make_specializations_map(
     for definition in statements {
         let (name, expr) = match definition {
             Statement::NonterminalDefinition {
-                symbol,
+                name: symbol,
                 shell: None,
                 expr,
+                span: _,
             } => (symbol, expr),
             _ => continue,
         };
@@ -1474,9 +1484,10 @@ impl ValidGrammar {
             for definition in &grammar.statements {
                 let (symbol, expr) = match definition {
                     Statement::NonterminalDefinition {
-                        symbol,
+                        name: symbol,
                         expr,
                         shell: None,
+                        span: _,
                     } => (*symbol, *expr),
                     _ => continue,
                 };
@@ -2702,9 +2713,10 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
         // Statement 2: <OPTION> ::= ...
         let (symbol, shell, expr_id2) = match &g.statements[1] {
             Statement::NonterminalDefinition {
-                symbol,
+                name: symbol,
                 shell,
                 expr,
+                span: _,
             } => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
@@ -2718,9 +2730,10 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
         // Statement 3: <WHEN> ::= ...
         let (symbol, shell, expr_id3) = match &g.statements[2] {
             Statement::NonterminalDefinition {
-                symbol,
+                name: symbol,
                 shell,
                 expr,
+                span: _,
             } => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
@@ -2760,9 +2773,10 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
 
         let (symbol, shell, expr_id) = match &g.statements[0] {
             Statement::NonterminalDefinition {
-                symbol,
+                name: symbol,
                 shell,
                 expr,
+                span: _,
             } => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
@@ -2919,9 +2933,10 @@ grep --color=<WHEN> --version;
         // Statement 2: <WHEN> ::= ...
         let (symbol, shell, expr_id2) = match &g.statements[1] {
             Statement::NonterminalDefinition {
-                symbol,
+                name: symbol,
                 shell,
                 expr,
+                span: _,
             } => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
@@ -3000,9 +3015,10 @@ strace -e <EXPR>;
         // Statement 2
         let (symbol, shell, expr_id) = match &g.statements[1] {
             NonterminalDefinition {
-                symbol,
+                name: symbol,
                 shell,
                 expr,
+                span: _,
             } => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
@@ -3030,9 +3046,10 @@ strace -e <EXPR>;
         // Statement 3
         let (symbol, shell, expr_id) = match &g.statements[2] {
             NonterminalDefinition {
-                symbol,
+                name: symbol,
                 shell,
                 expr,
+                span: _,
             } => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
@@ -3051,9 +3068,10 @@ strace -e <EXPR>;
         // Statement 4
         let (symbol, shell, expr_id) = match &g.statements[3] {
             NonterminalDefinition {
-                symbol,
+                name: symbol,
                 shell,
                 expr,
+                span: _,
             } => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
@@ -3110,9 +3128,10 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
         // Statement 2
         let (symbol, shell, expr_id) = match &g.statements[1] {
             NonterminalDefinition {
-                symbol,
+                name: symbol,
                 shell,
                 expr,
+                span: _,
             } => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
@@ -3126,9 +3145,10 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
         // Statement 3
         let (symbol, shell, expr_id) = match &g.statements[2] {
             NonterminalDefinition {
-                symbol,
+                name: symbol,
                 shell,
                 expr,
+                span: _,
             } => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
@@ -3144,9 +3164,10 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
         // Statement 4
         let (symbol, shell, expr_id) = match &g.statements[3] {
             NonterminalDefinition {
-                symbol,
+                name: symbol,
                 shell,
                 expr,
+                span: _,
             } => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
@@ -3196,9 +3217,10 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
         // Statement 2
         let (symbol, shell, expr_id) = match &g.statements[1] {
             Statement::NonterminalDefinition {
-                symbol,
+                name: symbol,
                 shell,
                 expr,
+                span: _,
             } => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
@@ -3327,7 +3349,7 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
     #[test]
     fn parses_nonterminal_shell_specific() {
         const INPUT: &str = r#"<FILE@bash>"#;
-        let (s, (nonterm, shell, _)) = nonterm_specialization(Span::new(INPUT)).unwrap();
+        let (s, (nonterm, _, shell, _)) = nonterm_specialization(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
         assert_eq!(nonterm, "FILE");
         assert_eq!(shell, "bash");
@@ -3358,9 +3380,10 @@ ls <FILE>;
 
         let (symbol, shell, expr_id) = match &g.statements[1] {
             NonterminalDefinition {
-                symbol,
+                name: symbol,
                 shell,
                 expr,
+                span: _,
             } => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
@@ -3382,9 +3405,10 @@ ls <FILE>;
 
         let (symbol, shell, expr_id) = match &g.statements[2] {
             NonterminalDefinition {
-                symbol,
+                name: symbol,
                 shell,
                 expr,
+                span: _,
             } => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
