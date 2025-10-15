@@ -839,20 +839,11 @@ fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
     (id_from_cmd, id_from_regex)
 }
 
-fn validate_command_name(command: &str) -> Result<()> {
-    if command.contains('/') {
-        return Err(crate::Error::InvalidCommandName(command.to_owned()));
-    }
-    Ok(())
-}
-
 pub fn write_completion_script<W: Write>(
     buffer: &mut W,
     command: &str,
     dfa: &DFA,
 ) -> anyhow::Result<()> {
-    validate_command_name(command)?;
-
     let (id_from_cmd, id_from_regex) = make_id_from_command_map(dfa);
     for cmd in &id_from_cmd {
         let id = id_from_cmd.get_index_of(cmd).unwrap();

@@ -20,11 +20,11 @@ pub enum Error {
     #[error("Grammar needs to contain at least one call variant, e.g. grep;")]
     MissingCallVariants,
 
+    #[error("Invalid command name")]
+    InvalidCommandName(HumanSpan),
+
     #[error("Multiple commands")]
     VaryingCommandNames(Vec<HumanSpan>),
-
-    #[error("Invalid command name: {}", .0)]
-    InvalidCommandName(String),
 
     #[error("Nonterminal definitions depend on each other cyclically")]
     NonterminalDefinitionsCycle(Option<Vec<Ustr>>),
@@ -35,26 +35,26 @@ pub enum Error {
     #[error("Unknown shell")]
     UnknownShell(HumanSpan),
 
-    #[error("Can only specialize external commands: {}@{:?}", .0, .1)]
+    #[error("Can only specialize external commands")]
     NonCommandSpecialization(Ustr, Option<Ustr>),
 
     #[error("Ambiguity in matching: {:?} {:?}", .0, .1)]
     AmbiguousMatchable(HumanSpan, HumanSpan),
 
-    #[error("Ambiguity in matching: {:?} {:?}", .0, .1)]
+    #[error("Ambiguity in matching")]
     UnboundedMatchable(HumanSpan, HumanSpan),
 
-    #[error("Ambiguous DFA: {:?} {:?}", .0, .1)]
-    AmbiguousDFA(Box<[Inp]>, Box<[Inp]>),
-
-    #[error("Clashing variants: {:?} {:?}", .0, .1)]
+    #[error("Clashing variants")]
     ClashingVariants(HumanSpan, HumanSpan),
 
-    #[error("Clashing subword leaders: {:?} {:?}", .0, .1)]
+    #[error("Clashing subword leaders")]
     ClashingSubwordLeaders(HumanSpan, HumanSpan),
 
     #[error("Two adjacent terminals in a subword expression")]
     SubwordSpaces(HumanSpan, HumanSpan, Vec<HumanSpan>),
+
+    #[error("Ambiguous DFA: {:?} {:?}", .0, .1)]
+    AmbiguousDFA(Box<[Inp]>, Box<[Inp]>),
 
     #[error("UTF-8 conversion error")]
     FromUtf8Error(#[from] FromUtf8Error),

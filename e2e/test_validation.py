@@ -383,3 +383,17 @@ foo quux;
   |      ^^^^
   |
 """)
+
+
+def test_invalid_command_name(complgen_binary_path: Path):
+    r = complgen_check(complgen_binary_path, """
+foo/bar quux;
+""")
+    assert r.returncode == 1
+    assert r.stderr == snapshot("""\
+-:2:1:error: Invalid command name
+  |
+2 | foo/bar quux;
+  | ^^^^^^^
+  |
+""")

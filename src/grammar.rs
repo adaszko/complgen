@@ -1411,9 +1411,16 @@ fn stable_dedup_by<T, F: Fn(&T) -> D, D: std::hash::Hash + Eq + Copy>(f: F, v: &
     v.retain(|x| set.insert(f(x)));
 }
 
+fn is_valid_command_name(command: &str) -> bool {
+    if command.contains('/') {
+        return false;
+    }
+    true
+}
+
 impl ValidGrammar {
     pub fn from_grammar(mut grammar: Grammar, shell: Shell) -> Result<Self> {
-        let command = {
+        let (command, command_span) = {
             let mut commands: Vec<(Ustr, HumanSpan)> = grammar
                 .statements
                 .iter()
@@ -1438,8 +1445,12 @@ impl ValidGrammar {
                     commands.into_iter().map(|(_, span)| span).collect(),
                 ));
             }
-            commands[0].0
+            commands[0]
         };
+
+        if !is_valid_command_name(&command) {
+            return Err(crate::Error::InvalidCommandName(command_span));
+        }
 
         let expr = {
             let call_variants: Vec<ExprId> = grammar

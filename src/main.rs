@@ -104,6 +104,10 @@ fn handle_error(e: Error, path: &str, source: &str, command: &str) -> anyhow::Re
             let err = ErrMsg::new("Parse error").error(&span, source, "");
             eprintln!("{}", err.into_string(path, &span));
         }
+        Error::InvalidCommandName(span) => {
+            let err = ErrMsg::new("Invalid command name").error(&span, source, "");
+            eprintln!("{}", err.into_string(path, &span));
+        }
         Error::VaryingCommandNames(spans) => {
             for span in spans {
                 let err = ErrMsg::new("Varying command names:").error(&span, source, "");
