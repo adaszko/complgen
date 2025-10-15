@@ -32,8 +32,8 @@ pub enum Error {
     #[error("Duplicate nonterminal definition")]
     DuplicateNonterminalDefinition(Ustr, Option<Ustr>),
 
-    #[error("Unknown shell: {}", .0)]
-    UnknownShell(Ustr),
+    #[error("Unknown shell")]
+    UnknownShell(HumanSpan),
 
     #[error("Can only specialize external commands: {}@{:?}", .0, .1)]
     NonCommandSpecialization(Ustr, Option<Ustr>),

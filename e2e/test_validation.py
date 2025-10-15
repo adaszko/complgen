@@ -368,3 +368,18 @@ bar quux;
   | ^^^
   |
 """)
+
+
+def test_unknown_shell(complgen_binary_path: Path):
+    r = complgen_check(complgen_binary_path, """
+foo quux;
+<BAR@quux> ::= {{{ echo foo }}};
+""")
+    assert r.returncode == 1
+    assert r.stderr == snapshot("""\
+-:3:6:error: Unknown shell
+  |
+3 | <BAR@quux> ::= {{{ echo foo }}};
+  |      ^^^^
+  |
+""")

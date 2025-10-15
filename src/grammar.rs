@@ -154,6 +154,17 @@ pub enum Shell {
     Zsh,
 }
 
+impl Shell {
+    fn from_str(shell: &str, span: HumanSpan) -> Result<Self> {
+        match shell {
+            "bash" => Ok(Self::Bash),
+            "fish" => Ok(Self::Fish),
+            "zsh" => Ok(Self::Zsh),
+            _ => Err(Error::UnknownShell(span)),
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Specialization {
     pub bash: Option<(Ustr, Option<Ustr>)>,
@@ -753,7 +764,7 @@ pub enum Statement {
     },
     NonterminalDefinition {
         symbol: Ustr,
-        shell: Option<Ustr>,
+        shell: Option<(Ustr, HumanSpan)>,
         expr: ExprId,
     },
 }
@@ -775,21 +786,29 @@ fn call_variant<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>,
     Ok((after, production))
 }
 
-fn nonterm_specialization(input: Span) -> IResult<Span, (Span, Span)> {
+fn nonterm_specialization(input: Span) -> IResult<Span, (Ustr, Ustr, HumanSpan)> {
     let (input, _) = char('<')(input)?;
     let (input, name) = is_not(">@")(input)?;
     let (input, _) = char('@')(input)?;
-    let (input, shell) = is_not(">")(input)?;
-    let (input, _) = char('>')(input)?;
-    Ok((input, (name, shell)))
+    let (after, shell) = is_not(">")(input)?;
+    let shell_span = HumanSpan::from_range(input, after);
+    let (after, _) = char('>')(after)?;
+    Ok((
+        after,
+        (
+            ustr(name.into_fragment()),
+            ustr(shell.into_fragment()),
+            shell_span,
+        ),
+    ))
 }
 
-fn nonterm_def(input: Span) -> IResult<Span, (Span, Option<Span>)> {
-    if let Ok((input, (name, shell))) = nonterm_specialization(input) {
-        return Ok((input, (name, Some(shell))));
+fn nonterm_def(input: Span) -> IResult<Span, (Ustr, Option<(Ustr, HumanSpan)>)> {
+    if let Ok((input, (name, shell, shell_span))) = nonterm_specialization(input) {
+        return Ok((input, (name, Some((shell, shell_span)))));
     }
     if let Ok((input, name)) = nonterm(input) {
-        return Ok((input, (name, None)));
+        return Ok((input, (ustr(name.into_fragment()), None)));
     }
     fail(input)
 }
@@ -807,8 +826,8 @@ fn nonterm_def_statement<'s>(
     let (input, _) = char(';')(input)?;
 
     let stmt = Statement::NonterminalDefinition {
-        symbol: ustr(name.into_fragment()),
-        shell: shell.map(|span| ustr(span.into_fragment())),
+        symbol: name,
+        shell,
         expr: e,
     };
 
@@ -858,7 +877,7 @@ fn make_specializations_map(
 ) -> Result<UstrMap<Specialization>> {
     let mut specializations: UstrMap<Specialization> = Default::default();
     for definition in statements {
-        let (name, shell, expr) = match definition {
+        let (name, (shell_name, shell_span), expr) = match definition {
             Statement::NonterminalDefinition {
                 symbol,
                 shell: Some(shell),
@@ -875,33 +894,38 @@ fn make_specializations_map(
                 zsh_regex,
                 ..
             } => (cmd, bash_regex, fish_regex, zsh_regex),
-            _ => return Err(Error::NonCommandSpecialization(name, Some(*shell))),
+            _ => return Err(Error::NonCommandSpecialization(name, Some(*shell_name))),
         };
-        let known_shell = matches!(shell.as_str(), "bash" | "fish" | "zsh");
-        if !known_shell {
-            return Err(Error::UnknownShell(*shell));
-        }
+        let shell = Shell::from_str(shell_name, *shell_span)?;
         let spec = specializations.entry(name).or_default();
-        match shell.as_str() {
-            "bash" => {
+        match shell {
+            Shell::Bash => {
                 if spec.bash.is_some() {
-                    return Err(Error::DuplicateNonterminalDefinition(name, Some(*shell)));
+                    return Err(Error::DuplicateNonterminalDefinition(
+                        name,
+                        Some(*shell_name),
+                    ));
                 }
                 spec.bash = Some((*command, *bash_regex));
             }
-            "fish" => {
+            Shell::Fish => {
                 if spec.fish.is_some() {
-                    return Err(Error::DuplicateNonterminalDefinition(name, Some(*shell)));
+                    return Err(Error::DuplicateNonterminalDefinition(
+                        name,
+                        Some(*shell_name),
+                    ));
                 }
                 spec.fish = Some((*command, *fish_regex));
             }
-            "zsh" => {
+            Shell::Zsh => {
                 if spec.zsh.is_some() {
-                    return Err(Error::DuplicateNonterminalDefinition(name, Some(*shell)));
+                    return Err(Error::DuplicateNonterminalDefinition(
+                        name,
+                        Some(*shell_name),
+                    ));
                 }
                 spec.zsh = Some((*command, *zsh_regex));
             }
-            _ => unreachable!(),
         }
     }
 
@@ -3292,10 +3316,10 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
     #[test]
     fn parses_nonterminal_shell_specific() {
         const INPUT: &str = r#"<FILE@bash>"#;
-        let (s, (nonterm, shell)) = nonterm_specialization(Span::new(INPUT)).unwrap();
+        let (s, (nonterm, shell, _)) = nonterm_specialization(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
-        assert_eq!(nonterm.into_fragment(), "FILE");
-        assert_eq!(shell.into_fragment(), "bash");
+        assert_eq!(nonterm, "FILE");
+        assert_eq!(shell, "bash");
     }
 
     #[test]
@@ -3330,7 +3354,7 @@ ls <FILE>;
             _ => panic!("Expected NonterminalDefinition"),
         };
         assert_eq!(*symbol, ustr("FILE"));
-        assert_eq!(*shell, Some(ustr("bash")));
+        assert_eq!(shell.unwrap().0, "bash");
         let expected_expr2_id = alloc(
             &mut g.arena,
             Command {
@@ -3354,7 +3378,7 @@ ls <FILE>;
             _ => panic!("Expected NonterminalDefinition"),
         };
         assert_eq!(*symbol, ustr("FILE"));
-        assert_eq!(*shell, Some(ustr("fish")));
+        assert_eq!(shell.unwrap().0, "fish");
         let expected_expr3_id = alloc(
             &mut g.arena,
             Command {
