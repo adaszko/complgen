@@ -232,6 +232,15 @@ impl std::fmt::Debug for Expr {
     }
 }
 
+fn dot_escape(s: &str) -> String {
+    if s.is_empty() {
+        return s.to_string();
+    }
+    s.replace('\"', "\\\"")
+        .replace('`', "\\`")
+        .replace('$', "\\$")
+}
+
 fn do_expr_to_dot<W: Write>(
     output: &mut W,
     expr_id: ExprId,
@@ -245,7 +254,7 @@ fn do_expr_to_dot<W: Write>(
             writeln!(output, r#"  _{expr_id}[label="<{nonterm}>"];"#)?;
         }
         Expr::Command { cmd, .. } => {
-            writeln!(output, r#"  _{expr_id}[label="{cmd}"];"#)?;
+            writeln!(output, r#"  _{expr_id}[label="{}"];"#, dot_escape(&cmd))?;
         }
         Expr::Sequence(children) => {
             writeln!(output, r#"  _{expr_id}[label="Sequence"];"#)?;

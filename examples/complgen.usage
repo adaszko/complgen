@@ -1,9 +1,9 @@
 complgen <OPTION> <PATH>;
-<OPTION> ::= [(--bash <BASH>) "Write bash completion script"]
-             [(--fish <FISH>) "Write fish completion script"]
-             [(--zsh <ZSH>) "Write zsh completion script"]
-             [(--dfa <DFA>) "Dump resulting DFA as a GraphViz .dot format"]
-             [(--railroad <RAILROAD>) "Dump the parsed grammar as SVG railroad diagram"]
+<OPTION> ::= [(--bash <PATH>) "Write bash completion script"]
+             [(--fish <PATH>) "Write fish completion script"]
+             [(--zsh <PATH>) "Write zsh completion script"]
+             [(--dfa <PATH>) "Dump resulting DFA as a GraphViz .dot format"]
+             [(--railroad <PATH>) "Dump the parsed grammar as SVG railroad diagram"]
          ;
 complgen --scrape "Read another program's --help output and generate a grammar SKELETON";
 complgen --version;
