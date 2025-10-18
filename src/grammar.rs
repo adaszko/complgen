@@ -758,18 +758,21 @@ fn expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId>
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct NontermDefn {
+    lhs_name: Ustr,
+    lhs_span: HumanSpan,
+    shell: Option<(Ustr, HumanSpan)>,
+    rhs_expr_id: ExprId,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     CallVariant {
         name: Ustr,
         name_span: HumanSpan,
         expr: ExprId,
     },
-    NonterminalDefinition {
-        name: Ustr,
-        span: HumanSpan,
-        shell: Option<(Ustr, HumanSpan)>,
-        expr: ExprId,
-    },
+    NonterminalDefinition(NontermDefn),
 }
 
 fn call_variant<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, Statement> {
@@ -828,16 +831,16 @@ fn nonterm_def_statement<'s>(
     let (input, _) = multiblanks0(input)?;
     let (input, _) = tag("::=")(input)?;
     let (input, _) = multiblanks0(input)?;
-    let (input, e) = expr(arena, input)?;
+    let (input, rhs_expr_id) = expr(arena, input)?;
     let (input, _) = multiblanks0(input)?;
     let (input, _) = char(';')(input)?;
 
-    let stmt = Statement::NonterminalDefinition {
-        name,
-        span: nonterm_span,
+    let stmt = Statement::NonterminalDefinition(NontermDefn {
+        lhs_name: name,
+        lhs_span: nonterm_span,
         shell,
-        expr: e,
-    };
+        rhs_expr_id,
+    });
 
     Ok((input, stmt))
 }
@@ -874,7 +877,7 @@ pub struct ValidGrammar {
     pub arena: Vec<Expr>,
     pub command: Ustr,
     pub expr: ExprId,
-    pub undefined_nonterminals: UstrSet,
+    pub undefined_nonterminals: UstrMap<HumanSpan>,
     pub unused_nonterminals: UstrSet,
     pub subdfas: DFAInternPool,
 }
@@ -885,17 +888,16 @@ fn make_specializations_map(
 ) -> Result<UstrMap<Specialization>> {
     let mut specializations: UstrMap<Specialization> = Default::default();
     for definition in statements {
-        let (name, (shell_name, shell_span), expr) = match definition {
-            Statement::NonterminalDefinition {
-                name,
-                shell: Some(shell),
-                expr,
-                span: _,
-            } => (*name, shell, expr),
-            Statement::NonterminalDefinition { shell: None, .. } => continue,
+        let (defn, shell_name, shell_span) = match definition {
+            Statement::NonterminalDefinition(
+                defn @ NontermDefn {
+                    shell: Some(shell), ..
+                },
+            ) => (defn, shell.0, shell.1),
+            Statement::NonterminalDefinition(NontermDefn { shell: None, .. }) => continue,
             Statement::CallVariant { .. } => continue,
         };
-        let (command, bash_regex, fish_regex, zsh_regex) = match &arena[*expr] {
+        let (command, bash_regex, fish_regex, zsh_regex) = match &arena[defn.rhs_expr_id] {
             Expr::Command {
                 cmd,
                 bash_regex,
@@ -903,16 +905,21 @@ fn make_specializations_map(
                 zsh_regex,
                 ..
             } => (cmd, bash_regex, fish_regex, zsh_regex),
-            _ => return Err(Error::NonCommandSpecialization(name, Some(*shell_name))),
+            _ => {
+                return Err(Error::NonCommandSpecialization(
+                    defn.lhs_name,
+                    Some(shell_name),
+                ));
+            }
         };
-        let shell = Shell::from_str(shell_name, *shell_span)?;
-        let spec = specializations.entry(name).or_default();
+        let shell = Shell::from_str(&shell_name, shell_span)?;
+        let spec = specializations.entry(defn.lhs_name).or_default();
         match shell {
             Shell::Bash => {
                 if spec.bash.is_some() {
                     return Err(Error::DuplicateNonterminalDefinition(
-                        name,
-                        Some(*shell_name),
+                        defn.lhs_name,
+                        Some(shell_name),
                     ));
                 }
                 spec.bash = Some((*command, *bash_regex));
@@ -920,8 +927,8 @@ fn make_specializations_map(
             Shell::Fish => {
                 if spec.fish.is_some() {
                     return Err(Error::DuplicateNonterminalDefinition(
-                        name,
-                        Some(*shell_name),
+                        defn.lhs_name,
+                        Some(shell_name),
                     ));
                 }
                 spec.fish = Some((*command, *fish_regex));
@@ -929,8 +936,8 @@ fn make_specializations_map(
             Shell::Zsh => {
                 if spec.zsh.is_some() {
                     return Err(Error::DuplicateNonterminalDefinition(
-                        name,
-                        Some(*shell_name),
+                        defn.lhs_name,
+                        Some(shell_name),
                     ));
                 }
                 spec.zsh = Some((*command, *zsh_regex));
@@ -939,23 +946,18 @@ fn make_specializations_map(
     }
 
     for definition in statements {
-        let (name, expr) = match definition {
-            Statement::NonterminalDefinition {
-                name: symbol,
-                shell: None,
-                expr,
-                span: _,
-            } => (symbol, expr),
+        let defn = match definition {
+            Statement::NonterminalDefinition(defn @ NontermDefn { shell: None, .. }) => defn,
             _ => continue,
         };
-        let Some(spec) = specializations.get_mut(name) else {
+        let Some(spec) = specializations.get_mut(&defn.lhs_name) else {
             continue;
         };
-        let Expr::Command { cmd: command, .. } = &arena[*expr] else {
-            return Err(Error::NonCommandSpecialization(*name, None));
+        let Expr::Command { cmd: command, .. } = &arena[defn.rhs_expr_id] else {
+            return Err(Error::NonCommandSpecialization(defn.lhs_name, None));
         };
         if spec.generic.is_some() {
-            return Err(Error::DuplicateNonterminalDefinition(*name, None));
+            return Err(Error::DuplicateNonterminalDefinition(defn.lhs_name, None));
         }
         spec.generic = Some(*command);
     }
@@ -1479,23 +1481,21 @@ impl ValidGrammar {
             }
         };
 
-        let mut nonterminal_definitions: UstrMap<ExprId> = {
-            let mut nonterminal_definitions: UstrMap<ExprId> = Default::default();
+        let mut nonterminal_definitions: UstrMap<NontermDefn> = {
+            let mut nonterminal_definitions: UstrMap<NontermDefn> = Default::default();
             for definition in &grammar.statements {
-                let (symbol, expr) = match definition {
-                    Statement::NonterminalDefinition {
-                        name: symbol,
-                        expr,
-                        shell: None,
-                        span: _,
-                    } => (*symbol, *expr),
+                let defn = match definition {
+                    Statement::NonterminalDefinition(defn @ NontermDefn { shell: None, .. }) => {
+                        defn
+                    }
                     _ => continue,
                 };
-                if nonterminal_definitions.contains_key(&symbol) {
-                    return Err(Error::DuplicateNonterminalDefinition(symbol, None));
+                if nonterminal_definitions.contains_key(&defn.lhs_name) {
+                    return Err(Error::DuplicateNonterminalDefinition(defn.lhs_name, None));
                 }
-                let expr = distribute_descriptions(&mut grammar.arena, expr);
-                nonterminal_definitions.insert(symbol, expr);
+                let mut def = defn.clone();
+                def.rhs_expr_id = distribute_descriptions(&mut grammar.arena, defn.rhs_expr_id);
+                nonterminal_definitions.insert(def.lhs_name, def);
             }
             nonterminal_definitions
         };
@@ -1518,14 +1518,20 @@ impl ValidGrammar {
         for nonterminal in
             get_nonterminals_resolution_order(&grammar.arena, &nonterminal_definitions)?
         {
-            let e = *nonterminal_definitions.get(&nonterminal).unwrap();
+            let e = nonterminal_definitions
+                .get(&nonterminal)
+                .unwrap()
+                .rhs_expr_id;
             let new_e = resolve_nonterminals(
                 &mut grammar.arena,
                 e,
                 &nonterminal_definitions,
                 &mut unused_nonterminals,
             );
-            *nonterminal_definitions.get_mut(&nonterminal).unwrap() = new_e;
+            nonterminal_definitions
+                .get_mut(&nonterminal)
+                .unwrap()
+                .rhs_expr_id = new_e;
         }
 
         check_subword_spaces(&grammar.arena, expr, &nonterminal_definitions)?;
@@ -1539,7 +1545,7 @@ impl ValidGrammar {
 
         let expr = propagate_fallback_levels(&mut grammar.arena, expr);
 
-        let undefined_nonterminals = get_expression_nonterminals(&grammar.arena, expr);
+        let undefined_nonterminals = get_nonterm_refs(&grammar.arena, expr);
 
         let mut subdfas = DFAInternPool::default();
         let expr = compile_subword_exprs(&mut grammar.arena, expr, shell, &mut subdfas)?;
@@ -1590,7 +1596,11 @@ fn expr_get_tail(arena: &[Expr], expr_id: ExprId) -> ExprId {
     }
 }
 
-fn check_subword_spaces(arena: &[Expr], expr_id: ExprId, nonterms: &UstrMap<ExprId>) -> Result<()> {
+fn check_subword_spaces(
+    arena: &[Expr],
+    expr_id: ExprId,
+    nonterms: &UstrMap<NontermDefn>,
+) -> Result<()> {
     let mut nonterm_expn_trace: Vec<HumanSpan> = Default::default();
     do_check_subword_spaces(arena, expr_id, nonterms, &mut nonterm_expn_trace, false)
 }
@@ -1605,7 +1615,7 @@ fn check_subword_spaces(arena: &[Expr], expr_id: ExprId, nonterms: &UstrMap<Expr
 fn do_check_subword_spaces(
     arena: &[Expr],
     expr_id: ExprId,
-    nonterms: &UstrMap<ExprId>,
+    nonterms: &UstrMap<NontermDefn>,
     nonterm_expn_trace: &mut Vec<HumanSpan>,
     within_subword: bool,
 ) -> Result<()> {
@@ -1637,7 +1647,7 @@ fn do_check_subword_spaces(
                     return Err(Error::SubwordSpaces(
                         left_span.to_owned(),
                         right_span.to_owned(),
-                        nonterm_expn_trace.to_owned(),
+                        nonterm_expn_trace.clone().into_boxed_slice(),
                     ));
                 }
             }
@@ -1661,7 +1671,13 @@ fn do_check_subword_spaces(
                 return Ok(());
             };
             nonterm_expn_trace.push(*span);
-            do_check_subword_spaces(arena, *expn, nonterms, nonterm_expn_trace, within_subword)?;
+            do_check_subword_spaces(
+                arena,
+                expn.rhs_expr_id,
+                nonterms,
+                nonterm_expn_trace,
+                within_subword,
+            )?;
             nonterm_expn_trace.pop();
             Ok(())
         }
@@ -1897,7 +1913,7 @@ fn specialize_nonterminals(
 fn resolve_nonterminals(
     arena: &mut Vec<Expr>,
     expr_id: ExprId,
-    vars: &UstrMap<ExprId>,
+    vars: &UstrMap<NontermDefn>,
     unused_nonterminals: &mut UstrSet,
 ) -> ExprId {
     match arena[expr_id].clone() {
@@ -1928,7 +1944,7 @@ fn resolve_nonterminals(
         Expr::NontermRef { nonterm: name, .. } => match vars.get(&name) {
             Some(replacement) => {
                 unused_nonterminals.remove(&name);
-                *replacement
+                replacement.rhs_expr_id
             }
             None => expr_id,
         },
@@ -1990,7 +2006,7 @@ fn resolve_nonterminals(
     }
 }
 
-fn do_get_expression_nonterminals(arena: &[Expr], expr_id: ExprId, deps: &mut UstrSet) {
+fn do_get_nonterm_refs(arena: &[Expr], expr_id: ExprId, deps: &mut UstrMap<HumanSpan>) {
     match &arena[expr_id] {
         Expr::Terminal { .. } | Expr::Command { .. } => {}
         Expr::Subword { phase, .. } => {
@@ -1998,52 +2014,50 @@ fn do_get_expression_nonterminals(arena: &[Expr], expr_id: ExprId, deps: &mut Us
                 SubwordCompilationPhase::Expr(e) => *e,
                 SubwordCompilationPhase::DFA(..) => unreachable!(),
             };
-            do_get_expression_nonterminals(arena, subexpr, deps);
+            do_get_nonterm_refs(arena, subexpr, deps);
         }
-        Expr::NontermRef {
-            nonterm: varname, ..
-        } => {
-            deps.insert(*varname);
+        Expr::NontermRef { nonterm, span, .. } => {
+            deps.insert(*nonterm, *span);
         }
         Expr::Sequence(children) => {
             for child in children {
-                do_get_expression_nonterminals(arena, *child, deps);
+                do_get_nonterm_refs(arena, *child, deps);
             }
         }
         Expr::Alternative(children) => {
             for child in children {
-                do_get_expression_nonterminals(arena, *child, deps);
+                do_get_nonterm_refs(arena, *child, deps);
             }
         }
         Expr::Optional(child) => {
-            do_get_expression_nonterminals(arena, *child, deps);
+            do_get_nonterm_refs(arena, *child, deps);
         }
         Expr::Many1(child) => {
-            do_get_expression_nonterminals(arena, *child, deps);
+            do_get_nonterm_refs(arena, *child, deps);
         }
         Expr::DistributiveDescription { .. } => unreachable!(
             "Expr::DistributiveDescription should have been erased by the time nonterminals are being collected"
         ),
         Expr::Fallback(children) => {
             for child in children {
-                do_get_expression_nonterminals(arena, *child, deps);
+                do_get_nonterm_refs(arena, *child, deps);
             }
         }
     }
 }
 
-fn get_expression_nonterminals(arena: &[Expr], expr_id: ExprId) -> UstrSet {
-    let mut result: UstrSet = Default::default();
-    do_get_expression_nonterminals(arena, expr_id, &mut result);
+fn get_nonterm_refs(arena: &[Expr], expr_id: ExprId) -> UstrMap<HumanSpan> {
+    let mut result: UstrMap<HumanSpan> = Default::default();
+    do_get_nonterm_refs(arena, expr_id, &mut result);
     result
 }
 
-fn get_not_depended_on_nonterminals(dependency_graph: &UstrMap<UstrSet>) -> UstrSet {
+fn get_not_depended_on_nonterminals(dependency_graph: &UstrMap<UstrMap<HumanSpan>>) -> UstrSet {
     let num_depending_nonterminals = {
         let mut num_depending_nonterminals: UstrMap<usize> =
             dependency_graph.keys().map(|vertex| (*vertex, 0)).collect();
         for (_, nonterminal_depependencies) in dependency_graph.iter() {
-            for dep in nonterminal_depependencies {
+            for (dep, _) in nonterminal_depependencies {
                 *num_depending_nonterminals.get_mut(dep).unwrap() += 1;
             }
         }
@@ -2061,23 +2075,24 @@ fn get_not_depended_on_nonterminals(dependency_graph: &UstrMap<UstrSet>) -> Ustr
 
 fn traverse_nonterminal_dependencies_dfs(
     vertex: Ustr,
-    graph: &UstrMap<UstrSet>,
-    path: &mut Vec<Ustr>,
+    graph: &UstrMap<UstrMap<HumanSpan>>,
+    path: &mut Vec<(Ustr, HumanSpan)>,
     visited: &mut UstrSet,
     result: &mut Vec<Ustr>,
 ) -> Result<()> {
     visited.insert(vertex);
-    let dummy = UstrSet::default();
-    for child in graph.get(&vertex).unwrap_or(&dummy) {
-        if path.contains(child) {
-            let mut path = path.clone();
-            path.push(vertex);
-            return Err(Error::NonterminalDefinitionsCycle(Some(path)));
+    let dummy = UstrMap::default();
+    for (child, span) in graph.get(&vertex).unwrap_or(&dummy) {
+        if path.iter().find(|(chld, _)| chld == child).is_some() {
+            path.push((vertex, *span));
+            return Err(Error::NonterminalDefinitionsCycle(
+                path.into_iter().map(|(_, span)| *span).collect(),
+            ));
         }
         if visited.contains(child) {
             continue;
         }
-        path.push(*child);
+        path.push((*child, *span));
         traverse_nonterminal_dependencies_dfs(*child, graph, path, visited, result)?;
         path.pop().unwrap();
         result.push(*child);
@@ -2089,29 +2104,47 @@ fn traverse_nonterminal_dependencies_dfs(
 // nonterminals.
 fn get_nonterminals_resolution_order(
     arena: &[Expr],
-    nonterminal_definitions: &UstrMap<ExprId>,
+    nonterminal_definitions: &UstrMap<NontermDefn>,
 ) -> Result<Vec<Ustr>> {
     if nonterminal_definitions.is_empty() {
         return Ok(Vec::default());
     }
 
-    let mut dependency_graph: UstrMap<UstrSet> = Default::default();
-    for (varname, expr_id) in nonterminal_definitions {
-        let mut referenced_nonterminals = get_expression_nonterminals(arena, *expr_id);
-        referenced_nonterminals.retain(|var| nonterminal_definitions.contains_key(var));
-        dependency_graph.insert(*varname, referenced_nonterminals);
-    }
-
-    let not_depended_on_vars = get_not_depended_on_nonterminals(&dependency_graph);
-    if not_depended_on_vars.is_empty() {
-        return Err(Error::NonterminalDefinitionsCycle(None));
+    let mut dependency_graph: UstrMap<UstrMap<HumanSpan>> = Default::default();
+    for (varname, defn) in nonterminal_definitions {
+        let mut refs = get_nonterm_refs(arena, defn.rhs_expr_id);
+        refs.retain(|var, _| nonterminal_definitions.contains_key(var));
+        dependency_graph.insert(*varname, refs);
     }
 
     let mut visited: UstrSet = Default::default();
     let mut result: Vec<Ustr> = Default::default();
-    let mut path: Vec<Ustr> = Default::default();
+    let mut path: Vec<(Ustr, HumanSpan)> = Default::default();
+
+    let not_depended_on_vars = get_not_depended_on_nonterminals(&dependency_graph);
+    if not_depended_on_vars.is_empty() {
+        // Take any vertex and compute a sample cycle to illustrate to the user
+        let any_vertex = dependency_graph.keys().next().unwrap();
+        path.push((
+            *any_vertex,
+            nonterminal_definitions.get(any_vertex).unwrap().lhs_span,
+        ));
+        traverse_nonterminal_dependencies_dfs(
+            *any_vertex,
+            &dependency_graph,
+            &mut path,
+            &mut visited,
+            &mut result,
+        )?;
+        unreachable!();
+    }
+
     for vertex in not_depended_on_vars {
         debug_assert!(!visited.contains(&vertex));
+        path.push((
+            vertex,
+            nonterminal_definitions.get(&vertex).unwrap().lhs_span,
+        ));
         traverse_nonterminal_dependencies_dfs(
             vertex,
             &dependency_graph,
@@ -2119,6 +2152,7 @@ fn get_nonterminals_resolution_order(
             &mut visited,
             &mut result,
         )?;
+        path.clear();
         result.push(vertex);
         debug_assert!(path.is_empty());
     }
@@ -2712,12 +2746,12 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
 
         // Statement 2: <OPTION> ::= ...
         let (symbol, shell, expr_id2) = match &g.statements[1] {
-            Statement::NonterminalDefinition {
-                name: symbol,
+            Statement::NonterminalDefinition(NontermDefn {
+                lhs_name: symbol,
                 shell,
-                expr,
-                span: _,
-            } => (symbol, shell, expr),
+                rhs_expr_id: expr,
+                lhs_span: _,
+            }) => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
         assert_eq!(*symbol, ustr("OPTION"));
@@ -2729,12 +2763,12 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
 
         // Statement 3: <WHEN> ::= ...
         let (symbol, shell, expr_id3) = match &g.statements[2] {
-            Statement::NonterminalDefinition {
-                name: symbol,
+            Statement::NonterminalDefinition(NontermDefn {
+                lhs_name: symbol,
                 shell,
-                expr,
-                span: _,
-            } => (symbol, shell, expr),
+                rhs_expr_id: expr,
+                lhs_span: _,
+            }) => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
         assert_eq!(*symbol, ustr("WHEN"));
@@ -2772,12 +2806,12 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
         assert_eq!(g.statements.len(), 1);
 
         let (symbol, shell, expr_id) = match &g.statements[0] {
-            Statement::NonterminalDefinition {
-                name: symbol,
+            Statement::NonterminalDefinition(NontermDefn {
+                lhs_name: symbol,
                 shell,
-                expr,
-                span: _,
-            } => (symbol, shell, expr),
+                rhs_expr_id: expr,
+                lhs_span: _,
+            }) => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
 
@@ -2809,11 +2843,29 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
         let foo_id = alloc(&mut arena, foo_expr);
         let bar_expr = Expr::nontermref("FOO");
         let bar_id = alloc(&mut arena, bar_expr);
-        let nonterminal_definitions =
-            UstrMap::from_iter([(ustr("FOO"), foo_id), (ustr("BAR"), bar_id)]);
+        let nonterminal_definitions = UstrMap::from_iter([
+            (
+                ustr("FOO"),
+                NontermDefn {
+                    lhs_name: ustr("FOO"),
+                    lhs_span: HumanSpan::default(),
+                    shell: None,
+                    rhs_expr_id: foo_id,
+                },
+            ),
+            (
+                ustr("BAR"),
+                NontermDefn {
+                    lhs_name: ustr("BAR"),
+                    lhs_span: HumanSpan::default(),
+                    shell: None,
+                    rhs_expr_id: bar_id,
+                },
+            ),
+        ]);
         assert!(matches!(
             get_nonterminals_resolution_order(&arena, &nonterminal_definitions),
-            Err(Error::NonterminalDefinitionsCycle(None))
+            Err(Error::NonterminalDefinitionsCycle(_))
         ));
     }
 
@@ -2824,11 +2876,30 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
         let foo_id = alloc(&mut arena, foo_expr);
         let bar_expr = Expr::nontermref("BAR");
         let bar_id = alloc(&mut arena, bar_expr);
-        let nonterminal_definitions =
-            UstrMap::from_iter([(ustr("FOO"), foo_id), (ustr("BAR"), bar_id)]);
-        assert!(
-            matches!(&get_nonterminals_resolution_order(&arena, &nonterminal_definitions), Err(Error::NonterminalDefinitionsCycle(Some(path))) if path == &[ustr("BAR"), ustr("BAR")])
-        );
+        let nonterminal_definitions = UstrMap::from_iter([
+            (
+                ustr("FOO"),
+                NontermDefn {
+                    lhs_name: ustr("FOO"),
+                    lhs_span: HumanSpan::default(),
+                    shell: None,
+                    rhs_expr_id: foo_id,
+                },
+            ),
+            (
+                ustr("BAR"),
+                NontermDefn {
+                    lhs_name: ustr("BAR"),
+                    lhs_span: HumanSpan::default(),
+                    shell: None,
+                    rhs_expr_id: bar_id,
+                },
+            ),
+        ]);
+        assert!(matches!(
+            &get_nonterminals_resolution_order(&arena, &nonterminal_definitions),
+            Err(Error::NonterminalDefinitionsCycle(_))
+        ));
     }
 
     #[test]
@@ -2843,9 +2914,33 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
         let option_foo_ref_id = alloc(&mut arena, Expr::nontermref("FOO"));
         let option_id = alloc(&mut arena, Sequence(vec![color_id, option_foo_ref_id]));
         let nonterminal_definitions = UstrMap::from_iter([
-            (ustr("WHEN"), when_id),
-            (ustr("FOO"), foo_id),
-            (ustr("OPTION"), option_id),
+            (
+                ustr("WHEN"),
+                NontermDefn {
+                    lhs_name: ustr("WHEN"),
+                    lhs_span: HumanSpan::default(),
+                    shell: None,
+                    rhs_expr_id: when_id,
+                },
+            ),
+            (
+                ustr("FOO"),
+                NontermDefn {
+                    lhs_name: ustr("FOO"),
+                    lhs_span: HumanSpan::default(),
+                    shell: None,
+                    rhs_expr_id: foo_id,
+                },
+            ),
+            (
+                ustr("OPTION"),
+                NontermDefn {
+                    lhs_name: ustr("OPTION"),
+                    lhs_span: HumanSpan::default(),
+                    shell: None,
+                    rhs_expr_id: option_id,
+                },
+            ),
         ]);
         assert_eq!(
             get_nonterminals_resolution_order(&arena, &nonterminal_definitions).unwrap(),
@@ -2932,12 +3027,12 @@ grep --color=<WHEN> --version;
 
         // Statement 2: <WHEN> ::= ...
         let (symbol, shell, expr_id2) = match &g.statements[1] {
-            Statement::NonterminalDefinition {
-                name: symbol,
+            Statement::NonterminalDefinition(NontermDefn {
+                lhs_name: symbol,
                 shell,
-                expr,
-                span: _,
-            } => (symbol, shell, expr),
+                rhs_expr_id: expr,
+                lhs_span: _,
+            }) => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
         assert_eq!(*symbol, ustr("WHEN"));
@@ -3014,12 +3109,12 @@ strace -e <EXPR>;
 
         // Statement 2
         let (symbol, shell, expr_id) = match &g.statements[1] {
-            NonterminalDefinition {
-                name: symbol,
+            NonterminalDefinition(NontermDefn {
+                lhs_name: symbol,
                 shell,
-                expr,
-                span: _,
-            } => (symbol, shell, expr),
+                rhs_expr_id: expr,
+                lhs_span: _,
+            }) => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
         assert_eq!(*symbol, ustr("EXPR"));
@@ -3045,12 +3140,12 @@ strace -e <EXPR>;
 
         // Statement 3
         let (symbol, shell, expr_id) = match &g.statements[2] {
-            NonterminalDefinition {
-                name: symbol,
+            NonterminalDefinition(NontermDefn {
+                lhs_name: symbol,
                 shell,
-                expr,
-                span: _,
-            } => (symbol, shell, expr),
+                rhs_expr_id: expr,
+                lhs_span: _,
+            }) => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
         assert_eq!(*symbol, ustr("qualifier"));
@@ -3067,12 +3162,12 @@ strace -e <EXPR>;
 
         // Statement 4
         let (symbol, shell, expr_id) = match &g.statements[3] {
-            NonterminalDefinition {
-                name: symbol,
+            NonterminalDefinition(NontermDefn {
+                lhs_name: symbol,
                 shell,
-                expr,
-                span: _,
-            } => (symbol, shell, expr),
+                rhs_expr_id: expr,
+                lhs_span: _,
+            }) => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
         assert_eq!(*symbol, ustr("value"));
@@ -3127,12 +3222,12 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
 
         // Statement 2
         let (symbol, shell, expr_id) = match &g.statements[1] {
-            NonterminalDefinition {
-                name: symbol,
+            NonterminalDefinition(NontermDefn {
+                lhs_name: symbol,
                 shell,
-                expr,
-                span: _,
-            } => (symbol, shell, expr),
+                rhs_expr_id: expr,
+                lhs_span: _,
+            }) => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
         assert_eq!(*symbol, ustr("PROTOCOL"));
@@ -3144,12 +3239,12 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
 
         // Statement 3
         let (symbol, shell, expr_id) = match &g.statements[2] {
-            NonterminalDefinition {
-                name: symbol,
+            NonterminalDefinition(NontermDefn {
+                lhs_name: symbol,
                 shell,
-                expr,
-                span: _,
-            } => (symbol, shell, expr),
+                rhs_expr_id: expr,
+                lhs_span: _,
+            }) => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
         assert_eq!(*symbol, ustr("STATE-SPEC"));
@@ -3163,12 +3258,12 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
 
         // Statement 4
         let (symbol, shell, expr_id) = match &g.statements[3] {
-            NonterminalDefinition {
-                name: symbol,
+            NonterminalDefinition(NontermDefn {
+                lhs_name: symbol,
                 shell,
-                expr,
-                span: _,
-            } => (symbol, shell, expr),
+                rhs_expr_id: expr,
+                lhs_span: _,
+            }) => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
         assert_eq!(*symbol, ustr("STATE"));
@@ -3216,12 +3311,12 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
 
         // Statement 2
         let (symbol, shell, expr_id) = match &g.statements[1] {
-            Statement::NonterminalDefinition {
-                name: symbol,
+            Statement::NonterminalDefinition(NontermDefn {
+                lhs_name: symbol,
                 shell,
-                expr,
-                span: _,
-            } => (symbol, shell, expr),
+                rhs_expr_id: expr,
+                lhs_span: _,
+            }) => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
         assert_eq!(*symbol, ustr("toolchain"));
@@ -3379,12 +3474,12 @@ ls <FILE>;
         assert!(teq(*expr_id, expected_expr1_id, &g.arena));
 
         let (symbol, shell, expr_id) = match &g.statements[1] {
-            NonterminalDefinition {
-                name: symbol,
+            NonterminalDefinition(NontermDefn {
+                lhs_name: symbol,
                 shell,
-                expr,
-                span: _,
-            } => (symbol, shell, expr),
+                rhs_expr_id: expr,
+                lhs_span: _,
+            }) => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
         assert_eq!(*symbol, ustr("FILE"));
@@ -3404,12 +3499,12 @@ ls <FILE>;
         assert!(teq(*expr_id, expected_expr2_id, &g.arena));
 
         let (symbol, shell, expr_id) = match &g.statements[2] {
-            NonterminalDefinition {
-                name: symbol,
+            NonterminalDefinition(NontermDefn {
+                lhs_name: symbol,
                 shell,
-                expr,
-                span: _,
-            } => (symbol, shell, expr),
+                rhs_expr_id: expr,
+                lhs_span: _,
+            }) => (symbol, shell, expr),
             _ => panic!("Expected NonterminalDefinition"),
         };
         assert_eq!(*symbol, ustr("FILE"));

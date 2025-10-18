@@ -24,10 +24,10 @@ pub enum Error {
     InvalidCommandName(HumanSpan),
 
     #[error("Multiple commands")]
-    VaryingCommandNames(Vec<HumanSpan>),
+    VaryingCommandNames(Box<[HumanSpan]>),
 
     #[error("Nonterminal definitions depend on each other cyclically")]
-    NonterminalDefinitionsCycle(Option<Vec<Ustr>>),
+    NonterminalDefinitionsCycle(Box<[HumanSpan]>),
 
     #[error("Duplicate nonterminal definition")]
     DuplicateNonterminalDefinition(Ustr, Option<Ustr>),
@@ -51,7 +51,7 @@ pub enum Error {
     ClashingSubwordLeaders(HumanSpan, HumanSpan),
 
     #[error("Two adjacent terminals in a subword expression")]
-    SubwordSpaces(HumanSpan, HumanSpan, Vec<HumanSpan>),
+    SubwordSpaces(HumanSpan, HumanSpan, Box<[HumanSpan]>),
 
     #[error("Ambiguous DFA: {:?} {:?}", .0, .1)]
     AmbiguousDFA(Box<[Inp]>, Box<[Inp]>),

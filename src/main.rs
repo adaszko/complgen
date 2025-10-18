@@ -11,6 +11,7 @@ use complgen::grammar::{Grammar, HumanSpan, Shell, ValidGrammar};
 use complgen::Error;
 use complgen::dfa::DFA;
 use complgen::regex::{Regex, diagnostic_display_input};
+use ustr::Ustr;
 
 #[derive(clap::Parser)]
 struct Cli {
@@ -111,6 +112,12 @@ fn handle_error(e: Error, path: &str, source: &str, command: &str) -> anyhow::Re
         Error::VaryingCommandNames(spans) => {
             for span in spans {
                 let err = ErrMsg::new("Varying command names:").error(&span, source, "");
+                eprintln!("{}", err.into_string(path, &span));
+            }
+        }
+        Error::NonterminalDefinitionsCycle(spans) => {
+            for span in spans {
+                let err = ErrMsg::new("Nonterminal definitions cycle").error(&span, source, "");
                 eprintln!("{}", err.into_string(path, &span));
             }
         }
@@ -237,7 +244,13 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
     };
 
     if !validated.undefined_nonterminals.is_empty() {
-        let joined = itertools::join(&validated.undefined_nonterminals, " ");
+        let joined = itertools::join(
+            &validated
+                .undefined_nonterminals
+                .keys()
+                .collect::<Vec<&Ustr>>(),
+            " ",
+        );
         eprintln!("warning: undefined nonterminal(s): {}", joined);
     }
 

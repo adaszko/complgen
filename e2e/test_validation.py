@@ -397,3 +397,59 @@ foo/bar quux;
   | ^^^^^^^
   |
 """)
+
+def test_nonterminal_cycle_outer(complgen_binary_path: Path):
+    r = complgen_check(complgen_binary_path, """
+cmd <FOO>;
+<FOO> ::= <BAR>;
+<BAR> ::= <FOO>;
+""")
+    assert r.returncode == 1
+    assert r.stderr == snapshot("""\
+-:3:1:error: Nonterminal definitions cycle
+  |
+3 | <FOO> ::= <BAR>;
+  | ^^^^^
+  |
+-:3:11:error: Nonterminal definitions cycle
+  |
+3 | <FOO> ::= <BAR>;
+  |           ^^^^^
+  |
+-:4:11:error: Nonterminal definitions cycle
+  |
+4 | <BAR> ::= <FOO>;
+  |           ^^^^^
+  |
+""")
+
+def test_nonterminal_cycle_inner(complgen_binary_path: Path):
+    r = complgen_check(complgen_binary_path, """
+cmd <FOO>;
+<FOO> ::= <BAR>;
+<BAR> ::= <QUUX>;
+<QUUX> ::= <BAR>;
+""")
+    assert r.returncode == 1
+    assert r.stderr == snapshot("""\
+-:3:1:error: Nonterminal definitions cycle
+  |
+3 | <FOO> ::= <BAR>;
+  | ^^^^^
+  |
+-:3:11:error: Nonterminal definitions cycle
+  |
+3 | <FOO> ::= <BAR>;
+  |           ^^^^^
+  |
+-:4:11:error: Nonterminal definitions cycle
+  |
+4 | <BAR> ::= <QUUX>;
+  |           ^^^^^^
+  |
+-:5:12:error: Nonterminal definitions cycle
+  |
+5 | <QUUX> ::= <BAR>;
+  |            ^^^^^
+  |
+""")
