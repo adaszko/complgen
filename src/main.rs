@@ -11,7 +11,6 @@ use complgen::grammar::{Grammar, HumanSpan, Shell, ValidGrammar};
 use complgen::Error;
 use complgen::dfa::DFA;
 use complgen::regex::{Regex, diagnostic_display_input};
-use ustr::Ustr;
 
 #[derive(clap::Parser)]
 struct Cli {
@@ -95,6 +94,40 @@ impl ErrMsg {
             span.line,
             span.column_start,
             self.err.to_string()
+        )
+    }
+}
+
+struct WarnMsg {
+    warning: chic::Warning,
+}
+
+impl WarnMsg {
+    fn new(label: &str) -> Self {
+        Self {
+            warning: chic::Warning::new(label),
+        }
+    }
+
+    fn warning(self, span: &HumanSpan, source: &str, what: &str) -> Self {
+        Self {
+            warning: self.warning.warning(
+                span.line,
+                span.column_start_machine(),
+                span.column_end_machine(),
+                source.lines().nth(span.line_machine()).unwrap(),
+                what,
+            ),
+        }
+    }
+
+    fn into_string(self, path: &str, span: &HumanSpan) -> String {
+        format!(
+            "{}:{}:{}:{}",
+            path,
+            span.line,
+            span.column_start,
+            self.warning.to_string()
         )
     }
 }
@@ -244,19 +277,17 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
     };
 
     if !validated.undefined_nonterminals.is_empty() {
-        let joined = itertools::join(
-            &validated
-                .undefined_nonterminals
-                .keys()
-                .collect::<Vec<&Ustr>>(),
-            " ",
-        );
-        eprintln!("warning: undefined nonterminal(s): {}", joined);
+        for (_, span) in &validated.undefined_nonterminals {
+            let err = WarnMsg::new("Undefined nonterminal").warning(&span, &input, "");
+            eprintln!("{}", err.into_string(usage_file_path, &span));
+        }
     }
 
     if !validated.unused_nonterminals.is_empty() {
-        let joined = itertools::join(&validated.unused_nonterminals, " ");
-        eprintln!("warning: unused nonterminal(s): {}", joined);
+        for (_, span) in &validated.unused_nonterminals {
+            let err = WarnMsg::new("Unused nonterminal").warning(&span, &input, "");
+            eprintln!("{}", err.into_string(usage_file_path, &span));
+        }
     }
 
     let regex = match Regex::from_valid_grammar(&validated, shell) {

@@ -878,7 +878,7 @@ pub struct ValidGrammar {
     pub command: Ustr,
     pub expr: ExprId,
     pub undefined_nonterminals: UstrMap<HumanSpan>,
-    pub unused_nonterminals: UstrSet,
+    pub unused_nonterminals: UstrMap<HumanSpan>,
     pub subdfas: DFAInternPool,
 }
 
@@ -1502,7 +1502,10 @@ impl ValidGrammar {
 
         let expr = distribute_descriptions(&mut grammar.arena, expr);
 
-        let mut unused_nonterminals: UstrSet = nonterminal_definitions.keys().copied().collect();
+        let mut unused_nonterminals: UstrMap<HumanSpan> = nonterminal_definitions
+            .iter()
+            .map(|(nonterm, defn)| (*nonterm, defn.lhs_span))
+            .collect();
 
         let expr = {
             let specializations = make_specializations_map(&grammar.arena, &grammar.statements)?;
@@ -1733,7 +1736,7 @@ fn specialize_nonterminals(
     expr_arena: &mut Vec<Expr>,
     shell: Shell,
     specializations: &UstrMap<Specialization>,
-    unused_nonterminals: &mut UstrSet,
+    unused_nonterminals: &mut UstrMap<HumanSpan>,
 ) -> ExprId {
     match expr_arena[expr_id].clone() {
         Expr::Terminal { .. } | Expr::Command { .. } => expr_id,
@@ -1914,7 +1917,7 @@ fn resolve_nonterminals(
     arena: &mut Vec<Expr>,
     expr_id: ExprId,
     vars: &UstrMap<NontermDefn>,
-    unused_nonterminals: &mut UstrSet,
+    unused_nonterminals: &mut UstrMap<HumanSpan>,
 ) -> ExprId {
     match arena[expr_id].clone() {
         Expr::Terminal { .. } | Expr::Command { .. } => expr_id,

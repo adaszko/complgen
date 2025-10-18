@@ -208,7 +208,11 @@ def test_bug2(complgen_binary_path: Path):
     r = complgen_check(complgen_binary_path, """darcs ( <FILE> | <DIRECTORY> );""")
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
-warning: undefined nonterminal(s): FILE
+-:1:9:warning: Undefined nonterminal
+  |
+1 | darcs ( <FILE> | <DIRECTORY> );
+  |         ------
+  |
 -:1:9:error: Ambiguous grammar.  Matching can't differentiate:
   |
 1 | darcs ( <FILE> | <DIRECTORY> );
@@ -229,7 +233,11 @@ aerc [<OPTION>]... foo;
 """)
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
-warning: undefined nonterminal(s): OPTION
+-:3:7:warning: Undefined nonterminal
+  |
+3 | aerc [<OPTION>]... foo;
+  |       --------
+  |
 -:2:7:error: Ambiguous grammar.  Matching can't differentiate:
   |
 2 | aerc [<OPTION>]...;
@@ -247,7 +255,16 @@ def test_bug4(complgen_binary_path: Path):
     r = complgen_check(complgen_binary_path, """darcs [<INITIALIZATION>] <COMMAND>;""")
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
-warning: undefined nonterminal(s): INITIALIZATION COMMAND
+-:1:8:warning: Undefined nonterminal
+  |
+1 | darcs [<INITIALIZATION>] <COMMAND>;
+  |        ----------------
+  |
+-:1:26:warning: Undefined nonterminal
+  |
+1 | darcs [<INITIALIZATION>] <COMMAND>;
+  |                          ---------
+  |
 -:1:8:error: Ambiguous grammar.  Matching can't differentiate:
   |
 1 | darcs [<INITIALIZATION>] <COMMAND>;
@@ -286,7 +303,16 @@ darcs <SOURCE> ... <DESTINATION>;
 """)
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
-warning: undefined nonterminal(s): SOURCE DESTINATION
+-:2:7:warning: Undefined nonterminal
+  |
+2 | darcs <SOURCE> ... <DESTINATION>;
+  |       --------
+  |
+-:2:20:warning: Undefined nonterminal
+  |
+2 | darcs <SOURCE> ... <DESTINATION>;
+  |                    -------------
+  |
 -:2:7:error: Ambiguous grammar.  Matching can't differentiate:
   |
 2 | darcs <SOURCE> ... <DESTINATION>;
@@ -336,7 +362,16 @@ foo bar=<BAZ>;
 """)
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
-warning: undefined nonterminal(s): BAZ BAR
+-:3:9:warning: Undefined nonterminal
+  |
+3 | foo bar=<BAZ>;
+  |         -----
+  |
+-:2:9:warning: Undefined nonterminal
+  |
+2 | foo bar=<BAR>;
+  |         -----
+  |
 -:2:5:error: Clashing subword leaders.  Completion can't differentiate:
   |
 2 | foo bar=<BAR>;
