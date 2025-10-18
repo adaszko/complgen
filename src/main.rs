@@ -158,6 +158,10 @@ fn handle_error(e: Error, path: &str, source: &str, command: &str) -> anyhow::Re
             let err = ErrMsg::new("Unknown shell").error(&span, source, "");
             eprintln!("{}", err.into_string(path, &span));
         }
+        Error::NonCommandSpecialization(span) => {
+            let err = ErrMsg::new("Can only specialize external commands").error(&span, source, "");
+            eprintln!("{}", err.into_string(path, &span));
+        }
         Error::SubwordSpaces(left, right, trace) => {
             let err = ErrMsg::new("Adjacent literals in expression used in a subword context")
                 .error(&left, source, "First one");

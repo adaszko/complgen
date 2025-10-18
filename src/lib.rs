@@ -36,7 +36,7 @@ pub enum Error {
     UnknownShell(HumanSpan),
 
     #[error("Can only specialize external commands")]
-    NonCommandSpecialization(Ustr, Option<Ustr>),
+    NonCommandSpecialization(HumanSpan),
 
     #[error("Ambiguity in matching: {:?} {:?}", .0, .1)]
     AmbiguousMatchable(HumanSpan, HumanSpan),

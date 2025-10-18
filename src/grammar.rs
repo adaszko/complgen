@@ -906,10 +906,7 @@ fn make_specializations_map(
                 ..
             } => (cmd, bash_regex, fish_regex, zsh_regex),
             _ => {
-                return Err(Error::NonCommandSpecialization(
-                    defn.lhs_name,
-                    Some(shell_name),
-                ));
+                return Err(Error::NonCommandSpecialization(defn.lhs_span));
             }
         };
         let shell = Shell::from_str(&shell_name, shell_span)?;
@@ -954,7 +951,7 @@ fn make_specializations_map(
             continue;
         };
         let Expr::Command { cmd: command, .. } = &arena[defn.rhs_expr_id] else {
-            return Err(Error::NonCommandSpecialization(defn.lhs_name, None));
+            return Err(Error::NonCommandSpecialization(defn.lhs_span));
         };
         if spec.generic.is_some() {
             return Err(Error::DuplicateNonterminalDefinition(defn.lhs_name, None));

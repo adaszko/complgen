@@ -488,3 +488,18 @@ cmd <FOO>;
   |            ^^^^^
   |
 """)
+
+def test_non_command_specialization(complgen_binary_path: Path):
+    r = complgen_check(complgen_binary_path, """
+cmd <FOO>;
+<FOO@bash> ::= foo;
+<FOO@bash> ::= bar;
+""")
+    assert r.returncode == 1
+    assert r.stderr == snapshot("""\
+-:3:1:error: Can only specialize external commands
+  |
+3 | <FOO@bash> ::= foo;
+  | ^^^^^^^^^^
+  |
+""")
