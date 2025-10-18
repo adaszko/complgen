@@ -1,6 +1,5 @@
 use grammar::HumanSpan;
 use std::string::FromUtf8Error;
-use ustr::Ustr;
 
 use crate::regex::Inp;
 
@@ -30,7 +29,7 @@ pub enum Error {
     NonterminalDefinitionsCycle(Box<[HumanSpan]>),
 
     #[error("Duplicate nonterminal definition")]
-    DuplicateNonterminalDefinition(Ustr, Option<Ustr>),
+    DuplicateNonterminalDefinition(HumanSpan, HumanSpan),
 
     #[error("Unknown shell")]
     UnknownShell(HumanSpan),

@@ -167,10 +167,10 @@ impl Shell {
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Specialization {
-    pub bash: Option<(Ustr, Option<Ustr>)>,
-    pub fish: Option<(Ustr, Option<Ustr>)>,
-    pub zsh: Option<(Ustr, Option<Ustr>)>,
-    pub generic: Option<Ustr>,
+    pub bash: Option<(Ustr, Option<Ustr>, HumanSpan)>,
+    pub fish: Option<(Ustr, Option<Ustr>, HumanSpan)>,
+    pub zsh: Option<(Ustr, Option<Ustr>, HumanSpan)>,
+    pub generic: Option<(Ustr, HumanSpan)>,
 }
 
 impl std::fmt::Debug for Expr {
@@ -913,31 +913,22 @@ fn make_specializations_map(
         let spec = specializations.entry(defn.lhs_name).or_default();
         match shell {
             Shell::Bash => {
-                if spec.bash.is_some() {
-                    return Err(Error::DuplicateNonterminalDefinition(
-                        defn.lhs_name,
-                        Some(shell_name),
-                    ));
+                if let Some((_, _, span)) = spec.bash {
+                    return Err(Error::DuplicateNonterminalDefinition(span, defn.lhs_span));
                 }
-                spec.bash = Some((*command, *bash_regex));
+                spec.bash = Some((*command, *bash_regex, defn.lhs_span));
             }
             Shell::Fish => {
-                if spec.fish.is_some() {
-                    return Err(Error::DuplicateNonterminalDefinition(
-                        defn.lhs_name,
-                        Some(shell_name),
-                    ));
+                if let Some((_, _, span)) = spec.fish {
+                    return Err(Error::DuplicateNonterminalDefinition(span, defn.lhs_span));
                 }
-                spec.fish = Some((*command, *fish_regex));
+                spec.fish = Some((*command, *fish_regex, defn.lhs_span));
             }
             Shell::Zsh => {
-                if spec.zsh.is_some() {
-                    return Err(Error::DuplicateNonterminalDefinition(
-                        defn.lhs_name,
-                        Some(shell_name),
-                    ));
+                if let Some((_, _, span)) = spec.zsh {
+                    return Err(Error::DuplicateNonterminalDefinition(span, defn.lhs_span));
                 }
-                spec.zsh = Some((*command, *zsh_regex));
+                spec.zsh = Some((*command, *zsh_regex, defn.lhs_span));
             }
         }
     }
@@ -953,27 +944,39 @@ fn make_specializations_map(
         let Expr::Command { cmd: command, .. } = &arena[defn.rhs_expr_id] else {
             return Err(Error::NonCommandSpecialization(defn.lhs_span));
         };
-        if spec.generic.is_some() {
-            return Err(Error::DuplicateNonterminalDefinition(defn.lhs_name, None));
+        if let Some((_, span)) = spec.generic {
+            return Err(Error::DuplicateNonterminalDefinition(span, defn.lhs_span));
         }
-        spec.generic = Some(*command);
+        spec.generic = Some((*command, defn.lhs_span));
     }
 
     specializations
         .entry(ustr("PATH"))
         .or_insert_with(|| Specialization {
-            bash: Some((ustr(r#"compgen -A file "$1""#), None)),
-            fish: Some((ustr(r#"__fish_complete_path "$1""#), None)),
-            zsh: Some((ustr("_path_files"), None)),
+            bash: Some((ustr(r#"compgen -A file "$1""#), None, HumanSpan::default())),
+            fish: Some((
+                ustr(r#"__fish_complete_path "$1""#),
+                None,
+                HumanSpan::default(),
+            )),
+            zsh: Some((ustr("_path_files"), None, HumanSpan::default())),
             generic: None,
         });
 
     specializations
         .entry(ustr("DIRECTORY"))
         .or_insert_with(|| Specialization {
-            bash: Some((ustr(r#"compgen -A directory "$1""#), None)),
-            fish: Some((ustr(r#"__fish_complete_directories "$1""#), None)),
-            zsh: Some((ustr("_path_files -/"), None)),
+            bash: Some((
+                ustr(r#"compgen -A directory "$1""#),
+                None,
+                HumanSpan::default(),
+            )),
+            fish: Some((
+                ustr(r#"__fish_complete_directories "$1""#),
+                None,
+                HumanSpan::default(),
+            )),
+            zsh: Some((ustr("_path_files -/"), None, HumanSpan::default())),
             generic: None,
         });
 
@@ -981,8 +984,8 @@ fn make_specializations_map(
         .entry(ustr("PID"))
         .or_insert_with(|| Specialization {
             bash: None,
-            fish: Some((ustr(r#"__fish_complete_pids"#), None)),
-            zsh: Some((ustr(r#"_pids"#), None)),
+            fish: Some((ustr(r#"__fish_complete_pids"#), None, HumanSpan::default())),
+            zsh: Some((ustr(r#"_pids"#), None, HumanSpan::default())),
             generic: None,
         });
 
@@ -992,9 +995,10 @@ fn make_specializations_map(
             bash: Some((
                 ustr(r#"compgen -A user | while read line; do echo "$line "; done"#),
                 None,
+                HumanSpan::default(),
             )),
-            fish: Some((ustr(r#"__fish_complete_users"#), None)),
-            zsh: Some((ustr(r#"_users"#), None)),
+            fish: Some((ustr(r#"__fish_complete_users"#), None, HumanSpan::default())),
+            zsh: Some((ustr(r#"_users"#), None, HumanSpan::default())),
             generic: None,
         });
 
@@ -1004,9 +1008,14 @@ fn make_specializations_map(
             bash: Some((
                 ustr(r#"compgen -A group | while read line; do echo "$line "; done"#),
                 None,
+                HumanSpan::default(),
             )),
-            fish: Some((ustr(r#"__fish_complete_groups"#), None)),
-            zsh: Some((ustr(r#"_groups"#), None)),
+            fish: Some((
+                ustr(r#"__fish_complete_groups"#),
+                None,
+                HumanSpan::default(),
+            )),
+            zsh: Some((ustr(r#"_groups"#), None, HumanSpan::default())),
             generic: None,
         });
 
@@ -1016,9 +1025,14 @@ fn make_specializations_map(
             bash: Some((
                 ustr(r#"compgen -A hostname | while read line; do echo "$line "; done"#),
                 None,
+                HumanSpan::default(),
             )),
-            fish: Some((ustr(r#"__fish_complete_hostnames"#), None)),
-            zsh: Some((ustr(r#"_hosts"#), None)),
+            fish: Some((
+                ustr(r#"__fish_complete_hostnames"#),
+                None,
+                HumanSpan::default(),
+            )),
+            zsh: Some((ustr(r#"_hosts"#), None, HumanSpan::default())),
             generic: None,
         });
 
@@ -1026,8 +1040,12 @@ fn make_specializations_map(
         .entry(ustr("INTERFACE"))
         .or_insert_with(|| Specialization {
             bash: None,
-            fish: Some((ustr(r#"__fish_complete_interfaces"#), None)),
-            zsh: Some((ustr(r#"_net_interfaces"#), None)),
+            fish: Some((
+                ustr(r#"__fish_complete_interfaces"#),
+                None,
+                HumanSpan::default(),
+            )),
+            zsh: Some((ustr(r#"_net_interfaces"#), None, HumanSpan::default())),
             generic: None,
         });
 
@@ -1035,7 +1053,11 @@ fn make_specializations_map(
         .entry(ustr("PACKAGE"))
         .or_insert_with(|| Specialization {
             bash: None,
-            fish: Some((ustr(r#"__fish_complete_packages"#), None)),
+            fish: Some((
+                ustr(r#"__fish_complete_packages"#),
+                None,
+                HumanSpan::default(),
+            )),
             zsh: None,
             generic: None,
         });
@@ -1487,8 +1509,11 @@ impl ValidGrammar {
                     }
                     _ => continue,
                 };
-                if nonterminal_definitions.contains_key(&defn.lhs_name) {
-                    return Err(Error::DuplicateNonterminalDefinition(defn.lhs_name, None));
+                if let Some(dup) = nonterminal_definitions.get(&defn.lhs_name) {
+                    return Err(Error::DuplicateNonterminalDefinition(
+                        dup.lhs_span,
+                        defn.lhs_span,
+                    ));
                 }
                 let mut def = defn.clone();
                 def.rhs_expr_id = distribute_descriptions(&mut grammar.arena, defn.rhs_expr_id);
@@ -1748,8 +1773,8 @@ fn specialize_nonterminals(
                 return expr_id;
             };
 
-            let type_tetris_generic_cmd = spec.generic.map(|cmd| (cmd, None));
-            let Some((cmd, regex)) = (match shell {
+            let type_tetris_generic_cmd = spec.generic.map(|(cmd, span)| (cmd, None, span));
+            let Some((cmd, regex, _)) = (match shell {
                 Shell::Bash => spec.bash.or(type_tetris_generic_cmd),
                 Shell::Fish => spec.fish.or(type_tetris_generic_cmd),
                 Shell::Zsh => spec.zsh.or(type_tetris_generic_cmd),
@@ -3417,9 +3442,10 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
 <OPTION> ::= always | never | auto;
 "#;
         let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
-        assert!(
-            matches!(ValidGrammar::from_grammar(g, Shell::Bash), Err(Error::DuplicateNonterminalDefinition(nonterm, None)) if nonterm == "OPTION")
-        );
+        assert!(matches!(
+            ValidGrammar::from_grammar(g, Shell::Bash),
+            Err(Error::DuplicateNonterminalDefinition(..))
+        ));
     }
 
     #[test]

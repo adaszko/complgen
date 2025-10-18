@@ -154,6 +154,12 @@ fn handle_error(e: Error, path: &str, source: &str, command: &str) -> anyhow::Re
                 eprintln!("{}", err.into_string(path, &span));
             }
         }
+        Error::DuplicateNonterminalDefinition(first, second) => {
+            let err = ErrMsg::new("Duplicate nonterminal definition").error(&second, source, "");
+            eprintln!("{}", err.into_string(path, &second));
+            let err = ErrMsg::new("Previous definition").error(&first, source, "");
+            eprintln!("{}", err.into_string(path, &first));
+        }
         Error::UnknownShell(span) => {
             let err = ErrMsg::new("Unknown shell").error(&span, source, "");
             eprintln!("{}", err.into_string(path, &span));

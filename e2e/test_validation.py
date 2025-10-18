@@ -503,3 +503,45 @@ cmd <FOO>;
   | ^^^^^^^^^^
   |
 """)
+
+
+def test_duplicated_nonterminal_definition(complgen_binary_path: Path):
+    r = complgen_check(complgen_binary_path, """
+cmd <FOO>;
+<FOO> ::= foo;
+<FOO> ::= bar;
+""")
+    assert r.returncode == 1
+    assert r.stderr == snapshot("""\
+-:4:1:error: Duplicate nonterminal definition
+  |
+4 | <FOO> ::= bar;
+  | ^^^^^
+  |
+-:3:1:error: Previous definition
+  |
+3 | <FOO> ::= foo;
+  | ^^^^^
+  |
+""")
+
+
+def test_duplicated_nonterminal_definition_specialization(complgen_binary_path: Path):
+    r = complgen_check(complgen_binary_path, """
+cmd <FOO>;
+<FOO@bash> ::= {{{ echo foo }}};
+<FOO@bash> ::= {{{ echo bar }}};
+""")
+    assert r.returncode == 1
+    assert r.stderr == snapshot("""\
+-:4:1:error: Duplicate nonterminal definition
+  |
+4 | <FOO@bash> ::= {{{ echo bar }}};
+  | ^^^^^^^^^^
+  |
+-:3:1:error: Previous definition
+  |
+3 | <FOO@bash> ::= {{{ echo foo }}};
+  | ^^^^^^^^^^
+  |
+""")
