@@ -367,7 +367,7 @@ fn write_subword_fn<W: Write>(
     let literal_id_from_input_description =
         write_lookup_tables(buffer, dfa, "subword_", id_from_regex)?;
 
-    let max_fallback_level = dfa.get_max_fallback_level().unwrap();
+    let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(1);
 
     let mut fallback_literals: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
     fallback_literals.resize_with(max_fallback_level + 1, Default::default);
@@ -731,7 +731,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
     // ///////////////////////////// Completion ///////////////////////////////////
 
-    let max_fallback_level = dfa.get_max_fallback_level().unwrap();
+    let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(1);
 
     let mut fallback_literals: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
     fallback_literals.resize_with(max_fallback_level + 1, Default::default);

@@ -464,7 +464,7 @@ fn write_subword_fn<W: Write>(
         write_subword_lookup_tables(buffer, dfa, id_from_regex)?;
     writeln!(buffer)?;
 
-    let max_fallback_level = dfa.get_max_fallback_level().unwrap();
+    let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(1);
 
     let mut fallback_literals: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
     fallback_literals.resize_with(max_fallback_level + 1, Default::default);
@@ -998,7 +998,7 @@ end
 
     // ///////////////////////////// Completion ///////////////////////////////////
 
-    let max_fallback_level = dfa.get_max_fallback_level().unwrap();
+    let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(1);
 
     let mut fallback_literals: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
     fallback_literals.resize_with(max_fallback_level + 1, Default::default);
