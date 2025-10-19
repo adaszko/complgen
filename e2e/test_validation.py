@@ -20,6 +20,12 @@ def test_examples(complgen_binary_path: Path, examples_directory_path: Path):
         assert r.returncode == 0, usage_file_path
 
 
+def test_complgen_example(complgen_binary_path: Path, examples_directory_path: Path):
+    r = complgen_check_path(complgen_binary_path, str(examples_directory_path / "complgen.usage"))
+    assert r.returncode == 0
+    assert r.stderr == snapshot("""""")
+
+
 def complgen_check(complgen_binary_path: Path, grammar: str) -> subprocess.CompletedProcess:
     args = [complgen_binary_path, "--bash", "-", "-"]
     result = subprocess.run(

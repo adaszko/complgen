@@ -1524,30 +1524,41 @@ impl ValidGrammar {
                         defn.lhs_span,
                     ));
                 }
-                let mut def = defn.clone();
-                def.rhs_expr_id = distribute_descriptions(&mut grammar.arena, defn.rhs_expr_id);
-                nonterminal_definitions.insert(def.lhs_name, def);
+                nonterminal_definitions.insert(defn.lhs_name, defn.clone());
             }
             nonterminal_definitions
         };
-
-        let expr = distribute_descriptions(&mut grammar.arena, expr);
 
         let mut unused_nonterminals: UstrMap<HumanSpan> = nonterminal_definitions
             .iter()
             .map(|(nonterm, defn)| (*nonterm, defn.lhs_span))
             .collect();
 
-        let expr = {
-            let specializations = make_specializations_map(&grammar.arena, &grammar.statements)?;
-            specialize_nonterminals(
-                expr,
+        for (_, defn) in nonterminal_definitions.iter_mut() {
+            defn.rhs_expr_id = distribute_descriptions(&mut grammar.arena, defn.rhs_expr_id);
+        }
+
+        let specializations = make_specializations_map(&grammar.arena, &grammar.statements)?;
+
+        for (_, defn) in nonterminal_definitions.iter_mut() {
+            defn.rhs_expr_id = specialize_nonterminals(
+                defn.rhs_expr_id,
                 &mut grammar.arena,
                 shell,
                 &specializations,
                 &mut unused_nonterminals,
-            )
-        };
+            );
+        }
+
+        let expr = distribute_descriptions(&mut grammar.arena, expr);
+
+        let expr = specialize_nonterminals(
+            expr,
+            &mut grammar.arena,
+            shell,
+            &specializations,
+            &mut unused_nonterminals,
+        );
 
         for nonterminal in
             get_nonterminals_resolution_order(&grammar.arena, &nonterminal_definitions)?
