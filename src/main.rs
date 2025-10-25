@@ -287,16 +287,16 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
     };
 
     if !validated.undefined_nonterminals.is_empty() {
-        for (_, span) in &validated.undefined_nonterminals {
-            let err = WarnMsg::new("Undefined nonterminal").warning(&span, &input, "");
-            eprintln!("{}", err.into_string(usage_file_path, &span));
+        for span in validated.undefined_nonterminals.values() {
+            let err = WarnMsg::new("Undefined nonterminal").warning(span, &input, "");
+            eprintln!("{}", err.into_string(usage_file_path, span));
         }
     }
 
     if !validated.unused_nonterminals.is_empty() {
-        for (_, span) in &validated.unused_nonterminals {
-            let err = WarnMsg::new("Unused nonterminal").warning(&span, &input, "");
-            eprintln!("{}", err.into_string(usage_file_path, &span));
+        for span in validated.unused_nonterminals.values() {
+            let err = WarnMsg::new("Unused nonterminal").warning(span, &input, "");
+            eprintln!("{}", err.into_string(usage_file_path, span));
         }
     }
 
