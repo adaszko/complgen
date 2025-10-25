@@ -309,6 +309,13 @@ def test_subword_fallbacks_on_no_matches(complgen_binary_path: Path):
         assert get_sorted_bash_completions(path, input) == sorted(["secondary"])
 
 
+def test_handles_quotes(complgen_binary_path: Path):
+    GRAMMAR = r"""cmd <ANYTHING> baz;"""
+    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
+        input = r'''COMP_WORDS=(cmd "foo bar"); COMP_CWORD=2; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(["baz "])
+
+
 LITERALS_ALPHABET = string.ascii_letters + ":="
 
 

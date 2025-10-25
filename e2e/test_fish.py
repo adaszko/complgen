@@ -384,6 +384,17 @@ def test_subword_fallbacks_on_no_matches(complgen_binary_path: Path):
         )
 
 
+def test_handles_quotes(complgen_binary_path: Path):
+    GRAMMAR = r"""cmd <ANYTHING> baz;"""
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        input = '''complete --do-complete 'cmd "foo bar" ' '''
+        assert get_sorted_fish_completions(completions_file_path, input) == sorted(
+            [("baz", "")]
+        )
+
+
 LITERALS_ALPHABET = string.ascii_letters + ":="
 
 

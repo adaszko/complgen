@@ -402,6 +402,14 @@ cmd (--color=<WHEN> || --color <WHEN> | --colour=<WHEN> | --colour <WHEN>);
     ) == sorted(["--colour", "--colour= --colour="])
 
 
+def test_handles_quotes(complgen_binary_path: Path):
+    GRAMMAR = r"""cmd <ANYTHING> baz;"""
+    assert get_sorted_aot_completions(
+        complgen_binary_path, GRAMMAR, r'''cmd "foo bar" '''
+    ) == sorted(["baz"])
+
+
+
 LITERALS_ALPHABET = string.ascii_letters + ":="
 
 
