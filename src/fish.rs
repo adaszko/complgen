@@ -466,14 +466,14 @@ fn write_subword_fn<W: Write>(
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(1);
 
-    let mut fallback_literals: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    fallback_literals.resize_with(max_fallback_level + 1, Default::default);
+    let mut completion_literals: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
+    completion_literals.resize_with(max_fallback_level + 1, Default::default);
 
-    let mut fallback_commands: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    fallback_commands.resize_with(max_fallback_level + 1, Default::default);
+    let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
+    completion_commands.resize_with(max_fallback_level + 1, Default::default);
 
-    let mut fallback_nontails: Vec<HashMap<StateId, Vec<(usize, usize)>>> = Default::default();
-    fallback_nontails.resize_with(max_fallback_level + 1, Default::default);
+    let mut completion_nontails: Vec<HashMap<StateId, Vec<(usize, usize)>>> = Default::default();
+    completion_nontails.resize_with(max_fallback_level + 1, Default::default);
 
     for (from, input_id, _) in dfa.iter_transitions() {
         match dfa.get_input(input_id).clone() {
@@ -486,7 +486,7 @@ fn write_subword_fn<W: Write>(
                 let literal_id = *literal_id_from_input_description
                     .get(&(lit, description.unwrap_or("".into())))
                     .unwrap();
-                fallback_literals[fallback_level]
+                completion_literals[fallback_level]
                     .entry(from)
                     .or_default()
                     .push(literal_id);
@@ -501,7 +501,7 @@ fn write_subword_fn<W: Write>(
                 zsh_compadd: false,
             } => {
                 let command_id = id_from_cmd.get_index_of(&cmd).unwrap();
-                fallback_commands[fallback_level]
+                completion_commands[fallback_level]
                     .entry(from)
                     .or_default()
                     .push(command_id);
@@ -514,7 +514,7 @@ fn write_subword_fn<W: Write>(
             } => {
                 let cmd_id = id_from_cmd.get_index_of(&cmd).unwrap();
                 let regex_id = id_from_regex.get_index_of(&rx).unwrap();
-                fallback_nontails[fallback_level]
+                completion_nontails[fallback_level]
                     .entry(from)
                     .or_default()
                     .push((cmd_id, regex_id));
@@ -524,7 +524,7 @@ fn write_subword_fn<W: Write>(
         }
     }
 
-    for (level, transitions) in fallback_literals.iter().enumerate() {
+    for (level, transitions) in completion_literals.iter().enumerate() {
         let from_initializer = transitions
             .iter()
             .map(|(from_state, _)| from_state + 1)
@@ -546,7 +546,7 @@ fn write_subword_fn<W: Write>(
         )?;
     }
 
-    for (level, transitions) in fallback_nontails.iter().enumerate() {
+    for (level, transitions) in completion_nontails.iter().enumerate() {
         let from_initializer = transitions
             .iter()
             .map(|(from_state, _)| from_state + 1)
@@ -585,7 +585,7 @@ fn write_subword_fn<W: Write>(
         )?;
     }
 
-    for (level, transitions) in fallback_commands.iter().enumerate() {
+    for (level, transitions) in completion_commands.iter().enumerate() {
         let from_initializer = transitions
             .iter()
             .map(|(from_state, _)| from_state + 1)
@@ -1000,17 +1000,17 @@ end
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(1);
 
-    let mut fallback_literals: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    fallback_literals.resize_with(max_fallback_level + 1, Default::default);
+    let mut completion_literals: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
+    completion_literals.resize_with(max_fallback_level + 1, Default::default);
 
-    let mut fallback_subwords: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    fallback_subwords.resize_with(max_fallback_level + 1, Default::default);
+    let mut completion_subwords: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
+    completion_subwords.resize_with(max_fallback_level + 1, Default::default);
 
-    let mut fallback_commands: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    fallback_commands.resize_with(max_fallback_level + 1, Default::default);
+    let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
+    completion_commands.resize_with(max_fallback_level + 1, Default::default);
 
-    let mut fallback_nontails: Vec<HashMap<StateId, Vec<(usize, usize)>>> = Default::default();
-    fallback_nontails.resize_with(max_fallback_level + 1, Default::default);
+    let mut completion_nontails: Vec<HashMap<StateId, Vec<(usize, usize)>>> = Default::default();
+    completion_nontails.resize_with(max_fallback_level + 1, Default::default);
 
     for (from, input_id, _) in dfa.iter_transitions() {
         match dfa.get_input(input_id).clone() {
@@ -1023,7 +1023,7 @@ end
                 let literal_id = *literal_id_from_input_description
                     .get(&(lit, description.unwrap_or("".into())))
                     .unwrap();
-                fallback_literals[fallback_level]
+                completion_literals[fallback_level]
                     .entry(from)
                     .or_default()
                     .push(literal_id);
@@ -1034,7 +1034,7 @@ end
                 ..
             } => {
                 let subword_id = *id_from_dfa.get(&dfa).unwrap();
-                fallback_subwords[fallback_level]
+                completion_subwords[fallback_level]
                     .entry(from)
                     .or_default()
                     .push(subword_id);
@@ -1049,7 +1049,7 @@ end
                 zsh_compadd: false,
             } => {
                 let command_id = id_from_cmd.get_index_of(&cmd).unwrap();
-                fallback_commands[fallback_level]
+                completion_commands[fallback_level]
                     .entry(from)
                     .or_default()
                     .push(command_id);
@@ -1062,7 +1062,7 @@ end
             } => {
                 let cmd_id = id_from_cmd.get_index_of(&cmd).unwrap();
                 let regex_id = id_from_regex.get_index_of(&rx).unwrap();
-                fallback_nontails[fallback_level]
+                completion_nontails[fallback_level]
                     .entry(from)
                     .or_default()
                     .push((cmd_id, regex_id));
@@ -1071,7 +1071,7 @@ end
         }
     }
 
-    for (level, transitions) in fallback_literals.iter().enumerate() {
+    for (level, transitions) in completion_literals.iter().enumerate() {
         let froms_initializer = itertools::join(
             transitions
                 .iter()
@@ -1101,8 +1101,8 @@ end
         )?;
     }
 
-    if !fallback_subwords.first().unwrap().is_empty() {
-        for (level, transitions) in fallback_subwords.iter().enumerate() {
+    if !completion_subwords.first().unwrap().is_empty() {
+        for (level, transitions) in completion_subwords.iter().enumerate() {
             let froms_initializer = itertools::join(
                 transitions
                     .iter()
@@ -1133,7 +1133,7 @@ end
         }
     }
 
-    for (level, transitions) in fallback_nontails.iter().enumerate() {
+    for (level, transitions) in completion_nontails.iter().enumerate() {
         let from_initializer = transitions
             .iter()
             .map(|(from_state, _)| from_state + 1)
@@ -1178,8 +1178,8 @@ end
         )?;
     }
 
-    if !fallback_commands.first().unwrap().is_empty() {
-        for (level, transitions) in fallback_commands.iter().enumerate() {
+    if !completion_commands.first().unwrap().is_empty() {
+        for (level, transitions) in completion_commands.iter().enumerate() {
             let from_initializer = transitions
                 .iter()
                 .map(|(from_state, _)| from_state + 1)
@@ -1232,7 +1232,7 @@ end
 "#
     )?;
 
-    if !fallback_subwords.first().unwrap().is_empty() {
+    if !completion_subwords.first().unwrap().is_empty() {
         write!(
             buffer,
             r#"
@@ -1251,7 +1251,7 @@ end
         )?;
     }
 
-    if !fallback_commands.first().unwrap().is_empty() {
+    if !completion_commands.first().unwrap().is_empty() {
         write!(
             buffer,
             r#"
@@ -1269,7 +1269,7 @@ end
         )?;
     }
 
-    if !fallback_nontails.first().unwrap().is_empty() {
+    if !completion_nontails.first().unwrap().is_empty() {
         write!(
             buffer,
             r#"
