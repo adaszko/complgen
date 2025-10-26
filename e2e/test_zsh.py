@@ -129,9 +129,20 @@ def test_specializes_for_zsh(complgen_binary_path: Path):
 
 
 def test_specializes_for_zsh_with_regex(complgen_binary_path: Path):
-    GRAMMAR = (
-        """cmd <FOO>bar; <FOO> ::= {{{ echo foo }}}; <FOO@zsh> ::= {{{ compadd zsh }}}@zsh"zsh";"""
+    GRAMMAR = """
+cmd (<FOO> foo | <BAR> bar);
+<FOO@zsh> ::= {{{ compadd zsh }}}@zsh"zsh";
+"""
+    assert get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd zsh ") == sorted(
+        ["foo"]
     )
+
+
+def test_subword_specializes_for_zsh_with_regex(complgen_binary_path: Path):
+    GRAMMAR = """
+cmd <FOO>bar;
+<FOO@zsh> ::= {{{ compadd zsh }}}@zsh"zsh";
+"""
     assert get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd zsh") == sorted(
         ["bar"]
     )
@@ -336,21 +347,6 @@ def test_completes_subword_external_command(complgen_binary_path: Path):
             ["--option=argument", "argument", "--", "description"],
         ]
     )
-
-
-def test_subword_specialization(complgen_binary_path: Path):
-    GRAMMAR = r"""
-cmd --option=<FOO>;
-<FOO> ::= {{{ echo generic }}};
-<FOO@zsh> ::= {{{ echo zsh }}};
-"""
-    actual = [
-        s.split()
-        for s in get_sorted_aot_completions(
-            complgen_binary_path, GRAMMAR, "cmd --option="
-        )
-    ]
-    assert actual == sorted([["--option=zsh"]])
 
 
 def test_description_special_characters(complgen_binary_path: Path):

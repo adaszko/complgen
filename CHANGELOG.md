@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 ## 0.6.0
+### Fixed
+
+ - ZSH specialized commands should now use `compadd` instead of writing on stdout
+
 ### Changed
 
  - Error message location are now 1-based to make them easier to use in a text editor

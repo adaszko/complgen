@@ -192,10 +192,15 @@ the nonterminal `<USER>` using few `nonterminal@shell` definitions:
 
 ```
 cmd <USER>;
-<USER@bash> ::= {{{ compgen -A user "$1" | sort | uniq }}}; # bash produces duplicates for some reason
-<USER@fish> ::= {{{ __fish_complete_users "$1" }}};
-<USER@zsh> ::= {{{ _users }}};
+<USER@bash> ::= {{{ compgen -A user "$1" | sort | uniq }}}; # produce candidates on stdout under bash
+<USER@fish> ::= {{{ __fish_complete_users "$1" }}}; # produce candidates on stdout under fish
+<USER@zsh> ::= {{{ _users }}}; # produce candidates via compadd and friends under zsh
 ```
+
+⚠️ Gotcha: Under ZSH, when calling `compadd` within a subword, candidates are automatically filtered based on
+the prefix input so far.  It may result in some completions not showing up.  You may want call it as `compadd
+${1}<YOUR_CANDIDATE>` to include the entered prefix, or as `compadd -U` to disable the builtin filtering
+mechanism.
 
 ### Completing option arguments
 

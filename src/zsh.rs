@@ -323,21 +323,7 @@ fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<(
         eval "declare initializer=\${{${{compadd_commands_name}}[$subword_state]}}"
         eval "declare -a transitions=($initializer)"
         for command_id in "${{transitions[@]}}"; do
-            declare output=$(_{command}_cmd_${{command_id}} "$matched_prefix")
-            declare -a candidates=("${{(@f)output}}")
-            for line in ${{candidates[@]}}; do
-                if [[ $line = "${{completed_prefix}}"* ]]; then
-                    line="$matched_prefix$line"
-                    declare parts=(${{(@s:	:)line}})
-                    if [[ -v "parts[2]" ]]; then
-                        subword_completions_trailing_space+=("${{parts[1]}}")
-                        subword_suffixes_trailing_space+=("${{parts[1]}}")
-                        subword_descriptions_trailing_space+=("${{parts[2]}}")
-                    else
-                        subword_completions_no_description_trailing_space+=("$line")
-                    fi
-                fi
-            done
+            _{command}_cmd_${{command_id}} "$matched_prefix"
         done
 
         if [[ ${{#subword_completions_no_description_trailing_space}} -gt 0 || ${{#subword_completions_trailing_space}} -gt 0 || ${{#subword_completions_no_trailing_space}} -gt 0 ]]; then

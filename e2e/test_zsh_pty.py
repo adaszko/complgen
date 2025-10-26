@@ -88,3 +88,14 @@ def test_autoload(complgen_binary_path: Path):
         with set_working_dir(working_dir):
             bracketed_pastes = get_autoloaded_completion_output(complgen_binary_path, GRAMMAR, 'hello', b'hello 	', working_dir=working_dir)
             assert bracketed_pastes == ['hello world  ']
+
+
+@pytest.mark.skipif(platform.system() != 'Darwin', reason='Not running on macOS')
+def test_subword_specialization(complgen_binary_path: Path):
+    GRAMMAR = r"""
+cmd --option=<FOO>;
+<FOO> ::= {{{ echo generic }}};
+<FOO@zsh> ::= {{{ compadd -U -- ${1}zsh }}};
+"""
+    bracketed_pastes = get_autoloaded_completion_output(complgen_binary_path, GRAMMAR, 'cmd', b'cmd --option=	')
+    assert bracketed_pastes == ['cmd --option=zsh  ']
