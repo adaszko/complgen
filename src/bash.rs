@@ -3,7 +3,7 @@ use std::io::Write;
 use crate::Result;
 use crate::StateId;
 use crate::dfa::DFA;
-use crate::regex::Inp;
+use crate::dfa::Inp;
 use hashbrown::HashMap;
 use indexmap::IndexSet;
 use ustr::{Ustr, ustr};

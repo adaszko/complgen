@@ -8,8 +8,8 @@ use clap::Parser;
 
 use complgen::grammar::{Grammar, HumanSpan, Shell, ValidGrammar};
 
-use complgen::dfa::DFA;
-use complgen::regex::{Regex, diagnostic_display_input};
+use complgen::dfa::{DFA, diagnostic_display_input};
+use complgen::regex::{Regex, RegexInternPool};
 use complgen::{Error, bash, fish, zsh};
 
 #[derive(clap::Parser)]
@@ -300,7 +300,9 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
         Err(e) => return handle_error(e, usage_file_path, &input, "dummy"),
     };
 
-    let regex = match Regex::from_valid_grammar(&validated, shell) {
+    let mut subword_regexes = RegexInternPool::default();
+
+    let regex = match Regex::from_valid_grammar(&validated, shell, &mut subword_regexes) {
         Ok(regex) => regex,
         Err(e) => return handle_error(e, usage_file_path, &input, &validated.command),
     };
@@ -337,11 +339,11 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
     if let Some(regex_dot_file_path) = &args.regex {
         let mut dot_file = get_file_or_stdout(regex_dot_file_path)?;
         regex
-            .to_dot(&mut dot_file)
+            .to_dot(&mut dot_file, &subword_regexes)
             .context(regex_dot_file_path.clone())?;
     }
 
-    let dfa = match DFA::from_regex(regex, validated.subdfas) {
+    let dfa = match DFA::from_regex(regex, &subword_regexes) {
         Ok(dfa) => dfa,
         Err(e) => return handle_error(e, usage_file_path, &input, &validated.command),
     };

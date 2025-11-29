@@ -1,7 +1,6 @@
 use std::{debug_assert, io::Write};
 
 use hashbrown::HashSet;
-use indexmap::IndexSet;
 use nom::{
     Finish, IResult, Parser,
     branch::alt,
@@ -16,44 +15,6 @@ use nom_locate::LocatedSpan;
 
 use crate::{Error, Result};
 use ustr::{Ustr, UstrMap, UstrSet, ustr};
-
-use crate::{dfa::DFA, regex::Regex};
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct DFAId(usize);
-
-#[derive(Debug, Clone, Default)]
-pub struct DFAInternPool {
-    store: IndexSet<DFA>,
-}
-
-impl DFAInternPool {
-    fn intern(&mut self, value: DFA) -> DFAId {
-        let (id, _) = self.store.insert_full(value);
-        DFAId(id)
-    }
-
-    pub(crate) fn lookup(&self, id: DFAId) -> &DFA {
-        self.store.get_index(id.0).unwrap()
-    }
-}
-
-#[derive(Clone, PartialEq)]
-pub enum SubwordCompilationPhase {
-    Expr(ExprId),
-    DFA(DFAId),
-}
-
-impl std::fmt::Debug for SubwordCompilationPhase {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Expr(expr) => {
-                f.write_fmt(format_args!(r#"SubwordCompilationPhase::Expr({expr:?})"#))
-            }
-            Self::DFA(dfa) => f.write_fmt(format_args!(r#"SubwordCompilationPhase::DFA({dfa:?})"#)),
-        }
-    }
-}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct ExprId(pub usize);
@@ -157,7 +118,7 @@ pub enum Expr {
 
     // `--option=argument`
     Subword {
-        phase: SubwordCompilationPhase,
+        root_id: ExprId,
         fallback: usize,
         span: HumanSpan,
     },
@@ -211,8 +172,8 @@ impl std::fmt::Debug for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Subword {
-                phase, fallback, ..
-            } => f.write_fmt(format_args!(r#"Subword({phase:?}, {fallback})"#)),
+                root_id, fallback, ..
+            } => f.write_fmt(format_args!(r#"Subword {{ root_id: {root_id}, fallback: {fallback} }}"#)),
             Expr::Terminal {
                 term,
                 descr: Some(descr),
@@ -278,71 +239,181 @@ fn dot_escape(s: &str) -> String {
 fn do_expr_to_dot<W: Write>(
     output: &mut W,
     expr_id: ExprId,
+    visited: &mut HashSet<ExprId>,
     arena: &[Expr],
+    identifier_prefix: &str,
+    recursion_level: usize,
 ) -> std::result::Result<(), std::io::Error> {
+    if visited.contains(&expr_id) {
+        // One nonterminal may be referenced multiple times resulting in traversing one expr_id
+        // many times.  Let's detect that to avoid producing redudant .dot graph edges.
+        return Ok(());
+    }
+    visited.insert(expr_id);
+    let indent = format!("\t{}", str::repeat("\t", recursion_level));
     match arena[expr_id].clone() {
         Expr::Terminal { term, .. } => {
-            writeln!(output, r#"  _{expr_id}[label="\"{term}\""];"#)?;
+            writeln!(
+                output,
+                r#"{indent}_{identifier_prefix}{expr_id}[label="\"{term}\""];"#
+            )?;
         }
         Expr::NontermRef { nonterm, .. } => {
-            writeln!(output, r#"  _{expr_id}[label="<{nonterm}>"];"#)?;
+            writeln!(
+                output,
+                r#"{indent}_{identifier_prefix}{expr_id}[label="<{nonterm}>"];"#
+            )?;
         }
         Expr::Command { cmd, .. } => {
-            writeln!(output, r#"  _{expr_id}[label="{}"];"#, dot_escape(&cmd))?;
+            writeln!(
+                output,
+                r#"{indent}_{identifier_prefix}{expr_id}[label="{}"];"#,
+                dot_escape(&cmd)
+            )?;
         }
         Expr::Sequence { children, .. } => {
-            writeln!(output, r#"  _{expr_id}[label="Sequence"];"#)?;
-            for child in &children {
-                writeln!(output, r#"  _{expr_id} -> _{child};"#)?;
+            writeln!(
+                output,
+                r#"{indent}_{identifier_prefix}{expr_id}[label="Sequence"];"#
+            )?;
+            for child_id in &children {
+                match arena[*child_id] {
+                    Expr::Terminal { .. }
+                    | Expr::NontermRef { .. }
+                    | Expr::Command { .. }
+                    | Expr::Sequence { .. }
+                    | Expr::Alternative { .. }
+                    | Expr::Optional { .. }
+                    | Expr::Many1 { .. }
+                    | Expr::DistributiveDescription { .. }
+                    | Expr::Fallback { .. } => {
+                        writeln!(
+                            output,
+                            r#"{indent}_{identifier_prefix}{expr_id} -> _{identifier_prefix}{child_id};"#
+                        )?;
+                    }
+                    Expr::Subword { root_id, .. } => {
+                        writeln!(
+                            output,
+                            r#"{indent}_{identifier_prefix}{expr_id} -> _{child_id}_{root_id};"#
+                        )?;
+                    }
+                }
             }
             for child in children {
-                do_expr_to_dot(output, child, arena)?;
+                do_expr_to_dot(
+                    output,
+                    child,
+                    visited,
+                    arena,
+                    identifier_prefix,
+                    recursion_level,
+                )?;
             }
         }
         Expr::Alternative { children, .. } => {
-            writeln!(output, r#"  _{expr_id}[label="Alternative"];"#)?;
+            writeln!(
+                output,
+                r#"{indent}_{identifier_prefix}{expr_id}[label="Alternative"];"#
+            )?;
             for child in &children {
-                writeln!(output, r#"  _{expr_id} -> _{child};"#)?;
+                writeln!(
+                    output,
+                    r#"{indent}_{identifier_prefix}{expr_id} -> _{identifier_prefix}{child};"#
+                )?;
             }
             for child in children {
-                do_expr_to_dot(output, child, arena)?;
+                do_expr_to_dot(
+                    output,
+                    child,
+                    visited,
+                    arena,
+                    identifier_prefix,
+                    recursion_level,
+                )?;
             }
         }
         Expr::Fallback { children, .. } => {
-            writeln!(output, r#"  _{expr_id}[label="Fallback"];"#)?;
+            writeln!(
+                output,
+                r#"{indent}_{identifier_prefix}{expr_id}[label="Fallback"];"#
+            )?;
             for child in &children {
-                writeln!(output, r#"  _{expr_id} -> _{child};"#)?;
+                writeln!(
+                    output,
+                    r#"{indent}_{identifier_prefix}{expr_id} -> _{identifier_prefix}{child};"#
+                )?;
             }
             for child in children {
-                do_expr_to_dot(output, child, arena)?;
+                do_expr_to_dot(
+                    output,
+                    child,
+                    visited,
+                    arena,
+                    identifier_prefix,
+                    recursion_level,
+                )?;
             }
         }
         Expr::Optional { child, .. } => {
-            writeln!(output, r#"  _{expr_id}[label="Optional"];"#)?;
-            writeln!(output, r#"  _{expr_id} -> _{child};"#)?;
-            do_expr_to_dot(output, child, arena)?;
+            writeln!(
+                output,
+                r#"{indent}_{identifier_prefix}{expr_id}[label="Optional"];"#
+            )?;
+            writeln!(
+                output,
+                r#"{indent}_{identifier_prefix}{expr_id} -> _{identifier_prefix}{child};"#
+            )?;
+            do_expr_to_dot(
+                output,
+                child,
+                visited,
+                arena,
+                identifier_prefix,
+                recursion_level,
+            )?;
         }
         Expr::Many1 { child, .. } => {
-            writeln!(output, r#"  _{expr_id}[label="Many1"];"#)?;
-            writeln!(output, r#"  _{expr_id} -> _{child};"#)?;
-            do_expr_to_dot(output, child, arena)?;
+            writeln!(
+                output,
+                r#"{indent}_{identifier_prefix}{expr_id}[label="Many1"];"#
+            )?;
+            writeln!(
+                output,
+                r#"{indent}_{identifier_prefix}{expr_id} -> _{identifier_prefix}{child};"#
+            )?;
+            do_expr_to_dot(
+                output,
+                child,
+                visited,
+                arena,
+                identifier_prefix,
+                recursion_level,
+            )?;
         }
         Expr::DistributiveDescription { child, .. } => {
-            writeln!(output, r#"  _{expr_id}[label="DistributiveDescription"];"#)?;
-            writeln!(output, r#"  _{expr_id} -> _{child};"#)?;
+            writeln!(
+                output,
+                r#"{indent}_{identifier_prefix}{expr_id}[label="DistributiveDescription"];"#
+            )?;
+            writeln!(
+                output,
+                r#"{indent}_{identifier_prefix}{expr_id} -> _{identifier_prefix}{child};"#
+            )?;
         }
-        Expr::Subword {
-            phase: SubwordCompilationPhase::Expr(child),
-            ..
-        } => {
-            writeln!(output, "  subgraph _{expr_id} {{")?;
-            do_expr_to_dot(output, child, arena)?;
-            writeln!(output, "  }}")?;
+        Expr::Subword { root_id, .. } => {
+            writeln!(output, "{indent}subgraph cluster_{expr_id} {{")?;
+            let subword_identifier_prefix = &format!("{expr_id}_");
+            do_expr_to_dot(
+                output,
+                root_id,
+                visited,
+                arena,
+                subword_identifier_prefix,
+                recursion_level + 1,
+            )?;
+            writeln!(output, "{indent}}}")?;
         }
-        Expr::Subword {
-            phase: SubwordCompilationPhase::DFA(..),
-            ..
-        } => unreachable!(),
     }
     Ok(())
 }
@@ -353,7 +424,8 @@ fn expr_to_dot<W: Write>(
     arena: &[Expr],
 ) -> std::result::Result<(), std::io::Error> {
     writeln!(output, "digraph rx {{")?;
-    do_expr_to_dot(output, root_id, arena)?;
+    let mut visited: HashSet<ExprId> = Default::default();
+    do_expr_to_dot(output, root_id, &mut visited, arena, "", 0)?;
     writeln!(output, "}}")?;
     Ok(())
 }
@@ -713,9 +785,9 @@ fn subword_sequence_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<
             children: flattened_factors,
             span,
         };
-        let subword_id = alloc(arena, e);
+        let root_id = alloc(arena, e);
         let subword_expr = Expr::Subword {
-            phase: SubwordCompilationPhase::Expr(subword_id),
+            root_id,
             fallback: 0,
             span,
         };
@@ -954,7 +1026,6 @@ pub struct ValidGrammar {
     pub command: Ustr,
     pub expr: ExprId,
     pub arena: Vec<Expr>,
-    pub subdfas: DFAInternPool,
     pub undefined_nonterminals: UstrMap<HumanSpan>,
     pub unused_nonterminals: UstrMap<HumanSpan>,
     pub unused_specializations: UstrMap<HumanSpan>,
@@ -965,13 +1036,7 @@ pub struct ValidGrammar {
 fn flatten_expr(arena: &mut Vec<Expr>, expr_id: ExprId) -> ExprId {
     match arena[expr_id].clone() {
         Expr::Terminal { .. } | Expr::NontermRef { .. } | Expr::Command { .. } => expr_id,
-        Expr::Subword { phase: child, .. } => {
-            let child = match child {
-                SubwordCompilationPhase::Expr(e) => e,
-                SubwordCompilationPhase::DFA(_) => unreachable!(),
-            };
-            flatten_expr(arena, child)
-        }
+        Expr::Subword { root_id: child, .. } => flatten_expr(arena, child),
         Expr::Sequence { children, span } => {
             let new_children: Vec<ExprId> =
                 children.iter().map(|e| flatten_expr(arena, *e)).collect();
@@ -1067,32 +1132,19 @@ fn flatten_expr(arena: &mut Vec<Expr>, expr_id: ExprId) -> ExprId {
     }
 }
 
-fn compile_subword_exprs(
-    arena: &mut Vec<Expr>,
-    expr_id: ExprId,
-    shell: Shell,
-    subdfas: &mut DFAInternPool,
-) -> Result<ExprId> {
-    let retval = match arena[expr_id].clone() {
+// Contrary to flatten_expr(), preserves the topmost subword node.
+fn collapse_subwords(arena: &mut Vec<Expr>, expr_id: ExprId) -> ExprId {
+    match arena[expr_id].clone() {
         Expr::Subword {
-            phase: subword_expr,
+            root_id,
             fallback,
             span,
         } => {
-            let subword_expr = match subword_expr {
-                SubwordCompilationPhase::Expr(e) => e,
-                SubwordCompilationPhase::DFA(_) => unreachable!(),
-            };
-            let subword_expr = flatten_expr(arena, subword_expr);
-            let regex = Regex::from_expr(subword_expr, arena, shell).unwrap();
-            regex.check_ambiguities_subword()?;
-            let dfa = DFA::from_regex(regex, DFAInternPool::default())?;
-            let dfa = dfa.minimize();
-            let subdfaid = subdfas.intern(dfa);
+            let new_root = flatten_expr(arena, root_id);
             alloc(
                 arena,
                 Expr::Subword {
-                    phase: SubwordCompilationPhase::DFA(subdfaid),
+                    root_id: new_root,
                     fallback,
                     span,
                 },
@@ -1102,8 +1154,8 @@ fn compile_subword_exprs(
         Expr::Sequence { children, span } => {
             let new_children: Vec<ExprId> = children
                 .iter()
-                .map(|e| compile_subword_exprs(arena, *e, shell, subdfas))
-                .collect::<Result<_>>()?;
+                .map(|e| collapse_subwords(arena, *e))
+                .collect();
             if children == new_children {
                 expr_id
             } else {
@@ -1119,8 +1171,8 @@ fn compile_subword_exprs(
         Expr::Alternative { children, span } => {
             let new_children: Vec<ExprId> = children
                 .iter()
-                .map(|e| compile_subword_exprs(arena, *e, shell, subdfas))
-                .collect::<Result<_>>()?;
+                .map(|e| collapse_subwords(arena, *e))
+                .collect();
             if children == new_children {
                 expr_id
             } else {
@@ -1134,7 +1186,7 @@ fn compile_subword_exprs(
             }
         }
         Expr::Optional { child, span } => {
-            let new_child = compile_subword_exprs(arena, child, shell, subdfas)?;
+            let new_child = collapse_subwords(arena, child);
             if child == new_child {
                 expr_id
             } else {
@@ -1148,7 +1200,7 @@ fn compile_subword_exprs(
             }
         }
         Expr::Many1 { child, span } => {
-            let new_child = compile_subword_exprs(arena, child, shell, subdfas)?;
+            let new_child = collapse_subwords(arena, child);
             if child == new_child {
                 expr_id
             } else {
@@ -1161,14 +1213,30 @@ fn compile_subword_exprs(
                 )
             }
         }
-        Expr::DistributiveDescription { .. } => unreachable!(
-            "DistributiveDescription Expr type should have been erased by the time subwords are being compiled"
-        ),
+        Expr::DistributiveDescription {
+            child,
+            descr: description,
+            span,
+        } => {
+            let new_child = collapse_subwords(arena, child);
+            if child == new_child {
+                expr_id
+            } else {
+                alloc(
+                    arena,
+                    Expr::DistributiveDescription {
+                        child: new_child,
+                        descr: description,
+                        span,
+                    },
+                )
+            }
+        }
         Expr::Fallback { children, span } => {
             let new_children: Vec<ExprId> = children
                 .iter()
-                .map(|e| compile_subword_exprs(arena, *e, shell, subdfas))
-                .collect::<Result<_>>()?;
+                .map(|e| collapse_subwords(arena, *e))
+                .collect();
             if children == new_children {
                 expr_id
             } else {
@@ -1181,8 +1249,7 @@ fn compile_subword_exprs(
                 )
             }
         }
-    };
-    Ok(retval)
+    }
 }
 
 // Move descriptions to their corresponding terminals.
@@ -1276,7 +1343,7 @@ fn do_distribute_descriptions(
             }
         }
         Expr::Subword {
-            phase: SubwordCompilationPhase::Expr(child),
+            root_id: child,
             fallback,
             span,
         } => {
@@ -1287,17 +1354,13 @@ fn do_distribute_descriptions(
                 alloc(
                     arena,
                     Expr::Subword {
-                        phase: SubwordCompilationPhase::Expr(new_child),
+                        root_id: new_child,
                         fallback,
                         span,
                     },
                 )
             }
         }
-        Expr::Subword {
-            phase: SubwordCompilationPhase::DFA(_),
-            ..
-        } => unreachable!(),
         Expr::Fallback { children, span } => {
             let new_children: Vec<ExprId> = children
                 .iter()
@@ -1424,7 +1487,7 @@ fn do_propagate_fallback_levels(
             }
         }
         Expr::Subword {
-            phase: SubwordCompilationPhase::Expr(child),
+            root_id: child,
             fallback: _,
             span,
         } => {
@@ -1435,17 +1498,13 @@ fn do_propagate_fallback_levels(
                 alloc(
                     arena,
                     Expr::Subword {
-                        phase: SubwordCompilationPhase::Expr(new_child),
+                        root_id: new_child,
                         fallback: fallback_level,
                         span,
                     },
                 )
             }
         }
-        Expr::Subword {
-            phase: SubwordCompilationPhase::DFA(..),
-            ..
-        } => unreachable!(),
         Expr::DistributiveDescription { .. } => unreachable!(),
     }
 }
@@ -1618,14 +1677,14 @@ impl ValidGrammar {
             &mut unused_nonterminals,
         );
 
+        // Handle nested subwords originating in nonterminals expansion
+        let expr = collapse_subwords(&mut grammar.arena, expr);
+
         let expr = propagate_fallback_levels(&mut grammar.arena, expr);
 
         // Whatever nonterminals remained in the expression tree after nonterminal expansion,
         // they're undefined.
         let undefined_nonterminals = get_nonterm_refs(&grammar.arena, expr);
-
-        let mut subdfas = DFAInternPool::default();
-        let expr = compile_subword_exprs(&mut grammar.arena, expr, shell, &mut subdfas)?;
 
         let g = ValidGrammar {
             arena: grammar.arena,
@@ -1634,7 +1693,6 @@ impl ValidGrammar {
             undefined_nonterminals,
             unused_nonterminals,
             unused_specializations,
-            subdfas,
         };
         Ok(g)
     }
@@ -1760,15 +1818,8 @@ fn do_check_subword_spaces(
             Ok(())
         }
         Expr::Command { .. } => Ok(()),
-        Expr::Subword {
-            phase: SubwordCompilationPhase::Expr(child),
-            ..
-        } => do_check_subword_spaces(arena, *child, nonterms, nonterm_expn_trace, true),
-        Expr::Subword {
-            phase: SubwordCompilationPhase::DFA(..),
-            ..
-        } => {
-            unreachable!("wrong compilation phases order")
+        Expr::Subword { root_id: child, .. } => {
+            do_check_subword_spaces(arena, *child, nonterms, nonterm_expn_trace, true)
         }
         Expr::Alternative { children, .. } => {
             for child in children {
@@ -1868,7 +1919,7 @@ fn specialize_nonterminals(
             alloc(expr_arena, new_node)
         }
         Expr::Subword {
-            phase: SubwordCompilationPhase::Expr(child),
+            root_id: child,
             fallback,
             span,
         } => {
@@ -1885,17 +1936,13 @@ fn specialize_nonterminals(
                 alloc(
                     expr_arena,
                     Expr::Subword {
-                        phase: SubwordCompilationPhase::Expr(new_child),
+                        root_id: new_child,
                         fallback,
                         span,
                     },
                 )
             }
         }
-        Expr::Subword {
-            phase: SubwordCompilationPhase::DFA(..),
-            ..
-        } => unreachable!(),
         Expr::Sequence { children, span } => {
             let new_children: Vec<ExprId> = children
                 .iter()
@@ -2027,7 +2074,7 @@ fn resolve_nonterminals(
     match arena[expr_id].clone() {
         Expr::Terminal { .. } | Expr::Command { .. } => expr_id,
         Expr::Subword {
-            phase: SubwordCompilationPhase::Expr(child),
+            root_id: child,
             fallback,
             span,
         } => {
@@ -2038,17 +2085,13 @@ fn resolve_nonterminals(
                 alloc(
                     arena,
                     Expr::Subword {
-                        phase: SubwordCompilationPhase::Expr(new_child),
+                        root_id: new_child,
                         fallback,
                         span,
                     },
                 )
             }
         }
-        Expr::Subword {
-            phase: SubwordCompilationPhase::DFA(..),
-            ..
-        } => unreachable!(),
         Expr::NontermRef { nonterm: name, .. } => match vars.get(&name) {
             Some(replacement) => {
                 unused_nonterminals.remove(&name);
@@ -2147,12 +2190,10 @@ fn resolve_nonterminals(
 fn do_get_nonterm_refs(arena: &[Expr], expr_id: ExprId, refs: &mut UstrMap<HumanSpan>) {
     match &arena[expr_id] {
         Expr::Terminal { .. } | Expr::Command { .. } => {}
-        Expr::Subword { phase, .. } => {
-            let subexpr = match phase {
-                SubwordCompilationPhase::Expr(e) => *e,
-                SubwordCompilationPhase::DFA(..) => unreachable!(),
-            };
-            do_get_nonterm_refs(arena, subexpr, refs);
+        Expr::Subword {
+            root_id: subexpr, ..
+        } => {
+            do_get_nonterm_refs(arena, *subexpr, refs);
         }
         Expr::NontermRef { nonterm, span, .. } => {
             refs.insert(*nonterm, *span);
@@ -2484,7 +2525,7 @@ pub mod tests {
 
         fn subword(expr: ExprId) -> Self {
             Self::Subword {
-                phase: SubwordCompilationPhase::Expr(expr),
+                root_id: expr,
                 fallback: 0,
                 span: HumanSpan::default(),
             }
@@ -2606,28 +2647,16 @@ pub mod tests {
             ) => l_descr == r_descr && teq(*l, *r, arena),
             (
                 Expr::Subword {
-                    phase: SubwordCompilationPhase::Expr(l),
+                    root_id: l,
                     fallback: l_fallback,
                     span: _,
                 },
                 Expr::Subword {
-                    phase: SubwordCompilationPhase::Expr(r),
+                    root_id: r,
                     fallback: r_fallback,
                     span: _,
                 },
             ) => l_fallback == r_fallback && teq(*l, *r, arena),
-            (
-                Expr::Subword {
-                    phase: SubwordCompilationPhase::DFA(l),
-                    fallback: l_fallback,
-                    span: _,
-                },
-                Expr::Subword {
-                    phase: SubwordCompilationPhase::DFA(r),
-                    fallback: r_fallback,
-                    span: _,
-                },
-            ) => l_fallback == r_fallback && l == r,
             _ => false,
         }
     }
@@ -2650,7 +2679,7 @@ pub mod tests {
         let expected = alloc(
             &mut arena,
             Expr::Subword {
-                phase: SubwordCompilationPhase::Expr(e1),
+                root_id: e1,
                 fallback: 0,
                 span: HumanSpan::default(),
             },
@@ -2674,7 +2703,7 @@ pub mod tests {
         };
         let sequence_id = alloc(&mut arena, sequence_expr);
         let subword_expr = Subword {
-            phase: SubwordCompilationPhase::Expr(sequence_id),
+            root_id: sequence_id,
             fallback: 0,
             span: HumanSpan::default(),
         };

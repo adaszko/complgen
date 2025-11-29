@@ -1,8 +1,7 @@
-use crate::{
-    Error, Result,
-    grammar::{DFAInternPool, ValidGrammar},
-};
+use crate::{Error, Result, grammar::ValidGrammar};
 use hashbrown::HashSet;
+use indexmap::IndexSet;
+use slice_group_by::GroupBy;
 use std::{
     collections::{BTreeMap, BTreeSet},
     io::Write,
@@ -11,20 +10,16 @@ use std::{
 use roaring::RoaringBitmap;
 use ustr::Ustr;
 
-use crate::grammar::{DFAId, Expr, ExprId, HumanSpan, Shell, SubwordCompilationPhase};
+use crate::grammar::{Expr, ExprId, HumanSpan, Shell};
 
+// Serves as RegexInputId
 pub type Position = u32;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Input {
+pub enum RegexInput {
     Literal {
         literal: Ustr,
         description: Option<Ustr>,
-        fallback_level: usize,
-        span: HumanSpan,
-    },
-    Subword {
-        subdfa: DFAId,
         fallback_level: usize,
         span: HumanSpan,
     },
@@ -40,17 +35,23 @@ pub enum Input {
         fallback_level: usize,
         span: HumanSpan,
     },
+    Subword {
+        subword_regex_id: RegexId,
+        fallback_level: usize,
+        span: HumanSpan,
+    },
 }
 
-impl Input {
-    fn is_star(&self, subdfas: &DFAInternPool) -> bool {
+impl RegexInput {
+    fn is_star(&self, subword_regexes: &RegexInternPool) -> bool {
         match self {
             Self::Literal { .. } => false,
-            Self::Subword { subdfa: id, .. } => {
-                let subdfa = subdfas.lookup(*id);
-                for inp_id in subdfa.iter_leaders() {
-                    let inp = subdfa.get_input(inp_id);
-                    if inp.is_star(subdfas) {
+            Self::Subword {
+                subword_regex_id, ..
+            } => {
+                let subword_regex = subword_regexes.lookup(*subword_regex_id);
+                for input in subword_regex.iter_leaders() {
+                    if input.is_star_subword() {
                         return true;
                     }
                 }
@@ -78,132 +79,6 @@ impl Input {
             Self::Subword { span, .. } => *span,
             Self::Nonterminal { span, .. } => *span,
             Self::Command { span, .. } => *span,
-        }
-    }
-}
-
-pub fn diagnostic_display_input<W: std::fmt::Write>(w: &mut W, input: &Inp) -> Result<()> {
-    match input {
-        Inp::Literal { literal, .. } => write!(w, r#"{literal}"#)?,
-        Inp::Star => write!(w, r#"*"#)?,
-        Inp::Command {
-            cmd,
-            regex: None,
-            zsh_compadd,
-            ..
-        } => write!(
-            w,
-            r#"{{{{{{ {cmd} }}}}}}{}"#,
-            if *zsh_compadd { "compadd" } else { "" }
-        )?,
-        Inp::Command {
-            cmd,
-            regex: Some(regex),
-            zsh_compadd,
-            ..
-        } => write!(
-            w,
-            r#"{{{{{{ {cmd} }}}}}}@shell"{regex}"{}"#,
-            if *zsh_compadd { "compadd" } else { "" }
-        )?,
-        Inp::Subword { .. } => unreachable!(),
-    }
-    Ok(())
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Inp {
-    Literal {
-        literal: Ustr,
-        description: Option<Ustr>,
-        fallback_level: usize,
-    },
-    Subword {
-        subdfa: DFAId,
-        fallback_level: usize,
-    },
-    Command {
-        cmd: Ustr,
-        regex: Option<Ustr>,
-        zsh_compadd: bool,
-        fallback_level: usize,
-    },
-    Star,
-}
-
-impl Inp {
-    pub(crate) fn from_input(input: &Input) -> Self {
-        match input.clone() {
-            Input::Literal {
-                literal,
-                description,
-                fallback_level,
-                span: _,
-            } => Self::Literal {
-                literal,
-                description,
-                fallback_level,
-            },
-            Input::Subword {
-                subdfa,
-                fallback_level,
-                span: _,
-            } => Self::Subword {
-                subdfa,
-                fallback_level,
-            },
-            Input::Nonterminal { .. } => Self::Star,
-            Input::Command {
-                cmd,
-                regex,
-                fallback_level,
-                zsh_compadd,
-                span: _,
-            } => Self::Command {
-                cmd,
-                regex,
-                zsh_compadd,
-                fallback_level,
-            },
-        }
-    }
-
-    pub(crate) fn is_star(&self, subdfas: &DFAInternPool) -> bool {
-        match self {
-            Self::Literal { .. } => false,
-            Self::Subword { subdfa: id, .. } => {
-                let subdfa = subdfas.lookup(*id);
-                for inp_id in subdfa.iter_leaders() {
-                    let inp = subdfa.get_input(inp_id);
-                    if inp.is_star(subdfas) {
-                        return true;
-                    }
-                }
-                false
-            }
-            Self::Star => true,
-            Self::Command { regex: None, .. } => true,
-            Self::Command {
-                regex: Some(..), ..
-            } => false,
-        }
-    }
-
-    pub(crate) fn get_fallback_level(&self) -> Option<usize> {
-        match self {
-            Self::Literal {
-                fallback_level: level,
-                ..
-            } => Some(*level),
-            Self::Subword {
-                fallback_level: level,
-                ..
-            } => Some(*level),
-            Self::Star => None,
-            Self::Command {
-                fallback_level: level,
-                ..
-            } => Some(*level),
         }
     }
 }
@@ -239,7 +114,7 @@ fn alloc(arena: &mut Vec<RegexNode>, elem: RegexNode) -> RegexNodeId {
     RegexNodeId(id)
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Hash, PartialEq, Eq)]
 pub enum RegexNode {
     Epsilon,
     Subword(Position),
@@ -445,8 +320,9 @@ fn do_from_expr(
     expr_arena: &[Expr],
     shell: Shell,
     arena: &mut Vec<RegexNode>,
-    input_from_position: &mut Vec<Input>,
-) -> RegexNodeId {
+    input_from_position: &mut Vec<RegexInput>,
+    subword_regexes: &mut RegexInternPool,
+) -> Result<RegexNodeId> {
     match &expr_arena[e] {
         Expr::Terminal {
             term,
@@ -454,52 +330,45 @@ fn do_from_expr(
             fallback: level,
             span,
         } => {
-            let result = RegexNode::Terminal(
-                *term,
-                *level,
-                Position::try_from(input_from_position.len()).unwrap(),
-            );
-            let input = Input::Literal {
+            let result = RegexNode::Terminal(*term, *level, input_from_position.len() as Position);
+            let input = RegexInput::Literal {
                 literal: *term,
                 description: *description,
                 fallback_level: *level,
                 span: *span,
             };
             input_from_position.push(input.clone());
-            alloc(arena, result)
+            Ok(alloc(arena, result))
         }
         Expr::Subword {
-            phase,
+            root_id,
             fallback,
             span,
         } => {
-            let result = RegexNode::Subword(Position::try_from(input_from_position.len()).unwrap());
-            let dfa = match phase {
-                SubwordCompilationPhase::DFA(dfa) => dfa,
-                SubwordCompilationPhase::Expr(_) => unreachable!(),
-            };
-            let input = Input::Subword {
-                subdfa: *dfa,
+            let subword_regex = Regex::from_expr(*root_id, expr_arena, shell, subword_regexes)?;
+            let subword_regex_id = subword_regexes.intern(subword_regex);
+            let result = RegexNode::Subword(input_from_position.len() as Position);
+            let input = RegexInput::Subword {
+                subword_regex_id,
                 fallback_level: *fallback,
                 span: *span,
             };
             input_from_position.push(input.clone());
-            alloc(arena, result)
+            Ok(alloc(arena, result))
         }
         Expr::NontermRef {
             nonterm,
             fallback,
             span,
         } => {
-            let result =
-                RegexNode::Nonterminal(Position::try_from(input_from_position.len()).unwrap());
-            let input = Input::Nonterminal {
+            let result = RegexNode::Nonterminal(input_from_position.len() as Position);
+            let input = RegexInput::Nonterminal {
                 nonterm: *nonterm,
                 fallback_level: *fallback,
                 span: *span,
             };
             input_from_position.push(input.clone());
-            alloc(arena, result)
+            Ok(alloc(arena, result))
         }
         Expr::Command {
             cmd,
@@ -510,14 +379,13 @@ fn do_from_expr(
             fallback,
             span,
         } => {
-            let result =
-                RegexNode::Command(*cmd, Position::try_from(input_from_position.len()).unwrap());
+            let result = RegexNode::Command(*cmd, input_from_position.len() as Position);
             let rx = match shell {
                 Shell::Bash => bash_regex,
                 Shell::Fish => fish_regex,
                 Shell::Zsh => zsh_regex,
             };
-            let input = Input::Command {
+            let input = RegexInput::Command {
                 cmd: *cmd,
                 regex: *rx,
                 zsh_compadd: *zsh_compadd,
@@ -525,44 +393,77 @@ fn do_from_expr(
                 span: *span,
             };
             input_from_position.push(input.clone());
-            alloc(arena, result)
+            Ok(alloc(arena, result))
         }
         Expr::Sequence {
             children: subexprs, ..
         } => {
-            let mut left_regex_id =
-                do_from_expr(subexprs[0], expr_arena, shell, arena, input_from_position);
+            let mut left_regex_id = do_from_expr(
+                subexprs[0],
+                expr_arena,
+                shell,
+                arena,
+                input_from_position,
+                subword_regexes,
+            )?;
             for right_expr in &subexprs[1..] {
-                let right_regex_id =
-                    do_from_expr(*right_expr, expr_arena, shell, arena, input_from_position);
+                let right_regex_id = do_from_expr(
+                    *right_expr,
+                    expr_arena,
+                    shell,
+                    arena,
+                    input_from_position,
+                    subword_regexes,
+                )?;
                 let left_regex = RegexNode::Cat(left_regex_id, right_regex_id);
                 left_regex_id = alloc(arena, left_regex);
             }
-            left_regex_id
+            Ok(left_regex_id)
         }
         Expr::Alternative {
             children: subexprs, ..
         } => {
             let mut subregexes: Vec<RegexNodeId> = Default::default();
             for e in subexprs {
-                let subregex = do_from_expr(*e, expr_arena, shell, arena, input_from_position);
+                let subregex = do_from_expr(
+                    *e,
+                    expr_arena,
+                    shell,
+                    arena,
+                    input_from_position,
+                    subword_regexes,
+                )?;
                 subregexes.push(subregex);
             }
             let result = RegexNode::Or(subregexes.into_boxed_slice(), false);
-            alloc(arena, result)
+            Ok(alloc(arena, result))
         }
         Expr::Optional { child: subexpr, .. } => {
-            let subregex = do_from_expr(*subexpr, expr_arena, shell, arena, input_from_position);
+            let subregex = do_from_expr(
+                *subexpr,
+                expr_arena,
+                shell,
+                arena,
+                input_from_position,
+                subword_regexes,
+            )?;
             let epsid = alloc(arena, RegexNode::Epsilon);
             let result = RegexNode::Or(Box::new([subregex, epsid]), false);
-            alloc(arena, result)
+            Ok(alloc(arena, result))
         }
         Expr::Many1 { child: subexpr, .. } => {
-            let subregex_id = do_from_expr(*subexpr, expr_arena, shell, arena, input_from_position);
+            let subregex_id = do_from_expr(
+                *subexpr,
+                expr_arena,
+                shell,
+                arena,
+                input_from_position,
+                subword_regexes,
+            )?;
             let star = RegexNode::Star(subregex_id);
             let starid = alloc(arena, star);
             let result = RegexNode::Cat(subregex_id, starid);
-            alloc(arena, result)
+            Ok(alloc(arena, result))
         }
         Expr::DistributiveDescription { .. } => unreachable!(
             "DistributiveDescription Expr type should have been erased before compilation to regex"
@@ -572,90 +473,195 @@ fn do_from_expr(
         } => {
             let mut subregexes: Vec<RegexNodeId> = Default::default();
             for e in subexprs {
-                let subregex = do_from_expr(*e, expr_arena, shell, arena, input_from_position);
+                let subregex = do_from_expr(
+                    *e,
+                    expr_arena,
+                    shell,
+                    arena,
+                    input_from_position,
+                    subword_regexes,
+                )?;
                 subregexes.push(subregex);
             }
             let result = RegexNode::Or(subregexes.into_boxed_slice(), true);
-            alloc(arena, result)
+            Ok(alloc(arena, result))
         }
     }
-}
-
-#[derive(Debug)]
-pub struct Regex {
-    pub root_id: RegexNodeId,
-    pub input_from_position: Vec<Input>,
-    pub endmarker_position: Position,
-    pub arena: Vec<RegexNode>,
 }
 
 fn do_to_dot<W: Write>(
     output: &mut W,
     node_id: RegexNodeId,
     arena: &[RegexNode],
-    input_from_position: &Vec<Input>,
+    input_from_position: &Vec<RegexInput>,
+    subword_regexes: &RegexInternPool,
+    recursion_level: usize,
 ) -> std::result::Result<(), std::io::Error> {
+    let indentation = format!("\t{}", str::repeat("\t", recursion_level));
     match arena[node_id].clone() {
         RegexNode::Epsilon => {
-            writeln!(output, r#"  _{node_id}[label="Epsilon"];"#)?;
+            writeln!(output, r#"{indentation}_{node_id}[label="Epsilon"];"#)?;
         }
         RegexNode::Subword(pos) => {
-            writeln!(output, r#"  _{node_id}[label="{pos}: Subword"];"#)?;
+            let RegexInput::Subword {
+                subword_regex_id, ..
+            } = input_from_position[pos as usize].clone()
+            else {
+                unreachable!();
+            };
+            writeln!(output, "{indentation}_{node_id} -> _{subword_regex_id};")?;
+            writeln!(output, "{indentation}subgraph cluster_{node_id} {{")?;
+            writeln!(output, "{indentation}\tlabel=\"SUBWORD\";")?;
+            writeln!(output, "{indentation}\tcolor=grey91;")?;
+            writeln!(output, "{indentation}\tstyle=filled;")?;
+            writeln!(
+                output,
+                "{indentation}\t_{node_id}[label=\"{pos}: Subword\"];"
+            )?;
+            let subword_regex = subword_regexes.lookup(subword_regex_id);
+            do_to_dot(
+                output,
+                subword_regex.root_id,
+                &subword_regex.arena,
+                input_from_position,
+                subword_regexes,
+                recursion_level + 1,
+            )?;
+            writeln!(output, "{indentation}}}")?;
         }
         RegexNode::Terminal(term, _, pos) => {
-            writeln!(output, r#"  _{node_id}[label="{pos}: \"{term}\""];"#)?;
+            writeln!(
+                output,
+                r#"{indentation}_{node_id}[label="{pos}: \"{term}\""];"#
+            )?;
         }
         RegexNode::Nonterminal(pos) => {
             let input = input_from_position[pos as usize].clone();
-            let Input::Nonterminal { nonterm, .. } = input else {
+            let RegexInput::Nonterminal { nonterm, .. } = input else {
                 unreachable!()
             };
-            writeln!(output, r#"  _{node_id}[label="{pos}: <{nonterm}>"];"#)?;
+            writeln!(
+                output,
+                r#"{indentation}_{node_id}[label="{pos}: <{nonterm}>"];"#
+            )?;
         }
         RegexNode::Command(cmd, pos) => {
-            writeln!(output, r#"  _{node_id}[label="{pos}: {cmd}"];"#)?;
+            writeln!(output, r#"{indentation}_{node_id}[label="{pos}: {cmd}"];"#)?;
         }
         RegexNode::Cat(lhs, rhs) => {
             writeln!(
                 output,
-                r#"  _{node_id}[label="Cat"]; _{node_id} -> _{lhs}; _{node_id} -> _{rhs};"#
+                r#"{indentation}_{node_id}[label="Cat"]; _{node_id} -> _{lhs}; _{node_id} -> _{rhs};"#
             )?;
-            do_to_dot(output, lhs, arena, input_from_position)?;
-            do_to_dot(output, rhs, arena, input_from_position)?;
+            do_to_dot(
+                output,
+                lhs,
+                arena,
+                input_from_position,
+                subword_regexes,
+                recursion_level,
+            )?;
+            do_to_dot(
+                output,
+                rhs,
+                arena,
+                input_from_position,
+                subword_regexes,
+                recursion_level,
+            )?;
         }
         RegexNode::Or(ors, _) => {
-            writeln!(output, r#"  _{node_id}[label="Or"];"#)?;
+            writeln!(output, r#"{indentation}_{node_id}[label="Or"];"#)?;
             for child in &ors {
-                writeln!(output, r#"  _{node_id} -> _{child};"#)?;
+                writeln!(output, r#"{indentation}_{node_id} -> _{child};"#)?;
             }
             for child in ors {
-                do_to_dot(output, child, arena, input_from_position)?;
+                do_to_dot(
+                    output,
+                    child,
+                    arena,
+                    input_from_position,
+                    subword_regexes,
+                    recursion_level,
+                )?;
             }
         }
         RegexNode::Star(child) => {
             writeln!(
                 output,
-                r#"  _{node_id}[label="Star"]; _{node_id} -> _{child};"#
+                r#"{indentation}_{node_id}[label="Star"]; _{node_id} -> _{child};"#
             )?;
         }
         RegexNode::EndMarker(pos) => {
-            writeln!(output, r#"  _{node_id}[label="{pos}: EndMarker"];"#)?;
+            writeln!(
+                output,
+                r#"{indentation}_{node_id}[label="{pos}: EndMarker"];"#
+            )?;
         }
     }
     Ok(())
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct RegexId(usize);
+
+impl std::fmt::Display for RegexId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RegexInternPool {
+    store: IndexSet<Regex>,
+}
+
+impl RegexInternPool {
+    fn intern(&mut self, value: Regex) -> RegexId {
+        let (id, _) = self.store.insert_full(value);
+        RegexId(id)
+    }
+
+    pub(crate) fn lookup(&self, id: RegexId) -> &Regex {
+        self.store.get_index(id.0).unwrap()
+    }
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct Regex {
+    pub root_id: RegexNodeId,
+    pub input_from_position: Vec<RegexInput>,
+    pub endmarker_position: Position,
+    pub arena: Vec<RegexNode>,
+}
+
 impl Regex {
-    pub fn from_valid_grammar(v: &ValidGrammar, shell: Shell) -> Result<Self> {
-        let regex = Self::from_expr(v.expr, &v.arena, shell)?;
-        regex.check_ambiguities(&v.subdfas)?;
+    pub fn from_valid_grammar(
+        v: &ValidGrammar,
+        shell: Shell,
+        subword_regexes: &mut RegexInternPool,
+    ) -> Result<Self> {
+        let regex = Self::from_expr(v.expr, &v.arena, shell, subword_regexes)?;
+        regex.check_ambiguities(subword_regexes)?;
         Ok(regex)
     }
 
-    pub(crate) fn from_expr(e: ExprId, expr_arena: &[Expr], shell: Shell) -> Result<Self> {
-        let mut input_from_position: Vec<Input> = Default::default();
+    pub(crate) fn from_expr(
+        e: ExprId,
+        expr_arena: &[Expr],
+        shell: Shell,
+        subword_regexes: &mut RegexInternPool,
+    ) -> Result<Self> {
+        let mut input_from_position: Vec<RegexInput> = Default::default();
         let mut arena: Vec<RegexNode> = Default::default();
-        let regex = do_from_expr(e, expr_arena, shell, &mut arena, &mut input_from_position);
+        let regex = do_from_expr(
+            e,
+            expr_arena,
+            shell,
+            &mut arena,
+            &mut input_from_position,
+            subword_regexes,
+        )?;
         let endmarker_position = input_from_position.len() as Position;
         let endmarkerid = alloc(&mut arena, RegexNode::EndMarker(endmarker_position));
         let root = RegexNode::Cat(regex, endmarkerid);
@@ -670,20 +676,26 @@ impl Regex {
         Ok(retval)
     }
 
+    fn iter_leaders(&self) -> impl Iterator<Item = RegexInput> {
+        self.firstpos()
+            .into_iter()
+            .map(|pos| self.input_from_position[pos as usize].clone())
+    }
+
     // Fail if there's a state with 2 outgoing transitions, where both transitions have "star"
     // inputs.  Meaning it's not possible to tell which transition to take next at matching time.
     fn do_check_transitions_unambiguous(
         &self,
         firstpos: &RoaringBitmap,
         followpos: &BTreeMap<Position, RoaringBitmap>,
-        subdfas: &DFAInternPool,
+        subword_regexes: &RegexInternPool,
         visited: &mut RoaringBitmap,
     ) -> Result<()> {
-        let stars: Vec<Input> = firstpos
+        let stars: Vec<RegexInput> = firstpos
             .iter()
             .filter(|pos| *pos != self.endmarker_position)
             .map(|pos| self.input_from_position[pos as usize].clone())
-            .filter(|input| input.is_star(subdfas))
+            .filter(|input| input.is_star(subword_regexes))
             .collect();
 
         if stars.len() >= 2 {
@@ -699,7 +711,7 @@ impl Regex {
                 continue;
             };
             visited.insert(pos);
-            self.do_check_transitions_unambiguous(follow, followpos, subdfas, visited)?;
+            self.do_check_transitions_unambiguous(follow, followpos, subword_regexes, visited)?;
         }
         Ok(())
     }
@@ -708,10 +720,10 @@ impl Regex {
         &self,
         firstpos: &RoaringBitmap,
         followpos: &BTreeMap<Position, RoaringBitmap>,
-        subdfas: &DFAInternPool,
+        subword_regexes: &RegexInternPool,
     ) -> Result<()> {
         let mut visited: RoaringBitmap = Default::default();
-        self.do_check_transitions_unambiguous(firstpos, followpos, subdfas, &mut visited)
+        self.do_check_transitions_unambiguous(firstpos, followpos, subword_regexes, &mut visited)
     }
 
     fn do_check_transitions_unambiguous_subword(
@@ -720,7 +732,7 @@ impl Regex {
         followpos: &BTreeMap<Position, RoaringBitmap>,
         visited: &mut RoaringBitmap,
     ) -> Result<()> {
-        let stars: Vec<Input> = firstpos
+        let stars: Vec<RegexInput> = firstpos
             .iter()
             .filter(|pos| *pos != self.endmarker_position)
             .map(|pos| self.input_from_position[pos as usize].clone())
@@ -759,16 +771,16 @@ impl Regex {
         &self,
         firstpos: &RoaringBitmap,
         followpos: &BTreeMap<Position, RoaringBitmap>,
-        path_prev_ambiguous: Option<Input>,
+        path_prev_ambiguous: Option<RegexInput>,
         visited: &mut RoaringBitmap,
     ) -> Result<()> {
-        let inputs: Vec<Input> = firstpos
+        let inputs: Vec<RegexInput> = firstpos
             .iter()
             .filter(|pos| *pos != self.endmarker_position)
             .map(|pos| self.input_from_position[pos as usize].clone())
             .collect();
 
-        let mut prev_ambiguous: Option<Input> = None;
+        let mut prev_ambiguous: Option<RegexInput> = None;
         for inp in inputs {
             if let Some(ref prev_inp) = path_prev_ambiguous {
                 return Err(Error::UnboundedMatchable(
@@ -819,7 +831,7 @@ impl Regex {
             .filter(|pos| *pos != self.endmarker_position)
             .map(|pos| self.input_from_position[pos as usize].clone())
             .filter_map(|inp| match inp {
-                Input::Literal {
+                RegexInput::Literal {
                     literal,
                     description,
                     span,
@@ -878,7 +890,7 @@ impl Regex {
         &self,
         firstpos: &RoaringBitmap,
         followpos: &BTreeMap<Position, RoaringBitmap>,
-        subdfas: &DFAInternPool,
+        subword_regexes: &RegexInternPool,
         visited: &mut RoaringBitmap,
     ) -> Result<()> {
         let mut leaders: Vec<(Ustr, HumanSpan)> = firstpos
@@ -886,23 +898,26 @@ impl Regex {
             .filter(|pos| *pos != self.endmarker_position)
             .map(|pos| self.input_from_position[pos as usize].clone())
             .filter_map(|inp| match inp {
-                Input::Subword {
-                    subdfa: id, span, ..
+                RegexInput::Subword {
+                    subword_regex_id,
+                    span,
+                    ..
                 } => {
-                    let subdfa = subdfas.lookup(id);
-                    let literals: Vec<Ustr> = subdfa
+                    let subregex = subword_regexes.lookup(subword_regex_id);
+                    let literals: Vec<Ustr> = subregex
                         .iter_leaders()
-                        .map(|inp_id| subdfa.get_input(inp_id).clone())
                         .filter_map(|inp| match inp {
-                            Inp::Literal { literal, .. } => Some(literal),
-                            Inp::Subword { .. } => None,
-                            Inp::Command { .. } => None,
-                            Inp::Star => None,
+                            RegexInput::Literal { literal, .. } => Some(literal),
+                            RegexInput::Nonterminal { .. } => None,
+                            RegexInput::Command { .. } => None,
+                            RegexInput::Subword { .. } => unreachable!(),
                         })
                         .collect();
                     Some((literals, span))
                 }
-                Input::Literal { .. } | Input::Nonterminal { .. } | Input::Command { .. } => None,
+                RegexInput::Literal { .. }
+                | RegexInput::Nonterminal { .. }
+                | RegexInput::Command { .. } => None,
             })
             .flat_map(|(literals, span)| {
                 literals
@@ -914,16 +929,10 @@ impl Regex {
 
         leaders.sort_by_key(|(literal, _)| *literal);
 
-        for slice in leaders.windows(2) {
-            let [(left_literal, left_span), (right_literal, right_span)] = slice else {
-                unreachable!()
-            };
-
-            if left_literal != right_literal {
-                continue;
+        for group in leaders.linear_group_by_key(|(literal, _)| *literal) {
+            if group.len() >= 2 {
+                return Err(Error::ClashingSubwordLeaders(group[0].1, group[1].1));
             }
-
-            return Err(Error::ClashingSubwordLeaders(*left_span, *right_span));
         }
 
         let unvisited = firstpos - visited.clone();
@@ -932,7 +941,7 @@ impl Regex {
                 continue;
             };
             visited.insert(pos);
-            self.do_check_clashing_subword_leaders(follow, followpos, subdfas, visited)?;
+            self.do_check_clashing_subword_leaders(follow, followpos, subword_regexes, visited)?;
         }
         Ok(())
     }
@@ -942,28 +951,66 @@ impl Regex {
         &self,
         firstpos: &RoaringBitmap,
         followpos: &BTreeMap<Position, RoaringBitmap>,
-        subdfas: &DFAInternPool,
+        subword_regexes: &RegexInternPool,
     ) -> Result<()> {
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);
-        self.do_check_clashing_subword_leaders(firstpos, followpos, subdfas, &mut visited)
+        self.do_check_clashing_subword_leaders(firstpos, followpos, subword_regexes, &mut visited)
     }
 
-    pub(crate) fn check_ambiguities(&self, subdfas: &DFAInternPool) -> Result<()> {
-        let firstpos = RoaringBitmap::from_iter(&self.firstpos());
-        let followpos = self.followpos();
-        self.check_transitions_unambiguous(&firstpos, &followpos, subdfas)?;
-        self.check_descr_no_descr_clashes(&firstpos, &followpos)?;
-        self.check_clashing_subword_leaders(&firstpos, &followpos, subdfas)?;
+    fn check_subwords(
+        &self,
+        firstpos: &RoaringBitmap,
+        followpos: &BTreeMap<Position, RoaringBitmap>,
+        subword_regexes: &RegexInternPool,
+        visited: &mut RoaringBitmap,
+    ) -> Result<()> {
+        let subwords: Vec<RegexId> = firstpos
+            .iter()
+            .filter(|pos| *pos != self.endmarker_position)
+            .map(|pos| self.input_from_position[pos as usize].clone())
+            .filter_map(|input| match input {
+                RegexInput::Literal { .. } => None,
+                RegexInput::Nonterminal { .. } => None,
+                RegexInput::Command { .. } => None,
+                RegexInput::Subword {
+                    subword_regex_id, ..
+                } => Some(subword_regex_id),
+            })
+            .collect();
+
+        for subword_regex_id in subwords {
+            let subword_regex = subword_regexes.lookup(subword_regex_id);
+            let subword_firstpos = RoaringBitmap::from_iter(&subword_regex.firstpos());
+            let subword_followpos = subword_regex.followpos();
+            subword_regex
+                .check_transitions_unambiguous_subword(&subword_firstpos, &subword_followpos)?;
+            subword_regex
+                .check_ambiguous_inputs_tail_only_subword(&subword_firstpos, &subword_followpos)?;
+            subword_regex.check_descr_no_descr_clashes(&subword_firstpos, &subword_followpos)?;
+        }
+
+        let unvisited = firstpos - visited.clone();
+        for pos in unvisited {
+            let Some(follow) = followpos.get(&pos) else {
+                continue;
+            };
+            visited.insert(pos);
+            self.check_subwords(follow, followpos, subword_regexes, visited)?;
+        }
         Ok(())
     }
 
-    pub(crate) fn check_ambiguities_subword(&self) -> Result<()> {
+    pub(crate) fn check_ambiguities(&self, subword_regexes: &RegexInternPool) -> Result<()> {
         let firstpos = RoaringBitmap::from_iter(&self.firstpos());
         let followpos = self.followpos();
-        self.check_transitions_unambiguous_subword(&firstpos, &followpos)?;
-        self.check_ambiguous_inputs_tail_only_subword(&firstpos, &followpos)?;
+        self.check_transitions_unambiguous(&firstpos, &followpos, subword_regexes)?;
         self.check_descr_no_descr_clashes(&firstpos, &followpos)?;
+        self.check_clashing_subword_leaders(&firstpos, &followpos, subword_regexes)?;
+
+        let mut visited: RoaringBitmap = Default::default();
+        visited.insert(self.endmarker_position);
+        self.check_subwords(&firstpos, &followpos, subword_regexes, &mut visited)?;
         Ok(())
     }
 
@@ -979,9 +1026,20 @@ impl Regex {
         self.get_root().followpos(&self.arena)
     }
 
-    pub fn to_dot<W: Write>(&self, output: &mut W) -> std::result::Result<(), std::io::Error> {
+    pub fn to_dot<W: Write>(
+        &self,
+        output: &mut W,
+        subword_regexes: &RegexInternPool,
+    ) -> std::result::Result<(), std::io::Error> {
         writeln!(output, "digraph rx {{")?;
-        do_to_dot(output, self.root_id, &self.arena, &self.input_from_position)?;
+        do_to_dot(
+            output,
+            self.root_id,
+            &self.arena,
+            &self.input_from_position,
+            subword_regexes,
+            0,
+        )?;
         writeln!(output, "}}")?;
         Ok(())
     }
@@ -990,9 +1048,10 @@ impl Regex {
     pub fn to_dot_file<P: AsRef<std::path::Path>>(
         &self,
         path: P,
+        subword_regexes: &RegexInternPool,
     ) -> std::result::Result<(), std::io::Error> {
         let mut file = std::fs::File::create(path)?;
-        self.to_dot(&mut file)?;
+        self.to_dot(&mut file, subword_regexes)?;
         Ok(())
     }
 }
@@ -1076,8 +1135,21 @@ mod tests {
             .map_err(|e| e.to_string())
             .unwrap();
         let validated = crate::grammar::ValidGrammar::from_grammar(g, Shell::Bash)?;
-        let _ = Regex::from_valid_grammar(&validated, Shell::Bash)?;
+        let mut subword_regexes = RegexInternPool::default();
+        let _ = Regex::from_valid_grammar(&validated, Shell::Bash, &mut subword_regexes)?;
         Ok(validated)
+    }
+
+    #[test]
+    fn lsof_bug() {
+        const GRAMMAR: &str = "
+lsf -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
+<PROTOCOL> ::= TCP | UDP;
+<STATE-SPEC> ::= [^]<STATE>;
+<STATE> ::= LISTEN | CLOSED;
+";
+
+        assert!(matches!(get_validated_grammar(GRAMMAR), Ok(_)));
     }
 
     #[test]

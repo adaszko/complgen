@@ -1,7 +1,7 @@
 use std::io::Write;
 
 use crate::dfa::DFA;
-use crate::regex::Inp;
+use crate::dfa::Inp;
 use crate::{Result, StateId};
 use hashbrown::HashMap;
 use indexmap::{IndexMap, IndexSet};

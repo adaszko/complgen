@@ -5,8 +5,7 @@ use std::{cmp::Ordering, collections::BTreeSet, hash::Hash, io::Write, rc::Rc};
 use roaring::{MultiOps, RoaringBitmap};
 use ustr::{Ustr, ustr};
 
-use crate::grammar::{DFAId, DFAInternPool};
-use crate::regex::{Inp, Position, Regex, diagnostic_display_input};
+use crate::regex::{Position, Regex, RegexInput, RegexInternPool};
 use crate::{Error, Result, StateId};
 
 // Every state in a DFA is formally defined to have a transition on *every* input symbol.  In
@@ -36,10 +35,24 @@ impl DFA {
 
 impl PartialEq for DFA {
     fn eq(&self, other: &Self) -> bool {
-        self.starting_state == other.starting_state
-            && self.transitions == other.transitions
-            && self.accepting_states == other.accepting_states
-            && self.inputs == other.inputs
+        let Self {
+            starting_state: self_starting_state,
+            transitions: self_transitions,
+            accepting_states: self_accepting_states,
+            inputs: self_inputs,
+            subdfas: _,
+        } = self;
+        let Self {
+            starting_state: other_starting_state,
+            transitions: other_transitions,
+            accepting_states: other_accepting_states,
+            inputs: other_inputs,
+            subdfas: _,
+        } = other;
+        self_starting_state == other_starting_state
+            && self_transitions == other_transitions
+            && self_accepting_states == other_accepting_states
+            && self_inputs == other_inputs
     }
 }
 
@@ -63,6 +76,114 @@ impl std::hash::Hash for DFA {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub struct InpId(u32);
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Inp {
+    Literal {
+        literal: Ustr,
+        description: Option<Ustr>,
+        fallback_level: usize,
+    },
+    Subword {
+        subdfa: DFAId,
+        fallback_level: usize,
+    },
+    Command {
+        cmd: Ustr,
+        regex: Option<Ustr>,
+        zsh_compadd: bool,
+        fallback_level: usize,
+    },
+    Star,
+}
+
+impl Inp {
+    pub(crate) fn from_input(
+        input: &RegexInput,
+        subword_regexes: &RegexInternPool,
+        subdfas: &mut DFAInternPool,
+    ) -> Result<Self> {
+        let result = match input.clone() {
+            RegexInput::Literal {
+                literal,
+                description,
+                fallback_level,
+                span: _,
+            } => Self::Literal {
+                literal,
+                description,
+                fallback_level,
+            },
+            RegexInput::Subword {
+                subword_regex_id,
+                fallback_level,
+                span: _,
+            } => {
+                let regex = subword_regexes.lookup(subword_regex_id);
+                let subdfa = DFA::from_regex(regex.clone(), subword_regexes)?;
+                let subdfa = subdfa.minimize();
+                let subdfaid = subdfas.intern(subdfa);
+                Self::Subword {
+                    subdfa: subdfaid,
+                    fallback_level,
+                }
+            }
+            RegexInput::Nonterminal { .. } => Self::Star,
+            RegexInput::Command {
+                cmd,
+                regex,
+                fallback_level,
+                zsh_compadd,
+                span: _,
+            } => Self::Command {
+                cmd,
+                regex,
+                zsh_compadd,
+                fallback_level,
+            },
+        };
+        Ok(result)
+    }
+
+    pub fn is_star(&self, subdfas: &DFAInternPool) -> bool {
+        match self {
+            Self::Literal { .. } => false,
+            Self::Subword { subdfa: id, .. } => {
+                let subdfa = subdfas.lookup(*id);
+                for inp_id in subdfa.iter_leaders() {
+                    let inp = subdfa.get_input(inp_id);
+                    if inp.is_star(subdfas) {
+                        return true;
+                    }
+                }
+                false
+            }
+            Self::Star => true,
+            Self::Command { regex: None, .. } => true,
+            Self::Command {
+                regex: Some(..), ..
+            } => false,
+        }
+    }
+
+    pub(crate) fn get_fallback_level(&self) -> Option<usize> {
+        match self {
+            Self::Literal {
+                fallback_level: level,
+                ..
+            } => Some(*level),
+            Self::Subword {
+                fallback_level: level,
+                ..
+            } => Some(*level),
+            Self::Star => None,
+            Self::Command {
+                fallback_level: level,
+                ..
+            } => Some(*level),
+        }
+    }
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct InpInternPool {
@@ -117,9 +238,32 @@ impl FromIterator<Inp> for InpInternPool {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct DFAId(usize);
+
+#[derive(Debug, Clone, Default)]
+pub struct DFAInternPool {
+    store: IndexSet<DFA>,
+}
+
+impl DFAInternPool {
+    fn intern(&mut self, value: DFA) -> DFAId {
+        let (id, _) = self.store.insert_full(value);
+        DFAId(id)
+    }
+
+    pub(crate) fn lookup(&self, id: DFAId) -> &DFA {
+        self.store.get_index(id.0).unwrap()
+    }
+}
+
 // Reference:
 //  * The Dragon Book: 3.9.5 Converting a Regular Expression Directly to a DFA
-fn dfa_from_regex(regex: Regex, subdfas: DFAInternPool) -> DFA {
+fn dfa_from_regex(
+    regex: Regex,
+    subword_regexes: &RegexInternPool,
+    mut subdfas: DFAInternPool,
+) -> Result<DFA> {
     let mut unallocated_state_id = FIRST_STATE_ID;
     let combined_starting_state: BTreeSet<Position> = regex.firstpos();
     let combined_starting_state_id = unallocated_state_id;
@@ -129,7 +273,14 @@ fn dfa_from_regex(regex: Regex, subdfas: DFAInternPool) -> DFA {
         IndexMap::from_iter([(combined_starting_state.clone(), combined_starting_state_id)]);
 
     let followpos = regex.followpos();
-    let inputs = InpInternPool::from_iter(regex.input_from_position.iter().map(Inp::from_input));
+    let inputs = {
+        let mut inputs = InpInternPool::default();
+        for input in &regex.input_from_position {
+            let inp = Inp::from_input(input, subword_regexes, &mut subdfas)?;
+            inputs.intern(inp);
+        }
+        inputs
+    };
 
     let mut transitions: IndexMap<StateId, IndexMap<InpId, StateId>> = Default::default();
     let mut unmarked_states: HashSet<BTreeSet<Position>> = Default::default();
@@ -143,7 +294,7 @@ fn dfa_from_regex(regex: Regex, subdfas: DFAInternPool) -> DFA {
             let mut set_of_positions = RoaringBitmap::new();
             for pos in &combined_state {
                 if let Some(input) = regex.input_from_position.get(*pos as usize)
-                    && Inp::from_input(input) == *inp
+                    && Inp::from_input(input, subword_regexes, &mut subdfas)? == *inp
                     && let Some(positions) = followpos.get(pos)
                 {
                     set_of_positions |= positions;
@@ -176,7 +327,7 @@ fn dfa_from_regex(regex: Regex, subdfas: DFAInternPool) -> DFA {
         accepting_states
     };
 
-    DFA {
+    let result = DFA {
         starting_state: *state_id_from_set_of_positions
             .get(&combined_starting_state)
             .unwrap(),
@@ -184,7 +335,9 @@ fn dfa_from_regex(regex: Regex, subdfas: DFAInternPool) -> DFA {
         accepting_states,
         inputs,
         subdfas,
-    }
+    };
+
+    Ok(result)
 }
 
 struct HashableRoaringBitmap(Rc<RoaringBitmap>);
@@ -435,9 +588,8 @@ fn do_minimize(dfa: DFA) -> DFA {
         let group_min = group.min().unwrap();
         let group_max = group.max().unwrap();
 
-        let transitions = match find_bounds(&transitions_image, group_min, group_max) {
-            Some(t) => t,
-            None => continue,
+        let Some(transitions) = find_bounds(&transitions_image, group_min, group_max) else {
+            continue;
         };
 
         let transitions_to_group: HashMap<InpId, RoaringBitmap> = {
@@ -547,6 +699,35 @@ fn do_minimize(dfa: DFA) -> DFA {
         inputs: dfa.inputs,
         subdfas: dfa.subdfas,
     }
+}
+
+pub fn diagnostic_display_input<W: std::fmt::Write>(w: &mut W, input: &Inp) -> Result<()> {
+    match input {
+        Inp::Literal { literal, .. } => write!(w, r#"{literal}"#)?,
+        Inp::Star => write!(w, r#"*"#)?,
+        Inp::Command {
+            cmd,
+            regex: None,
+            zsh_compadd,
+            ..
+        } => write!(
+            w,
+            r#"{{{{{{ {cmd} }}}}}}{}"#,
+            if *zsh_compadd { "compadd" } else { "" }
+        )?,
+        Inp::Command {
+            cmd,
+            regex: Some(regex),
+            zsh_compadd,
+            ..
+        } => write!(
+            w,
+            r#"{{{{{{ {cmd} }}}}}}@shell"{regex}"{}"#,
+            if *zsh_compadd { "compadd" } else { "" }
+        )?,
+        Inp::Subword { .. } => unreachable!(),
+    }
+    Ok(())
 }
 
 fn do_to_dot<W: Write>(
@@ -669,8 +850,9 @@ fn do_to_dot<W: Write>(
 }
 
 impl DFA {
-    pub fn from_regex(regex: Regex, subdfas: DFAInternPool) -> Result<Self> {
-        let dfa = dfa_from_regex(regex, subdfas);
+    pub fn from_regex(regex: Regex, subword_regexes: &RegexInternPool) -> Result<Self> {
+        let subdfas = DFAInternPool::default();
+        let dfa = dfa_from_regex(regex, subword_regexes, subdfas)?;
         dfa.check_ambiguity_best_effort()?;
         Ok(dfa)
     }
@@ -996,10 +1178,8 @@ mod tests {
     use std::ops::Rem;
     use std::rc::Rc;
 
-    use crate::grammar::{
-        Expr, ExprId, Grammar, HumanSpan, Shell, SubwordCompilationPhase, ValidGrammar, alloc,
-    };
-    use crate::regex::Regex;
+    use crate::grammar::{Expr, ExprId, Grammar, HumanSpan, Shell, ValidGrammar, alloc};
+    use crate::regex::{Regex, RegexInternPool};
     use Expr::*;
     use itertools::Itertools;
     use proptest::bits::{u64, usize};
@@ -1020,8 +1200,12 @@ mod tests {
     }
 
     impl DFA {
-        fn from_regex_lenient(regex: Regex, subdfas: DFAInternPool) -> Self {
-            dfa_from_regex(regex, subdfas)
+        fn from_regex_lenient(
+            regex: Regex,
+            subword_regexes: &RegexInternPool,
+            subdfas: DFAInternPool,
+        ) -> Result<Self> {
+            dfa_from_regex(regex, subword_regexes, subdfas)
         }
 
         fn accepts_str(&self, mut input: &str) -> bool {
@@ -1115,10 +1299,10 @@ mod tests {
     fn minimal_example() {
         let mut arena: Vec<Expr> = Default::default();
         let expr = alloc(&mut arena, Expr::term("foo"));
-        let regex = Regex::from_expr(expr, &arena, Shell::Bash).unwrap();
-        let subdfas = DFAInternPool::default();
-        assert!(regex.check_ambiguities(&subdfas).is_ok());
-        let dfa = DFA::from_regex(regex, DFAInternPool::default()).unwrap();
+        let mut subword_regexes = RegexInternPool::default();
+        let regex = Regex::from_expr(expr, &arena, Shell::Bash, &mut subword_regexes).unwrap();
+        assert!(regex.check_ambiguities(&subword_regexes).is_ok());
+        let dfa = DFA::from_regex(regex, &subword_regexes).unwrap();
         let foo = Inp::literal("foo");
         let foo_id = dfa.inputs.find(&foo).unwrap();
         assert_eq!(dfa.transitions.len(), 2);
@@ -1315,16 +1499,12 @@ mod tests {
     ) {
         match &arena.borrow()[expr] {
             Terminal { term, .. } => output.push(*term),
-            Subword {
-                phase: SubwordCompilationPhase::Expr(e),
-                ..
-            } => {
+            Subword { root_id, .. } => {
                 let mut out: Vec<Ustr> = Default::default();
-                do_arb_match(Rc::clone(&arena), *e, rng, max_width, &mut out);
+                do_arb_match(Rc::clone(&arena), *root_id, rng, max_width, &mut out);
                 let joined = out.into_iter().join("");
                 output.push(ustr(&joined));
             }
-            Subword { .. } => unreachable!(),
             NontermRef { .. } => output.push(ustr("anything")),
             Command { .. } => output.push(ustr("anything")),
             Sequence { children, .. } => {
@@ -1409,11 +1589,11 @@ mod tests {
             //println!("{:?}", expr);
             //println!("{:?}", arena);
             //println!("{:?}", input);
-            let regex = Regex::from_expr(expr, &arena.borrow(), Shell::Bash).unwrap();
+            let mut subword_regexes = RegexInternPool::default();
+            let regex = Regex::from_expr(expr, &arena.borrow(), Shell::Bash, &mut subword_regexes).unwrap();
             //dbg!(&regex.input_from_position);
-            let subdfas = DFAInternPool::default();
-            prop_assume!(regex.check_ambiguities(&subdfas).is_ok());
-            let dfa = DFA::from_regex_lenient(regex, DFAInternPool::default());
+            prop_assume!(regex.check_ambiguities(&subword_regexes).is_ok());
+            let dfa = DFA::from_regex_lenient(regex, &subword_regexes, DFAInternPool::default()).unwrap();
             prop_assume!(dfa.check_ambiguity_best_effort().is_ok());
             let input: Vec<&str> = input.iter().map(|s| s.as_str()).collect();
             prop_assert!(dfa.accepts(&input)?);
@@ -1423,10 +1603,10 @@ mod tests {
         fn minimized_dfa_equivalent_to_input_one((expr, arena, input) in arb_expr_match(10, 3, Rc::new(TERMINALS.iter().map(|s| ustr(s)).collect()), Rc::new(NONTERMINALS.iter().map(|s| ustr(s)).collect()))) {
             println!("{:?}", expr);
             println!("{:?}", input);
-            let regex = Regex::from_expr(expr, &arena.borrow(), Shell::Bash).unwrap();
-            let subdfas = DFAInternPool::default();
-            prop_assume!(regex.check_ambiguities(&subdfas).is_ok());
-            let dfa = DFA::from_regex_lenient(regex, DFAInternPool::default());
+            let mut subword_regexes = RegexInternPool::default();
+            let regex = Regex::from_expr(expr, &arena.borrow(), Shell::Bash, &mut subword_regexes).unwrap();
+            prop_assume!(regex.check_ambiguities(&subword_regexes).is_ok());
+            let dfa = DFA::from_regex_lenient(regex, &subword_regexes, DFAInternPool::default()).unwrap();
             prop_assume!(dfa.check_ambiguity_best_effort().is_ok());
             let input: Vec<&str> = input.iter().map(|s| s.as_str()).collect();
             prop_assert!(dfa.accepts(&input)?);
@@ -1475,8 +1655,9 @@ foo DUPLICATED_TERM;
 "#;
         let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         let vg = ValidGrammar::from_grammar(g, Shell::Bash).unwrap();
-        let regex = Regex::from_valid_grammar(&vg, Shell::Bash).unwrap();
-        let dfa = DFA::from_regex(regex, vg.subdfas).unwrap();
+        let mut subword_regexes = RegexInternPool::default();
+        let regex = Regex::from_valid_grammar(&vg, Shell::Bash, &mut subword_regexes).unwrap();
+        let dfa = DFA::from_regex(regex, &subword_regexes).unwrap();
 
         // There should be only one tansition on input Term("DUPLICATED_TERM")
         let transitions = dfa.get_literal_transitions_from(dfa.starting_state);

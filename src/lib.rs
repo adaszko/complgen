@@ -1,7 +1,7 @@
 use grammar::HumanSpan;
 use std::string::FromUtf8Error;
 
-use crate::regex::Inp;
+use crate::dfa::Inp;
 
 pub mod bash;
 pub mod dfa;
