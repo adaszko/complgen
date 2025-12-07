@@ -7,7 +7,7 @@ use nom::{
     branch::alt,
     bytes::complete::{escaped_transform, is_not, tag, take_till, take_until, take_while1},
     character::complete::{char, multispace1, one_of},
-    combinator::{fail, map, opt, value, verify},
+    combinator::{eof, fail, map, opt, value, verify},
     error::context,
     multi::{fold_many0, many0},
     sequence::preceded,
@@ -783,13 +783,17 @@ pub enum Statement {
     NonterminalDefinition(NontermDefn),
 }
 
+fn end_of_statement<'s>(input: Span<'s>) -> IResult<Span<'s>, ()> {
+    alt((map(char(';'), |_| ()), map(eof, |_| ())))(input)
+}
+
 fn call_variant<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, Statement> {
     let (after, name) = terminal(input)?;
     let name_span = HumanSpan::from_range(input, after);
     let (after, _) = multiblanks1(after)?;
     let (after, expr) = expr(arena, after)?;
     let (after, _) = multiblanks0(after)?;
-    let (after, _) = char(';')(after)?;
+    let (after, _) = end_of_statement(after)?;
 
     let production = Statement::CallVariant {
         name: ustr(&name),
@@ -841,7 +845,7 @@ fn nonterm_def_statement<'s>(
     let (input, _) = multiblanks0(input)?;
     let (input, rhs_expr_id) = expr(arena, input)?;
     let (input, _) = multiblanks0(input)?;
-    let (input, _) = char(';')(input)?;
+    let (input, _) = end_of_statement(input)?;
 
     let stmt = Statement::NonterminalDefinition(NontermDefn {
         lhs_name: name,
