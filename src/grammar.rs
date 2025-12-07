@@ -1,7 +1,7 @@
 use std::{debug_assert, io::Write};
 
 use hashbrown::HashSet;
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexSet;
 use nom::{
     Finish, IResult, Parser,
     branch::alt,
@@ -886,8 +886,8 @@ pub struct ValidGrammar {
     pub expr: ExprId,
     pub arena: Vec<Expr>,
     pub subdfas: DFAInternPool,
-    pub undefined_nonterminals: IndexMap<Ustr, HumanSpan>,
-    pub unused_nonterminals: IndexMap<Ustr, HumanSpan>,
+    pub undefined_nonterminals: UstrMap<HumanSpan>,
+    pub unused_nonterminals: UstrMap<HumanSpan>,
 }
 
 // Used in subword mode, when we know there won't be any sub-DFAs needed, just one big one.
@@ -1312,8 +1312,8 @@ impl ValidGrammar {
             }
         };
 
-        let mut nonterminal_definitions: IndexMap<Ustr, NontermDefn> = {
-            let mut nonterminal_definitions: IndexMap<Ustr, NontermDefn> = Default::default();
+        let mut nonterminal_definitions: UstrMap<NontermDefn> = {
+            let mut nonterminal_definitions: UstrMap<NontermDefn> = Default::default();
             for defn in grammar.iter_nonterm_defns() {
                 if defn.shell.is_some() {
                     continue;
@@ -1329,7 +1329,7 @@ impl ValidGrammar {
             nonterminal_definitions
         };
 
-        let mut unused_nonterminals: IndexMap<Ustr, HumanSpan> = nonterminal_definitions
+        let mut unused_nonterminals: UstrMap<HumanSpan> = nonterminal_definitions
             .iter()
             .map(|(nonterm, defn)| (*nonterm, defn.lhs_span))
             .collect();
@@ -1444,7 +1444,7 @@ fn expr_get_tail(arena: &[Expr], expr_id: ExprId) -> ExprId {
 fn check_subword_spaces(
     arena: &[Expr],
     expr_id: ExprId,
-    nonterms: &IndexMap<Ustr, NontermDefn>,
+    nonterms: &UstrMap<NontermDefn>,
 ) -> Result<()> {
     let mut nonterm_expn_trace: Vec<HumanSpan> = Default::default();
     do_check_subword_spaces(arena, expr_id, nonterms, &mut nonterm_expn_trace, false)
@@ -1460,7 +1460,7 @@ fn check_subword_spaces(
 fn do_check_subword_spaces(
     arena: &[Expr],
     expr_id: ExprId,
-    nonterms: &IndexMap<Ustr, NontermDefn>,
+    nonterms: &UstrMap<NontermDefn>,
     nonterm_expn_trace: &mut Vec<HumanSpan>,
     within_subword: bool,
 ) -> Result<()> {
@@ -1578,7 +1578,7 @@ fn specialize_nonterminals(
     expr_arena: &mut Vec<Expr>,
     shell: Shell,
     specializations: &UstrMap<Specialization>,
-    unused_nonterminals: &mut IndexMap<Ustr, HumanSpan>,
+    unused_nonterminals: &mut UstrMap<HumanSpan>,
 ) -> ExprId {
     match expr_arena[expr_id].clone() {
         Expr::Terminal { .. } | Expr::Command { .. } => expr_id,
@@ -1587,7 +1587,7 @@ fn specialize_nonterminals(
             fallback,
             span,
         } => {
-            unused_nonterminals.shift_remove(&nonterm);
+            unused_nonterminals.remove(&nonterm);
 
             let Some(spec) = specializations.get(&nonterm) else {
                 return expr_id;
@@ -1758,8 +1758,8 @@ fn specialize_nonterminals(
 fn resolve_nonterminals(
     arena: &mut Vec<Expr>,
     expr_id: ExprId,
-    vars: &IndexMap<Ustr, NontermDefn>,
-    unused_nonterminals: &mut IndexMap<Ustr, HumanSpan>,
+    vars: &UstrMap<NontermDefn>,
+    unused_nonterminals: &mut UstrMap<HumanSpan>,
 ) -> ExprId {
     match arena[expr_id].clone() {
         Expr::Terminal { .. } | Expr::Command { .. } => expr_id,
@@ -1788,7 +1788,7 @@ fn resolve_nonterminals(
         } => unreachable!(),
         Expr::NontermRef { nonterm: name, .. } => match vars.get(&name) {
             Some(replacement) => {
-                unused_nonterminals.shift_remove(&name);
+                unused_nonterminals.remove(&name);
                 replacement.rhs_expr_id
             }
             None => expr_id,
@@ -1851,7 +1851,7 @@ fn resolve_nonterminals(
     }
 }
 
-fn do_get_nonterm_refs(arena: &[Expr], expr_id: ExprId, deps: &mut IndexMap<Ustr, HumanSpan>) {
+fn do_get_nonterm_refs(arena: &[Expr], expr_id: ExprId, deps: &mut UstrMap<HumanSpan>) {
     match &arena[expr_id] {
         Expr::Terminal { .. } | Expr::Command { .. } => {}
         Expr::Subword { phase, .. } => {
@@ -1891,15 +1891,13 @@ fn do_get_nonterm_refs(arena: &[Expr], expr_id: ExprId, deps: &mut IndexMap<Ustr
     }
 }
 
-fn get_nonterm_refs(arena: &[Expr], expr_id: ExprId) -> IndexMap<Ustr, HumanSpan> {
-    let mut result: IndexMap<Ustr, HumanSpan> = Default::default();
+fn get_nonterm_refs(arena: &[Expr], expr_id: ExprId) -> UstrMap<HumanSpan> {
+    let mut result: UstrMap<HumanSpan> = Default::default();
     do_get_nonterm_refs(arena, expr_id, &mut result);
     result
 }
 
-fn get_not_depended_on_nonterminals(
-    dependency_graph: &UstrMap<IndexMap<Ustr, HumanSpan>>,
-) -> UstrSet {
+fn get_not_depended_on_nonterminals(dependency_graph: &UstrMap<UstrMap<HumanSpan>>) -> UstrSet {
     let num_depending_nonterminals = {
         let mut num_depending_nonterminals: UstrMap<usize> =
             dependency_graph.keys().map(|vertex| (*vertex, 0)).collect();
@@ -1922,13 +1920,13 @@ fn get_not_depended_on_nonterminals(
 
 fn traverse_nonterminal_dependencies_dfs(
     vertex: Ustr,
-    graph: &UstrMap<IndexMap<Ustr, HumanSpan>>,
+    graph: &UstrMap<UstrMap<HumanSpan>>,
     path: &mut Vec<(Ustr, HumanSpan)>,
     visited: &mut UstrSet,
     result: &mut Vec<Ustr>,
 ) -> Result<()> {
     visited.insert(vertex);
-    let dummy = IndexMap::default();
+    let dummy = UstrMap::default();
     for (child, span) in graph.get(&vertex).unwrap_or(&dummy) {
         if path.iter().any(|(chld, _)| chld == child) {
             path.push((vertex, *span));
@@ -1951,13 +1949,13 @@ fn traverse_nonterminal_dependencies_dfs(
 // nonterminals.
 fn get_nonterminals_resolution_order(
     arena: &[Expr],
-    nonterminal_definitions: &IndexMap<Ustr, NontermDefn>,
+    nonterminal_definitions: &UstrMap<NontermDefn>,
 ) -> Result<Vec<Ustr>> {
     if nonterminal_definitions.is_empty() {
         return Ok(Vec::default());
     }
 
-    let mut dependency_graph: UstrMap<IndexMap<Ustr, HumanSpan>> = Default::default();
+    let mut dependency_graph: UstrMap<UstrMap<HumanSpan>> = Default::default();
     for (varname, defn) in nonterminal_definitions {
         let mut refs = get_nonterm_refs(arena, defn.rhs_expr_id);
         refs.retain(|var, _| nonterminal_definitions.contains_key(var));
@@ -2885,7 +2883,7 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
         let foo_id = alloc(&mut arena, foo_expr);
         let bar_expr = Expr::nontermref("FOO");
         let bar_id = alloc(&mut arena, bar_expr);
-        let nonterminal_definitions = IndexMap::from_iter([
+        let nonterminal_definitions = UstrMap::from_iter([
             (
                 ustr("FOO"),
                 NontermDefn {
@@ -2918,7 +2916,7 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
         let foo_id = alloc(&mut arena, foo_expr);
         let bar_expr = Expr::nontermref("BAR");
         let bar_id = alloc(&mut arena, bar_expr);
-        let nonterminal_definitions = IndexMap::from_iter([
+        let nonterminal_definitions = UstrMap::from_iter([
             (
                 ustr("FOO"),
                 NontermDefn {
@@ -2955,7 +2953,7 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
         let color_id = alloc(&mut arena, Expr::term("--color"));
         let option_foo_ref_id = alloc(&mut arena, Expr::nontermref("FOO"));
         let option_id = alloc(&mut arena, Sequence(vec![color_id, option_foo_ref_id]));
-        let nonterminal_definitions = IndexMap::from_iter([
+        let nonterminal_definitions = UstrMap::from_iter([
             (
                 ustr("WHEN"),
                 NontermDefn {
