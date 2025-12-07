@@ -1390,6 +1390,8 @@ impl ValidGrammar {
 
         let expr = propagate_fallback_levels(&mut grammar.arena, expr);
 
+        // Whatever nonterminals remained in the expression tree after nonterminal expansion,
+        // they're undefined.
         let undefined_nonterminals = get_nonterm_refs(&grammar.arena, expr);
 
         let mut subdfas = DFAInternPool::default();

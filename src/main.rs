@@ -287,16 +287,21 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
     };
 
     if !validated.undefined_nonterminals.is_empty() {
-        for span in validated.undefined_nonterminals.values() {
-            let err = WarnMsg::new("Undefined nonterminal").warning(span, &input, "");
-            eprintln!("{}", err.into_string(usage_file_path, span));
+        let mut undefs: Vec<HumanSpan> =
+            validated.undefined_nonterminals.values().copied().collect();
+        undefs.sort_unstable_by_key(|span| (span.line, span.column_start, span.column_end));
+        for span in undefs {
+            let err = WarnMsg::new("Undefined nonterminal").warning(&span, &input, "");
+            eprintln!("{}", err.into_string(usage_file_path, &span));
         }
     }
 
     if !validated.unused_nonterminals.is_empty() {
-        for span in validated.unused_nonterminals.values() {
-            let err = WarnMsg::new("Unused nonterminal").warning(span, &input, "");
-            eprintln!("{}", err.into_string(usage_file_path, span));
+        let mut unused: Vec<HumanSpan> = validated.unused_nonterminals.values().copied().collect();
+        unused.sort_unstable_by_key(|span| (span.line, span.column_start, span.column_end));
+        for span in unused {
+            let err = WarnMsg::new("Unused nonterminal").warning(&span, &input, "");
+            eprintln!("{}", err.into_string(usage_file_path, &span));
         }
     }
 

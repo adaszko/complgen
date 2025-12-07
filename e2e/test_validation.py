@@ -23,7 +23,7 @@ def test_examples(complgen_binary_path: Path, examples_directory_path: Path):
 def test_complgen_example(complgen_binary_path: Path, examples_directory_path: Path):
     r = complgen_check_path(complgen_binary_path, str(examples_directory_path / "complgen.usage"))
     assert r.returncode == 0
-    assert r.stderr == snapshot("""""")
+    assert r.stderr == snapshot('')
 
 
 def complgen_check(complgen_binary_path: Path, grammar: str) -> subprocess.CompletedProcess:
@@ -368,14 +368,14 @@ foo bar=<BAZ>;
 """)
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
--:3:9:warning: Undefined nonterminal
-  |
-3 | foo bar=<BAZ>;
-  |         -----
-  |
 -:2:9:warning: Undefined nonterminal
   |
 2 | foo bar=<BAR>;
+  |         -----
+  |
+-:3:9:warning: Undefined nonterminal
+  |
+3 | foo bar=<BAZ>;
   |         -----
   |
 -:2:5:error: Clashing subword leaders.  Completion can't differentiate:
