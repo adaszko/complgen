@@ -344,7 +344,6 @@ pub struct HumanSpan {
     pub column_end: usize,
 }
 
-// XXX Doesn't handle tabs
 impl HumanSpan {
     fn from_range(before: Span, after: Span) -> Self {
         Self {
