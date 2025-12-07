@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
- - Error message location are now 1-based to make them easier to use in a text editor
+ - Improved diagnostics to report precise source location
  - Relax grammar: Final semicolon (;) isn't required anymore
 
 ### Added
