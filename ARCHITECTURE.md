@@ -1,5 +1,3 @@
-This document is intended to lower the bar for contributing to `complgen`.
-
 # How it works
 
 `complgen` is architected somewhat like a compiler: it has several transformation stages and data flows only
@@ -8,7 +6,7 @@ in one direction like in a pipeline.
 The stages are as follows:
 
 1. Parse a `.usage` file into a Rust data structure
-1. Convert the data structure into a regular expression (in the textbook sense, not in the programmar sense)
+1. Convert the data structure into a regular expression (in the textbook sense, not in the programmer sense)
 1. Convert the regular expression into a Deterministic Finite Automaton (DFA)
     * For details, see [Compilers Principles, Techniques and
       Tools](https://en.wikipedia.org/wiki/Compilers:_Principles,_Techniques,_and_Tools) (aka The Dragon
@@ -20,6 +18,7 @@ The stages are as follows:
     * Bash: [Creating a bash completion script](https://iridakos.com/programming/2018/03/01/bash-programmable-completion-tutorial)
     * Fish: [Writing your own completions — fish-shell documentation](https://fishshell.com/docs/current/completions.html)
     * ZSH (zsh's completion system can be somewhat arcane in places):
+        * [From Bash to Z Shell: Conquering the Command Line](https://www.bash2zsh.com/)
         * [zsh-completions/zsh-completions-howto.org](https://github.com/zsh-users/zsh-completions/blob/master/zsh-completions-howto.org)
         * [ZSH – Writing own completion functions](https://askql.wordpress.com/2011/01/11/zsh-writing-own-completion/)
         * [Dynamic zsh autocomplete for custom commands](https://unix.stackexchange.com/questions/239528/dynamic-zsh-autocomplete-for-custom-commands/240192#240192)
@@ -97,10 +96,15 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
 
 <WHEN> ::= always | never | auto;
 
-<FILE> ::= { ls };
+<FILE> ::= {{{ ls }}};
 ```
 
-The DFA can be visualized as a [Graphviz diagram](https://graphviz.org/):
+A regular expression is first constructed:
+
+![regex](assets/regex.svg)
+
+
+The regular expression gets then transformed into a DFA:
 
 ![DFA](assets/dfa.svg)
 
@@ -109,14 +113,12 @@ The DFA can be visualized as a [Graphviz diagram](https://graphviz.org/):
  * [clap](https://docs.rs/clap_complete/)
     * `complgen` is able to produce completions by executing an arbitrary shell command (e.g. `cargo -Z
       <TAB>`, complete test name in `cargo test <TAB>`)
-    * All the grammar specification mechanisms are available for completing option parameters.  That means
-      `complgen` is able to complete DSLs of the likes of `strace -e <TAB>` or `lsof -i <TAB>`.
-    * No recompilation and reloading necessary in shell integration mode -- just modify the grammar file and completions automatically reflect that.
+    * complgen can complete more involved syntaxes, e.g. `strace -e <TAB>` or `lsof -i <TAB>`.
     * There's a possibility of the program options and completion grammar diverging since they're maintained
       separately.  On the plus side, `complgen` isn't tied to the implementation language and independent
       users can write their custom completion grammars suited for their own needs.
  * [zsh-capture-completion](https://github.com/Valodim/zsh-capture-completion)
-    * This must have been painful to implement but is indispensable to complgen!
+    * Must have been painful to implement but is indispensable for testing zsh completion scripts.
  * [argcomplete](https://github.com/kislyuk/argcomplete)
  * [Oil's shellac protocol](https://github.com/oilshell/oil/wiki/Shell-Autocompletion)
  * [_regex_arguments and _regex_words completions](https://github.com/zsh-users/zsh-completions/blob/master/zsh-completions-howto.org#writing-completion-functions-using-_regex_arguments-and-_regex_words)

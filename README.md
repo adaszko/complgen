@@ -245,23 +245,6 @@ With the grammar above, `git <TAB>` will offer to complete *only* subcommands.  
 `||` has the lowest priority of all operators, so the grammar above might have been written without any use of
 `<NONTERMINALS>`.  They're there only for readability sake.
 
-## Trailing spaces handling
-
-There are few general rules governing whether to append a space to a completion:
-
- * A space is appended if the completion corresponds to an entire literal from the `.usage` file, e.g.
-   for the grammar `cmd --help;` and the command line `cmd <TAB>`, it completes to `cmd --help<SPACE>`.
-
- * A trailing space isn't appended if the literal is a part of a subword and the entire subword hasn't been
-   completed yet, e.g. for the grammar `cmd --color=(auto|always);` and the command line `cmd --col<TAB>`, it
- completes to `cmd --color=` (no trailing space).
-
-There are exceptions:
-
- * Under Fish, if your completion contains [one of the special
-   characters](https://github.com/fish-shell/fish-shell/blob/408ab860906fbf6e08f314bea982220fdee3428e/src/complete.cpp#L183),
- fish won't insert the trailing space.  See also [Not adding space after dot at completion time · Issue #6928](https://github.com/fish-shell/fish-shell/issues/6928).
-
 ## Caveats
 
 * The tail commands limitation applies to predefined nonterminals (`<PATH>`, `<DIRECTORY>`, etc.) since
