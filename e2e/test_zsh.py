@@ -289,11 +289,11 @@ cmd (<FOO> || completion-fallback);
 def test_subword_specializes_for_zsh_with_regex(complgen_binary_path: Path):
     GRAMMAR = """
 cmd <FOO>bar;
-<FOO@zsh> ::= {{{ IPREFIX="$2" PREFIX="$1" compadd zsh }}}@zsh"zsh";
+<FOO@zsh> ::= {{{ IPREFIX="$2" PREFIX="$1" compadd -S ' ' zsh }}}@zsh"zsh";
 """
     assert get_sorted_aot_completions(
         complgen_binary_path, GRAMMAR, "cmd zsh"
-    ) == sorted(["bar"])
+    ) == sorted(["zshbar bar"])
 
 
 def test_subword_specializes_for_zsh_with_regex_fallback(complgen_binary_path: Path):
@@ -304,6 +304,13 @@ cmd --opt=(<FOO> || completion-fallback);
     assert get_sorted_aot_completions(
         complgen_binary_path, GRAMMAR, "cmd --opt=c"
     ) == sorted(["--opt=completion-specialized"])
+
+
+def test_nontail_matching(complgen_binary_path: Path):
+    GRAMMAR = """cmd <LEFT> | right; <LEFT> ::= {{{ echo left }}}@zsh"left";"""
+    assert get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd l") == sorted(
+        ["left"]
+    )
 
 
 def test_nontail_matching_alternative(complgen_binary_path: Path):

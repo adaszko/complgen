@@ -118,7 +118,7 @@ fn write_lookup_tables<W: Write>(
 
     writeln!(buffer, r#"    declare -A {prefix}nontail_transitions=()"#)?;
     for state in dfa.get_all_states() {
-        let nontail_transitions = dfa.get_nontail_transitions_from(state as StateId);
+        let nontail_transitions = dfa.get_nontail_transitions_from(state);
         if !nontail_transitions.is_empty() {
             let nontail_command_transitions: Vec<(usize, StateId)> = nontail_transitions
                 .into_iter()
@@ -242,6 +242,7 @@ fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<(
     subword_suffixes_no_trailing_space=()
     subword_descriptions_trailing_space=()
     subword_descriptions_no_trailing_space=()
+    compadd_matches_count=0
 
     for (( subword_fallback_level=0; subword_fallback_level <= subword_max_fallback_level; subword_fallback_level++ )); do
         declare literal_transitions_name=subword_literal_transitions_level_${{subword_fallback_level}}
@@ -332,13 +333,10 @@ fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<(
             functions -c compadd prev_compadd
         fi
         functions -c compadd_intercept compadd
-        declare has_compadd_matches=false
         for command_id in "${{transitions[@]}}"; do
             declare -a complgen_matches=()
             _{command}_cmd_${{command_id}} "$completed_prefix" "$matched_prefix"
-            if [[ ${{#complgen_matches}} -gt 0 ]]; then
-                has_compadd_matches=true
-            fi
+            (( compadd_matches_count += ${{#complgen_matches}} ))
         done
         if [[ "$compadd_type" == builtin ]]; then
             unfunction compadd
@@ -347,7 +345,7 @@ fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<(
             unfunction prev_compadd
         fi
 
-        if [[ $has_compadd_matches == true || ${{#subword_completions_no_description_trailing_space}} -gt 0 || ${{#subword_completions_trailing_space}} -gt 0 || ${{#subword_completions_no_trailing_space}} -gt 0 ]]; then
+        if [[ $compadd_matches_count -gt 0 || ${{#subword_completions_no_description_trailing_space}} -gt 0 || ${{#subword_completions_trailing_space}} -gt 0 || ${{#subword_completions_no_trailing_space}} -gt 0 ]]; then
             break
         fi
     done
@@ -672,10 +670,11 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     declare state={starting_state}
     declare word_index=2
     while [[ $word_index -lt $CURRENT ]]; do
+        declare word=${{words[$word_index]}}
+
         if [[ -v "literal_transitions[$state]" ]]; then
             eval "declare -A state_transitions=${{literal_transitions[$state]}}"
 
-            declare word=${{words[$word_index]}}
             declare word_matched=0
             for ((literal_id = 1; literal_id <= $#literals; literal_id++)); do
                 if [[ ${{literals[$literal_id]}} = "$word" ]]; then
@@ -693,30 +692,6 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         fi
 "#,
         starting_state = dfa.starting_state + 1
-    )?;
-
-    writeln!(
-        buffer,
-        r#"
-        if [[ -v "nontail_transitions[$state]" ]]; then
-            eval "declare -A state_nontails=${{nontail_transitions[$state]}}"
-            declare nontail_matched=0
-            for regex_id in "${{(k)state_nontails}}"; do
-                declare regex="^(${{regexes[$regex_id]}}).*"
-                if [[ ${{subword}} =~ $regex && -n ${{match[1]}} ]]; then
-                    match="${{match[1]}}"
-                    match_len=${{#match}}
-                    char_index=$((char_index + match_len))
-                    state=${{state_nontails[$regex_id]}}
-                    nontail_matched=1
-                    break
-                fi
-            done
-            if [[ $nontail_matched -ne 0 ]]; then
-                continue
-            fi
-        fi
-"#
     )?;
 
     if dfa.has_subword_transitions() {
@@ -742,6 +717,28 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 "#
         )?;
     }
+
+    writeln!(
+        buffer,
+        r#"
+        if [[ -v "nontail_transitions[$state]" ]]; then
+            eval "declare -A state_nontails=${{nontail_transitions[$state]}}"
+            declare nontail_matched=0
+            for regex_id in "${{(k)state_nontails}}"; do
+                declare regex="^(${{regexes[$regex_id]}}).*"
+                if [[ $word =~ $regex ]]; then
+                    word_index=$((word_index + 1))
+                    state=${{state_nontails[$regex_id]}}
+                    nontail_matched=1
+                    break
+                fi
+            done
+            if [[ $nontail_matched -ne 0 ]]; then
+                continue
+            fi
+        fi
+"#
+    )?;
 
     writeln!(
         buffer,
@@ -959,6 +956,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         suffixes_no_trailing_space=()
         descriptions_no_trailing_space=()
         matches=()
+        compadd_matches_count=0
 
         declare literal_transitions_name=literal_transitions_level_${{fallback_level}}
         eval "declare initializer=\${{${{literal_transitions_name}}[$state]}}"
@@ -1047,13 +1045,10 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             functions -c compadd prev_compadd
         fi
         functions -c compadd_intercept compadd
-        declare has_compadd_matches=false
         for command_id in "${{transitions[@]}}"; do
             declare -a complgen_matches=()
             _{command}_cmd_${{command_id}} ${{words[$CURRENT]}} ""
-            if [[ ${{#complgen_matches}} -gt 0 ]]; then
-                has_compadd_matches=true
-            fi
+            (( compadd_matches_count += ${{#complgen_matches}} ))
         done
         if [[ "$compadd_type" == builtin ]]; then
             unfunction compadd
@@ -1095,7 +1090,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         compadd -O m -a completions_trailing_space; matches+=("${{m[@]}}")
         compadd -O m -a completions_no_trailing_space; matches+=("${{m[@]}}")
 
-        if [[ $has_compadd_matches == true || ${{#matches}} -gt 0 ]]; then
+        if [[ $compadd_matches_count -gt 0 || ${{#matches}} -gt 0 ]]; then
             compadd -Q -a completions_no_description_trailing_space
             compadd -Q -S ' ' -a completions_no_description_no_trailing_space
             compadd -l -Q -a -d descriptions_trailing_space completions_trailing_space
