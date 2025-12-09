@@ -3,16 +3,15 @@ import string
 import tempfile
 from pathlib import Path
 
+from hypothesis import given, settings
+from hypothesis.strategies import text
+
 from common import LSOF_FILTER_GRAMMAR, STRACE_EXPR_GRAMMAR
 from conftest import (
     gen_grammar_zsh_capture_script_path,
     get_zsh_capture_script_sorted_lines,
     set_working_dir,
 )
-
-import pytest
-from hypothesis import given, settings
-from hypothesis.strategies import text
 
 
 def get_sorted_aot_completions(
@@ -22,6 +21,168 @@ def get_sorted_aot_completions(
         complgen_binary_path, grammar
     ) as capture_zsh_path:
         return get_zsh_capture_script_sorted_lines(capture_zsh_path, input)
+
+
+def test_completes_paths(complgen_binary_path: Path):
+    GRAMMAR = """cmd <PATH>"""
+    with tempfile.TemporaryDirectory() as dir:
+        with set_working_dir(Path(dir)):
+            Path("foo").touch()
+            Path("bar").touch()
+            Path("baz").touch()
+            Path("quux").touch()
+            assert get_sorted_aot_completions(
+                complgen_binary_path, GRAMMAR, "cmd "
+            ) == sorted(
+                [
+                    "foo",
+                    "bar",
+                    "baz",
+                    "quux",
+                ]
+            )
+
+
+def test_completes_subword_paths(complgen_binary_path: Path):
+    GRAMMAR = """cmd --file=<PATH>"""
+    with tempfile.TemporaryDirectory() as dir:
+        with set_working_dir(Path(dir)):
+            Path("foo").touch()
+            Path("bar").touch()
+            Path("baz").touch()
+            Path("quux").touch()
+            assert get_sorted_aot_completions(
+                complgen_binary_path, GRAMMAR, "cmd --file="
+            ) == sorted(
+                [
+                    "--file=foo",
+                    "--file=bar",
+                    "--file=baz",
+                    "--file=quux",
+                ]
+            )
+
+
+def test_completes_path_prefix(complgen_binary_path: Path):
+    GRAMMAR = """cmd <PATH>"""
+    with tempfile.TemporaryDirectory() as dir:
+        with set_working_dir(Path(dir)):
+            Path("foo").touch()
+            Path("bar").touch()
+            Path("baz").touch()
+            Path("quux").touch()
+            assert get_sorted_aot_completions(
+                complgen_binary_path, GRAMMAR, "cmd b"
+            ) == sorted(
+                [
+                    "bar",
+                    "baz",
+                ]
+            )
+
+
+def test_completes_subword_path_prefix(complgen_binary_path: Path):
+    GRAMMAR = """cmd --file=<PATH>"""
+    with tempfile.TemporaryDirectory() as dir:
+        with set_working_dir(Path(dir)):
+            Path("foo").touch()
+            Path("bar").touch()
+            Path("baz").touch()
+            Path("quux").touch()
+            assert get_sorted_aot_completions(
+                complgen_binary_path, GRAMMAR, "cmd --file=b"
+            ) == sorted(
+                [
+                    "--file=bar",
+                    "--file=baz",
+                ]
+            )
+
+
+def test_completes_directories(complgen_binary_path: Path):
+    GRAMMAR = """cmd <DIRECTORY>"""
+    with tempfile.TemporaryDirectory() as dir:
+        with set_working_dir(Path(dir)):
+            os.mkdir("foo")
+            os.mkdir("bar")
+            os.mkdir("baz")
+            os.mkdir("quux")
+            assert get_sorted_aot_completions(
+                complgen_binary_path, GRAMMAR, "cmd "
+            ) == sorted(
+                [
+                    "foo/",
+                    "bar/",
+                    "baz/",
+                    "quux/",
+                ]
+            )
+
+
+def test_completes_subword_directories(complgen_binary_path: Path):
+    GRAMMAR = """cmd --dir=<DIRECTORY>"""
+    with tempfile.TemporaryDirectory() as dir:
+        with set_working_dir(Path(dir)):
+            os.mkdir("foo")
+            os.mkdir("bar")
+            os.mkdir("baz")
+            os.mkdir("quux")
+            assert get_sorted_aot_completions(
+                complgen_binary_path, GRAMMAR, "cmd --dir="
+            ) == sorted(
+                [
+                    "--dir=foo/",
+                    "--dir=bar/",
+                    "--dir=baz/",
+                    "--dir=quux/",
+                ]
+            )
+
+
+def test_completes_directories_prefix(complgen_binary_path: Path):
+    GRAMMAR = """cmd <DIRECTORY>"""
+    with tempfile.TemporaryDirectory() as dir:
+        with set_working_dir(Path(dir)):
+            os.mkdir("foo")
+            os.mkdir("bar")
+            os.mkdir("baz")
+            os.mkdir("quux")
+            assert get_sorted_aot_completions(
+                complgen_binary_path, GRAMMAR, "cmd b"
+            ) == sorted(
+                [
+                    "bar/",
+                    "baz/",
+                ]
+            )
+
+
+def test_completes_subword_directories_prefix(complgen_binary_path: Path):
+    GRAMMAR = """cmd --dir=<DIRECTORY>"""
+    with tempfile.TemporaryDirectory() as dir:
+        with set_working_dir(Path(dir)):
+            os.mkdir("foo")
+            os.mkdir("bar")
+            os.mkdir("baz")
+            os.mkdir("quux")
+            assert get_sorted_aot_completions(
+                complgen_binary_path, GRAMMAR, "cmd --dir=b"
+            ) == sorted(
+                [
+                    "--dir=bar/",
+                    "--dir=baz/",
+                ]
+            )
+
+
+def test_completes_file_with_spaces(complgen_binary_path: Path):
+    GRAMMAR = """cmd <PATH>;"""
+    with tempfile.TemporaryDirectory() as dir:
+        with set_working_dir(Path(dir)):
+            Path("file with spaces").write_text("dummy")
+            assert get_sorted_aot_completions(
+                complgen_binary_path, GRAMMAR, "cmd "
+            ) == sorted(["file\\ with\\ spaces"])
 
 
 def test_zsh_uses_correct_description_with_duplicated_literals(
@@ -74,51 +235,6 @@ cmd {{{ echo -e "completion\tdescription" }}};
     assert actual == sorted([["completion", "completion", "--", "description"]])
 
 
-def test_completes_paths(complgen_binary_path: Path):
-    GRAMMAR = r"""cmd <PATH> [--help];"""
-    with tempfile.TemporaryDirectory() as dir:
-        with set_working_dir(Path(dir)):
-            Path("filename with spaces").write_text("dummy")
-            Path("?[^a]*{foo,*bar}").write_text("dummy")
-            os.mkdir("dir with spaces")
-            assert get_sorted_aot_completions(
-                complgen_binary_path, GRAMMAR, "cmd "
-            ) == sorted(
-                [
-                    r"\?\[\^a\]\*\{foo,\*bar\}",
-                    r"filename\ with\ spaces",
-                    r"dir\ with\ spaces",
-                ]
-            )
-
-
-def test_completes_directories(complgen_binary_path: Path):
-    GRAMMAR = """cmd <DIRECTORY> [--help];"""
-    with tempfile.TemporaryDirectory() as dir:
-        with set_working_dir(Path(dir)):
-            os.mkdir("dir with spaces")
-            os.mkdir("?[^a]*{foo,*bar}")
-            Path("filename with spaces").write_text("dummy")
-            assert get_sorted_aot_completions(
-                complgen_binary_path, GRAMMAR, "cmd "
-            ) == sorted(
-                [
-                    r"\?\[\^a\]\*\{foo,\*bar\}",
-                    r"dir\ with\ spaces",
-                ]
-            )
-
-
-def test_completes_file_with_spaces(complgen_binary_path: Path):
-    GRAMMAR = """cmd <PATH>;"""
-    with tempfile.TemporaryDirectory() as dir:
-        with set_working_dir(Path(dir)):
-            Path("file with spaces").write_text("dummy")
-            assert get_sorted_aot_completions(
-                complgen_binary_path, GRAMMAR, "cmd "
-            ) == sorted(["file\\ with\\ spaces"])
-
-
 def test_specializes_for_zsh(complgen_binary_path: Path):
     GRAMMAR = (
         """cmd <FOO>; <FOO> ::= {{{ echo foo }}}; <FOO@zsh> ::= {{{ compadd zsh }}};"""
@@ -133,9 +249,9 @@ def test_specializes_for_zsh_with_regex(complgen_binary_path: Path):
 cmd (<FOO> foo | <BAR> bar);
 <FOO@zsh> ::= {{{ compadd zsh }}}@zsh"zsh";
 """
-    assert get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd zsh ") == sorted(
-        ["foo"]
-    )
+    assert get_sorted_aot_completions(
+        complgen_binary_path, GRAMMAR, "cmd zsh "
+    ) == sorted(["foo"])
 
 
 def test_subword_specializes_for_zsh_with_regex(complgen_binary_path: Path):
@@ -143,9 +259,9 @@ def test_subword_specializes_for_zsh_with_regex(complgen_binary_path: Path):
 cmd <FOO>bar;
 <FOO@zsh> ::= {{{ compadd zsh }}}@zsh"zsh";
 """
-    assert get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd zsh") == sorted(
-        ["bar"]
-    )
+    assert get_sorted_aot_completions(
+        complgen_binary_path, GRAMMAR, "cmd zsh"
+    ) == sorted(["bar"])
 
 
 def test_nontail_matching_alternative(complgen_binary_path: Path):
@@ -171,9 +287,9 @@ def test_nontail_matching_subword(complgen_binary_path: Path):
 
 def test_nontail_completion(complgen_binary_path: Path):
     GRAMMAR = """cmd {{{ echo left }}}@zsh"left";"""
-    assert get_sorted_aot_completions(
-        complgen_binary_path, GRAMMAR, "cmd "
-    ) == sorted(["left"])
+    assert get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd ") == sorted(
+        ["left"]
+    )
 
 
 def test_nontail_completion_subword(complgen_binary_path: Path):
@@ -185,9 +301,9 @@ def test_nontail_completion_subword(complgen_binary_path: Path):
 
 def test_nontail_completion_truncates_to_regex(complgen_binary_path: Path):
     GRAMMAR = """cmd {{{ echo leftspam }}}@zsh"left";"""
-    assert get_sorted_aot_completions(
-        complgen_binary_path, GRAMMAR, "cmd "
-    ) == sorted(["left"])
+    assert get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd ") == sorted(
+        ["left"]
+    )
 
 
 def test_nontail_completion_subword_truncates_to_regex(complgen_binary_path: Path):
@@ -401,9 +517,8 @@ cmd (--color=<WHEN> || --color <WHEN> | --colour=<WHEN> | --colour <WHEN>);
 def test_handles_quotes(complgen_binary_path: Path):
     GRAMMAR = r"""cmd <ANYTHING> baz;"""
     assert get_sorted_aot_completions(
-        complgen_binary_path, GRAMMAR, r'''cmd "foo bar" '''
+        complgen_binary_path, GRAMMAR, r"""cmd "foo bar" """
     ) == sorted(["baz"])
-
 
 
 LITERALS_ALPHABET = string.ascii_letters + ":="

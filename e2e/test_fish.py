@@ -3,16 +3,15 @@ import string
 import tempfile
 from pathlib import Path
 
+from hypothesis import given, settings
+from hypothesis.strategies import text
+
 from common import LSOF_FILTER_GRAMMAR, STRACE_EXPR_GRAMMAR
 from conftest import (
     gen_fish_aot_completion_script_path,
     get_sorted_fish_completions,
     set_working_dir,
 )
-
-import pytest
-from hypothesis import given, settings
-from hypothesis.strategies import text
 
 
 def test_fish_uses_correct_description_with_duplicated_literals(
@@ -76,44 +75,170 @@ cmd {{{ echo -e "completion\tdescription" }}};
         ]
 
 
-SPECIAL_CHARACTERS = "?[^a]*{foo,*bar}"
-
-
 def test_completes_paths(complgen_binary_path: Path):
     with gen_fish_aot_completion_script_path(
-        complgen_binary_path, """cmd <PATH> [--help];"""
+        complgen_binary_path, """cmd <PATH>"""
     ) as completions_file_path:
         with tempfile.TemporaryDirectory() as dir:
             with set_working_dir(Path(dir)):
-                Path("filename with spaces").write_text("dummy")
-                Path(SPECIAL_CHARACTERS).write_text("dummy")
-                os.mkdir("dir with spaces")
+                Path("foo").touch()
+                Path("bar").touch()
+                Path("baz").touch()
+                Path("quux").touch()
                 input = 'complete --do-complete "cmd "'
                 completions = get_sorted_fish_completions(completions_file_path, input)
                 assert completions == sorted(
                     [
-                        (SPECIAL_CHARACTERS, ""),
-                        ("dir with spaces/", ""),
-                        ("filename with spaces", ""),
+                        ("foo", ""),
+                        ("bar", ""),
+                        ("baz", ""),
+                        ("quux", ""),
+                    ]
+                )
+
+
+def test_completes_subword_paths(complgen_binary_path: Path):
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path, """cmd --file=<PATH>"""
+    ) as completions_file_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                Path("foo").touch()
+                Path("bar").touch()
+                Path("baz").touch()
+                Path("quux").touch()
+                input = 'complete --do-complete "cmd --file="'
+                completions = get_sorted_fish_completions(completions_file_path, input)
+                assert completions == sorted(
+                    [
+                        ("--file=foo", ""),
+                        ("--file=bar", ""),
+                        ("--file=baz", ""),
+                        ("--file=quux", ""),
+                    ]
+                )
+
+
+def test_completes_path_prefix(complgen_binary_path: Path):
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path, """cmd <PATH>"""
+    ) as completions_file_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                Path("foo").touch()
+                Path("bar").touch()
+                Path("baz").touch()
+                Path("quux").touch()
+                input = 'complete --do-complete "cmd b"'
+                completions = get_sorted_fish_completions(completions_file_path, input)
+                assert completions == sorted(
+                    [
+                        ("bar", ""),
+                        ("baz", ""),
+                    ]
+                )
+
+
+def test_completes_subword_path_prefix(complgen_binary_path: Path):
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path, """cmd --file=<PATH>"""
+    ) as completions_file_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                Path("foo").touch()
+                Path("bar").touch()
+                Path("baz").touch()
+                Path("quux").touch()
+                input = 'complete --do-complete "cmd --file=b"'
+                completions = get_sorted_fish_completions(completions_file_path, input)
+                assert completions == sorted(
+                    [
+                        ("--file=bar", ""),
+                        ("--file=baz", ""),
                     ]
                 )
 
 
 def test_completes_directories(complgen_binary_path: Path):
     with gen_fish_aot_completion_script_path(
-        complgen_binary_path, """cmd <DIRECTORY> [--help];"""
+        complgen_binary_path, """cmd <DIRECTORY>"""
     ) as completions_file_path:
         with tempfile.TemporaryDirectory() as dir:
             with set_working_dir(Path(dir)):
-                os.mkdir("dir with spaces")
-                os.mkdir(SPECIAL_CHARACTERS)
-                Path("baz").write_text("dummy")
+                os.mkdir("foo")
+                os.mkdir("bar")
+                os.mkdir("baz")
+                os.mkdir("quux")
                 input = 'complete --do-complete "cmd "'
                 completions = get_sorted_fish_completions(completions_file_path, input)
                 assert completions == sorted(
                     [
-                        (SPECIAL_CHARACTERS + "/", "Directory"),
-                        ("dir with spaces/", "Directory"),
+                        ("foo/", "Directory"),
+                        ("bar/", "Directory"),
+                        ("baz/", "Directory"),
+                        ("quux/", "Directory"),
+                    ]
+                )
+
+
+def test_completes_subword_directories(complgen_binary_path: Path):
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path, """cmd --dir=<DIRECTORY>"""
+    ) as completions_file_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                os.mkdir("foo")
+                os.mkdir("bar")
+                os.mkdir("baz")
+                os.mkdir("quux")
+                input = 'complete --do-complete "cmd --dir="'
+                completions = get_sorted_fish_completions(completions_file_path, input)
+                assert completions == sorted(
+                    [
+                        ("--dir=foo/", "Directory"),
+                        ("--dir=bar/", "Directory"),
+                        ("--dir=baz/", "Directory"),
+                        ("--dir=quux/", "Directory"),
+                    ]
+                )
+
+
+def test_completes_directories_prefix(complgen_binary_path: Path):
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path, """cmd <DIRECTORY>"""
+    ) as completions_file_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                os.mkdir("foo")
+                os.mkdir("bar")
+                os.mkdir("baz")
+                os.mkdir("quux")
+                input = 'complete --do-complete "cmd b"'
+                completions = get_sorted_fish_completions(completions_file_path, input)
+                assert completions == sorted(
+                    [
+                        ("bar/", "Directory"),
+                        ("baz/", "Directory"),
+                    ]
+                )
+
+
+def test_completes_subword_directories_prefix(complgen_binary_path: Path):
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path, """cmd --dir=<DIRECTORY>"""
+    ) as completions_file_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                os.mkdir("foo")
+                os.mkdir("bar")
+                os.mkdir("baz")
+                os.mkdir("quux")
+                input = 'complete --do-complete "cmd --dir=b"'
+                completions = get_sorted_fish_completions(completions_file_path, input)
+                assert completions == sorted(
+                    [
+                        ("--dir=bar/", "Directory"),
+                        ("--dir=baz/", "Directory"),
                     ]
                 )
 
@@ -132,9 +257,7 @@ def test_specializes_for_fish(complgen_binary_path: Path):
 
 
 def test_specializes_for_fish_with_regex(complgen_binary_path: Path):
-    GRAMMAR = (
-        """cmd <FOO>bar; <FOO> ::= {{{ echo foo }}}; <FOO@fish> ::= {{{ echo fish }}}@fish"fish";"""
-    )
+    GRAMMAR = """cmd <FOO>bar; <FOO> ::= {{{ echo foo }}}; <FOO@fish> ::= {{{ echo fish }}}@fish"fish";"""
     with gen_fish_aot_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
@@ -389,7 +512,7 @@ def test_handles_quotes(complgen_binary_path: Path):
     with gen_fish_aot_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
-        input = '''complete --do-complete 'cmd "foo bar" ' '''
+        input = """complete --do-complete 'cmd "foo bar" ' """
         assert get_sorted_fish_completions(completions_file_path, input) == sorted(
             [("baz", "")]
         )

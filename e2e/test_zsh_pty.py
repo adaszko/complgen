@@ -95,7 +95,7 @@ def test_subword_specialization(complgen_binary_path: Path):
     GRAMMAR = r"""
 cmd --option=<FOO>;
 <FOO> ::= {{{ echo generic }}};
-<FOO@zsh> ::= {{{ compadd -U -- ${1}zsh }}};
+<FOO@zsh> ::= {{{ IPREFIX="$2" PREFIX="$1" compadd zsh }}};
 """
     bracketed_pastes = get_autoloaded_completion_output(complgen_binary_path, GRAMMAR, 'cmd', b'cmd --option=	')
     assert bracketed_pastes == ['cmd --option=zsh  ']

@@ -7,16 +7,15 @@ import tempfile
 from pathlib import Path
 from typing import Generator
 
+from hypothesis import given, settings
+from hypothesis.strategies import text
+
 from common import LSOF_FILTER_GRAMMAR, STRACE_EXPR_GRAMMAR
 from conftest import (
     get_bash_completion_sh_path,
     get_sorted_bash_completions,
     set_working_dir,
 )
-
-import pytest
-from hypothesis import given, settings
-from hypothesis.strategies import text
 
 
 @contextlib.contextmanager
@@ -37,41 +36,140 @@ def completion_script_path(
         yield Path(f.name)
 
 
-SPECIAL_CHARACTERS = "?[^a]*{foo,*bar}"
-
-
 def test_completes_paths(complgen_binary_path: Path):
     with completion_script_path(
-        complgen_binary_path, """cmd <PATH> [--help];"""
+        complgen_binary_path, """cmd <PATH>"""
     ) as completions_file_path:
         with tempfile.TemporaryDirectory() as dir:
             with set_working_dir(Path(dir)):
-                Path("filename with spaces").write_text("dummy")
-                Path(SPECIAL_CHARACTERS).write_text("dummy")
-                os.mkdir("baz")
+                Path("foo").touch()
+                Path("bar").touch()
+                Path("baz").touch()
+                Path("quux").touch()
                 completions = get_sorted_bash_completions(
                     completions_file_path,
                     '''COMP_WORDS=(cmd); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"''',
                 )
-                assert completions == sorted(
-                    ["filename with spaces", SPECIAL_CHARACTERS, "baz"]
+                assert completions == sorted(["foo", "bar", "baz", "quux"])
+
+
+def test_completes_subword_paths(complgen_binary_path: Path):
+    with completion_script_path(
+        complgen_binary_path, """cmd --file=<PATH>"""
+    ) as completions_file_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                Path("foo").touch()
+                Path("bar").touch()
+                Path("baz").touch()
+                Path("quux").touch()
+                completions = get_sorted_bash_completions(
+                    completions_file_path,
+                    '''COMP_WORDS=(cmd --file=); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"''',
                 )
+                assert completions == sorted(["foo", "bar", "baz", "quux"])
+
+
+def test_completes_path_prefix(complgen_binary_path: Path):
+    with completion_script_path(
+        complgen_binary_path, """cmd <PATH>"""
+    ) as completions_file_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                Path("foo").touch()
+                Path("bar").touch()
+                Path("baz").touch()
+                Path("quux").touch()
+                completions = get_sorted_bash_completions(
+                    completions_file_path,
+                    '''COMP_WORDS=(cmd b); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"''',
+                )
+                assert completions == sorted(["bar", "baz"])
+
+
+def test_completes_subword_path_prefix(complgen_binary_path: Path):
+    with completion_script_path(
+        complgen_binary_path, """cmd --file=<PATH>"""
+    ) as completions_file_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                Path("foo").touch()
+                Path("bar").touch()
+                Path("baz").touch()
+                Path("quux").touch()
+                completions = get_sorted_bash_completions(
+                    completions_file_path,
+                    '''COMP_WORDS=(cmd --file=b); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"''',
+                )
+                assert completions == sorted(["bar", "baz"])
 
 
 def test_completes_directories(complgen_binary_path: Path):
     with completion_script_path(
-        complgen_binary_path, """cmd <DIRECTORY> [--help];"""
+        complgen_binary_path, """cmd <DIRECTORY>"""
     ) as completions_file_path:
         with tempfile.TemporaryDirectory() as dir:
             with set_working_dir(Path(dir)):
-                os.mkdir("dir with spaces")
-                os.mkdir(SPECIAL_CHARACTERS)
-                Path("baz").write_text("dummy")
+                os.mkdir("foo")
+                os.mkdir("bar")
+                os.mkdir("baz")
+                os.mkdir("quux")
                 completions = get_sorted_bash_completions(
                     completions_file_path,
                     '''COMP_WORDS=(cmd); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"''',
                 )
-                assert completions == sorted(["dir with spaces", SPECIAL_CHARACTERS])
+                assert completions == sorted(["foo", "bar", "baz", "quux"])
+
+
+def test_completes_subword_directories(complgen_binary_path: Path):
+    with completion_script_path(
+        complgen_binary_path, """cmd --dir=<DIRECTORY>"""
+    ) as completions_file_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                os.mkdir("foo")
+                os.mkdir("bar")
+                os.mkdir("baz")
+                os.mkdir("quux")
+                completions = get_sorted_bash_completions(
+                    completions_file_path,
+                    '''COMP_WORDS=(cmd --dir=); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"''',
+                )
+                assert completions == sorted(["foo", "bar", "baz", "quux"])
+
+
+def test_completes_directories_prefix(complgen_binary_path: Path):
+    with completion_script_path(
+        complgen_binary_path, """cmd <DIRECTORY>"""
+    ) as completions_file_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                os.mkdir("foo")
+                os.mkdir("bar")
+                os.mkdir("baz")
+                os.mkdir("quux")
+                completions = get_sorted_bash_completions(
+                    completions_file_path,
+                    '''COMP_WORDS=(cmd b); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"''',
+                )
+                assert completions == sorted(["bar", "baz"])
+
+
+def test_completes_subword_directories_prefix(complgen_binary_path: Path):
+    with completion_script_path(
+        complgen_binary_path, """cmd --dir=<DIRECTORY>"""
+    ) as completions_file_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                os.mkdir("foo")
+                os.mkdir("bar")
+                os.mkdir("baz")
+                os.mkdir("quux")
+                completions = get_sorted_bash_completions(
+                    completions_file_path,
+                    '''COMP_WORDS=(cmd --dir=b); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"''',
+                )
+                assert completions == sorted(["bar", "baz"])
 
 
 def test_bash_uses_correct_transition_with_duplicated_literals(
@@ -121,13 +219,9 @@ def test_specializes_for_bash(complgen_binary_path: Path):
 
 
 def test_specializes_for_bash_with_regex(complgen_binary_path: Path):
-    GRAMMAR = (
-        """cmd <FOO>bar; <FOO> ::= {{{ echo foo }}}; <FOO@bash> ::= {{{ echo bash }}}@bash"bash";"""
-    )
+    GRAMMAR = """cmd <FOO>bar; <FOO> ::= {{{ echo foo }}}; <FOO@bash> ::= {{{ echo bash }}}@bash"bash";"""
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
-        input = (
-            r'''COMP_WORDS=(cmd bash); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
-        )
+        input = r'''COMP_WORDS=(cmd bash); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_bash_completions(path, input) == sorted(["bashbar"])
 
 

@@ -249,22 +249,13 @@ fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<(
             readarray -t matches < <(printf "%s\n" "${{candidates[@]}}" | {MATCH_FN_NAME} "$ignore_case" "$matched_prefix$completed_prefix")
         fi
 
-        eval "declare commands_name=commands_level_${{subword_fallback_level}}"
-        eval "declare -a transitions=(\${{$commands_name[$state]}})"
-        for command_id in "${{transitions[@]}}"; do
-            readarray -t candidates < <(_{command}_cmd_$command_id "$matched_prefix" | cut -f1)
-            for item in "${{candidates[@]}}"; do
-                matches+=("$matched_prefix$item")
-            done
-        done
-
         eval "declare commands_name=nontail_commands_level_${{subword_fallback_level}}"
         eval "declare -a command_transitions=(\${{$commands_name[$state]}})"
         eval "declare regexes_name=nontail_regexes_level_${{fallback_level}}"
         eval "declare -a regexes_transitions=(\${{$regexes_name[$state]}})"
         for (( i = 0; i < ${{#command_transitions[@]}}; i++ )); do
             local command_id=${{command_transitions[$i]}}
-            readarray -t output < <(_{command}_cmd_$command_id "$matched_prefix" | cut -f1)
+            readarray -t output < <(_{command}_cmd_$command_id "$completed_prefix" "$matched_prefix" | cut -f1)
             local regex_id=${{regexes_transitions[$i]}}
             local regex="^(${{regexes[$regex_id]}}).*"
             declare -a candidates=()
@@ -274,6 +265,15 @@ fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<(
                     candidates+=("$match")
                 fi
             done
+            for item in "${{candidates[@]}}"; do
+                matches+=("$matched_prefix$item")
+            done
+        done
+
+        eval "declare commands_name=commands_level_${{subword_fallback_level}}"
+        eval "declare -a transitions=(\${{$commands_name[$state]}})"
+        for command_id in "${{transitions[@]}}"; do
+            readarray -t candidates < <(_{command}_cmd_$command_id "$completed_prefix" "$matched_prefix" | cut -f1)
             for item in "${{candidates[@]}}"; do
                 matches+=("$matched_prefix$item")
             done
@@ -804,7 +804,7 @@ fi
         eval "declare commands_name=commands_level_${{fallback_level}}"
         eval "declare -a transitions=(\${{$commands_name[$state]}})"
         for command_id in "${{transitions[@]}}"; do
-            readarray -t candidates < <(_{command}_cmd_$command_id "$prefix" | cut -f1)
+            readarray -t candidates < <(_{command}_cmd_$command_id "$prefix" "" | cut -f1)
             if [[ ${{#candidates[@]}} -gt 0 ]]; then
                 readarray -t -O "${{#matches[@]}}" matches < <(printf "%s\n" "${{candidates[@]}}" | {MATCH_FN_NAME} "$ignore_case" "$prefix")
             fi
@@ -818,7 +818,7 @@ fi
             local command_id=${{command_transitions[$i]}}
             local regex_id=${{regexes_transitions[$i]}}
             local regex="^(${{regexes[$regex_id]}}).*"
-            readarray -t output < <(_{command}_cmd_$command_id "$prefix" | cut -f1)
+            readarray -t output < <(_{command}_cmd_$command_id "$prefix" "" | cut -f1)
             declare -a candidates=()
             for line in ${{output[@]}}; do
                 if [[ ${{line}} =~ $regex && -n ${{BASH_REMATCH[1]}} ]]; then

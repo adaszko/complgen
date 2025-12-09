@@ -214,7 +214,6 @@ fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<(
         fi
 
         if [[ -v "subword_match_anything_transitions[$subword_state]" ]]; then
-            subword_state=${{subword_match_anything_transitions[$subword_state]}}
             matched=1
             break
         fi
@@ -323,7 +322,7 @@ fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<(
         eval "declare initializer=\${{${{compadd_commands_name}}[$subword_state]}}"
         eval "declare -a transitions=($initializer)"
         for command_id in "${{transitions[@]}}"; do
-            _{command}_cmd_${{command_id}} "$matched_prefix"
+            _{command}_cmd_${{command_id}} "$completed_prefix" "$matched_prefix"
         done
 
         if [[ ${{#subword_completions_no_description_trailing_space}} -gt 0 || ${{#subword_completions_trailing_space}} -gt 0 || ${{#subword_completions_no_trailing_space}} -gt 0 ]]; then
@@ -995,7 +994,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         eval "declare initializer=\${{${{compadd_commands_name}}[$state]}}"
         eval "declare -a transitions=($initializer)"
         for command_id in "${{transitions[@]}}"; do
-            _{command}_cmd_${{command_id}} ${{words[$CURRENT]}}
+            _{command}_cmd_${{command_id}} ${{words[$CURRENT]}} ""
         done
 
         declare maxlen=0

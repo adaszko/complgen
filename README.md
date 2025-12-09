@@ -100,18 +100,12 @@ Use parentheses to group patterns:
 
 ### Filename completion
 
-There's a couple of predefined nonterminals that are handled specially by `complgen`:
+There's a small set of predefined nonterminals that are handled specially by `complgen`:
 
 | Name          | bash | fish | zsh | Description |
 |---------------|------|------|-----|-------------|
 |`<PATH>`       | ✅   | ✅   | ✅  | file or directory path |
 |`<DIRECTORY>`  | ✅   | ✅   | ✅  | directory path |
-|`<PID>`        | ❌   | ✅   | ✅  | process id |
-|`<USER>`       | ✅   | ✅   | ✅  | user name |
-|`<GROUP>`      | ✅   | ✅   | ✅  | group name |
-|`<HOST>`       | ✅   | ✅   | ✅  | hostname |
-|`<INTERFACE>`  | ❌   | ✅   | ✅  | network interface name |
-|`<PACKAGE>`    | ❌   | ✅   | ❌  | OS package name |
 
 The reason there's no predefined `<FILE>` nonterminal is that it would work only for files from the current
 directory which is too specific to be generally useful.
@@ -139,26 +133,34 @@ Note that `bash` does not support showing descriptions.
 
 ### Sourcing completions from external commands output
 
-It is possible to use entire shell commands as a source of completions:
+It is possible to produce completions based on an external command output:
 
-```
-cargo {{{ rustup toolchain list | cut -d' ' -f1 | sed 's/^/+/' }}};
-```
+    cmd {{{ echo foo; echo bar; echo baz; echo quux }}};
 
 The stdout of the pipeline above will be automatically filtered by the shell based on the prefix entered so
 far.
 
-##### The prefix entered so far
+In order to make the same command work both in super- and sub-word context, following arguments are passed:
 
-Sometimes, it's more efficient to take into account the entered prefix in the shell command itself.  For all
-three shells (bash, fish, zsh), it's available in the `$1` variable:
+ * `$1`: completed prefix
+ * `$2`: subword input matched thus far (always an empty string in superwords completion context)
 
-```
-cargo {{{ rustup toolchain list | cut -d' ' -f1 | grep "^$1" | sed 's/^/+/' }}};
-```
+For example, given the grammar above, and the input `cmd b<TAB>`:
+
+    $1 = "b"
+    $2 = ""
+
+However, for the grammar:
+
+    cmd --opt={{{ echo foo; echo bar; echo baz; echo quux }}};
+
+and input `cmd --opt=b<TAB>`:
+
+    $1 = "b"
+    $2 = "--opt="
 
 Note that in general, it's best to leave the filtering up to the executing shell since it may be configured to
-perform some non-standard filtering.  zsh for example is capable of expanding `/u/l/b` to `/usr/local/bin`.
+perform some non-prefix filtering.  zsh for example is capable of expanding `/u/l/b` to `/usr/local/bin`.
 
 ##### Descriptions
 
@@ -194,13 +196,8 @@ the nonterminal `<USER>` using few `nonterminal@shell` definitions:
 cmd <USER>;
 <USER@bash> ::= {{{ compgen -A user "$1" | sort | uniq }}}; # produce candidates on stdout under bash
 <USER@fish> ::= {{{ __fish_complete_users "$1" }}}; # produce candidates on stdout under fish
-<USER@zsh> ::= {{{ _users }}}; # produce candidates via compadd and friends under zsh
+<USER@zsh> ::= {{{ IPREFIX="$2" PREFIX="$1" _users }}}; # produce candidates via compadd and friends under zsh
 ```
-
-⚠️ Gotcha: Under ZSH, when calling `compadd` within a subword, candidates are automatically filtered based on
-the prefix input so far.  It may result in some completions not showing up.  You may want call it as `compadd
-${1}<YOUR_CANDIDATE>` to include the entered prefix, or as `compadd -U` to disable the builtin filtering
-mechanism.
 
 ### Completing option arguments
 

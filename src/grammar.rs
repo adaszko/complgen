@@ -2128,7 +2128,11 @@ impl Grammar {
                     None,
                     HumanSpan::default(),
                 )),
-                zsh: Some((ustr("_path_files"), None, HumanSpan::default())),
+                zsh: Some((
+                    ustr(r#"IPREFIX="$2" PREFIX="$1" _path_files"#),
+                    None,
+                    HumanSpan::default(),
+                )),
                 generic: None,
             });
 
@@ -2145,89 +2149,11 @@ impl Grammar {
                     None,
                     HumanSpan::default(),
                 )),
-                zsh: Some((ustr("_path_files -/"), None, HumanSpan::default())),
-                generic: None,
-            });
-
-        specializations
-            .entry(ustr("PID"))
-            .or_insert_with(|| Specialization {
-                bash: None,
-                fish: Some((ustr(r#"__fish_complete_pids"#), None, HumanSpan::default())),
-                zsh: Some((ustr(r#"_pids"#), None, HumanSpan::default())),
-                generic: None,
-            });
-
-        specializations
-            .entry(ustr("USER"))
-            .or_insert_with(|| Specialization {
-                bash: Some((
-                    ustr(r#"compgen -A user | while read line; do echo "$line "; done"#),
+                zsh: Some((
+                    ustr(r#"IPREFIX="$2" PREFIX="$1" _path_files -/"#),
                     None,
                     HumanSpan::default(),
                 )),
-                fish: Some((ustr(r#"__fish_complete_users"#), None, HumanSpan::default())),
-                zsh: Some((ustr(r#"_users"#), None, HumanSpan::default())),
-                generic: None,
-            });
-
-        specializations
-            .entry(ustr("GROUP"))
-            .or_insert_with(|| Specialization {
-                bash: Some((
-                    ustr(r#"compgen -A group | while read line; do echo "$line "; done"#),
-                    None,
-                    HumanSpan::default(),
-                )),
-                fish: Some((
-                    ustr(r#"__fish_complete_groups"#),
-                    None,
-                    HumanSpan::default(),
-                )),
-                zsh: Some((ustr(r#"_groups"#), None, HumanSpan::default())),
-                generic: None,
-            });
-
-        specializations
-            .entry(ustr("HOST"))
-            .or_insert_with(|| Specialization {
-                bash: Some((
-                    ustr(r#"compgen -A hostname | while read line; do echo "$line "; done"#),
-                    None,
-                    HumanSpan::default(),
-                )),
-                fish: Some((
-                    ustr(r#"__fish_complete_hostnames"#),
-                    None,
-                    HumanSpan::default(),
-                )),
-                zsh: Some((ustr(r#"_hosts"#), None, HumanSpan::default())),
-                generic: None,
-            });
-
-        specializations
-            .entry(ustr("INTERFACE"))
-            .or_insert_with(|| Specialization {
-                bash: None,
-                fish: Some((
-                    ustr(r#"__fish_complete_interfaces"#),
-                    None,
-                    HumanSpan::default(),
-                )),
-                zsh: Some((ustr(r#"_net_interfaces"#), None, HumanSpan::default())),
-                generic: None,
-            });
-
-        specializations
-            .entry(ustr("PACKAGE"))
-            .or_insert_with(|| Specialization {
-                bash: None,
-                fish: Some((
-                    ustr(r#"__fish_complete_packages"#),
-                    None,
-                    HumanSpan::default(),
-                )),
-                zsh: None,
                 generic: None,
             });
 

@@ -351,7 +351,6 @@ fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<(
 
         set index (contains --index -- "$subword_state" $subword_match_anything_transitions_from)
         if test -n "$index"
-            set subword_state $subword_match_anything_transitions_to[$index]
             set matched 1
             break
         end
@@ -370,7 +369,7 @@ fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<(
     write!(
         buffer,
         r#"
-    set unmatched_suffix (string sub --start=$char_index -- $word)
+    set completed_prefix (string sub --start=$char_index -- $word)
 
     set matched_prefix
     if test $char_index -eq 1
@@ -388,11 +387,11 @@ fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<(
             set transitions_name subword_literal_transitions_level_$fallback_level
             printf 'set transitions (string split \' \' $%s[%d])' $transitions_name $index | source
             for literal_id in $transitions
-                set unmatched_suffix_len (string length -- $unmatched_suffix)
-                if test $unmatched_suffix_len -gt 0
+                set completed_prefix_len (string length -- $completed_prefix)
+                if test $completed_prefix_len -gt 0
                     set literal $subword_literals[$literal_id]
-                    set slice (string sub --end=$unmatched_suffix_len -- $literal)
-                    if test "$slice" != "$unmatched_suffix"
+                    set slice (string sub --end=$completed_prefix_len -- $literal)
+                    if test "$slice" != "$completed_prefix"
                         continue
                     end
                 end
@@ -416,7 +415,7 @@ fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<(
             set name subword_nontail_regexes_level_$fallback_level
             set rxs (string split ' ' $$name)
             set rx $subword_regexes[$rxs[$index]]
-            for line in ($function_name "$COMP_WORDS[$COMP_CWORD]")
+            for line in ($function_name "$completed_prefix" "$matched_prefix")
                 string match --regex --quiet "^(?<match>$rx).*" -- $line
                 if test -n "$match"
                     set --append candidates (printf "%s%s\n" $matched_prefix $match)
@@ -430,7 +429,7 @@ fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<(
         if test -n "$index"
             printf 'set function_id $subword_commands_level_%s[%d]' $fallback_level $index | source
             set function_name _{command}_cmd_$function_id
-            $function_name "$matched_prefix" | while read line
+            $function_name "$completed_prefix" "$matched_prefix" | while read line
                 set --append candidates (printf '%s%s\n' $matched_prefix $line)
             end
         end
@@ -1263,7 +1262,7 @@ end
             set commands (string split ' ' $$commands_name)
             set function_id $commands[$index]
             set function_name _{command}_cmd_$function_id
-            set --append candidates ($function_name "$COMP_WORDS[$COMP_CWORD]")
+            set --append candidates ($function_name "$COMP_WORDS[$COMP_CWORD]" "")
         end
 "#
         )?;
@@ -1284,7 +1283,7 @@ end
             set name nontail_regexes_level_$fallback_level
             set rxs (string split ' ' $$name)
             set rx $regexes[$rxs[$index]]
-            for line in ($function_name "$COMP_WORDS[$COMP_CWORD]")
+            for line in ($function_name "$COMP_WORDS[$COMP_CWORD]" "")
                 string match --regex --quiet "^(?<match>$rx).*" -- $line
                 if test -n "$match"
                     set --append candidates "$match"

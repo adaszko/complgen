@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## 0.6.0
 ### Fixed
 
+ - Fixed multiple bugs in completion in common cases such as `--option=<PATH>` or `--option=<DIRECTORY>`
  - ZSH specialized commands should now use `compadd` instead of writing on stdout
 
 ### Changed
@@ -25,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
  - Removed `--railroad` option for diagrams generation due to limited utility
+ - Breaking: Removed <PID>, <USER>, <GROUP>, <HOST>, <INTERFACE>, <PACKAGE> predefined nonterminals
 
 ## 0.5.0
 ### Changed
