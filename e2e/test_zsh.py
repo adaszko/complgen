@@ -236,12 +236,34 @@ cmd {{{ echo -e "completion\tdescription" }}};
 
 
 def test_specializes_for_zsh(complgen_binary_path: Path):
-    GRAMMAR = (
-        """cmd <FOO>; <FOO> ::= {{{ echo foo }}}; <FOO@zsh> ::= {{{ compadd zsh }}};"""
-    )
+    GRAMMAR = """
+cmd <FOO>;
+<FOO> ::= {{{ echo foo }}};
+<FOO@zsh> ::= {{{ compadd zsh }}};
+"""
     assert get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd ") == sorted(
         ["zsh"]
     )
+
+
+def test_specializes_for_zsh_fallbacks(complgen_binary_path: Path):
+    GRAMMAR = """
+cmd (<FOO> || completion-fallback);
+<FOO@zsh> ::= {{{ IPREFIX="$2" PREFIX="$1" compadd completion-specialized }}};
+"""
+    assert get_sorted_aot_completions(
+        complgen_binary_path, GRAMMAR, "cmd completion-"
+    ) == sorted(["completion-specialized"])
+
+
+def test_subword_specializes_for_zsh_fallbacks(complgen_binary_path: Path):
+    GRAMMAR = """
+cmd --opt=(<FOO> || completion-fallback);
+<FOO@zsh> ::= {{{ IPREFIX="$2" PREFIX="$1" compadd completion-specialized }}};
+"""
+    assert get_sorted_aot_completions(
+        complgen_binary_path, GRAMMAR, "cmd --opt=c"
+    ) == sorted(["--opt=completion-specialized"])
 
 
 def test_specializes_for_zsh_with_regex(complgen_binary_path: Path):
@@ -254,14 +276,34 @@ cmd (<FOO> foo | <BAR> bar);
     ) == sorted(["foo"])
 
 
+def test_specializes_for_zsh_with_regex_fallback(complgen_binary_path: Path):
+    GRAMMAR = """
+cmd (<FOO> || completion-fallback);
+<FOO@zsh> ::= {{{ compadd completion-specialized }}}@zsh"completion-specialized";
+"""
+    assert get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd c") == sorted(
+        ["completion-specialized"]
+    )
+
+
 def test_subword_specializes_for_zsh_with_regex(complgen_binary_path: Path):
     GRAMMAR = """
 cmd <FOO>bar;
-<FOO@zsh> ::= {{{ compadd zsh }}}@zsh"zsh";
+<FOO@zsh> ::= {{{ IPREFIX="$2" PREFIX="$1" compadd zsh }}}@zsh"zsh";
 """
     assert get_sorted_aot_completions(
         complgen_binary_path, GRAMMAR, "cmd zsh"
     ) == sorted(["bar"])
+
+
+def test_subword_specializes_for_zsh_with_regex_fallback(complgen_binary_path: Path):
+    GRAMMAR = """
+cmd --opt=(<FOO> || completion-fallback);
+<FOO@zsh> ::= {{{ IPREFIX="$2" PREFIX="$1" compadd completion-specialized }}}@zsh"completion-specialized";
+"""
+    assert get_sorted_aot_completions(
+        complgen_binary_path, GRAMMAR, "cmd --opt=c"
+    ) == sorted(["--opt=completion-specialized"])
 
 
 def test_nontail_matching_alternative(complgen_binary_path: Path):

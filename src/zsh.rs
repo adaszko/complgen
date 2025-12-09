@@ -321,11 +321,33 @@ fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<(
         declare compadd_commands_name=subword_compadd_commands_level_${{subword_fallback_level}}
         eval "declare initializer=\${{${{compadd_commands_name}}[$subword_state]}}"
         eval "declare -a transitions=($initializer)"
+        declare compadd_type_string=$(type -w compadd)
+        declare compadd_type_fields=(${{(z)compadd_type_string}})
+        declare compadd_type=${{compadd_type_fields[2]}}
+        if [[ "$compadd_type" == builtin ]]; then
+            function prev_compadd () {{
+                builtin compadd "$@"
+            }}
+        else
+            functions -c compadd prev_compadd
+        fi
+        functions -c compadd_intercept compadd
+        declare has_compadd_matches=false
         for command_id in "${{transitions[@]}}"; do
+            declare -a complgen_matches=()
             _{command}_cmd_${{command_id}} "$completed_prefix" "$matched_prefix"
+            if [[ ${{#complgen_matches}} -gt 0 ]]; then
+                has_compadd_matches=true
+            fi
         done
+        if [[ "$compadd_type" == builtin ]]; then
+            unfunction compadd
+        else
+            functions -c prev_compadd compadd
+            unfunction prev_compadd
+        fi
 
-        if [[ ${{#subword_completions_no_description_trailing_space}} -gt 0 || ${{#subword_completions_trailing_space}} -gt 0 || ${{#subword_completions_no_trailing_space}} -gt 0 ]]; then
+        if [[ $has_compadd_matches == true || ${{#subword_completions_no_description_trailing_space}} -gt 0 || ${{#subword_completions_trailing_space}} -gt 0 || ${{#subword_completions_no_trailing_space}} -gt 0 ]]; then
             break
         fi
     done
@@ -589,6 +611,27 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 "#
         )?;
     }
+
+    writeln!(
+        buffer,
+        r#"compadd_intercept () {{
+    declare is_filter_array=false
+    declare output_array=""
+    while getopts "12aACDdEefFiIJ:klM:nO:o:p:P:QqrRs:S:UW:Xx" opt; do
+        case "$opt" in
+            D) is_filter_array=1;;
+            O) output_array=$OPTARG;;
+        esac
+    done
+    if [[ "$is_filter_array" == true || "$output_array" != "" ]]; then
+        prev_compadd "$@"
+        return $?
+    fi
+    builtin compadd -O complgen_matches "$@"
+    prev_compadd "$@"
+}}
+"#
+    )?;
 
     let id_from_dfa = dfa.get_subwords(1);
     if !id_from_dfa.is_empty() {
@@ -993,9 +1036,31 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         declare compadd_commands_name=compadd_commands_level_${{fallback_level}}
         eval "declare initializer=\${{${{compadd_commands_name}}[$state]}}"
         eval "declare -a transitions=($initializer)"
+        declare compadd_type_string=$(type -w compadd)
+        declare compadd_type_fields=(${{(z)compadd_type_string}})
+        declare compadd_type=${{compadd_type_fields[2]}}
+        if [[ "$compadd_type" == builtin ]]; then
+            function prev_compadd () {{
+                builtin compadd "$@"
+            }}
+        else
+            functions -c compadd prev_compadd
+        fi
+        functions -c compadd_intercept compadd
+        declare has_compadd_matches=false
         for command_id in "${{transitions[@]}}"; do
+            declare -a complgen_matches=()
             _{command}_cmd_${{command_id}} ${{words[$CURRENT]}} ""
+            if [[ ${{#complgen_matches}} -gt 0 ]]; then
+                has_compadd_matches=true
+            fi
         done
+        if [[ "$compadd_type" == builtin ]]; then
+            unfunction compadd
+        else
+            functions -c prev_compadd compadd
+            unfunction prev_compadd
+        fi
 
         declare maxlen=0
         for suffix in ${{suffixes_trailing_space[@]}}; do
@@ -1030,7 +1095,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         compadd -O m -a completions_trailing_space; matches+=("${{m[@]}}")
         compadd -O m -a completions_no_trailing_space; matches+=("${{m[@]}}")
 
-        if [[ ${{#matches}} -gt 0 ]]; then
+        if [[ $has_compadd_matches == true || ${{#matches}} -gt 0 ]]; then
             compadd -Q -a completions_no_description_trailing_space
             compadd -Q -S ' ' -a completions_no_description_no_trailing_space
             compadd -l -Q -a -d descriptions_trailing_space completions_trailing_space
