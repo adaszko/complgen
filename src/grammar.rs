@@ -2079,7 +2079,7 @@ impl Grammar {
                     return Err(Error::NonCommandSpecialization(defn.lhs_span));
                 }
             };
-            let shell = Shell::from_str(&shell_name, *shell_span)?;
+            let shell = Shell::from_str(shell_name, *shell_span)?;
             let spec = specializations.entry(defn.lhs_name).or_default();
             match shell {
                 Shell::Bash => {
