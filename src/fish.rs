@@ -21,7 +21,7 @@ use ustr::{Ustr, ustr};
 // TODO Optimization: Do not emit __complgen_match if there's just one fallback level as it's
 // unnecessary in that case.
 
-const ARRAY_START: u32 = 1;
+pub const ARRAY_START: u32 = 1;
 
 fn make_string_constant(s: &str) -> String {
     if s.is_empty() {

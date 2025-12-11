@@ -8,9 +8,9 @@ use clap::Parser;
 
 use complgen::grammar::{Grammar, HumanSpan, Shell, ValidGrammar};
 
-use complgen::Error;
 use complgen::dfa::DFA;
 use complgen::regex::{Regex, diagnostic_display_input};
+use complgen::{Error, bash, fish, zsh};
 
 #[derive(clap::Parser)]
 struct Cli {
@@ -324,22 +324,32 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
 
     let dfa = dfa.minimize();
 
-    if let Some(dot_file_path) = &args.dfa {
-        let mut dot_file = get_file_or_stdout(dot_file_path)?;
-        dfa.to_dot(&mut dot_file).context(dot_file_path.clone())?;
-    }
-
     let script_file = get_file_or_stdout(path)?;
     let mut writer = BufWriter::new(script_file);
 
     match shell {
         Shell::Bash => {
+            if let Some(dot_file_path) = &args.dfa {
+                let mut dot_file = get_file_or_stdout(dot_file_path)?;
+                dfa.to_dot(&mut dot_file, bash::ARRAY_START)
+                    .context(dot_file_path.clone())?;
+            }
             complgen::bash::write_completion_script(&mut writer, &validated.command, &dfa)?
         }
         Shell::Fish => {
+            if let Some(dot_file_path) = &args.dfa {
+                let mut dot_file = get_file_or_stdout(dot_file_path)?;
+                dfa.to_dot(&mut dot_file, fish::ARRAY_START)
+                    .context(dot_file_path.clone())?;
+            }
             complgen::fish::write_completion_script(&mut writer, &validated.command, &dfa)?
         }
         Shell::Zsh => {
+            if let Some(dot_file_path) = &args.dfa {
+                let mut dot_file = get_file_or_stdout(dot_file_path)?;
+                dfa.to_dot(&mut dot_file, zsh::ARRAY_START)
+                    .context(dot_file_path.clone())?;
+            }
             let expected_name = format!("_{}", validated.command);
             if path != "-"
                 && Path::new(path).file_name().unwrap_or_default() != OsStr::new(&expected_name)

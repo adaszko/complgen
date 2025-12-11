@@ -551,13 +551,14 @@ fn do_minimize(dfa: DFA) -> DFA {
 
 fn do_to_dot<W: Write>(
     output: &mut W,
+    array_start: u32,
     dfa: &DFA,
     identifiers_prefix: &str,
     recursion_level: usize,
 ) -> Result<()> {
     let indentation = format!("\t{}", str::repeat("\t", recursion_level));
 
-    let id_from_dfa = dfa.get_subwords(0);
+    let id_from_dfa = dfa.get_subwords(array_start as usize);
 
     if dfa.accepting_states.contains(dfa.starting_state) {
         writeln!(output, "{indentation}node [shape=doubleoctagon];")?;
@@ -567,7 +568,8 @@ fn do_to_dot<W: Write>(
     writeln!(
         output,
         "{indentation}_{identifiers_prefix}{}[label=\"{identifiers_prefix}{}\"];",
-        dfa.starting_state, dfa.starting_state
+        dfa.starting_state + array_start,
+        dfa.starting_state + array_start
     )?;
 
     let regular_states = {
@@ -581,7 +583,8 @@ fn do_to_dot<W: Write>(
         writeln!(
             output,
             "{indentation}_{identifiers_prefix}{}[label=\"{identifiers_prefix}{}\"];",
-            state, state
+            state + array_start,
+            state + array_start
         )?;
     }
 
@@ -592,7 +595,8 @@ fn do_to_dot<W: Write>(
         writeln!(
             output,
             "{indentation}_{identifiers_prefix}{}[label=\"{identifiers_prefix}{}\"];",
-            state, state
+            state + array_start,
+            state + array_start
         )?;
     }
 
@@ -610,6 +614,7 @@ fn do_to_dot<W: Write>(
         let subdfa = dfa.subdfas.lookup(*subdfaid);
         do_to_dot(
             output,
+            array_start,
             subdfa,
             subdfa_identifiers_prefix,
             recursion_level + 1,
@@ -630,7 +635,9 @@ fn do_to_dot<W: Write>(
                     writeln!(
                         output,
                         "{indentation}_{identifiers_prefix}{} -> _{identifiers_prefix}{} [label=\"{}\"];",
-                        from, to, label
+                        from + array_start,
+                        to + array_start,
+                        label
                     )?;
                 }
                 Inp::Subword {
@@ -642,13 +649,15 @@ fn do_to_dot<W: Write>(
                     writeln!(
                         output,
                         r#"{indentation}_{identifiers_prefix}{} -> _{subdfa_identifiers_prefix}{} [style="dashed"];"#,
-                        from, subdfa.starting_state
+                        from + array_start,
+                        subdfa.starting_state + array_start
                     )?;
                     for subdfa_accepting_state in &subdfa.accepting_states {
                         writeln!(
                             output,
                             r#"{indentation}_{subdfa_identifiers_prefix}{} -> _{identifiers_prefix}{} [style="dashed"];"#,
-                            subdfa_accepting_state, to
+                            subdfa_accepting_state,
+                            to + array_start
                         )?;
                     }
                 }
@@ -910,18 +919,18 @@ impl DFA {
             .max()
     }
 
-    pub fn to_dot<W: Write>(&self, output: &mut W) -> Result<()> {
+    pub fn to_dot<W: Write>(&self, output: &mut W, array_start: u32) -> Result<()> {
         writeln!(output, "digraph dfa {{")?;
         writeln!(output, "\trankdir=LR;")?;
-        do_to_dot(output, self, "", 0)?;
+        do_to_dot(output, array_start, self, "", 0)?;
         writeln!(output, "}}")?;
         Ok(())
     }
 
     #[allow(dead_code)]
-    pub fn to_dot_file<P: AsRef<std::path::Path>>(&self, path: P) -> Result<()> {
+    pub fn to_dot_file<P: AsRef<std::path::Path>>(&self, path: P, array_start: u32) -> Result<()> {
         let mut file = std::fs::File::create(path)?;
-        self.to_dot(&mut file)?;
+        self.to_dot(&mut file, array_start)?;
         Ok(())
     }
 }

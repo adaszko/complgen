@@ -12,7 +12,7 @@ use ustr::{Ustr, ustr};
 // Associative arrays are local by default.
 // Bash uses *dynamic* scoping for local variables (!)
 
-const ARRAY_START: u32 = 0;
+pub const ARRAY_START: u32 = 0;
 
 fn make_string_constant(s: &str) -> String {
     if s.is_empty() {
