@@ -527,7 +527,9 @@ fn do_from_expr(
             input_from_position.push(input.clone());
             alloc(arena, result)
         }
-        Expr::Sequence(subexprs) => {
+        Expr::Sequence {
+            children: subexprs, ..
+        } => {
             let mut left_regex_id =
                 do_from_expr(subexprs[0], expr_arena, shell, arena, input_from_position);
             for right_expr in &subexprs[1..] {

@@ -117,7 +117,10 @@ pub enum Expr {
     },
 
     // `foo bar`
-    Sequence(Vec<ExprId>),
+    Sequence {
+        children: Vec<ExprId>,
+        span: HumanSpan,
+    },
 
     // `foo | bar`
     Alternative(Vec<ExprId>),
@@ -214,8 +217,8 @@ impl std::fmt::Debug for Expr {
             } => f.write_fmt(format_args!(
                 r#"Command(ustr({cmd:?}), {bash_regex:?}, {fish_regex:?}, {zsh_regex:?}, {zsh_compadd}, {fallback}, {span:?})"#
             )),
-            Self::Sequence(children) => {
-                f.write_fmt(format_args!(r#"Sequence(vec!{:?})"#, children))
+            Self::Sequence { children, span } => {
+                f.write_fmt(format_args!(r#"Sequence(vec!{:?}, {span:?})"#, children))
             }
             Self::Alternative(children) => {
                 f.write_fmt(format_args!(r#"Alternative(vec!{:?})"#, children))
@@ -256,7 +259,7 @@ fn do_expr_to_dot<W: Write>(
         Expr::Command { cmd, .. } => {
             writeln!(output, r#"  _{expr_id}[label="{}"];"#, dot_escape(&cmd))?;
         }
-        Expr::Sequence(children) => {
+        Expr::Sequence { children, .. } => {
             writeln!(output, r#"  _{expr_id}[label="Sequence"];"#)?;
             for child in &children {
                 writeln!(output, r#"  _{expr_id} -> _{child};"#)?;
@@ -665,8 +668,11 @@ fn subword_sequence_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<
             .into_iter()
             .map(|e| flatten_expr(arena, e))
             .collect();
-        let e = Expr::Sequence(flattened_factors);
         let span = HumanSpan::from_range(input, after);
+        let e = Expr::Sequence {
+            children: flattened_factors,
+            span,
+        };
         let subword_id = alloc(arena, e);
         let subword_expr = Expr::Subword {
             phase: SubwordCompilationPhase::Expr(subword_id),
@@ -698,21 +704,27 @@ fn subword_sequence_expr_opt_description<'s>(
 }
 
 fn sequence_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
-    let (mut input, left) = subword_sequence_expr_opt_description(arena, input)?;
+    let (mut after, left) = subword_sequence_expr_opt_description(arena, input)?;
     let mut factors: Vec<ExprId> = vec![left];
     while let Ok((rest, right)) = preceded(multiblanks1, |i| {
         subword_sequence_expr_opt_description(arena, i)
-    })(input)
+    })(after)
     {
         factors.push(right);
-        input = rest;
+        after = rest;
     }
     let result = if factors.len() == 1 {
         factors.drain(..).next().unwrap()
     } else {
-        alloc(arena, Expr::Sequence(factors))
+        alloc(
+            arena,
+            Expr::Sequence {
+                children: factors,
+                span: HumanSpan::from_range(input, after),
+            },
+        )
     };
-    Ok((input, result))
+    Ok((after, result))
 }
 
 fn do_alternative_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
@@ -906,13 +918,19 @@ fn flatten_expr(arena: &mut Vec<Expr>, expr_id: ExprId) -> ExprId {
             };
             flatten_expr(arena, child)
         }
-        Expr::Sequence(children) => {
+        Expr::Sequence { children, span } => {
             let new_children: Vec<ExprId> =
                 children.iter().map(|e| flatten_expr(arena, *e)).collect();
             if children == new_children {
                 expr_id
             } else {
-                alloc(arena, Expr::Sequence(new_children))
+                alloc(
+                    arena,
+                    Expr::Sequence {
+                        children: new_children,
+                        span,
+                    },
+                )
             }
         }
         Expr::Alternative(children) => {
@@ -1001,7 +1019,7 @@ fn compile_subword_exprs(
             )
         }
         Expr::Terminal { .. } | Expr::NontermRef { .. } | Expr::Command { .. } => expr_id,
-        Expr::Sequence(children) => {
+        Expr::Sequence { children, span } => {
             let new_children: Vec<ExprId> = children
                 .iter()
                 .map(|e| compile_subword_exprs(arena, *e, shell, subdfas))
@@ -1009,7 +1027,13 @@ fn compile_subword_exprs(
             if children == new_children {
                 expr_id
             } else {
-                alloc(arena, Expr::Sequence(new_children))
+                alloc(
+                    arena,
+                    Expr::Sequence {
+                        children: new_children,
+                        span,
+                    },
+                )
             }
         }
         Expr::Alternative(children) => {
@@ -1085,7 +1109,7 @@ fn do_distribute_descriptions(
         }
         Expr::Terminal { .. } => expr_id,
         Expr::NontermRef { .. } | Expr::Command { .. } => expr_id,
-        Expr::Sequence(children) => {
+        Expr::Sequence { children, span } => {
             let new_children: Vec<ExprId> = children
                 .iter()
                 .map(|e| do_distribute_descriptions(arena, *e, description))
@@ -1093,7 +1117,13 @@ fn do_distribute_descriptions(
             if children == new_children {
                 expr_id
             } else {
-                alloc(arena, Expr::Sequence(new_children))
+                alloc(
+                    arena,
+                    Expr::Sequence {
+                        children: new_children,
+                        span,
+                    },
+                )
             }
         }
         Expr::Alternative(children) => {
@@ -1197,7 +1227,7 @@ fn do_propagate_fallback_levels(
             }
         }
         Expr::NontermRef { .. } | Expr::Command { .. } => expr_id,
-        Expr::Sequence(children) => {
+        Expr::Sequence { children, span } => {
             let new_children: Vec<ExprId> = children
                 .iter()
                 .map(|e| do_propagate_fallback_levels(arena, *e, fallback_level))
@@ -1205,7 +1235,13 @@ fn do_propagate_fallback_levels(
             if children == new_children {
                 expr_id
             } else {
-                alloc(arena, Expr::Sequence(new_children))
+                alloc(
+                    arena,
+                    Expr::Sequence {
+                        children: new_children,
+                        span,
+                    },
+                )
             }
         }
         Expr::Alternative(children) => {
@@ -1422,7 +1458,7 @@ fn expr_get_head(arena: &[Expr], expr_id: ExprId) -> ExprId {
         | Expr::Fallback(..)
         | Expr::Optional(..)
         | Expr::Many1(..) => expr_id,
-        Expr::Sequence(children) => expr_get_head(arena, *children.first().unwrap()),
+        Expr::Sequence { children, .. } => expr_get_head(arena, *children.first().unwrap()),
         Expr::Subword { .. } => unreachable!(),
         Expr::DistributiveDescription { .. } => {
             unreachable!("wrong compilation phases order")
@@ -1439,7 +1475,7 @@ fn expr_get_tail(arena: &[Expr], expr_id: ExprId) -> ExprId {
         | Expr::Fallback(..)
         | Expr::Optional(..)
         | Expr::Many1(..) => expr_id,
-        Expr::Sequence(children) => expr_get_head(arena, *children.last().unwrap()),
+        Expr::Sequence { children, .. } => expr_get_head(arena, *children.last().unwrap()),
         Expr::Subword { .. } => unreachable!(),
         Expr::DistributiveDescription { .. } => {
             unreachable!("wrong compilation phases order")
@@ -1471,7 +1507,7 @@ fn do_check_subword_spaces(
     within_subword: bool,
 ) -> Result<()> {
     match &arena[expr_id] {
-        Expr::Sequence(children) if within_subword => {
+        Expr::Sequence { children, .. } if within_subword => {
             for child in children {
                 do_check_subword_spaces(
                     arena,
@@ -1504,7 +1540,7 @@ fn do_check_subword_spaces(
             }
             Ok(())
         }
-        Expr::Sequence(children) => {
+        Expr::Sequence { children, .. } => {
             for child in children {
                 do_check_subword_spaces(
                     arena,
@@ -1669,7 +1705,7 @@ fn specialize_nonterminals(
             phase: SubwordCompilationPhase::DFA(..),
             ..
         } => unreachable!(),
-        Expr::Sequence(children) => {
+        Expr::Sequence { children, span } => {
             let new_children: Vec<ExprId> = children
                 .iter()
                 .map(|child| {
@@ -1686,7 +1722,13 @@ fn specialize_nonterminals(
             if children == new_children {
                 expr_id
             } else {
-                alloc(expr_arena, Expr::Sequence(new_children))
+                alloc(
+                    expr_arena,
+                    Expr::Sequence {
+                        children: new_children,
+                        span,
+                    },
+                )
             }
         }
         Expr::Alternative(children) => {
@@ -1799,7 +1841,7 @@ fn resolve_nonterminals(
             }
             None => expr_id,
         },
-        Expr::Sequence(children) => {
+        Expr::Sequence { children, span } => {
             let new_children: Vec<ExprId> = children
                 .iter()
                 .map(|child| resolve_nonterminals(arena, *child, vars, unused_nonterminals))
@@ -1808,7 +1850,13 @@ fn resolve_nonterminals(
             if children == new_children {
                 expr_id
             } else {
-                alloc(arena, Expr::Sequence(new_children))
+                alloc(
+                    arena,
+                    Expr::Sequence {
+                        children: new_children,
+                        span,
+                    },
+                )
             }
         }
         Expr::Alternative(children) => {
@@ -1870,7 +1918,7 @@ fn do_get_nonterm_refs(arena: &[Expr], expr_id: ExprId, deps: &mut UstrMap<Human
         Expr::NontermRef { nonterm, span, .. } => {
             deps.insert(*nonterm, *span);
         }
-        Expr::Sequence(children) => {
+        Expr::Sequence { children, .. } => {
             for child in children {
                 do_get_nonterm_refs(arena, *child, deps);
             }
@@ -2262,7 +2310,16 @@ pub mod tests {
                     && l_zsh_compadd == r_zsh_compadd
                     && l_fallback == r_fallback
             }
-            (Expr::Sequence(l), Expr::Sequence(r))
+            (
+                Expr::Sequence {
+                    children: l,
+                    span: _,
+                },
+                Expr::Sequence {
+                    children: r,
+                    span: _,
+                },
+            )
             | (Expr::Alternative(l), Expr::Alternative(r))
             | (Expr::Fallback(l), Expr::Fallback(r)) => {
                 if l.len() != r.len() {
@@ -2318,7 +2375,13 @@ pub mod tests {
         assert!(s.is_empty());
         let e2 = alloc(&mut arena, Expr::term("--color="));
         let e3 = alloc(&mut arena, Expr::nontermref("WHEN"));
-        let e1 = alloc(&mut arena, Sequence(vec![e2, e3]));
+        let e1 = alloc(
+            &mut arena,
+            Sequence {
+                children: vec![e2, e3],
+                span: HumanSpan::default(),
+            },
+        );
         let expected = alloc(
             &mut arena,
             Expr::Subword {
@@ -2340,7 +2403,10 @@ pub mod tests {
         let terminal_id = alloc(&mut arena, terminal_expr);
         let nonterm_expr = Expr::nontermref("WHEN");
         let nonterm_id = alloc(&mut arena, nonterm_expr);
-        let sequence_expr = Sequence(vec![terminal_id, nonterm_id]);
+        let sequence_expr = Sequence {
+            children: vec![terminal_id, nonterm_id],
+            span: HumanSpan::default(),
+        };
         let sequence_id = alloc(&mut arena, sequence_expr);
         let subword_expr = Subword {
             phase: SubwordCompilationPhase::Expr(sequence_id),
@@ -2367,11 +2433,23 @@ pub mod tests {
         assert!(s.is_empty());
         let terminal1_id = alloc(&mut arena, Expr::term("--color="));
         let nonterm1_id = alloc(&mut arena, Expr::nontermref("WHEN"));
-        let sequence1_id = alloc(&mut arena, Sequence(vec![terminal1_id, nonterm1_id]));
+        let sequence1_id = alloc(
+            &mut arena,
+            Sequence {
+                children: vec![terminal1_id, nonterm1_id],
+                span: HumanSpan::default(),
+            },
+        );
         let subword_id = alloc(&mut arena, Expr::subword(sequence1_id));
         let terminal2_id = alloc(&mut arena, Expr::term("--color"));
         let nonterm2_id = alloc(&mut arena, Expr::nontermref("WHEN"));
-        let sequence2_id = alloc(&mut arena, Sequence(vec![terminal2_id, nonterm2_id]));
+        let sequence2_id = alloc(
+            &mut arena,
+            Sequence {
+                children: vec![terminal2_id, nonterm2_id],
+                span: Default::default(),
+            },
+        );
         let alternative_id = alloc(&mut arena, Alternative(vec![subword_id, sequence2_id]));
         let expected = alloc(
             &mut arena,
@@ -2506,7 +2584,13 @@ pub mod tests {
         assert!(s.is_empty());
         let nonterm1_id = alloc(&mut arena, Expr::nontermref("first-symbol"));
         let nonterm2_id = alloc(&mut arena, Expr::nontermref("second symbol"));
-        let expected = alloc(&mut arena, Sequence(vec![nonterm1_id, nonterm2_id]));
+        let expected = alloc(
+            &mut arena,
+            Sequence {
+                children: vec![nonterm1_id, nonterm2_id],
+                span: Default::default(),
+            },
+        );
         assert!(teq(actual, expected, &arena));
     }
 
@@ -2518,7 +2602,13 @@ pub mod tests {
         assert!(s.is_empty());
         let a_id = alloc(&mut arena, Expr::term("a"));
         let b_id = alloc(&mut arena, Expr::term("b"));
-        let seq_id = alloc(&mut arena, Sequence(vec![a_id, b_id]));
+        let seq_id = alloc(
+            &mut arena,
+            Sequence {
+                children: vec![a_id, b_id],
+                span: Default::default(),
+            },
+        );
         let c_id = alloc(&mut arena, Expr::term("c"));
         let expected = alloc(&mut arena, Alternative(vec![seq_id, c_id]));
         assert!(teq(actual, expected, &arena));
@@ -2534,7 +2624,13 @@ pub mod tests {
         let b_id = alloc(&mut arena, Expr::term("b"));
         let c_id = alloc(&mut arena, Expr::term("c"));
         let alt_id = alloc(&mut arena, Alternative(vec![b_id, c_id]));
-        let expected = alloc(&mut arena, Sequence(vec![a_id, alt_id]));
+        let expected = alloc(
+            &mut arena,
+            Sequence {
+                children: vec![a_id, alt_id],
+                span: Default::default(),
+            },
+        );
         assert!(teq(actual, expected, &arena));
     }
 
@@ -2629,13 +2725,19 @@ foo baz;
         let darcs_command_id = alloc(&mut g.arena, Expr::nontermref("DARCS_COMMAND"));
         let seq_command_id = alloc(
             &mut g.arena,
-            Sequence(vec![darcs_command_id, optional_subcommand_id]),
+            Sequence {
+                children: vec![darcs_command_id, optional_subcommand_id],
+                span: Default::default(),
+            },
         );
         let optional_command_id = alloc(&mut g.arena, Optional(seq_command_id));
 
         let expected_expr_id = alloc(
             &mut g.arena,
-            Sequence(vec![help_id, many1_id, optional_command_id]),
+            Sequence {
+                children: vec![help_id, many1_id, optional_command_id],
+                span: Default::default(),
+            },
         );
 
         assert!(teq(expr_id, expected_expr_id, &g.arena));
@@ -2712,7 +2814,10 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
         let many1_file_id = alloc(&mut g.arena, Many1(optional_file_id));
         let expected_expr1_id = alloc(
             &mut g.arena,
-            Sequence(vec![many1_option_id, patterns_nonterm_id, many1_file_id]),
+            Sequence {
+                children: vec![many1_option_id, patterns_nonterm_id, many1_file_id],
+                span: Default::default(),
+            },
         );
         assert!(teq(*expr_id, expected_expr1_id, &g.arena));
 
@@ -2730,7 +2835,13 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
         assert!(shell.is_none());
         let color_term_id = alloc(&mut g.arena, Expr::term("--color"));
         let when_nonterm_id = alloc(&mut g.arena, Expr::nontermref("WHEN"));
-        let expected_expr2_id = alloc(&mut g.arena, Sequence(vec![color_term_id, when_nonterm_id]));
+        let expected_expr2_id = alloc(
+            &mut g.arena,
+            Sequence {
+                children: vec![color_term_id, when_nonterm_id],
+                span: Default::default(),
+            },
+        );
         assert!(teq(*expr_id2, expected_expr2_id, &g.arena));
 
         // Statement 3: <WHEN> ::= ...
@@ -2884,7 +2995,13 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
         let foo_id = alloc(&mut arena, Expr::nontermref("WHEN"));
         let color_id = alloc(&mut arena, Expr::term("--color"));
         let option_foo_ref_id = alloc(&mut arena, Expr::nontermref("FOO"));
-        let option_id = alloc(&mut arena, Sequence(vec![color_id, option_foo_ref_id]));
+        let option_id = alloc(
+            &mut arena,
+            Sequence {
+                children: vec![color_id, option_foo_ref_id],
+                span: Default::default(),
+            },
+        );
         let nonterminal_definitions = UstrMap::from_iter([
             (
                 ustr("WHEN"),
@@ -2951,7 +3068,13 @@ cargo [+{{{ rustup toolchain list | cut -d' ' -f1 }}}]
                 span: HumanSpan::default(),
             },
         );
-        let subword_seq_id = alloc(&mut g.arena, Sequence(vec![plus_id, cmd_id]));
+        let subword_seq_id = alloc(
+            &mut g.arena,
+            Sequence {
+                children: vec![plus_id, cmd_id],
+                span: Default::default(),
+            },
+        );
         let subword_id = alloc(&mut g.arena, Expr::subword(subword_seq_id));
         let optional1_id = alloc(&mut g.arena, Optional(subword_id));
 
@@ -2963,7 +3086,10 @@ cargo [+{{{ rustup toolchain list | cut -d' ' -f1 }}}]
 
         let expected_expr_id = alloc(
             &mut g.arena,
-            Sequence(vec![optional1_id, optional2_id, optional3_id]),
+            Sequence {
+                children: vec![optional1_id, optional2_id, optional3_id],
+                span: Default::default(),
+            },
         );
 
         assert!(teq(*expr_id, expected_expr_id, &g.arena));
@@ -2991,10 +3117,22 @@ grep --color=<WHEN> --version;
 
         let color_eq_id = alloc(&mut g.arena, Expr::term("--color="));
         let when_nonterm_id = alloc(&mut g.arena, Expr::nontermref("WHEN"));
-        let subword_seq_id = alloc(&mut g.arena, Sequence(vec![color_eq_id, when_nonterm_id]));
+        let subword_seq_id = alloc(
+            &mut g.arena,
+            Sequence {
+                children: vec![color_eq_id, when_nonterm_id],
+                span: Default::default(),
+            },
+        );
         let subword_id = alloc(&mut g.arena, Expr::subword(subword_seq_id));
         let version_id = alloc(&mut g.arena, Expr::term("--version"));
-        let expected_expr1_id = alloc(&mut g.arena, Sequence(vec![subword_id, version_id]));
+        let expected_expr1_id = alloc(
+            &mut g.arena,
+            Sequence {
+                children: vec![subword_id, version_id],
+                span: Default::default(),
+            },
+        );
         assert!(teq(*expr_id, expected_expr1_id, &g.arena));
 
         // Statement 2: <WHEN> ::= ...
@@ -3046,7 +3184,13 @@ grep --color=(always | never | auto);
             &mut g.arena,
             Alternative(vec![always_id, never_id, auto_id]),
         );
-        let seq_id = alloc(&mut g.arena, Sequence(vec![color_eq_id, alt_id]));
+        let seq_id = alloc(
+            &mut g.arena,
+            Sequence {
+                children: vec![color_eq_id, alt_id],
+                span: Default::default(),
+            },
+        );
         let expected_expr_id = alloc(&mut g.arena, Expr::subword(seq_id));
 
         assert!(teq(*expr_id, expected_expr_id, &g.arena));
@@ -3076,7 +3220,13 @@ strace -e <EXPR>;
         assert_eq!(*head, ustr("strace"));
         let e_id = alloc(&mut g.arena, Expr::term("-e"));
         let expr_nonterm_id = alloc(&mut g.arena, Expr::nontermref("EXPR"));
-        let expected_expr1_id = alloc(&mut g.arena, Sequence(vec![e_id, expr_nonterm_id]));
+        let expected_expr1_id = alloc(
+            &mut g.arena,
+            Sequence {
+                children: vec![e_id, expr_nonterm_id],
+                span: Default::default(),
+            },
+        );
         assert!(teq(*expr_id, expected_expr1_id, &g.arena));
 
         // Statement 2
@@ -3093,19 +3243,34 @@ strace -e <EXPR>;
         assert!(shell.is_none());
         let qualifier_nonterm_id = alloc(&mut g.arena, Expr::nontermref("qualifier"));
         let eq_id = alloc(&mut g.arena, Expr::term("="));
-        let seq1_id = alloc(&mut g.arena, Sequence(vec![qualifier_nonterm_id, eq_id]));
+        let seq1_id = alloc(
+            &mut g.arena,
+            Sequence {
+                children: vec![qualifier_nonterm_id, eq_id],
+                span: Default::default(),
+            },
+        );
         let opt1_id = alloc(&mut g.arena, Optional(seq1_id));
         let bang_id = alloc(&mut g.arena, Expr::term("!"));
         let opt2_id = alloc(&mut g.arena, Optional(bang_id));
         let value_nonterm_id = alloc(&mut g.arena, Expr::nontermref("value"));
         let comma_id = alloc(&mut g.arena, Expr::term(","));
         let value_nonterm2_id = alloc(&mut g.arena, Expr::nontermref("value"));
-        let seq2_id = alloc(&mut g.arena, Sequence(vec![comma_id, value_nonterm2_id]));
+        let seq2_id = alloc(
+            &mut g.arena,
+            Sequence {
+                children: vec![comma_id, value_nonterm2_id],
+                span: Default::default(),
+            },
+        );
         let opt3_id = alloc(&mut g.arena, Optional(seq2_id));
         let many1_id = alloc(&mut g.arena, Many1(opt3_id));
         let subword_seq_id = alloc(
             &mut g.arena,
-            Sequence(vec![opt1_id, opt2_id, value_nonterm_id, many1_id]),
+            Sequence {
+                children: vec![opt1_id, opt2_id, value_nonterm_id, many1_id],
+                span: Default::default(),
+            },
         );
         let expected_expr2_id = alloc(&mut g.arena, Expr::subword(subword_seq_id));
         assert!(teq(*expr_id, expected_expr2_id, &g.arena));
@@ -3182,12 +3347,21 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
         let state_spec_id = alloc(&mut g.arena, Expr::nontermref("STATE-SPEC"));
         let comma_id = alloc(&mut g.arena, Expr::term(","));
         let state_spec2_id = alloc(&mut g.arena, Expr::nontermref("STATE-SPEC"));
-        let seq_id = alloc(&mut g.arena, Sequence(vec![comma_id, state_spec2_id]));
+        let seq_id = alloc(
+            &mut g.arena,
+            Sequence {
+                children: vec![comma_id, state_spec2_id],
+                span: Default::default(),
+            },
+        );
         let opt_id = alloc(&mut g.arena, Optional(seq_id));
         let many1_id = alloc(&mut g.arena, Many1(opt_id));
         let subword_seq_id = alloc(
             &mut g.arena,
-            Sequence(vec![s_id, protocol_id, colon_id, state_spec_id, many1_id]),
+            Sequence {
+                children: vec![s_id, protocol_id, colon_id, state_spec_id, many1_id],
+                span: Default::default(),
+            },
         );
         let expected_expr1_id = alloc(&mut g.arena, Expr::subword(subword_seq_id));
         assert!(teq(*expr_id, expected_expr1_id, &g.arena));
@@ -3224,7 +3398,13 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
         let caret_id = alloc(&mut g.arena, Expr::term("^"));
         let opt_caret_id = alloc(&mut g.arena, Optional(caret_id));
         let state_id = alloc(&mut g.arena, Expr::nontermref("STATE"));
-        let subword_seq2_id = alloc(&mut g.arena, Sequence(vec![opt_caret_id, state_id]));
+        let subword_seq2_id = alloc(
+            &mut g.arena,
+            Sequence {
+                children: vec![opt_caret_id, state_id],
+                span: Default::default(),
+            },
+        );
         let expected_expr3_id = alloc(&mut g.arena, Expr::subword(subword_seq2_id));
         assert!(teq(*expr_id, expected_expr3_id, &g.arena));
 
@@ -3268,7 +3448,13 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
 
         let plus_id = alloc(&mut g.arena, Expr::term("+"));
         let toolchain_id = alloc(&mut g.arena, Expr::nontermref("toolchain"));
-        let subword_seq_id = alloc(&mut g.arena, Sequence(vec![plus_id, toolchain_id]));
+        let subword_seq_id = alloc(
+            &mut g.arena,
+            Sequence {
+                children: vec![plus_id, toolchain_id],
+                span: Default::default(),
+            },
+        );
         let subword_id = alloc(&mut g.arena, Expr::subword(subword_seq_id));
         let opt1_id = alloc(&mut g.arena, Optional(subword_id));
 
@@ -3278,7 +3464,13 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
         let command_id = alloc(&mut g.arena, Expr::nontermref("COMMAND"));
         let opt3_id = alloc(&mut g.arena, Optional(command_id));
 
-        let expected_expr1_id = alloc(&mut g.arena, Sequence(vec![opt1_id, opt2_id, opt3_id]));
+        let expected_expr1_id = alloc(
+            &mut g.arena,
+            Sequence {
+                children: vec![opt1_id, opt2_id, opt3_id],
+                span: Default::default(),
+            },
+        );
         assert!(teq(*expr_id, expected_expr1_id, &g.arena));
 
         // Statement 2
@@ -3351,7 +3543,13 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
             Expr::term_descr("--context", "print NUM lines of output context"),
         );
         let nonterm_id = alloc(&mut arena, Expr::nontermref("NUM"));
-        let expected = alloc(&mut arena, Sequence(vec![term_id, nonterm_id]));
+        let expected = alloc(
+            &mut arena,
+            Sequence {
+                children: vec![term_id, nonterm_id],
+                span: Default::default(),
+            },
+        );
         assert!(teq(actual, expected, &arena));
     }
 
@@ -3513,7 +3711,13 @@ ls <FILE>;
             Expr::term_descr("--color=", "use markers to highlight the matching strings"),
         );
         let when_id1 = alloc(&mut arena, Expr::nontermref("WHEN"));
-        let subword_seq_id = alloc(&mut arena, Sequence(vec![color_eq_id, when_id1]));
+        let subword_seq_id = alloc(
+            &mut arena,
+            Sequence {
+                children: vec![color_eq_id, when_id1],
+                span: Default::default(),
+            },
+        );
         let subword_id = alloc(&mut arena, Expr::subword(subword_seq_id));
 
         let color_id = alloc(
@@ -3521,10 +3725,22 @@ ls <FILE>;
             Expr::term_descr("--color", "use markers to highlight the matching strings"),
         );
         let when_id2 = alloc(&mut arena, Expr::nontermref("WHEN"));
-        let seq2_id = alloc(&mut arena, Sequence(vec![color_id, when_id2]));
+        let seq2_id = alloc(
+            &mut arena,
+            Sequence {
+                children: vec![color_id, when_id2],
+                span: Default::default(),
+            },
+        );
 
         let alt_id = alloc(&mut arena, Alternative(vec![subword_id, seq2_id]));
-        let expected_expr_id = alloc(&mut arena, Sequence(vec![mygrep_id, alt_id]));
+        let expected_expr_id = alloc(
+            &mut arena,
+            Sequence {
+                children: vec![mygrep_id, alt_id],
+                span: Default::default(),
+            },
+        );
 
         assert!(teq(distributed_id, expected_expr_id, &arena));
     }
@@ -3539,14 +3755,26 @@ ls <FILE>;
 
         let mygrep_id = alloc(&mut arena, Expr::term("mygrep"));
         let help_id = alloc(&mut arena, Expr::term("--help"));
-        let seq1_id = alloc(&mut arena, Sequence(vec![mygrep_id, help_id]));
+        let seq1_id = alloc(
+            &mut arena,
+            Sequence {
+                children: vec![mygrep_id, help_id],
+                span: Default::default(),
+            },
+        );
 
         let color_eq_id = alloc(
             &mut arena,
             Expr::term_descr("--color=", "use markers to highlight the matching strings"),
         );
         let when_id1 = alloc(&mut arena, Expr::nontermref("WHEN"));
-        let subword_seq_id = alloc(&mut arena, Sequence(vec![color_eq_id, when_id1]));
+        let subword_seq_id = alloc(
+            &mut arena,
+            Sequence {
+                children: vec![color_eq_id, when_id1],
+                span: Default::default(),
+            },
+        );
         let subword_id = alloc(&mut arena, Expr::subword(subword_seq_id));
 
         let color_id = alloc(
@@ -3554,7 +3782,13 @@ ls <FILE>;
             Expr::term_descr("--color", "use markers to highlight the matching strings"),
         );
         let when_id2 = alloc(&mut arena, Expr::nontermref("WHEN"));
-        let seq2_id = alloc(&mut arena, Sequence(vec![color_id, when_id2]));
+        let seq2_id = alloc(
+            &mut arena,
+            Sequence {
+                children: vec![color_id, when_id2],
+                span: Default::default(),
+            },
+        );
 
         let alt2_id = alloc(&mut arena, Alternative(vec![subword_id, seq2_id]));
 
@@ -3579,7 +3813,13 @@ ls <FILE>;
             Expr::term_descr("--color=", "use markers to highlight the matching strings"),
         );
         let when_id1 = alloc(&mut arena, Expr::nontermref("WHEN"));
-        let subword_seq_id = alloc(&mut arena, Sequence(vec![color_eq_id, when_id1]));
+        let subword_seq_id = alloc(
+            &mut arena,
+            Sequence {
+                children: vec![color_eq_id, when_id1],
+                span: Default::default(),
+            },
+        );
         let subword_id = alloc(&mut arena, Expr::subword(subword_seq_id));
 
         let color_id = alloc(
@@ -3587,13 +3827,25 @@ ls <FILE>;
             Expr::term_descr("--color", "use markers to highlight the matching strings"),
         );
         let when_id2 = alloc(&mut arena, Expr::nontermref("WHEN"));
-        let seq2_id = alloc(&mut arena, Sequence(vec![color_id, when_id2]));
+        let seq2_id = alloc(
+            &mut arena,
+            Sequence {
+                children: vec![color_id, when_id2],
+                span: Default::default(),
+            },
+        );
 
         let alt2_id = alloc(&mut arena, Alternative(vec![subword_id, seq2_id]));
 
         let alt1_id = alloc(&mut arena, Alternative(vec![help_id, alt2_id]));
 
-        let expected_expr_id = alloc(&mut arena, Sequence(vec![mygrep_id, alt1_id]));
+        let expected_expr_id = alloc(
+            &mut arena,
+            Sequence {
+                children: vec![mygrep_id, alt1_id],
+                span: Default::default(),
+            },
+        );
 
         assert!(teq(distributed_id, expected_expr_id, &arena));
     }
@@ -3609,7 +3861,13 @@ ls <FILE>;
         let foo_id = alloc(&mut arena, Expr::term("foo"));
         let bar_id = alloc(&mut arena, Expr::term("bar"));
         let fallback_id = alloc(&mut arena, Fallback(vec![foo_id, bar_id]));
-        let expected_expr_id = alloc(&mut arena, Sequence(vec![cmd_id, fallback_id]));
+        let expected_expr_id = alloc(
+            &mut arena,
+            Sequence {
+                children: vec![cmd_id, fallback_id],
+                span: Default::default(),
+            },
+        );
 
         assert!(teq(e, expected_expr_id, &arena));
     }
@@ -3648,7 +3906,10 @@ ls <FILE>;
         );
         let seq_id = alloc(
             &mut arena,
-            Sequence(vec![git_tag1_id, dotdot_id, git_tag2_id]),
+            Sequence {
+                children: vec![git_tag1_id, dotdot_id, git_tag2_id],
+                span: Default::default(),
+            },
         );
         let expected_expr_id = alloc(&mut arena, Expr::subword(seq_id));
 
@@ -3664,7 +3925,13 @@ ls <FILE>;
 
         let cmd_id = alloc(&mut arena, Expr::term("cmd"));
         let foo_id = alloc(&mut arena, Expr::term("foo"));
-        let expected_expr_id = alloc(&mut arena, Sequence(vec![cmd_id, foo_id]));
+        let expected_expr_id = alloc(
+            &mut arena,
+            Sequence {
+                children: vec![cmd_id, foo_id],
+                span: Default::default(),
+            },
+        );
 
         assert!(teq(e, expected_expr_id, &arena));
     }
@@ -3689,7 +3956,13 @@ ls <FILE>;
                 span: HumanSpan::default(),
             },
         );
-        let expected_expr_id = alloc(&mut arena, Sequence(vec![cmd_id, echo_id]));
+        let expected_expr_id = alloc(
+            &mut arena,
+            Sequence {
+                children: vec![cmd_id, echo_id],
+                span: Default::default(),
+            },
+        );
 
         assert!(teq(e, expected_expr_id, &arena));
     }

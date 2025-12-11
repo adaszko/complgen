@@ -933,7 +933,7 @@ mod tests {
     use std::rc::Rc;
 
     use crate::grammar::{
-        Expr, ExprId, Grammar, Shell, SubwordCompilationPhase, ValidGrammar, alloc,
+        Expr, ExprId, Grammar, HumanSpan, Shell, SubwordCompilationPhase, ValidGrammar, alloc,
     };
     use crate::regex::Regex;
     use Expr::*;
@@ -1147,8 +1147,11 @@ mod tests {
                     max_width,
                 );
                 let a = Rc::clone(&arena);
-                prop::collection::vec(e, width).prop_map(move |v| {
-                    let e = Sequence(v);
+                prop::collection::vec(e, width).prop_map(move |children| {
+                    let e = Sequence {
+                        children,
+                        span: HumanSpan::default(),
+                    };
                     alloc(&mut *a.borrow_mut(), e)
                 })
             })
@@ -1251,8 +1254,8 @@ mod tests {
             Subword { .. } => unreachable!(),
             NontermRef { .. } => output.push(ustr("anything")),
             Command { .. } => output.push(ustr("anything")),
-            Sequence(v) => {
-                for subexpr in v {
+            Sequence { children, .. } => {
+                for subexpr in children {
                     do_arb_match(Rc::clone(&arena), *subexpr, rng, max_width, output);
                 }
             }
