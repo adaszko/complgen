@@ -919,6 +919,14 @@ impl DFA {
             .max()
     }
 
+    pub(crate) fn needs_nontails_code(&self) -> bool {
+        self.iter_inputs().any(|input| match input {
+            Inp::Subword { subdfa, .. } => self.subdfas.lookup(*subdfa).needs_nontails_code(),
+            Inp::Literal { .. } | Inp::Star => false,
+            Inp::Command { regex, .. } => regex.is_some(),
+        })
+    }
+
     pub fn to_dot<W: Write>(&self, output: &mut W, array_start: u32) -> Result<()> {
         writeln!(output, "digraph dfa {{")?;
         writeln!(output, "\trankdir=LR;")?;
