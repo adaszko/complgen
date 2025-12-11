@@ -12,15 +12,26 @@ use ustr::{Ustr, ustr};
 // Zsh uses *dynamic* scoping for local variables, even if declared with 'local', hence 'declare'
 // is used as slightly less misleading (!)
 
-// TODO DO not produce quotes if not necessary to save space
+pub const ARRAY_START: u32 = 1;
+
 fn make_string_constant(s: &str) -> String {
-    format!(
-        r#""{}""#,
+    if s.is_empty() {
+        return r#""""#.to_string();
+    }
+    if s.contains([' ', '\t', '\n', '|', '!', '^']) {
+        format!(
+            r#""{}""#,
+            s.replace('\\', "\\\\")
+                .replace('\"', "\\\"")
+                .replace('`', "\\`")
+                .replace('$', "\\$")
+        )
+    } else {
         s.replace('\\', "\\\\")
             .replace('\"', "\\\"")
             .replace('`', "\\`")
             .replace('$', "\\$")
-    )
+    }
 }
 
 fn write_lookup_tables<W: Write>(
