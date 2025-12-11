@@ -44,7 +44,13 @@ fn write_lookup_tables<W: Write>(
         .get_all_literals()
         .into_iter()
         .enumerate()
-        .map(|(id, (literal, description))| (id + 1, literal, description.unwrap_or(ustr(""))))
+        .map(|(id, (literal, description))| {
+            (
+                id + ARRAY_START as usize,
+                literal,
+                description.unwrap_or(ustr("")),
+            )
+        })
         .collect();
 
     let literal_id_from_input_description: HashMap<(Ustr, Ustr), usize> = all_literals
@@ -116,13 +122,13 @@ fn write_lookup_tables<W: Write>(
             let state_transitions: String = itertools::join(
                 literal_transitions
                     .into_iter()
-                    .map(|(input, to)| format!("[{}]={}", input, to + 1)),
+                    .map(|(input, to)| format!("[{}]={}", input, to + ARRAY_START)),
                 " ",
             );
             writeln!(
                 buffer,
                 r#"    {prefix}literal_transitions[{}]="({state_transitions})""#,
-                state + 1
+                state + ARRAY_START
             )?;
         }
     }
@@ -138,20 +144,22 @@ fn write_lookup_tables<W: Write>(
             let state_nontail_transitions: String = itertools::join(
                 nontail_command_transitions
                     .into_iter()
-                    .map(|(regex_id, to)| format!("[{}]={}", regex_id + 1, to + 1)),
+                    .map(|(regex_id, to)| {
+                        format!("[{}]={}", regex_id + ARRAY_START as usize, to + ARRAY_START)
+                    }),
                 " ",
             );
             writeln!(
                 buffer,
                 r#"    {prefix}nontail_transitions[{}]="({state_nontail_transitions})""#,
-                state + 1,
+                state + ARRAY_START,
             )?;
         }
     }
 
     let match_anything_transitions = itertools::join(
         dfa.iter_match_anything_transitions()
-            .map(|(from, to)| format!("[{}]={}", from + 1, to + 1)),
+            .map(|(from, to)| format!("[{}]={}", from + ARRAY_START, to + ARRAY_START)),
         " ",
     );
     writeln!(
@@ -383,19 +391,19 @@ fn write_subword_fn<W: Write>(
     let literal_id_from_input_description =
         write_lookup_tables(buffer, dfa, "subword_", id_from_regex)?;
 
-    let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(1);
+    let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
     let mut completion_literals: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    completion_literals.resize_with(max_fallback_level + 1, Default::default);
+    completion_literals.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
 
     let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    completion_commands.resize_with(max_fallback_level + 1, Default::default);
+    completion_commands.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
 
     let mut completion_nontails: Vec<HashMap<StateId, Vec<(usize, usize)>>> = Default::default();
-    completion_nontails.resize_with(max_fallback_level + 1, Default::default);
+    completion_nontails.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
 
     let mut completion_compadds: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    completion_compadds.resize_with(max_fallback_level + 1, Default::default);
+    completion_compadds.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
 
     for (from, input_id, _) in dfa.iter_transitions() {
         match dfa.get_input(input_id).clone() {
@@ -461,7 +469,7 @@ fn write_subword_fn<W: Write>(
                 let joined_literal_ids = itertools::join(literal_ids, " ");
                 format!(
                     r#"[{from_state_zsh}]="{joined_literal_ids}""#,
-                    from_state_zsh = from_state + 1
+                    from_state_zsh = from_state + ARRAY_START
                 )
             }),
             " ",
@@ -478,7 +486,7 @@ fn write_subword_fn<W: Write>(
                 let joined_command_ids = itertools::join(command_ids, " ");
                 format!(
                     r#"[{from_state_zsh}]="{joined_command_ids}""#,
-                    from_state_zsh = from_state + 1
+                    from_state_zsh = from_state + ARRAY_START
                 )
             }),
             " ",
@@ -495,7 +503,7 @@ fn write_subword_fn<W: Write>(
                 let joined_command_ids = itertools::join(command_ids, " ");
                 format!(
                     r#"[{from_state_zsh}]="{joined_command_ids}""#,
-                    from_state_zsh = from_state + 1
+                    from_state_zsh = from_state + ARRAY_START
                 )
             }),
             " ",
@@ -512,7 +520,7 @@ fn write_subword_fn<W: Write>(
                 let joined_ids = itertools::join(nontails.iter().map(|(cmd_id, _)| cmd_id), " ");
                 format!(
                     r#"[{from_state_zsh}]="{joined_ids}""#,
-                    from_state_zsh = from_state + 1
+                    from_state_zsh = from_state + ARRAY_START
                 )
             }),
             " ",
@@ -524,11 +532,15 @@ fn write_subword_fn<W: Write>(
 
         let regexes_initializer = itertools::join(
             transitions.iter().map(|(from_state, nontails)| {
-                let joined_ids =
-                    itertools::join(nontails.iter().map(|(_, regex_id)| regex_id + 1), " ");
+                let joined_ids = itertools::join(
+                    nontails
+                        .iter()
+                        .map(|(_, regex_id)| regex_id + ARRAY_START as usize),
+                    " ",
+                );
                 format!(
                     r#"[{from_state_zsh}]="{joined_ids}""#,
-                    from_state_zsh = from_state + 1
+                    from_state_zsh = from_state + ARRAY_START
                 )
             }),
             " ",
@@ -546,7 +558,7 @@ fn write_subword_fn<W: Write>(
     writeln!(
         buffer,
         r#"    declare subword_state={starting_state}"#,
-        starting_state = dfa.starting_state + 1
+        starting_state = dfa.starting_state + ARRAY_START
     )?;
 
     writeln!(buffer, r#"    _{command}_subword "$@""#)?;
@@ -642,7 +654,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 "#
     )?;
 
-    let id_from_dfa = dfa.get_subwords(1);
+    let id_from_dfa = dfa.get_subwords(ARRAY_START as usize);
     if !id_from_dfa.is_empty() {
         write_generic_subword_fn(buffer, command)?;
         for (dfaid, id) in &id_from_dfa {
@@ -663,15 +675,15 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             continue;
         }
         let state_transitions: String = itertools::join(
-            subword_transitions
-                .into_iter()
-                .map(|(dfa, to)| format!("[{}]={}", id_from_dfa.get(&dfa).unwrap(), to + 1)),
+            subword_transitions.into_iter().map(|(dfa, to)| {
+                format!("[{}]={}", id_from_dfa.get(&dfa).unwrap(), to + ARRAY_START)
+            }),
             " ",
         );
         writeln!(
             buffer,
             r#"    subword_transitions[{}]="({state_transitions})""#,
-            state + 1
+            state + ARRAY_START
         )?;
     }
 
@@ -702,7 +714,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             fi
         fi
 "#,
-        starting_state = dfa.starting_state + 1
+        starting_state = dfa.starting_state + ARRAY_START
     )?;
 
     if dfa.has_subword_transitions() {
@@ -767,22 +779,22 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
     // ///////////////////////////// Completion ///////////////////////////////////
 
-    let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(1);
+    let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
     let mut completion_literals: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    completion_literals.resize_with(max_fallback_level + 1, Default::default);
+    completion_literals.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
 
     let mut completion_subwords: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    completion_subwords.resize_with(max_fallback_level + 1, Default::default);
+    completion_subwords.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
 
     let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    completion_commands.resize_with(max_fallback_level + 1, Default::default);
+    completion_commands.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
 
     let mut completion_nontails: Vec<HashMap<StateId, Vec<(usize, usize)>>> = Default::default();
-    completion_nontails.resize_with(max_fallback_level + 1, Default::default);
+    completion_nontails.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
 
     let mut completion_compadds: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    completion_compadds.resize_with(max_fallback_level + 1, Default::default);
+    completion_compadds.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
 
     for (from, input_id, _) in dfa.iter_transitions() {
         match dfa.get_input(input_id).clone() {
@@ -858,7 +870,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                 let joined_literal_ids = itertools::join(literal_ids, " ");
                 format!(
                     r#"[{from_state_zsh}]="{joined_literal_ids}""#,
-                    from_state_zsh = from_state + 1
+                    from_state_zsh = from_state + ARRAY_START
                 )
             }),
             " ",
@@ -875,7 +887,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                 let joined_subword_ids = itertools::join(subword_ids, " ");
                 format!(
                     r#"[{from_state_zsh}]="{joined_subword_ids}""#,
-                    from_state_zsh = from_state + 1
+                    from_state_zsh = from_state + ARRAY_START
                 )
             }),
             " ",
@@ -892,7 +904,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                 let joined_command_ids = itertools::join(command_ids, " ");
                 format!(
                     r#"[{from_state_zsh}]="{joined_command_ids}""#,
-                    from_state_zsh = from_state + 1
+                    from_state_zsh = from_state + ARRAY_START
                 )
             }),
             " ",
@@ -909,7 +921,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                 let joined_ids = itertools::join(cmd_regex.iter().map(|(cmd_id, _)| cmd_id), " ");
                 format!(
                     r#"[{from_state_zsh}]="{joined_ids}""#,
-                    from_state_zsh = from_state + 1
+                    from_state_zsh = from_state + ARRAY_START
                 )
             }),
             " ",
@@ -921,11 +933,15 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
         let regexes_initializer = itertools::join(
             transitions.iter().map(|(from_state, cmd_regex)| {
-                let joined_ids =
-                    itertools::join(cmd_regex.iter().map(|(_, regex_id)| regex_id + 1), " ");
+                let joined_ids = itertools::join(
+                    cmd_regex
+                        .iter()
+                        .map(|(_, regex_id)| regex_id + ARRAY_START as usize),
+                    " ",
+                );
                 format!(
                     r#"[{from_state_zsh}]="{joined_ids}""#,
-                    from_state_zsh = from_state + 1
+                    from_state_zsh = from_state + ARRAY_START
                 )
             }),
             " ",
@@ -942,7 +958,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                 let joined_command_ids = itertools::join(command_ids, " ");
                 format!(
                     r#"[{from_state_zsh}]="{joined_command_ids}""#,
-                    from_state_zsh = from_state + 1
+                    from_state_zsh = from_state + ARRAY_START
                 )
             }),
             " ",
