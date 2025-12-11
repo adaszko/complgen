@@ -12,6 +12,8 @@ use ustr::{Ustr, ustr};
 // Associative arrays are local by default.
 // Bash uses *dynamic* scoping for local variables (!)
 
+const ARRAY_START: u32 = 0;
+
 fn make_string_constant(s: &str) -> String {
     if s.is_empty() {
         return r#""""#.to_string();
@@ -309,7 +311,7 @@ fn write_subword_fn<W: Write>(
 
     let literal_id_from_input_description = write_lookup_tables(buffer, dfa, id_from_regex)?;
 
-    let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(0);
+    let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
     let mut completion_literals: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
     completion_literals.resize_with(max_fallback_level + 1, Default::default);
@@ -519,7 +521,7 @@ fi
         )?;
     }
 
-    let id_from_dfa = dfa.get_subwords(0);
+    let id_from_dfa = dfa.get_subwords(ARRAY_START as usize);
     if !id_from_dfa.is_empty() {
         write_generic_subword_fn(buffer, command)?;
     }
@@ -637,7 +639,7 @@ fi
 
     // ///////////////////////////// Completion ///////////////////////////////////
 
-    let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(0);
+    let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
     let mut completion_literals: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
     completion_literals.resize_with(max_fallback_level + 1, Default::default);
