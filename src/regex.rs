@@ -540,7 +540,9 @@ fn do_from_expr(
             }
             left_regex_id
         }
-        Expr::Alternative(subexprs) => {
+        Expr::Alternative {
+            children: subexprs, ..
+        } => {
             let mut subregexes: Vec<RegexNodeId> = Default::default();
             for e in subexprs {
                 let subregex = do_from_expr(*e, expr_arena, shell, arena, input_from_position);

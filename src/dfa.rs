@@ -1175,8 +1175,11 @@ mod tests {
                     max_width,
                 );
                 let a = Rc::clone(&arena);
-                prop::collection::vec(e, width).prop_map(move |v| {
-                    let e = Alternative(v);
+                prop::collection::vec(e, width).prop_map(move |children| {
+                    let e = Alternative {
+                        children,
+                        span: HumanSpan::default(),
+                    };
                     alloc(&mut *a.borrow_mut(), e)
                 })
             })
@@ -1259,9 +1262,15 @@ mod tests {
                     do_arb_match(Rc::clone(&arena), *subexpr, rng, max_width, output);
                 }
             }
-            Alternative(v) => {
-                let chosen_branch = rng.next_u64().rem(v.len() as u64) as usize;
-                do_arb_match(Rc::clone(&arena), v[chosen_branch], rng, max_width, output);
+            Alternative { children, .. } => {
+                let chosen_branch = rng.next_u64().rem(children.len() as u64) as usize;
+                do_arb_match(
+                    Rc::clone(&arena),
+                    children[chosen_branch],
+                    rng,
+                    max_width,
+                    output,
+                );
             }
             Optional(subexpr) => {
                 if rng.next_u64() % 2 == 0 {
