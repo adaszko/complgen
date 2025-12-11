@@ -716,7 +716,9 @@ fn write_lookup_tables<W: Write>(
     writeln!(buffer, r#"    set regexes {regexes}"#)?;
 
     writeln!(buffer, r#"    set literal_transitions_inputs"#)?;
-    writeln!(buffer, r#"    set nontail_transitions"#)?;
+
+    writeln!(buffer, r#"    set nontail_regexes"#)?;
+    writeln!(buffer, r#"    set nontail_tos"#)?;
     for state in dfa.get_all_states() {
         let literal_transitions =
             dfa.get_literal_transitions_from(StateId::try_from(state).unwrap());
@@ -765,20 +767,25 @@ fn write_lookup_tables<W: Write>(
 
         let nontail_transitions = dfa.get_nontail_transitions_from(state as StateId);
         if !nontail_transitions.is_empty() {
-            let nontail_command_transitions: Vec<(usize, StateId)> = nontail_transitions
-                .into_iter()
-                .map(|(regex, to)| (id_from_regex.get_index_of(&regex).unwrap(), to))
-                .collect();
-            let state_nontail_transitions: String = itertools::join(
-                nontail_command_transitions
-                    .into_iter()
-                    .map(|(regex_id, to)| format!("[{regex_id}]={}", to + ARRAY_START)),
-                " ",
-            );
+            let state_nontail_regexes: String = nontail_transitions
+                .iter()
+                .map(|(regex, _)| id_from_regex.get_index_of(regex).unwrap() + ARRAY_START as usize)
+                .join(" ");
+            let state_nontail_tos: String = nontail_transitions
+                .iter()
+                .map(|(_, to)| format!("{}", to + ARRAY_START))
+                .join(" ");
             writeln!(
                 buffer,
-                r#"    set nontail_transitions[{}] {state_nontail_transitions}"#,
+                r#"    set nontail_regexes[{}] {}"#,
                 state + ARRAY_START,
+                make_string_constant(&state_nontail_regexes),
+            )?;
+            writeln!(
+                buffer,
+                r#"    set nontail_tos[{}] {}"#,
+                state + ARRAY_START,
+                make_string_constant(&state_nontail_tos),
             )?;
         }
     }
@@ -869,6 +876,7 @@ pub fn write_completion_script<W: Write>(
     dfa: &DFA,
 ) -> anyhow::Result<()> {
     let needs_subwords_code = dfa.needs_subwords_code();
+    let needs_nontails_code = dfa.needs_nontails_code();
 
     let (id_from_cmd, id_from_regex) = make_id_from_command_map(dfa);
     for cmd in &id_from_cmd {
@@ -992,11 +1000,38 @@ end
                 if _{command}_subword_$subword_id matches "$word"
                     set subword_matched 1
                     set state $tos[$subword_id]
-                    set word_index (math $word_index + ARRAY_START)
+                    set word_index (math $word_index + 1)
                     break
                 end
             end
             if test $subword_matched -ne 0
+                continue
+            end
+        end
+"#
+        )?;
+    }
+
+    if needs_nontails_code {
+        write!(
+            buffer,
+            r#"
+        if set --query nontail_regexes[$state] && test -n $nontail_regexes[$state]
+            set regex_ids (string split ' ' $nontail_regexes[$state])
+            set tos (string split ' ' $nontail_tos[$state])
+
+            set nontail_matched 0
+            for regex_id in $regex_ids
+                set regex $regexes[$regex_id]
+                string match --regex --quiet "^(?<match>$regex).*" -- $word
+                if test -n "$match"
+                    set state $tos[$regex_id]
+                    set word_index (math $word_index + 1)
+                    set nontail_matched 1
+                    break
+                end
+            end
+            if test $nontail_matched -ne 0
                 continue
             end
         end
