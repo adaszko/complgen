@@ -1102,8 +1102,11 @@ mod tests {
             remaining_depth - 1,
             max_width,
         )
-        .prop_map(move |e| {
-            let e = Optional(e);
+        .prop_map(move |child| {
+            let e = Optional {
+                child,
+                span: Default::default(),
+            };
             alloc(&mut *arena.borrow_mut(), e)
         })
         .boxed()
@@ -1272,7 +1275,7 @@ mod tests {
                     output,
                 );
             }
-            Optional(subexpr) => {
+            Optional { child: subexpr, .. } => {
                 if rng.next_u64() % 2 == 0 {
                     do_arb_match(Rc::clone(&arena), *subexpr, rng, max_width, output);
                 }

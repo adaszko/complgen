@@ -129,7 +129,10 @@ pub enum Expr {
     },
 
     // `[EXPR]`
-    Optional(ExprId),
+    Optional {
+        child: ExprId,
+        span: HumanSpan,
+    },
 
     // `EXPR...`
     Many1(ExprId),
@@ -226,7 +229,7 @@ impl std::fmt::Debug for Expr {
             Self::Alternative { children, span } => {
                 f.write_fmt(format_args!(r#"Alternative(vec!{:?}, {span:?})"#, children))
             }
-            Self::Optional(child) => f.write_fmt(format_args!(r#"Optional({:?})"#, child)),
+            Self::Optional { child, span } => f.write_fmt(format_args!(r#"Optional({:?}, {span:?})"#, child)),
             Self::Many1(child) => f.write_fmt(format_args!(r#"Many1({:?})"#, child)),
             Self::DistributiveDescription { child, descr } => f.write_fmt(format_args!(
                 r#"DistributiveDescription({child:?}, {descr:?})"#
@@ -289,7 +292,7 @@ fn do_expr_to_dot<W: Write>(
                 do_expr_to_dot(output, child, arena)?;
             }
         }
-        Expr::Optional(child) => {
+        Expr::Optional { child, .. } => {
             writeln!(output, r#"  _{expr_id}[label="Optional"];"#)?;
             writeln!(output, r#"  _{expr_id} -> _{child};"#)?;
             do_expr_to_dot(output, child, arena)?;
@@ -599,13 +602,19 @@ fn command_regex_expr<'s>(arena: &mut Vec<Expr>, mut input: Span<'s>) -> IResult
 }
 
 fn optional_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
-    let (input, _) = char('[')(input)?;
-    let (input, _) = multiblanks0(input)?;
-    let (input, expr) = expr(arena, input)?;
-    let (input, _) = multiblanks0(input)?;
-    let (input, _) = char(']')(input)?;
-    let id = alloc(arena, Expr::Optional(expr));
-    Ok((input, id))
+    let (after, _) = char('[')(input)?;
+    let (after, _) = multiblanks0(after)?;
+    let (after, expr) = expr(arena, after)?;
+    let (after, _) = multiblanks0(after)?;
+    let (after, _) = char(']')(after)?;
+    let id = alloc(
+        arena,
+        Expr::Optional {
+            child: expr,
+            span: HumanSpan::from_range(input, after),
+        },
+    );
+    Ok((after, id))
 }
 
 fn parenthesized_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
@@ -957,12 +966,18 @@ fn flatten_expr(arena: &mut Vec<Expr>, expr_id: ExprId) -> ExprId {
                 )
             }
         }
-        Expr::Optional(child) => {
+        Expr::Optional { child, span } => {
             let new_child = flatten_expr(arena, child);
             if child == new_child {
                 expr_id
             } else {
-                alloc(arena, Expr::Optional(new_child))
+                alloc(
+                    arena,
+                    Expr::Optional {
+                        child: new_child,
+                        span,
+                    },
+                )
             }
         }
         Expr::Many1(child) => {
@@ -1068,12 +1083,18 @@ fn compile_subword_exprs(
                 )
             }
         }
-        Expr::Optional(child) => {
+        Expr::Optional { child, span } => {
             let new_child = compile_subword_exprs(arena, child, shell, subdfas)?;
             if child == new_child {
                 expr_id
             } else {
-                alloc(arena, Expr::Optional(new_child))
+                alloc(
+                    arena,
+                    Expr::Optional {
+                        child: new_child,
+                        span,
+                    },
+                )
             }
         }
         Expr::Many1(child) => {
@@ -1164,12 +1185,18 @@ fn do_distribute_descriptions(
                 )
             }
         }
-        Expr::Optional(child) => {
+        Expr::Optional { child, span } => {
             let new_child = do_distribute_descriptions(arena, child, description);
             if child == new_child {
                 expr_id
             } else {
-                alloc(arena, Expr::Optional(new_child))
+                alloc(
+                    arena,
+                    Expr::Optional {
+                        child: new_child,
+                        span,
+                    },
+                )
             }
         }
         Expr::Many1(child) => {
@@ -1288,12 +1315,18 @@ fn do_propagate_fallback_levels(
                 )
             }
         }
-        Expr::Optional(child) => {
+        Expr::Optional { child, span } => {
             let new_child = do_propagate_fallback_levels(arena, child, fallback_level);
             if child == new_child {
                 expr_id
             } else {
-                alloc(arena, Expr::Optional(new_child))
+                alloc(
+                    arena,
+                    Expr::Optional {
+                        child: new_child,
+                        span,
+                    },
+                )
             }
         }
         Expr::Many1(child) => {
@@ -1495,7 +1528,7 @@ fn expr_get_head(arena: &[Expr], expr_id: ExprId) -> ExprId {
         | Expr::Command { .. }
         | Expr::Alternative { .. }
         | Expr::Fallback(..)
-        | Expr::Optional(..)
+        | Expr::Optional { .. }
         | Expr::Many1(..) => expr_id,
         Expr::Sequence { children, .. } => expr_get_head(arena, *children.first().unwrap()),
         Expr::Subword { .. } => unreachable!(),
@@ -1512,7 +1545,7 @@ fn expr_get_tail(arena: &[Expr], expr_id: ExprId) -> ExprId {
         | Expr::Command { .. }
         | Expr::Alternative { .. }
         | Expr::Fallback(..)
-        | Expr::Optional(..)
+        | Expr::Optional { .. }
         | Expr::Many1(..) => expr_id,
         Expr::Sequence { children, .. } => expr_get_head(arena, *children.last().unwrap()),
         Expr::Subword { .. } => unreachable!(),
@@ -1642,7 +1675,7 @@ fn do_check_subword_spaces(
             }
             Ok(())
         }
-        Expr::Optional(child) => {
+        Expr::Optional { child, .. } => {
             do_check_subword_spaces(arena, *child, nonterms, nonterm_expn_trace, within_subword)
         }
         Expr::Many1(child) => {
@@ -1796,7 +1829,7 @@ fn specialize_nonterminals(
                 )
             }
         }
-        Expr::Optional(child) => {
+        Expr::Optional { child, span } => {
             let new_child = specialize_nonterminals(
                 child,
                 expr_arena,
@@ -1807,7 +1840,13 @@ fn specialize_nonterminals(
             if child == new_child {
                 expr_id
             } else {
-                alloc(expr_arena, Expr::Optional(new_child))
+                alloc(
+                    expr_arena,
+                    Expr::Optional {
+                        child: new_child,
+                        span,
+                    },
+                )
             }
         }
         Expr::Many1(child) => {
@@ -1922,12 +1961,18 @@ fn resolve_nonterminals(
                 )
             }
         }
-        Expr::Optional(child) => {
+        Expr::Optional { child, span } => {
             let new_child = resolve_nonterminals(arena, child, vars, unused_nonterminals);
             if child == new_child {
                 expr_id
             } else {
-                alloc(arena, Expr::Optional(new_child))
+                alloc(
+                    arena,
+                    Expr::Optional {
+                        child: new_child,
+                        span,
+                    },
+                )
             }
         }
         Expr::Many1(child) => {
@@ -1979,7 +2024,7 @@ fn do_get_nonterm_refs(arena: &[Expr], expr_id: ExprId, deps: &mut UstrMap<Human
                 do_get_nonterm_refs(arena, *child, deps);
             }
         }
-        Expr::Optional(child) => {
+        Expr::Optional { child, .. } => {
             do_get_nonterm_refs(arena, *child, deps);
         }
         Expr::Many1(child) => {
@@ -2387,7 +2432,9 @@ pub mod tests {
                 }
                 l.iter().zip(r.iter()).all(|(le, re)| teq(*le, *re, arena))
             }
-            (Expr::Optional(l), Expr::Optional(r)) => teq(*l, *r, arena),
+            (Expr::Optional { child: l, span: _ }, Expr::Optional { child: r, span: _ }) => {
+                teq(*l, *r, arena)
+            }
             (Expr::Many1(l), Expr::Many1(r)) => teq(*l, *r, arena),
             (
                 Expr::DistributiveDescription {
@@ -2627,7 +2674,13 @@ pub mod tests {
         let (s, actual) = expr(&mut arena, Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
         let nonterm_id = alloc(&mut arena, Expr::nontermref("foo"));
-        let expected = alloc(&mut arena, Optional(nonterm_id));
+        let expected = alloc(
+            &mut arena,
+            Optional {
+                child: nonterm_id,
+                span: Default::default(),
+            },
+        );
         assert!(teq(actual, expected, &arena));
     }
 
@@ -2817,7 +2870,13 @@ foo baz;
         let many1_id = alloc(&mut g.arena, Many1(top_alt_id));
 
         let darcs_subcommand_id = alloc(&mut g.arena, Expr::term("DARCS_SUBCOMMAND"));
-        let optional_subcommand_id = alloc(&mut g.arena, Optional(darcs_subcommand_id));
+        let optional_subcommand_id = alloc(
+            &mut g.arena,
+            Optional {
+                child: darcs_subcommand_id,
+                span: Default::default(),
+            },
+        );
         let darcs_command_id = alloc(&mut g.arena, Expr::nontermref("DARCS_COMMAND"));
         let seq_command_id = alloc(
             &mut g.arena,
@@ -2826,7 +2885,13 @@ foo baz;
                 span: Default::default(),
             },
         );
-        let optional_command_id = alloc(&mut g.arena, Optional(seq_command_id));
+        let optional_command_id = alloc(
+            &mut g.arena,
+            Optional {
+                child: seq_command_id,
+                span: Default::default(),
+            },
+        );
 
         let expected_expr_id = alloc(
             &mut g.arena,
@@ -2902,11 +2967,23 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
         assert_eq!(*head, ustr("grep"));
 
         let option_nonterm_id = alloc(&mut g.arena, Expr::nontermref("OPTION"));
-        let optional_option_id = alloc(&mut g.arena, Optional(option_nonterm_id));
+        let optional_option_id = alloc(
+            &mut g.arena,
+            Optional {
+                child: option_nonterm_id,
+                span: Default::default(),
+            },
+        );
         let many1_option_id = alloc(&mut g.arena, Many1(optional_option_id));
         let patterns_nonterm_id = alloc(&mut g.arena, Expr::nontermref("PATTERNS"));
         let file_nonterm_id = alloc(&mut g.arena, Expr::nontermref("FILE"));
-        let optional_file_id = alloc(&mut g.arena, Optional(file_nonterm_id));
+        let optional_file_id = alloc(
+            &mut g.arena,
+            Optional {
+                child: file_nonterm_id,
+                span: Default::default(),
+            },
+        );
         let many1_file_id = alloc(&mut g.arena, Many1(optional_file_id));
         let expected_expr1_id = alloc(
             &mut g.arena,
@@ -3184,13 +3261,31 @@ cargo [+{{{ rustup toolchain list | cut -d' ' -f1 }}}]
             },
         );
         let subword_id = alloc(&mut g.arena, Expr::subword(subword_seq_id));
-        let optional1_id = alloc(&mut g.arena, Optional(subword_id));
+        let optional1_id = alloc(
+            &mut g.arena,
+            Optional {
+                child: subword_id,
+                span: Default::default(),
+            },
+        );
 
         let options_id = alloc(&mut g.arena, Expr::nontermref("OPTIONS"));
-        let optional2_id = alloc(&mut g.arena, Optional(options_id));
+        let optional2_id = alloc(
+            &mut g.arena,
+            Optional {
+                child: options_id,
+                span: Default::default(),
+            },
+        );
 
         let command_id = alloc(&mut g.arena, Expr::nontermref("COMMAND"));
-        let optional3_id = alloc(&mut g.arena, Optional(command_id));
+        let optional3_id = alloc(
+            &mut g.arena,
+            Optional {
+                child: command_id,
+                span: Default::default(),
+            },
+        );
 
         let expected_expr_id = alloc(
             &mut g.arena,
@@ -3364,9 +3459,21 @@ strace -e <EXPR>;
                 span: Default::default(),
             },
         );
-        let opt1_id = alloc(&mut g.arena, Optional(seq1_id));
+        let opt1_id = alloc(
+            &mut g.arena,
+            Optional {
+                child: seq1_id,
+                span: Default::default(),
+            },
+        );
         let bang_id = alloc(&mut g.arena, Expr::term("!"));
-        let opt2_id = alloc(&mut g.arena, Optional(bang_id));
+        let opt2_id = alloc(
+            &mut g.arena,
+            Optional {
+                child: bang_id,
+                span: Default::default(),
+            },
+        );
         let value_nonterm_id = alloc(&mut g.arena, Expr::nontermref("value"));
         let comma_id = alloc(&mut g.arena, Expr::term(","));
         let value_nonterm2_id = alloc(&mut g.arena, Expr::nontermref("value"));
@@ -3377,7 +3484,13 @@ strace -e <EXPR>;
                 span: Default::default(),
             },
         );
-        let opt3_id = alloc(&mut g.arena, Optional(seq2_id));
+        let opt3_id = alloc(
+            &mut g.arena,
+            Optional {
+                child: seq2_id,
+                span: Default::default(),
+            },
+        );
         let many1_id = alloc(&mut g.arena, Many1(opt3_id));
         let subword_seq_id = alloc(
             &mut g.arena,
@@ -3474,7 +3587,13 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
                 span: Default::default(),
             },
         );
-        let opt_id = alloc(&mut g.arena, Optional(seq_id));
+        let opt_id = alloc(
+            &mut g.arena,
+            Optional {
+                child: seq_id,
+                span: Default::default(),
+            },
+        );
         let many1_id = alloc(&mut g.arena, Many1(opt_id));
         let subword_seq_id = alloc(
             &mut g.arena,
@@ -3522,7 +3641,13 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
         assert_eq!(*symbol, ustr("STATE-SPEC"));
         assert!(shell.is_none());
         let caret_id = alloc(&mut g.arena, Expr::term("^"));
-        let opt_caret_id = alloc(&mut g.arena, Optional(caret_id));
+        let opt_caret_id = alloc(
+            &mut g.arena,
+            Optional {
+                child: caret_id,
+                span: Default::default(),
+            },
+        );
         let state_id = alloc(&mut g.arena, Expr::nontermref("STATE"));
         let subword_seq2_id = alloc(
             &mut g.arena,
@@ -3588,13 +3713,31 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
             },
         );
         let subword_id = alloc(&mut g.arena, Expr::subword(subword_seq_id));
-        let opt1_id = alloc(&mut g.arena, Optional(subword_id));
+        let opt1_id = alloc(
+            &mut g.arena,
+            Optional {
+                child: subword_id,
+                span: Default::default(),
+            },
+        );
 
         let options_id = alloc(&mut g.arena, Expr::nontermref("OPTIONS"));
-        let opt2_id = alloc(&mut g.arena, Optional(options_id));
+        let opt2_id = alloc(
+            &mut g.arena,
+            Optional {
+                child: options_id,
+                span: Default::default(),
+            },
+        );
 
         let command_id = alloc(&mut g.arena, Expr::nontermref("COMMAND"));
-        let opt3_id = alloc(&mut g.arena, Optional(command_id));
+        let opt3_id = alloc(
+            &mut g.arena,
+            Optional {
+                child: command_id,
+                span: Default::default(),
+            },
+        );
 
         let expected_expr1_id = alloc(
             &mut g.arena,
@@ -3740,7 +3883,13 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
         };
         assert_eq!(*head, ustr("foo.sh"));
         let h_id = alloc(&mut g.arena, Expr::term("-h"));
-        let expected_expr_id = alloc(&mut g.arena, Optional(h_id));
+        let expected_expr_id = alloc(
+            &mut g.arena,
+            Optional {
+                child: h_id,
+                span: Default::default(),
+            },
+        );
         assert!(teq(*expr_id, expected_expr_id, &g.arena));
     }
 

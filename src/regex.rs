@@ -551,7 +551,7 @@ fn do_from_expr(
             let result = RegexNode::Or(subregexes.into_boxed_slice(), false);
             alloc(arena, result)
         }
-        Expr::Optional(subexpr) => {
+        Expr::Optional { child: subexpr, .. } => {
             let subregex = do_from_expr(*subexpr, expr_arena, shell, arena, input_from_position);
             let epsid = alloc(arena, RegexNode::Epsilon);
             let result = RegexNode::Or(Box::new([subregex, epsid]), false);
