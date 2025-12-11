@@ -449,6 +449,7 @@ fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<(
         printf '%s\n' $candidates | {MATCH_FN_NAME} && break
     end
 end
+
 "#
     )?;
 
@@ -630,7 +631,12 @@ fn write_subword_fn<W: Write>(
     )?;
     writeln!(buffer, r#"    _{command}_subword "$mode" "$word""#)?;
 
-    writeln!(buffer, r#"end"#)?;
+    writeln!(
+        buffer,
+        r#"end
+
+"#
+    )?;
     Ok(())
 }
 
@@ -865,6 +871,8 @@ pub fn write_completion_script<W: Write>(
     command: &str,
     dfa: &DFA,
 ) -> anyhow::Result<()> {
+    let needs_subwords_code = dfa.needs_subwords_code();
+
     let (id_from_cmd, id_from_regex) = make_id_from_command_map(dfa);
     for cmd in &id_from_cmd {
         let id = id_from_cmd.get_index_of(cmd).unwrap();
@@ -880,15 +888,12 @@ end
     }
 
     let id_from_dfa = dfa.get_subwords(ARRAY_START as usize);
-    if !id_from_dfa.is_empty() {
+    if needs_subwords_code {
         write_generic_subword_fn(buffer, command)?;
-        writeln!(buffer)?;
-    }
-    for (dfaid, id) in &id_from_dfa {
-        let dfa = dfa.subdfas.lookup(*dfaid);
-        write_subword_fn(buffer, command, *id, dfa, &id_from_cmd, &id_from_regex)?;
-        writeln!(buffer)?;
-        writeln!(buffer)?;
+        for (dfaid, id) in &id_from_dfa {
+            let dfa = dfa.subdfas.lookup(*dfaid);
+            write_subword_fn(buffer, command, *id, dfa, &id_from_cmd, &id_from_regex)?;
+        }
     }
 
     write_match_fn(buffer)?;
@@ -919,36 +924,38 @@ end
 
     let literal_id_from_input_description = write_lookup_tables(buffer, dfa, &id_from_regex)?;
 
-    for state in dfa.get_all_states() {
-        let subword_transitions = dfa.get_subword_transitions_from(state);
-        if subword_transitions.is_empty() {
-            continue;
-        }
+    if needs_subwords_code {
+        for state in dfa.get_all_states() {
+            let subword_transitions = dfa.get_subword_transitions_from(state);
+            if subword_transitions.is_empty() {
+                continue;
+            }
 
-        let subword_ids: String = itertools::join(
-            subword_transitions
-                .iter()
-                .map(|(dfa, _)| format!("{}", id_from_dfa.get(dfa).unwrap())),
-            " ",
-        );
-        let tos: String = itertools::join(
-            subword_transitions
-                .iter()
-                .map(|(_, to)| format!("{}", to + ARRAY_START)),
-            " ",
-        );
-        writeln!(
-            buffer,
-            r#"    set subword_transitions_ids[{}] {}"#,
-            state + ARRAY_START,
-            make_string_constant(&subword_ids),
-        )?;
-        writeln!(
-            buffer,
-            r#"    set subword_transitions_tos[{}] {}"#,
-            state + ARRAY_START,
-            make_string_constant(&tos),
-        )?;
+            let subword_ids: String = itertools::join(
+                subword_transitions
+                    .iter()
+                    .map(|(dfa, _)| format!("{}", id_from_dfa.get(dfa).unwrap())),
+                " ",
+            );
+            let tos: String = itertools::join(
+                subword_transitions
+                    .iter()
+                    .map(|(_, to)| format!("{}", to + ARRAY_START)),
+                " ",
+            );
+            writeln!(
+                buffer,
+                r#"    set subword_transitions_ids[{}] {}"#,
+                state + ARRAY_START,
+                make_string_constant(&subword_ids),
+            )?;
+            writeln!(
+                buffer,
+                r#"    set subword_transitions_tos[{}] {}"#,
+                state + ARRAY_START,
+                make_string_constant(&tos),
+            )?;
+        }
     }
 
     write!(
@@ -975,7 +982,7 @@ end
         starting_state = dfa.starting_state + ARRAY_START
     )?;
 
-    if dfa.has_subword_transitions() {
+    if needs_subwords_code {
         write!(
             buffer,
             r#"
@@ -1122,7 +1129,7 @@ end
         )?;
     }
 
-    if !completion_subwords.first().unwrap().is_empty() {
+    if needs_subwords_code {
         for (level, transitions) in completion_subwords.iter().enumerate() {
             let froms_initializer = itertools::join(
                 transitions
@@ -1253,7 +1260,7 @@ end
 "#
     )?;
 
-    if !completion_subwords.first().unwrap().is_empty() {
+    if needs_subwords_code {
         write!(
             buffer,
             r#"

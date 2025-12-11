@@ -529,6 +529,7 @@ fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
 }
 
 pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
+    let needs_subwords_code = dfa.needs_subwords_code();
     let needs_nontails_code = dfa.needs_nontails_code();
 
     write!(
@@ -556,21 +557,21 @@ fi
     }
 
     let id_from_dfa = dfa.get_subwords(ARRAY_START as usize);
-    if !id_from_dfa.is_empty() {
+    if needs_subwords_code {
         write_generic_subword_fn(buffer, command, needs_nontails_code)?;
-    }
-    for (dfaid, id) in &id_from_dfa {
-        let dfa = dfa.subdfas.lookup(*dfaid);
-        write_subword_fn(
-            buffer,
-            command,
-            *id,
-            dfa,
-            &id_from_cmd,
-            &id_from_regex,
-            needs_nontails_code,
-        )?;
-        writeln!(buffer)?;
+        for (dfaid, id) in &id_from_dfa {
+            let dfa = dfa.subdfas.lookup(*dfaid);
+            write_subword_fn(
+                buffer,
+                command,
+                *id,
+                dfa,
+                &id_from_cmd,
+                &id_from_regex,
+                needs_nontails_code,
+            )?;
+            writeln!(buffer)?;
+        }
     }
 
     write!(buffer, r#"_{command} () {{"#)?;
@@ -591,22 +592,24 @@ fi
     let literal_id_from_input_description =
         write_lookup_tables(buffer, dfa, &id_from_regex, needs_nontails_code)?;
 
-    writeln!(buffer, r#"    declare -A subword_transitions"#)?;
-    for state in dfa.get_all_states() {
-        let subword_transitions = dfa.get_subword_transitions_from(state);
-        if subword_transitions.is_empty() {
-            continue;
+    if needs_subwords_code {
+        writeln!(buffer, r#"    declare -A subword_transitions"#)?;
+        for state in dfa.get_all_states() {
+            let subword_transitions = dfa.get_subword_transitions_from(state);
+            if subword_transitions.is_empty() {
+                continue;
+            }
+            let state_transitions: String = itertools::join(
+                subword_transitions
+                    .into_iter()
+                    .map(|(dfa, to)| format!("[{}]={}", id_from_dfa.get(&dfa).unwrap(), to)),
+                " ",
+            );
+            writeln!(
+                buffer,
+                r#"    subword_transitions[{state}]="({state_transitions})""#
+            )?;
         }
-        let state_transitions: String = itertools::join(
-            subword_transitions
-                .into_iter()
-                .map(|(dfa, to)| format!("[{}]={}", id_from_dfa.get(&dfa).unwrap(), to)),
-            " ",
-        );
-        writeln!(
-            buffer,
-            r#"    subword_transitions[{state}]="({state_transitions})""#
-        )?;
     }
 
     write!(
@@ -640,7 +643,7 @@ fi
         starting_state = dfa.starting_state
     )?;
 
-    if dfa.has_subword_transitions() {
+    if needs_subwords_code {
         write!(
             buffer,
             r#"
@@ -767,18 +770,20 @@ fi
         )?;
     }
 
-    for (level, transitions) in completion_subwords.iter().enumerate() {
-        let initializer = itertools::join(
-            transitions.iter().map(|(from_state, subword_ids)| {
-                let joined_subword_ids = itertools::join(subword_ids, " ");
-                format!(r#"[{from_state}]="{joined_subword_ids}""#)
-            }),
-            " ",
-        );
-        writeln!(
-            buffer,
-            r#"    declare -A subword_transitions_level_{level}=({initializer})"#
-        )?;
+    if needs_subwords_code {
+        for (level, transitions) in completion_subwords.iter().enumerate() {
+            let initializer = itertools::join(
+                transitions.iter().map(|(from_state, subword_ids)| {
+                    let joined_subword_ids = itertools::join(subword_ids, " ");
+                    format!(r#"[{from_state}]="{joined_subword_ids}""#)
+                }),
+                " ",
+            );
+            writeln!(
+                buffer,
+                r#"    declare -A subword_transitions_level_{level}=({initializer})"#
+            )?;
+        }
     }
 
     for (level, transitions) in completion_commands.iter().enumerate() {
@@ -840,14 +845,24 @@ fi
         done
         if [[ ${{#candidates[@]}} -gt 0 ]]; then
             readarray -t matches < <(printf "%s\n" "${{candidates[@]}}" | {MATCH_FN_NAME} "$ignore_case" "$prefix")
-        fi
+        fi"#
+    )?;
 
+    if needs_subwords_code {
+        write!(
+            buffer,
+            r#"
         eval "declare subword_transitions_name=subword_transitions_level_${{fallback_level}}"
         eval "declare -a transitions=(\${{$subword_transitions_name[$state]}})"
         for subword_id in "${{transitions[@]}}"; do
             readarray -t -O "${{#matches[@]}}" matches < <(_{command}_subword_$subword_id complete "$prefix")
-        done
+        done"#
+        )?;
+    }
 
+    write!(
+        buffer,
+        r#"
         eval "declare commands_name=commands_level_${{fallback_level}}"
         eval "declare -a transitions=(\${{$commands_name[$state]}})"
         for command_id in "${{transitions[@]}}"; do

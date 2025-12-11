@@ -859,15 +859,6 @@ impl DFA {
         transitions
     }
 
-    pub(crate) fn has_subword_transitions(&self) -> bool {
-        for state in self.get_all_states() {
-            if !self.get_subword_transitions_from(state).is_empty() {
-                return true;
-            }
-        }
-        false
-    }
-
     pub(crate) fn get_all_states(&self) -> RoaringBitmap {
         let mut states: RoaringBitmap = Default::default();
         self.iter_transitions().for_each(|(from, _, to)| {
@@ -917,6 +908,13 @@ impl DFA {
         self.iter_inputs()
             .filter_map(|input| input.get_fallback_level())
             .max()
+    }
+
+    pub(crate) fn needs_subwords_code(&self) -> bool {
+        self.iter_inputs().any(|input| match input {
+            Inp::Subword { .. } => true,
+            Inp::Literal { .. } | Inp::Star | Inp::Command { .. } => false,
+        })
     }
 
     pub(crate) fn needs_nontails_code(&self) -> bool {
