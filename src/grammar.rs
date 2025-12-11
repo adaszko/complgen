@@ -135,7 +135,10 @@ pub enum Expr {
     },
 
     // `EXPR...`
-    Many1(ExprId),
+    Many1 {
+        child: ExprId,
+        span: HumanSpan,
+    },
 
     // `(b | build) "Compile the current package"` means the description applies to both `b` and
     // `build`. `(b build) "Compile the current package"` means means the description applies just
@@ -230,7 +233,7 @@ impl std::fmt::Debug for Expr {
                 f.write_fmt(format_args!(r#"Alternative(vec!{:?}, {span:?})"#, children))
             }
             Self::Optional { child, span } => f.write_fmt(format_args!(r#"Optional({:?}, {span:?})"#, child)),
-            Self::Many1(child) => f.write_fmt(format_args!(r#"Many1({:?})"#, child)),
+            Self::Many1 { child, span } => f.write_fmt(format_args!(r#"Many1({:?}, {span:?})"#, child)),
             Self::DistributiveDescription { child, descr } => f.write_fmt(format_args!(
                 r#"DistributiveDescription({child:?}, {descr:?})"#
             )),
@@ -297,7 +300,7 @@ fn do_expr_to_dot<W: Write>(
             writeln!(output, r#"  _{expr_id} -> _{child};"#)?;
             do_expr_to_dot(output, child, arena)?;
         }
-        Expr::Many1(child) => {
+        Expr::Many1 { child, .. } => {
             writeln!(output, r#"  _{expr_id}[label="Many1"];"#)?;
             writeln!(output, r#"  _{expr_id} -> _{child};"#)?;
             do_expr_to_dot(output, child, arena)?;
@@ -633,7 +636,7 @@ fn many1_tag(input: Span) -> IResult<Span, ()> {
 }
 
 fn unary_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
-    let (input, e) = 'alt: {
+    let (after, e) = 'alt: {
         if let Ok((input, e)) = nonterm_expr(arena, input) {
             break 'alt (input, e);
         }
@@ -657,13 +660,16 @@ fn unary_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, E
         terminal_opt_description_expr(arena, input)?
     };
 
-    if let Ok((input, ())) = many1_tag(input) {
-        let e = Expr::Many1(e);
+    if let Ok((after, ())) = many1_tag(after) {
+        let e = Expr::Many1 {
+            child: e,
+            span: HumanSpan::from_range(input, after),
+        };
         let id = alloc(arena, e);
-        return Ok((input, id));
+        return Ok((after, id));
     }
 
-    Ok((input, e))
+    Ok((after, e))
 }
 
 fn subword_sequence_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
@@ -980,12 +986,18 @@ fn flatten_expr(arena: &mut Vec<Expr>, expr_id: ExprId) -> ExprId {
                 )
             }
         }
-        Expr::Many1(child) => {
+        Expr::Many1 { child, span } => {
             let new_child = flatten_expr(arena, child);
             if child == new_child {
                 expr_id
             } else {
-                alloc(arena, Expr::Many1(new_child))
+                alloc(
+                    arena,
+                    Expr::Many1 {
+                        child: new_child,
+                        span,
+                    },
+                )
             }
         }
         Expr::DistributiveDescription {
@@ -1097,12 +1109,18 @@ fn compile_subword_exprs(
                 )
             }
         }
-        Expr::Many1(child) => {
+        Expr::Many1 { child, span } => {
             let new_child = compile_subword_exprs(arena, child, shell, subdfas)?;
             if child == new_child {
                 expr_id
             } else {
-                alloc(arena, Expr::Many1(new_child))
+                alloc(
+                    arena,
+                    Expr::Many1 {
+                        child: new_child,
+                        span,
+                    },
+                )
             }
         }
         Expr::DistributiveDescription { .. } => unreachable!(
@@ -1199,12 +1217,18 @@ fn do_distribute_descriptions(
                 )
             }
         }
-        Expr::Many1(child) => {
+        Expr::Many1 { child, span } => {
             let new_child = do_distribute_descriptions(arena, child, description);
             if child == new_child {
                 expr_id
             } else {
-                alloc(arena, Expr::Many1(new_child))
+                alloc(
+                    arena,
+                    Expr::Many1 {
+                        child: new_child,
+                        span,
+                    },
+                )
             }
         }
         Expr::Subword {
@@ -1329,12 +1353,18 @@ fn do_propagate_fallback_levels(
                 )
             }
         }
-        Expr::Many1(child) => {
+        Expr::Many1 { child, span } => {
             let new_child = do_propagate_fallback_levels(arena, child, fallback_level);
             if child == new_child {
                 expr_id
             } else {
-                alloc(arena, Expr::Many1(new_child))
+                alloc(
+                    arena,
+                    Expr::Many1 {
+                        child: new_child,
+                        span,
+                    },
+                )
             }
         }
         Expr::Subword {
@@ -1529,7 +1559,7 @@ fn expr_get_head(arena: &[Expr], expr_id: ExprId) -> ExprId {
         | Expr::Alternative { .. }
         | Expr::Fallback(..)
         | Expr::Optional { .. }
-        | Expr::Many1(..) => expr_id,
+        | Expr::Many1 { .. } => expr_id,
         Expr::Sequence { children, .. } => expr_get_head(arena, *children.first().unwrap()),
         Expr::Subword { .. } => unreachable!(),
         Expr::DistributiveDescription { .. } => {
@@ -1546,7 +1576,7 @@ fn expr_get_tail(arena: &[Expr], expr_id: ExprId) -> ExprId {
         | Expr::Alternative { .. }
         | Expr::Fallback(..)
         | Expr::Optional { .. }
-        | Expr::Many1(..) => expr_id,
+        | Expr::Many1 { .. } => expr_id,
         Expr::Sequence { children, .. } => expr_get_head(arena, *children.last().unwrap()),
         Expr::Subword { .. } => unreachable!(),
         Expr::DistributiveDescription { .. } => {
@@ -1678,7 +1708,7 @@ fn do_check_subword_spaces(
         Expr::Optional { child, .. } => {
             do_check_subword_spaces(arena, *child, nonterms, nonterm_expn_trace, within_subword)
         }
-        Expr::Many1(child) => {
+        Expr::Many1 { child, .. } => {
             do_check_subword_spaces(arena, *child, nonterms, nonterm_expn_trace, within_subword)
         }
         Expr::DistributiveDescription { .. } => {
@@ -1849,7 +1879,7 @@ fn specialize_nonterminals(
                 )
             }
         }
-        Expr::Many1(child) => {
+        Expr::Many1 { child, span } => {
             let new_child = specialize_nonterminals(
                 child,
                 expr_arena,
@@ -1860,7 +1890,13 @@ fn specialize_nonterminals(
             if child == new_child {
                 expr_id
             } else {
-                alloc(expr_arena, Expr::Many1(new_child))
+                alloc(
+                    expr_arena,
+                    Expr::Many1 {
+                        child: new_child,
+                        span,
+                    },
+                )
             }
         }
         Expr::DistributiveDescription { .. } => unreachable!(),
@@ -1975,12 +2011,18 @@ fn resolve_nonterminals(
                 )
             }
         }
-        Expr::Many1(child) => {
+        Expr::Many1 { child, span } => {
             let new_child = resolve_nonterminals(arena, child, vars, unused_nonterminals);
             if child == new_child {
                 expr_id
             } else {
-                alloc(arena, Expr::Many1(new_child))
+                alloc(
+                    arena,
+                    Expr::Many1 {
+                        child: new_child,
+                        span,
+                    },
+                )
             }
         }
         Expr::DistributiveDescription { .. } => unreachable!(
@@ -2027,7 +2069,7 @@ fn do_get_nonterm_refs(arena: &[Expr], expr_id: ExprId, deps: &mut UstrMap<Human
         Expr::Optional { child, .. } => {
             do_get_nonterm_refs(arena, *child, deps);
         }
-        Expr::Many1(child) => {
+        Expr::Many1 { child, .. } => {
             do_get_nonterm_refs(arena, *child, deps);
         }
         Expr::DistributiveDescription { .. } => unreachable!(
@@ -2435,7 +2477,9 @@ pub mod tests {
             (Expr::Optional { child: l, span: _ }, Expr::Optional { child: r, span: _ }) => {
                 teq(*l, *r, arena)
             }
-            (Expr::Many1(l), Expr::Many1(r)) => teq(*l, *r, arena),
+            (Expr::Many1 { child: l, span: _ }, Expr::Many1 { child: r, span: _ }) => {
+                teq(*l, *r, arena)
+            }
             (
                 Expr::DistributiveDescription {
                     child: l,
@@ -2691,7 +2735,13 @@ pub mod tests {
         let (s, actual) = expr(&mut arena, Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
         let nonterm_id = alloc(&mut arena, Expr::nontermref("foo"));
-        let expected = alloc(&mut arena, Many1(nonterm_id));
+        let expected = alloc(
+            &mut arena,
+            Many1 {
+                child: nonterm_id,
+                span: Default::default(),
+            },
+        );
         assert!(teq(actual, expected, &arena));
     }
 
@@ -2867,7 +2917,13 @@ foo baz;
                 span: Default::default(),
             },
         );
-        let many1_id = alloc(&mut g.arena, Many1(top_alt_id));
+        let many1_id = alloc(
+            &mut g.arena,
+            Many1 {
+                child: top_alt_id,
+                span: Default::default(),
+            },
+        );
 
         let darcs_subcommand_id = alloc(&mut g.arena, Expr::term("DARCS_SUBCOMMAND"));
         let optional_subcommand_id = alloc(
@@ -2974,7 +3030,13 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
                 span: Default::default(),
             },
         );
-        let many1_option_id = alloc(&mut g.arena, Many1(optional_option_id));
+        let many1_option_id = alloc(
+            &mut g.arena,
+            Many1 {
+                child: optional_option_id,
+                span: Default::default(),
+            },
+        );
         let patterns_nonterm_id = alloc(&mut g.arena, Expr::nontermref("PATTERNS"));
         let file_nonterm_id = alloc(&mut g.arena, Expr::nontermref("FILE"));
         let optional_file_id = alloc(
@@ -2984,7 +3046,13 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
                 span: Default::default(),
             },
         );
-        let many1_file_id = alloc(&mut g.arena, Many1(optional_file_id));
+        let many1_file_id = alloc(
+            &mut g.arena,
+            Many1 {
+                child: optional_file_id,
+                span: Default::default(),
+            },
+        );
         let expected_expr1_id = alloc(
             &mut g.arena,
             Sequence {
@@ -3491,7 +3559,13 @@ strace -e <EXPR>;
                 span: Default::default(),
             },
         );
-        let many1_id = alloc(&mut g.arena, Many1(opt3_id));
+        let many1_id = alloc(
+            &mut g.arena,
+            Many1 {
+                child: opt3_id,
+                span: Default::default(),
+            },
+        );
         let subword_seq_id = alloc(
             &mut g.arena,
             Sequence {
@@ -3594,7 +3668,13 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
                 span: Default::default(),
             },
         );
-        let many1_id = alloc(&mut g.arena, Many1(opt_id));
+        let many1_id = alloc(
+            &mut g.arena,
+            Many1 {
+                child: opt_id,
+                span: Default::default(),
+            },
+        );
         let subword_seq_id = alloc(
             &mut g.arena,
             Sequence {

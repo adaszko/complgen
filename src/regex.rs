@@ -557,7 +557,7 @@ fn do_from_expr(
             let result = RegexNode::Or(Box::new([subregex, epsid]), false);
             alloc(arena, result)
         }
-        Expr::Many1(subexpr) => {
+        Expr::Many1 { child: subexpr, .. } => {
             let subregex_id = do_from_expr(*subexpr, expr_arena, shell, arena, input_from_position);
             let star = RegexNode::Star(subregex_id);
             let starid = alloc(arena, star);

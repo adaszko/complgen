@@ -1126,8 +1126,11 @@ mod tests {
             remaining_depth - 1,
             max_width,
         )
-        .prop_map(move |e| {
-            let e = Many1(e);
+        .prop_map(move |child| {
+            let e = Many1 {
+                child,
+                span: Default::default(),
+            };
             alloc(&mut *arena.borrow_mut(), e)
         })
         .boxed()
@@ -1280,7 +1283,7 @@ mod tests {
                     do_arb_match(Rc::clone(&arena), *subexpr, rng, max_width, output);
                 }
             }
-            Many1(subexpr) => {
+            Many1 { child: subexpr, .. } => {
                 let n = rng.next_u64();
                 let chosen_len = n % (max_width as u64) + 1;
                 for _ in 0..chosen_len {
