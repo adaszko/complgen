@@ -146,6 +146,7 @@ pub enum Expr {
     DistributiveDescription {
         child: ExprId,
         descr: Ustr,
+        span: HumanSpan,
     },
 
     // `foo || bar`
@@ -234,8 +235,8 @@ impl std::fmt::Debug for Expr {
             }
             Self::Optional { child, span } => f.write_fmt(format_args!(r#"Optional({:?}, {span:?})"#, child)),
             Self::Many1 { child, span } => f.write_fmt(format_args!(r#"Many1({:?}, {span:?})"#, child)),
-            Self::DistributiveDescription { child, descr } => f.write_fmt(format_args!(
-                r#"DistributiveDescription({child:?}, {descr:?})"#
+            Self::DistributiveDescription { child, descr, span } => f.write_fmt(format_args!(
+                r#"DistributiveDescription({child:?}, {descr:?}, {span:?})"#
             )),
             Self::Fallback(children) => {
                 f.write_fmt(format_args!(r#"Fallback(vec!{:?})"#, children))
@@ -706,19 +707,20 @@ fn subword_sequence_expr_opt_description<'s>(
     arena: &mut Vec<Expr>,
     input: Span<'s>,
 ) -> IResult<Span<'s>, ExprId> {
-    let (input, expr_id) = subword_sequence_expr(arena, input)?;
-    let (input, description) = opt(preceded(multiblanks0, description))(input)?;
+    let (after, expr_id) = subword_sequence_expr(arena, input)?;
+    let (after, description) = opt(preceded(multiblanks0, description))(after)?;
     let result = match description {
         Some(descr) => {
             let e = Expr::DistributiveDescription {
                 child: expr_id,
                 descr: ustr(&descr),
+                span: HumanSpan::from_range(input, after),
             };
             alloc(arena, e)
         }
         None => expr_id,
     };
-    Ok((input, result))
+    Ok((after, result))
 }
 
 fn sequence_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
@@ -1003,6 +1005,7 @@ fn flatten_expr(arena: &mut Vec<Expr>, expr_id: ExprId) -> ExprId {
         Expr::DistributiveDescription {
             child,
             descr: description,
+            span,
         } => {
             let new_child = flatten_expr(arena, child);
             if child == new_child {
@@ -1013,6 +1016,7 @@ fn flatten_expr(arena: &mut Vec<Expr>, expr_id: ExprId) -> ExprId {
                     Expr::DistributiveDescription {
                         child: new_child,
                         descr: description,
+                        span,
                     },
                 )
             }
@@ -1148,7 +1152,7 @@ fn do_distribute_descriptions(
     description: &mut Option<Ustr>,
 ) -> ExprId {
     match arena[expr_id].clone() {
-        Expr::DistributiveDescription { child, descr } => {
+        Expr::DistributiveDescription { child, descr, .. } => {
             let new_child = do_distribute_descriptions(arena, child, &mut Some(descr));
             if child == new_child { child } else { new_child }
         }
@@ -2484,10 +2488,12 @@ pub mod tests {
                 Expr::DistributiveDescription {
                     child: l,
                     descr: l_descr,
+                    span: _,
                 },
                 Expr::DistributiveDescription {
                     child: r,
                     descr: r_descr,
+                    span: _,
                 },
             ) => l_descr == r_descr && teq(*l, *r, arena),
             (
@@ -2570,6 +2576,7 @@ pub mod tests {
             DistributiveDescription {
                 child: subword_id,
                 descr: ustr("use markers to highlight the matching strings"),
+                span: Default::default(),
             },
         );
         assert!(teq(actual, expected, &arena));
@@ -2613,6 +2620,7 @@ pub mod tests {
             DistributiveDescription {
                 child: alternative_id,
                 descr: ustr("use markers to highlight the matching strings"),
+                span: Default::default(),
             },
         );
         assert!(teq(actual, expected, &arena));

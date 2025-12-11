@@ -1290,7 +1290,7 @@ mod tests {
                     do_arb_match(Rc::clone(&arena), *subexpr, rng, max_width, output);
                 }
             }
-            DistributiveDescription { child, descr } => {
+            DistributiveDescription { child, descr, .. } => {
                 do_arb_match(Rc::clone(&arena), *child, rng, max_width, output);
                 output.push(ustr(&format!(r#""{descr}""#)));
             }

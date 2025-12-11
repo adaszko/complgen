@@ -564,7 +564,7 @@ fn do_from_expr(
             let result = RegexNode::Cat(subregex_id, starid);
             alloc(arena, result)
         }
-        Expr::DistributiveDescription { child: _, descr: _ } => unreachable!(
+        Expr::DistributiveDescription { .. } => unreachable!(
             "DistributiveDescription Expr type should have been erased before compilation to regex"
         ),
         Expr::Fallback(subexprs) => {
