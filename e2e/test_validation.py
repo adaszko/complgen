@@ -503,10 +503,10 @@ cmd <FOO>;
 """)
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
--:3:1:error: Can only specialize external commands
+-:3:16:error: Can only specialize external commands
   |
 3 | <FOO@bash> ::= foo;
-  | ^^^^^^^^^^
+  |                ^^^
   |
 """)
 

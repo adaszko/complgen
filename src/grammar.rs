@@ -163,6 +163,23 @@ pub enum Expr {
     },
 }
 
+impl Expr {
+    fn get_span(&self) -> &HumanSpan {
+        match self {
+            Expr::Terminal { span, .. } => span,
+            Expr::NontermRef { span, .. } => span,
+            Expr::Command { span, .. } => span,
+            Expr::Sequence { span, .. } => span,
+            Expr::Alternative { span, .. } => span,
+            Expr::Optional { span, .. } => span,
+            Expr::Many1 { span, .. } => span,
+            Expr::DistributiveDescription { span, .. } => span,
+            Expr::Fallback { span, .. } => span,
+            Expr::Subword { span, .. } => span,
+        }
+    }
+}
+
 #[derive(Copy, Clone)]
 pub enum Shell {
     Bash,
@@ -2302,7 +2319,8 @@ impl Grammar {
             else {
                 continue;
             };
-            let (command, bash_regex, fish_regex, zsh_regex) = match &self.arena[defn.rhs_expr_id] {
+            let rhs = &self.arena[defn.rhs_expr_id];
+            let (command, bash_regex, fish_regex, zsh_regex) = match rhs {
                 Expr::Command {
                     cmd,
                     bash_regex,
@@ -2311,7 +2329,7 @@ impl Grammar {
                     ..
                 } => (cmd, bash_regex, fish_regex, zsh_regex),
                 _ => {
-                    return Err(Error::NonCommandSpecialization(defn.lhs_span));
+                    return Err(Error::NonCommandSpecialization(*rhs.get_span()));
                 }
             };
             let shell = Shell::from_str(shell_name, *shell_span)?;
@@ -2345,8 +2363,9 @@ impl Grammar {
             let Some(spec) = specializations.get_mut(&defn.lhs_name) else {
                 continue;
             };
-            let Expr::Command { cmd: command, .. } = &self.arena[defn.rhs_expr_id] else {
-                return Err(Error::NonCommandSpecialization(defn.lhs_span));
+            let rhs = &self.arena[defn.rhs_expr_id];
+            let Expr::Command { cmd: command, .. } = rhs else {
+                return Err(Error::NonCommandSpecialization(*rhs.get_span()));
             };
             if let Some((_, span)) = spec.generic {
                 return Err(Error::DuplicateNonterminalDefinition(span, defn.lhs_span));
