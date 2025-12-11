@@ -150,7 +150,10 @@ pub enum Expr {
     },
 
     // `foo || bar`
-    Fallback(Vec<ExprId>),
+    Fallback {
+        children: Vec<ExprId>,
+        span: HumanSpan,
+    },
 
     // `--option=argument`
     Subword {
@@ -238,8 +241,8 @@ impl std::fmt::Debug for Expr {
             Self::DistributiveDescription { child, descr, span } => f.write_fmt(format_args!(
                 r#"DistributiveDescription({child:?}, {descr:?}, {span:?})"#
             )),
-            Self::Fallback(children) => {
-                f.write_fmt(format_args!(r#"Fallback(vec!{:?})"#, children))
+            Self::Fallback { children, span } => {
+                f.write_fmt(format_args!(r#"Fallback(vec!{:?}, {span:?})"#, children))
             }
         }
     }
@@ -287,7 +290,7 @@ fn do_expr_to_dot<W: Write>(
                 do_expr_to_dot(output, child, arena)?;
             }
         }
-        Expr::Fallback(children) => {
+        Expr::Fallback { children, .. } => {
             writeln!(output, r#"  _{expr_id}[label="Fallback"];"#)?;
             for child in &children {
                 writeln!(output, r#"  _{expr_id} -> _{child};"#)?;
@@ -785,18 +788,24 @@ fn do_fallback_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<
 }
 
 fn fallback_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
-    let (mut input, left) = alternative_expr(arena, input)?;
+    let (mut after, left) = alternative_expr(arena, input)?;
     let mut fallbacks: Vec<ExprId> = vec![left];
-    while let Ok((rest, right)) = do_fallback_expr(arena, input) {
+    while let Ok((rest, right)) = do_fallback_expr(arena, after) {
         fallbacks.push(right);
-        input = rest;
+        after = rest;
     }
     let result = if fallbacks.len() == 1 {
         fallbacks.drain(..).next().unwrap()
     } else {
-        alloc(arena, Expr::Fallback(fallbacks))
+        alloc(
+            arena,
+            Expr::Fallback {
+                children: fallbacks,
+                span: HumanSpan::from_range(input, after),
+            },
+        )
     };
-    Ok((input, result))
+    Ok((after, result))
 }
 
 fn expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
@@ -1021,13 +1030,19 @@ fn flatten_expr(arena: &mut Vec<Expr>, expr_id: ExprId) -> ExprId {
                 )
             }
         }
-        Expr::Fallback(children) => {
+        Expr::Fallback { children, span } => {
             let new_children: Vec<ExprId> =
                 children.iter().map(|e| flatten_expr(arena, *e)).collect();
             if children == new_children {
                 expr_id
             } else {
-                alloc(arena, Expr::Fallback(new_children))
+                alloc(
+                    arena,
+                    Expr::Fallback {
+                        children: new_children,
+                        span,
+                    },
+                )
             }
         }
     }
@@ -1130,7 +1145,7 @@ fn compile_subword_exprs(
         Expr::DistributiveDescription { .. } => unreachable!(
             "DistributiveDescription Expr type should have been erased by the time subwords are being compiled"
         ),
-        Expr::Fallback(children) => {
+        Expr::Fallback { children, span } => {
             let new_children: Vec<ExprId> = children
                 .iter()
                 .map(|e| compile_subword_exprs(arena, *e, shell, subdfas))
@@ -1138,7 +1153,13 @@ fn compile_subword_exprs(
             if children == new_children {
                 expr_id
             } else {
-                alloc(arena, Expr::Fallback(new_children))
+                alloc(
+                    arena,
+                    Expr::Fallback {
+                        children: new_children,
+                        span,
+                    },
+                )
             }
         }
     };
@@ -1258,7 +1279,7 @@ fn do_distribute_descriptions(
             phase: SubwordCompilationPhase::DFA(_),
             ..
         } => unreachable!(),
-        Expr::Fallback(children) => {
+        Expr::Fallback { children, span } => {
             let new_children: Vec<ExprId> = children
                 .iter()
                 .map(|e| do_distribute_descriptions(arena, *e, description))
@@ -1266,7 +1287,13 @@ fn do_distribute_descriptions(
             if children == new_children {
                 expr_id
             } else {
-                alloc(arena, Expr::Fallback(new_children))
+                alloc(
+                    arena,
+                    Expr::Fallback {
+                        children: new_children,
+                        span,
+                    },
+                )
             }
         }
     }
@@ -1296,7 +1323,7 @@ fn do_propagate_fallback_levels(
                 span,
             },
         ),
-        Expr::Fallback(children) => {
+        Expr::Fallback { children, span } => {
             let new_children: Vec<ExprId> = children
                 .iter()
                 .enumerate()
@@ -1305,7 +1332,13 @@ fn do_propagate_fallback_levels(
             if children == new_children {
                 expr_id
             } else {
-                alloc(arena, Expr::Fallback(new_children))
+                alloc(
+                    arena,
+                    Expr::Fallback {
+                        children: new_children,
+                        span,
+                    },
+                )
             }
         }
         Expr::NontermRef { .. } | Expr::Command { .. } => expr_id,
@@ -1561,7 +1594,7 @@ fn expr_get_head(arena: &[Expr], expr_id: ExprId) -> ExprId {
         | Expr::NontermRef { .. }
         | Expr::Command { .. }
         | Expr::Alternative { .. }
-        | Expr::Fallback(..)
+        | Expr::Fallback { .. }
         | Expr::Optional { .. }
         | Expr::Many1 { .. } => expr_id,
         Expr::Sequence { children, .. } => expr_get_head(arena, *children.first().unwrap()),
@@ -1578,7 +1611,7 @@ fn expr_get_tail(arena: &[Expr], expr_id: ExprId) -> ExprId {
         | Expr::NontermRef { .. }
         | Expr::Command { .. }
         | Expr::Alternative { .. }
-        | Expr::Fallback(..)
+        | Expr::Fallback { .. }
         | Expr::Optional { .. }
         | Expr::Many1 { .. } => expr_id,
         Expr::Sequence { children, .. } => expr_get_head(arena, *children.last().unwrap()),
@@ -1697,7 +1730,7 @@ fn do_check_subword_spaces(
             }
             Ok(())
         }
-        Expr::Fallback(children) => {
+        Expr::Fallback { children, .. } => {
             for child in children {
                 do_check_subword_spaces(
                     arena,
@@ -1904,7 +1937,7 @@ fn specialize_nonterminals(
             }
         }
         Expr::DistributiveDescription { .. } => unreachable!(),
-        Expr::Fallback(children) => {
+        Expr::Fallback { children, span } => {
             let new_children: Vec<ExprId> = children
                 .iter()
                 .map(|child| {
@@ -1921,7 +1954,13 @@ fn specialize_nonterminals(
             if children == new_children {
                 expr_id
             } else {
-                alloc(expr_arena, Expr::Fallback(new_children))
+                alloc(
+                    expr_arena,
+                    Expr::Fallback {
+                        children: new_children,
+                        span,
+                    },
+                )
             }
         }
     }
@@ -2032,7 +2071,7 @@ fn resolve_nonterminals(
         Expr::DistributiveDescription { .. } => unreachable!(
             "Expr::DistributiveDescription should have been erased by the time nonterminals are being resolved"
         ),
-        Expr::Fallback(children) => {
+        Expr::Fallback { children, span } => {
             let new_children: Vec<ExprId> = children
                 .iter()
                 .map(|child| resolve_nonterminals(arena, *child, vars, unused_nonterminals))
@@ -2041,7 +2080,13 @@ fn resolve_nonterminals(
             if children == new_children {
                 expr_id
             } else {
-                alloc(arena, Expr::Fallback(new_children))
+                alloc(
+                    arena,
+                    Expr::Fallback {
+                        children: new_children,
+                        span,
+                    },
+                )
             }
         }
     }
@@ -2079,7 +2124,7 @@ fn do_get_nonterm_refs(arena: &[Expr], expr_id: ExprId, deps: &mut UstrMap<Human
         Expr::DistributiveDescription { .. } => unreachable!(
             "Expr::DistributiveDescription should have been erased by the time nonterminals are being collected"
         ),
-        Expr::Fallback(children) => {
+        Expr::Fallback { children, .. } => {
             for child in children {
                 do_get_nonterm_refs(arena, *child, deps);
             }
@@ -2472,7 +2517,16 @@ pub mod tests {
                     span: _,
                 },
             )
-            | (Expr::Fallback(l), Expr::Fallback(r)) => {
+            | (
+                Expr::Fallback {
+                    children: l,
+                    span: _,
+                },
+                Expr::Fallback {
+                    children: r,
+                    span: _,
+                },
+            ) => {
                 if l.len() != r.len() {
                     return false;
                 }
@@ -4259,7 +4313,13 @@ ls <FILE>;
         let cmd_id = alloc(&mut arena, Expr::term("cmd"));
         let foo_id = alloc(&mut arena, Expr::term("foo"));
         let bar_id = alloc(&mut arena, Expr::term("bar"));
-        let fallback_id = alloc(&mut arena, Fallback(vec![foo_id, bar_id]));
+        let fallback_id = alloc(
+            &mut arena,
+            Fallback {
+                children: vec![foo_id, bar_id],
+                span: Default::default(),
+            },
+        );
         let expected_expr_id = alloc(
             &mut arena,
             Sequence {

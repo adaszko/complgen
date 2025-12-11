@@ -567,7 +567,9 @@ fn do_from_expr(
         Expr::DistributiveDescription { .. } => unreachable!(
             "DistributiveDescription Expr type should have been erased before compilation to regex"
         ),
-        Expr::Fallback(subexprs) => {
+        Expr::Fallback {
+            children: subexprs, ..
+        } => {
             let mut subregexes: Vec<RegexNodeId> = Default::default();
             for e in subexprs {
                 let subregex = do_from_expr(*e, expr_arena, shell, arena, input_from_position);

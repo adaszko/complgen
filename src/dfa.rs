@@ -1294,10 +1294,17 @@ mod tests {
                 do_arb_match(Rc::clone(&arena), *child, rng, max_width, output);
                 output.push(ustr(&format!(r#""{descr}""#)));
             }
-            Fallback(v) => {
+            Fallback { children, .. } => {
                 let chosen_branch =
-                    usize::try_from(rng.next_u64().rem(u64::try_from(v.len()).unwrap())).unwrap();
-                do_arb_match(Rc::clone(&arena), v[chosen_branch], rng, max_width, output);
+                    usize::try_from(rng.next_u64().rem(u64::try_from(children.len()).unwrap()))
+                        .unwrap();
+                do_arb_match(
+                    Rc::clone(&arena),
+                    children[chosen_branch],
+                    rng,
+                    max_width,
+                    output,
+                );
             }
         }
     }
