@@ -1498,11 +1498,12 @@ impl ValidGrammar {
             if call_variants.len() == 1 {
                 call_variants[0]
             } else {
+                let span = *grammar.arena[call_variants[0]].get_span();
                 alloc(
                     &mut grammar.arena,
                     Expr::Alternative {
                         children: call_variants,
-                        span: Default::default(),
+                        span,
                     },
                 )
             }
