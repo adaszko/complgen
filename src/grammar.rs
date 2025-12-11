@@ -200,6 +200,7 @@ impl Shell {
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Specialization {
+    pub builtin: bool,
     pub bash: Option<(Ustr, Option<Ustr>, HumanSpan)>,
     pub fish: Option<(Ustr, Option<Ustr>, HumanSpan)>,
     pub zsh: Option<(Ustr, Option<Ustr>, HumanSpan)>,
@@ -956,6 +957,7 @@ pub struct ValidGrammar {
     pub subdfas: DFAInternPool,
     pub undefined_nonterminals: UstrMap<HumanSpan>,
     pub unused_nonterminals: UstrMap<HumanSpan>,
+    pub unused_specializations: UstrMap<HumanSpan>,
 }
 
 // Used in subword mode, when we know there won't be any sub-DFAs needed, just one big one.
@@ -1464,6 +1466,34 @@ fn is_valid_command_name(command: &str) -> bool {
     true
 }
 
+fn get_unused_specializations(
+    specializations: &UstrMap<Specialization>,
+    nonterm_refs: &UstrMap<HumanSpan>,
+) -> UstrMap<HumanSpan> {
+    let mut result: UstrMap<HumanSpan> = Default::default();
+    for (name, spec) in specializations {
+        if spec.builtin {
+            continue;
+        }
+        if let Some((_, _, span)) = spec.bash {
+            if nonterm_refs.get(name).is_none() {
+                result.insert(*name, span);
+            }
+        }
+        if let Some((_, _, span)) = spec.fish {
+            if nonterm_refs.get(name).is_none() {
+                result.insert(*name, span);
+            }
+        }
+        if let Some((_, _, span)) = spec.zsh {
+            if nonterm_refs.get(name).is_none() {
+                result.insert(*name, span);
+            }
+        }
+    }
+    result
+}
+
 impl ValidGrammar {
     pub fn from_grammar(mut grammar: Grammar, shell: Shell) -> Result<Self> {
         let (command, command_span) = {
@@ -1537,6 +1567,9 @@ impl ValidGrammar {
 
         let specializations = grammar.get_specializations()?;
 
+        let nonterm_refs = get_nonterm_refs(&grammar.arena, expr);
+        let unused_specializations = get_unused_specializations(&specializations, &nonterm_refs);
+
         for (_, defn) in nonterminal_definitions.iter_mut() {
             defn.rhs_expr_id = specialize_nonterminals(
                 defn.rhs_expr_id,
@@ -1600,6 +1633,7 @@ impl ValidGrammar {
             expr,
             undefined_nonterminals,
             unused_nonterminals,
+            unused_specializations,
             subdfas,
         };
         Ok(g)
@@ -2110,7 +2144,7 @@ fn resolve_nonterminals(
     }
 }
 
-fn do_get_nonterm_refs(arena: &[Expr], expr_id: ExprId, deps: &mut UstrMap<HumanSpan>) {
+fn do_get_nonterm_refs(arena: &[Expr], expr_id: ExprId, refs: &mut UstrMap<HumanSpan>) {
     match &arena[expr_id] {
         Expr::Terminal { .. } | Expr::Command { .. } => {}
         Expr::Subword { phase, .. } => {
@@ -2118,33 +2152,31 @@ fn do_get_nonterm_refs(arena: &[Expr], expr_id: ExprId, deps: &mut UstrMap<Human
                 SubwordCompilationPhase::Expr(e) => *e,
                 SubwordCompilationPhase::DFA(..) => unreachable!(),
             };
-            do_get_nonterm_refs(arena, subexpr, deps);
+            do_get_nonterm_refs(arena, subexpr, refs);
         }
         Expr::NontermRef { nonterm, span, .. } => {
-            deps.insert(*nonterm, *span);
+            refs.insert(*nonterm, *span);
         }
         Expr::Sequence { children, .. } => {
             for child in children {
-                do_get_nonterm_refs(arena, *child, deps);
+                do_get_nonterm_refs(arena, *child, refs);
             }
         }
         Expr::Alternative { children, .. } => {
             for child in children {
-                do_get_nonterm_refs(arena, *child, deps);
+                do_get_nonterm_refs(arena, *child, refs);
             }
         }
         Expr::Optional { child, .. } => {
-            do_get_nonterm_refs(arena, *child, deps);
+            do_get_nonterm_refs(arena, *child, refs);
         }
         Expr::Many1 { child, .. } => {
-            do_get_nonterm_refs(arena, *child, deps);
+            do_get_nonterm_refs(arena, *child, refs);
         }
-        Expr::DistributiveDescription { .. } => unreachable!(
-            "Expr::DistributiveDescription should have been erased by the time nonterminals are being collected"
-        ),
+        Expr::DistributiveDescription { .. } => (),
         Expr::Fallback { children, .. } => {
             for child in children {
-                do_get_nonterm_refs(arena, *child, deps);
+                do_get_nonterm_refs(arena, *child, refs);
             }
         }
     }
@@ -2377,6 +2409,7 @@ impl Grammar {
         specializations
             .entry(ustr("PATH"))
             .or_insert_with(|| Specialization {
+                builtin: true,
                 bash: Some((ustr(r#"compgen -A file "$1""#), None, HumanSpan::default())),
                 fish: Some((
                     ustr(r#"__fish_complete_path "$1""#),
@@ -2394,6 +2427,7 @@ impl Grammar {
         specializations
             .entry(ustr("DIRECTORY"))
             .or_insert_with(|| Specialization {
+                builtin: true,
                 bash: Some((
                     ustr(r#"compgen -A directory "$1""#),
                     None,

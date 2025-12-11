@@ -305,6 +305,16 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
         }
     }
 
+    if !validated.unused_specializations.is_empty() {
+        let mut unused: Vec<HumanSpan> =
+            validated.unused_specializations.values().copied().collect();
+        unused.sort_unstable_by_key(|span| (span.line, span.column_start, span.column_end));
+        for span in unused {
+            let err = WarnMsg::new("Unused specialization").warning(&span, &input, "");
+            eprintln!("{}", err.into_string(usage_file_path, &span));
+        }
+    }
+
     let regex = match Regex::from_valid_grammar(&validated, shell) {
         Ok(regex) => regex,
         Err(e) => return handle_error(e, usage_file_path, &input, &validated.command),

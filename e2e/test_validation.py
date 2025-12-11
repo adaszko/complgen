@@ -2,13 +2,14 @@ import glob
 import subprocess
 from pathlib import Path
 
-import pytest
 from inline_snapshot import snapshot
 
 
-def complgen_check_path(complgen_binary_path: Path, path: str) -> subprocess.CompletedProcess:
+def complgen_check_path(
+    complgen_binary_path: Path, path: str
+) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [complgen_binary_path, '--bash', '/dev/null', path],
+        [complgen_binary_path, "--bash", "/dev/null", path],
         capture_output=True,
         text=True,
     )
@@ -21,12 +22,16 @@ def test_examples(complgen_binary_path: Path, examples_directory_path: Path):
 
 
 def test_complgen_example(complgen_binary_path: Path, examples_directory_path: Path):
-    r = complgen_check_path(complgen_binary_path, str(examples_directory_path / "complgen.usage"))
+    r = complgen_check_path(
+        complgen_binary_path, str(examples_directory_path / "complgen.usage")
+    )
     assert r.returncode == 0
-    assert r.stderr == snapshot('')
+    assert r.stderr == snapshot("")
 
 
-def complgen_check(complgen_binary_path: Path, grammar: str) -> subprocess.CompletedProcess:
+def complgen_check(
+    complgen_binary_path: Path, grammar: str
+) -> subprocess.CompletedProcess:
     args = [complgen_binary_path, "--bash", "-", "-"]
     result = subprocess.run(
         args,
@@ -38,11 +43,18 @@ def complgen_check(complgen_binary_path: Path, grammar: str) -> subprocess.Compl
 
 
 def test_ambiguous_transition1(complgen_binary_path: Path):
-    assert complgen_check(complgen_binary_path, """cmd {{{ echo foo }}} {{{ echo bar }}};""").returncode == 0
+    assert (
+        complgen_check(
+            complgen_binary_path, """cmd {{{ echo foo }}} {{{ echo bar }}};"""
+        ).returncode
+        == 0
+    )
 
 
 def test_ambiguous_transition2(complgen_binary_path: Path):
-    r = complgen_check(complgen_binary_path, """cmd {{{ echo foo }}} | {{{ echo bar }}};""")
+    r = complgen_check(
+        complgen_binary_path, """cmd {{{ echo foo }}} | {{{ echo bar }}};"""
+    )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 -:1:5:error: Ambiguous grammar.  Matching can't differentiate:
@@ -57,11 +69,20 @@ def test_ambiguous_transition2(complgen_binary_path: Path):
   |
 """)
 
+
 def test_ambiguous_transition3(complgen_binary_path: Path):
-    assert complgen_check(complgen_binary_path, """cmd (foo | {{{ echo bar }}});""").returncode == 0
+    assert (
+        complgen_check(
+            complgen_binary_path, """cmd (foo | {{{ echo bar }}});"""
+        ).returncode
+        == 0
+    )
+
 
 def test_ambiguous_transition4(complgen_binary_path: Path):
-    r = complgen_check(complgen_binary_path, """cmd {{{ echo foo }}} || {{{ echo bar }}};""")
+    r = complgen_check(
+        complgen_binary_path, """cmd {{{ echo foo }}} || {{{ echo bar }}};"""
+    )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 -:1:5:error: Ambiguous grammar.  Matching can't differentiate:
@@ -76,14 +97,33 @@ def test_ambiguous_transition4(complgen_binary_path: Path):
   |
 """)
 
+
 def test_ambiguous_transition5(complgen_binary_path: Path):
-    assert complgen_check(complgen_binary_path, """cmd foo || {{{ echo bar }}};""").returncode == 0
+    assert (
+        complgen_check(
+            complgen_binary_path, """cmd foo || {{{ echo bar }}};"""
+        ).returncode
+        == 0
+    )
+
 
 def test_ambiguous_transition6(complgen_binary_path: Path):
-    assert complgen_check(complgen_binary_path, """cmd [{{{ echo foo }}}] foo;""").returncode == 0
+    assert (
+        complgen_check(
+            complgen_binary_path, """cmd [{{{ echo foo }}}] foo;"""
+        ).returncode
+        == 0
+    )
+
 
 def test_ambiguous_transition7(complgen_binary_path: Path):
-    assert complgen_check(complgen_binary_path, """cmd {{{ echo foo }}}... foo baz;""").returncode == 0
+    assert (
+        complgen_check(
+            complgen_binary_path, """cmd {{{ echo foo }}}... foo baz;"""
+        ).returncode
+        == 0
+    )
+
 
 def test_ambiguous_transition8(complgen_binary_path: Path):
     GRAMMAR = """
@@ -104,7 +144,6 @@ mygit (<command> || [-c <name>=<value>] <command>);
   |                               ^
   |
 """)
-
 
 
 def test_issue_45(complgen_binary_path: Path):
@@ -139,7 +178,9 @@ def test_subword_spaces_detection1(complgen_binary_path: Path):
 
 
 def test_subword_spaces_detection2(complgen_binary_path: Path):
-    r = complgen_check(complgen_binary_path, """aerc :<COMMAND>; <COMMAND> ::= quit -f;""")
+    r = complgen_check(
+        complgen_binary_path, """aerc :<COMMAND>; <COMMAND> ::= quit -f;"""
+    )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 -:1:32:error: Adjacent literals in expression used in a subword context
@@ -160,8 +201,11 @@ def test_subword_spaces_detection2(complgen_binary_path: Path):
   |
 """)
 
+
 def test_subword_spaces_detection3(complgen_binary_path: Path):
-    r = complgen_check(complgen_binary_path, """aerc [<OPTION>]...;
+    r = complgen_check(
+        complgen_binary_path,
+        """aerc [<OPTION>]...;
 aerc [<OPTION>]... mbox:<PATH>;
 aerc [<OPTION>]... mailto:<MAILTOLINK>;
 aerc [<OPTION>]... :<COMMAND>;
@@ -175,7 +219,8 @@ aerc [<OPTION>]... :<COMMAND>;
     ;
 
 <QUIT_ARGS> ::= ( -f) "force close aerc"
-    ;""")
+    ;""",
+    )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 -:10:8:error: Adjacent literals in expression used in a subword context
@@ -233,10 +278,13 @@ def test_bug2(complgen_binary_path: Path):
 
 
 def test_bug3(complgen_binary_path: Path):
-    r = complgen_check(complgen_binary_path, """
+    r = complgen_check(
+        complgen_binary_path,
+        """
 aerc [<OPTION>]...;
 aerc [<OPTION>]... foo;
-""")
+""",
+    )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 -:3:7:warning: Undefined nonterminal
@@ -285,9 +333,12 @@ def test_bug4(complgen_binary_path: Path):
 
 
 def test_clashing_variants(complgen_binary_path: Path):
-    r = complgen_check(complgen_binary_path, r"""
+    r = complgen_check(
+        complgen_binary_path,
+        r"""
 mygit (clone "Clone a repository into a new directory" | clone --bare);
-""")
+""",
+    )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 -:2:8:error: Clashing variants.  Completion can't differentiate:
@@ -304,9 +355,12 @@ mygit (clone "Clone a repository into a new directory" | clone --bare);
 
 
 def test_ambiguous_dfa(complgen_binary_path: Path):
-    r = complgen_check(complgen_binary_path, """
+    r = complgen_check(
+        complgen_binary_path,
+        """
 darcs <SOURCE> ... <DESTINATION>;
-""")
+""",
+    )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 -:2:7:warning: Undefined nonterminal
@@ -333,10 +387,13 @@ darcs <SOURCE> ... <DESTINATION>;
 
 
 def test_ambiguous_subword_leader(complgen_binary_path: Path):
-    r = complgen_check(complgen_binary_path, """
+    r = complgen_check(
+        complgen_binary_path,
+        """
 foo <BAR>=bar;
 foo baz;
-""")
+""",
+    )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 -:2:5:error: Ambiguous grammar.  Matching can't ascertain where below element ends:
@@ -353,19 +410,25 @@ foo baz;
 
 
 def test_unambiguous_subword_leaders(complgen_binary_path: Path):
-    r = complgen_check(complgen_binary_path, """
+    r = complgen_check(
+        complgen_binary_path,
+        """
 darcs foo={{{ echo first }}};
 darcs foo=bar{{{ echo second }}};
-""")
+""",
+    )
     assert r.returncode == 0
-    assert r.stderr == snapshot('')
+    assert r.stderr == snapshot("")
 
 
 def test_duplicated_subword_leader(complgen_binary_path: Path):
-    r = complgen_check(complgen_binary_path, """
+    r = complgen_check(
+        complgen_binary_path,
+        """
 foo bar=<BAR>;
 foo bar=<BAZ>;
-""")
+""",
+    )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 -:2:9:warning: Undefined nonterminal
@@ -392,10 +455,13 @@ foo bar=<BAZ>;
 
 
 def test_varying_command_names(complgen_binary_path: Path):
-    r = complgen_check(complgen_binary_path, """
+    r = complgen_check(
+        complgen_binary_path,
+        """
 foo quux;
 bar quux;
-""")
+""",
+    )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 -:2:1:error: Varying command names:
@@ -412,10 +478,13 @@ bar quux;
 
 
 def test_unknown_shell(complgen_binary_path: Path):
-    r = complgen_check(complgen_binary_path, """
+    r = complgen_check(
+        complgen_binary_path,
+        """
 foo quux;
 <BAR@quux> ::= {{{ echo foo }}};
-""")
+""",
+    )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 -:3:6:error: Unknown shell
@@ -427,9 +496,12 @@ foo quux;
 
 
 def test_invalid_command_name(complgen_binary_path: Path):
-    r = complgen_check(complgen_binary_path, """
+    r = complgen_check(
+        complgen_binary_path,
+        """
 foo/bar quux;
-""")
+""",
+    )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 -:2:1:error: Invalid command name
@@ -439,12 +511,16 @@ foo/bar quux;
   |
 """)
 
+
 def test_nonterminal_cycle_outer(complgen_binary_path: Path):
-    r = complgen_check(complgen_binary_path, """
+    r = complgen_check(
+        complgen_binary_path,
+        """
 cmd <FOO>;
 <FOO> ::= <BAR>;
 <BAR> ::= <FOO>;
-""")
+""",
+    )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 -:3:1:error: Nonterminal definitions cycle
@@ -464,13 +540,17 @@ cmd <FOO>;
   |
 """)
 
+
 def test_nonterminal_cycle_inner(complgen_binary_path: Path):
-    r = complgen_check(complgen_binary_path, """
+    r = complgen_check(
+        complgen_binary_path,
+        """
 cmd <FOO>;
 <FOO> ::= <BAR>;
 <BAR> ::= <QUUX>;
 <QUUX> ::= <BAR>;
-""")
+""",
+    )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 -:3:1:error: Nonterminal definitions cycle
@@ -495,12 +575,16 @@ cmd <FOO>;
   |
 """)
 
+
 def test_non_command_specialization(complgen_binary_path: Path):
-    r = complgen_check(complgen_binary_path, """
+    r = complgen_check(
+        complgen_binary_path,
+        """
 cmd <FOO>;
 <FOO@bash> ::= foo;
 <FOO@bash> ::= bar;
-""")
+""",
+    )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 -:3:16:error: Can only specialize external commands
@@ -512,11 +596,14 @@ cmd <FOO>;
 
 
 def test_duplicated_nonterminal_definition(complgen_binary_path: Path):
-    r = complgen_check(complgen_binary_path, """
+    r = complgen_check(
+        complgen_binary_path,
+        """
 cmd <FOO>;
 <FOO> ::= foo;
 <FOO> ::= bar;
-""")
+""",
+    )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 -:4:1:error: Duplicate nonterminal definition
@@ -533,11 +620,14 @@ cmd <FOO>;
 
 
 def test_duplicated_nonterminal_definition_specialization(complgen_binary_path: Path):
-    r = complgen_check(complgen_binary_path, """
+    r = complgen_check(
+        complgen_binary_path,
+        """
 cmd <FOO>;
 <FOO@bash> ::= {{{ echo foo }}};
 <FOO@bash> ::= {{{ echo bar }}};
-""")
+""",
+    )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 -:4:1:error: Duplicate nonterminal definition
@@ -549,5 +639,23 @@ cmd <FOO>;
   |
 3 | <FOO@bash> ::= {{{ echo foo }}};
   | ^^^^^^^^^^
+  |
+""")
+
+
+def test_unused_specialization(complgen_binary_path: Path):
+    r = complgen_check(
+        complgen_binary_path,
+        """
+foo bar;
+<foo@bash> ::= {{{ : }}};
+""",
+    )
+    assert r.returncode == 0
+    assert r.stderr == snapshot("""\
+-:3:1:warning: Unused specialization
+  |
+3 | <foo@bash> ::= {{{ : }}};
+  | ----------
   |
 """)
