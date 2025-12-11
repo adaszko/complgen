@@ -82,8 +82,8 @@ fn write_lookup_tables<W: Write>(
             .map(|(_, literal, _)| make_string_constant(literal)),
         " ",
     );
-    writeln!(buffer, r#"    declare -a literals=({literals})"#)?;
-    writeln!(buffer, r#"    declare -A literal_transitions=()"#)?;
+    writeln!(buffer, r#"    local -a literals=({literals})"#)?;
+    writeln!(buffer, r#"    local -A literal_transitions=()"#)?;
 
     if needs_nontails_code {
         let regexes: String = itertools::join(
@@ -92,8 +92,8 @@ fn write_lookup_tables<W: Write>(
                 .map(|regex| make_string_constant(regex)),
             " ",
         );
-        writeln!(buffer, r#"    declare -a regexes=({regexes})"#)?;
-        writeln!(buffer, r#"    declare -A nontail_transitions=()"#)?;
+        writeln!(buffer, r#"    local -a regexes=({regexes})"#)?;
+        writeln!(buffer, r#"    local -A nontail_transitions=()"#)?;
     }
     for state in dfa.get_all_states() {
         let literal_transitions =
@@ -150,7 +150,7 @@ fn write_lookup_tables<W: Write>(
     );
     writeln!(
         buffer,
-        r#"    declare -A match_anything_transitions=({match_anything_transitions})"#
+        r#"    local -A match_anything_transitions=({match_anything_transitions})"#
     )?;
 
     Ok(literal_id_from_input_description)
@@ -179,7 +179,7 @@ fn write_generic_subword_fn<W: Write>(
         local subword=${{word:$char_index}}
 
         if [[ -v "literal_transitions[$state]" ]]; then
-            declare -A state_transitions
+            local -A state_transitions
             eval "state_transitions=${{literal_transitions[$state]}}"
 
             local literal_matched=0
@@ -206,7 +206,7 @@ fn write_generic_subword_fn<W: Write>(
             buffer,
             r#"
         if [[ -v "nontail_transitions[$state]" ]]; then
-            declare -A state_nontails
+            local -A state_nontails
             eval "state_nontails=${{nontail_transitions[$state]}}"
             local nontail_matched=0
             for regex_id in "${{!state_nontails[@]}}"; do
@@ -259,8 +259,8 @@ fn write_generic_subword_fn<W: Write>(
     local -a matches=()
     local ignore_case=$(bind -v | grep completion-ignore-case | cut -d' ' -f3)
     for (( subword_fallback_level=0; subword_fallback_level <= max_fallback_level; subword_fallback_level++ )) {{
-        eval "declare literal_transitions_name=literal_transitions_level_${{subword_fallback_level}}"
-        eval "declare -a transitions=(\${{$literal_transitions_name[$state]}})"
+        eval "local literal_transitions_name=literal_transitions_level_${{subword_fallback_level}}"
+        eval "local -a transitions=(\${{$literal_transitions_name[$state]}})"
         for literal_id in "${{transitions[@]}}"; do
             local literal=${{literals[$literal_id]}}
             candidates+=("$matched_prefix$literal")
@@ -274,16 +274,16 @@ fn write_generic_subword_fn<W: Write>(
         writeln!(
             buffer,
             r#"
-        eval "declare commands_name=nontail_commands_level_${{subword_fallback_level}}"
-        eval "declare -a command_transitions=(\${{$commands_name[$state]}})"
-        eval "declare regexes_name=nontail_regexes_level_${{fallback_level}}"
-        eval "declare -a regexes_transitions=(\${{$regexes_name[$state]}})"
+        eval "local commands_name=nontail_commands_level_${{subword_fallback_level}}"
+        eval "local -a command_transitions=(\${{$commands_name[$state]}})"
+        eval "local regexes_name=nontail_regexes_level_${{fallback_level}}"
+        eval "local -a regexes_transitions=(\${{$regexes_name[$state]}})"
         for (( i = 0; i < ${{#command_transitions[@]}}; i++ )); do
             local command_id=${{command_transitions[$i]}}
             readarray -t output < <(_{command}_cmd_$command_id "$completed_prefix" "$matched_prefix" | cut -f1)
             local regex_id=${{regexes_transitions[$i]}}
             local regex="^(${{regexes[$regex_id]}}).*"
-            declare -a candidates=()
+            local -a candidates=()
             for line in ${{output[@]}}; do
                 if [[ ${{line}} =~ $regex && -n ${{BASH_REMATCH[1]}} ]]; then
                     match="${{BASH_REMATCH[1]}}"
@@ -300,8 +300,8 @@ fn write_generic_subword_fn<W: Write>(
     writeln!(
         buffer,
         r#"
-        eval "declare commands_name=commands_level_${{subword_fallback_level}}"
-        eval "declare -a transitions=(\${{$commands_name[$state]}})"
+        eval "local commands_name=commands_level_${{subword_fallback_level}}"
+        eval "local -a transitions=(\${{$commands_name[$state]}})"
         for command_id in "${{transitions[@]}}"; do
             readarray -t candidates < <(_{command}_cmd_$command_id "$completed_prefix" "$matched_prefix" | cut -f1)
             for item in "${{candidates[@]}}"; do
@@ -410,7 +410,7 @@ fn write_subword_fn<W: Write>(
         );
         writeln!(
             buffer,
-            r#"    declare -A literal_transitions_level_{level}=({initializer})"#
+            r#"    local -A literal_transitions_level_{level}=({initializer})"#
         )?;
     }
 
@@ -426,7 +426,7 @@ fn write_subword_fn<W: Write>(
             );
             writeln!(
                 buffer,
-                r#"    declare -A nontail_commands_level_{level}=({commands_initializer})"#
+                r#"    local -A nontail_commands_level_{level}=({commands_initializer})"#
             )?;
             let regexes_initializer = itertools::join(
                 transitions.iter().map(|(from_state, nontail_transitions)| {
@@ -440,7 +440,7 @@ fn write_subword_fn<W: Write>(
             );
             writeln!(
                 buffer,
-                r#"    declare -A nontail_regexes_level_{level}=({regexes_initializer})"#
+                r#"    local -A nontail_regexes_level_{level}=({regexes_initializer})"#
             )?;
         }
     }
@@ -455,17 +455,17 @@ fn write_subword_fn<W: Write>(
         );
         writeln!(
             buffer,
-            r#"    declare -A commands_level_{level}=({initializer})"#
+            r#"    local -A commands_level_{level}=({initializer})"#
         )?;
     }
 
     writeln!(
         buffer,
-        r#"    declare max_fallback_level={max_fallback_level}"#
+        r#"    local max_fallback_level={max_fallback_level}"#
     )?;
     writeln!(
         buffer,
-        r#"    declare state={starting_state}"#,
+        r#"    local state={starting_state}"#,
         starting_state = dfa.starting_state
     )?;
 
@@ -593,7 +593,7 @@ fi
         write_lookup_tables(buffer, dfa, &id_from_regex, needs_nontails_code)?;
 
     if needs_subwords_code {
-        writeln!(buffer, r#"    declare -A subword_transitions"#)?;
+        writeln!(buffer, r#"    local -A subword_transitions"#)?;
         for state in dfa.get_all_states() {
             let subword_transitions = dfa.get_subword_transitions_from(state);
             if subword_transitions.is_empty() {
@@ -621,7 +621,7 @@ fi
         local word=${{words[$word_index]}}
 
         if [[ -v "literal_transitions[$state]" ]]; then
-            declare -A state_transitions
+            local -A state_transitions
             eval "state_transitions=${{literal_transitions[$state]}}"
 
             local word_matched=0
@@ -648,7 +648,7 @@ fi
             buffer,
             r#"
         if [[ -v "subword_transitions[$state]" ]]; then
-            declare -A state_transitions
+            local -A state_transitions
             eval "state_transitions=${{subword_transitions[$state]}}"
 
             local subword_matched=0
@@ -766,7 +766,7 @@ fi
         );
         writeln!(
             buffer,
-            r#"    declare -A literal_transitions_level_{level}=({initializer})"#
+            r#"    local -A literal_transitions_level_{level}=({initializer})"#
         )?;
     }
 
@@ -781,7 +781,7 @@ fi
             );
             writeln!(
                 buffer,
-                r#"    declare -A subword_transitions_level_{level}=({initializer})"#
+                r#"    local -A subword_transitions_level_{level}=({initializer})"#
             )?;
         }
     }
@@ -796,7 +796,7 @@ fi
         );
         writeln!(
             buffer,
-            r#"    declare -A commands_level_{level}=({initializer})"#
+            r#"    local -A commands_level_{level}=({initializer})"#
         )?;
     }
 
@@ -811,7 +811,7 @@ fi
             );
             writeln!(
                 buffer,
-                r#"    declare -A nontail_commands_level_{level}=({commands_initializer})"#
+                r#"    local -A nontail_commands_level_{level}=({commands_initializer})"#
             )?;
 
             let regexes_initializer = itertools::join(
@@ -823,7 +823,7 @@ fi
             );
             writeln!(
                 buffer,
-                r#"    declare -A nontail_regexes_level_{level}=({regexes_initializer})"#
+                r#"    local -A nontail_regexes_level_{level}=({regexes_initializer})"#
             )?;
         }
     }
@@ -837,8 +837,8 @@ fi
     local max_fallback_level={max_fallback_level}
     local prefix="${{words[$cword]}}"
     for (( fallback_level=0; fallback_level <= max_fallback_level; fallback_level++ )) {{
-        eval "declare literal_transitions_name=literal_transitions_level_${{fallback_level}}"
-        eval "declare -a transitions=(\${{$literal_transitions_name[$state]}})"
+        eval "local literal_transitions_name=literal_transitions_level_${{fallback_level}}"
+        eval "local -a transitions=(\${{$literal_transitions_name[$state]}})"
         for literal_id in "${{transitions[@]}}"; do
             local literal="${{literals[$literal_id]}}"
             candidates+=("$literal ")
@@ -852,8 +852,8 @@ fi
         write!(
             buffer,
             r#"
-        eval "declare subword_transitions_name=subword_transitions_level_${{fallback_level}}"
-        eval "declare -a transitions=(\${{$subword_transitions_name[$state]}})"
+        eval "local subword_transitions_name=subword_transitions_level_${{fallback_level}}"
+        eval "local -a transitions=(\${{$subword_transitions_name[$state]}})"
         for subword_id in "${{transitions[@]}}"; do
             readarray -t -O "${{#matches[@]}}" matches < <(_{command}_subword_$subword_id complete "$prefix")
         done"#
@@ -863,8 +863,8 @@ fi
     write!(
         buffer,
         r#"
-        eval "declare commands_name=commands_level_${{fallback_level}}"
-        eval "declare -a transitions=(\${{$commands_name[$state]}})"
+        eval "local commands_name=commands_level_${{fallback_level}}"
+        eval "local -a transitions=(\${{$commands_name[$state]}})"
         for command_id in "${{transitions[@]}}"; do
             readarray -t candidates < <(_{command}_cmd_$command_id "$prefix" "" | cut -f1)
             if [[ ${{#candidates[@]}} -gt 0 ]]; then
@@ -877,16 +877,16 @@ fi
         write!(
             buffer,
             r#"
-        eval "declare commands_name=nontail_commands_level_${{fallback_level}}"
-        eval "declare -a command_transitions=(\${{$commands_name[$state]}})"
-        eval "declare regexes_name=nontail_regexes_level_${{fallback_level}}"
-        eval "declare -a regexes_transitions=(\${{$regexes_name[$state]}})"
+        eval "local commands_name=nontail_commands_level_${{fallback_level}}"
+        eval "local -a command_transitions=(\${{$commands_name[$state]}})"
+        eval "local regexes_name=nontail_regexes_level_${{fallback_level}}"
+        eval "local -a regexes_transitions=(\${{$regexes_name[$state]}})"
         for (( i = 0; i < ${{#command_transitions[@]}}; i++ )); do
             local command_id=${{command_transitions[$i]}}
             local regex_id=${{regexes_transitions[$i]}}
             local regex="^(${{regexes[$regex_id]}}).*"
             readarray -t output < <(_{command}_cmd_$command_id "$prefix" "" | cut -f1)
-            declare -a candidates=()
+            local -a candidates=()
             for line in ${{output[@]}}; do
                 if [[ ${{line}} =~ $regex && -n ${{BASH_REMATCH[1]}} ]]; then
                     match="${{BASH_REMATCH[1]}}"
