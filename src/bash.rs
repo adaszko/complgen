@@ -668,6 +668,32 @@ fi
         )?;
     }
 
+    if needs_nontails_code {
+        writeln!(
+            buffer,
+            r#"
+        if [[ -v "nontail_transitions[$state]" ]]; then
+            local -A state_nontails
+            eval "local -A state_nontails=${{nontail_transitions[$state]}}"
+
+            local nontail_matched=0
+            for regex_id in "${{!state_nontails[@]}}"; do
+                local regex="^(${{regexes[$regex_id]}}).*"
+                if [[ $word =~ $regex ]]; then
+                    word_index=$((word_index + 1))
+                    state=${{state_nontails[$regex_id]}}
+                    nontail_matched=1
+                    break
+                fi
+            done
+            if [[ $nontail_matched -ne 0 ]]; then
+                continue
+            fi
+        fi
+"#
+        )?;
+    }
+
     write!(
         buffer,
         r#"
