@@ -18,9 +18,6 @@ use ustr::{Ustr, ustr};
 //   2) printf [...] | source
 // * echo foo:$bar prints nothing if $bar expands to an empty string (!)
 
-// TODO Optimization: Do not emit __complgen_match if there's just one fallback level as it's
-// unnecessary in that case.
-
 pub const ARRAY_START: u32 = 1;
 
 fn make_string_constant(s: &str) -> String {
