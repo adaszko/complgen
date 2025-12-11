@@ -21,6 +21,8 @@ use ustr::{Ustr, ustr};
 // TODO Optimization: Do not emit __complgen_match if there's just one fallback level as it's
 // unnecessary in that case.
 
+const ARRAY_START: u32 = 1;
+
 fn make_string_constant(s: &str) -> String {
     if s.is_empty() {
         return r#""""#.to_string();
@@ -115,7 +117,13 @@ fn write_subword_lookup_tables<W: Write>(
         .get_all_literals()
         .into_iter()
         .enumerate()
-        .map(|(id, (literal, description))| (id + 1, literal, description.unwrap_or(ustr(""))))
+        .map(|(id, (literal, description))| {
+            (
+                id + ARRAY_START as usize,
+                literal,
+                description.unwrap_or(ustr("")),
+            )
+        })
         .collect();
 
     let literal_id_from_input_description: HashMap<(Ustr, Ustr), usize> = all_literals
@@ -212,15 +220,19 @@ fn write_subword_lookup_tables<W: Write>(
             writeln!(
                 buffer,
                 r#"    set --global subword_literal_transitions_inputs[{}] {}"#,
-                state + 1,
+                state + ARRAY_START,
                 make_string_constant(&state_inputs),
             )?;
-            let state_tos: String =
-                itertools::join(transitions.iter().map(|(_, to)| format!("{}", to + 1)), " ");
+            let state_tos: String = itertools::join(
+                transitions
+                    .iter()
+                    .map(|(_, to)| format!("{}", to + ARRAY_START)),
+                " ",
+            );
             writeln!(
                 buffer,
                 r#"    set --global subword_literal_transitions_tos[{}] {}"#,
-                state + 1,
+                state + ARRAY_START,
                 make_string_constant(&state_tos),
             )?;
         }
@@ -234,24 +246,24 @@ fn write_subword_lookup_tables<W: Write>(
             let nontail_regexes: String = itertools::join(
                 nontail_command_transitions
                     .iter()
-                    .map(|(regex_id, _)| format!("{}", regex_id + 1)),
+                    .map(|(regex_id, _)| format!("{}", *regex_id + ARRAY_START as usize)),
                 " ",
             );
             writeln!(
                 buffer,
                 r#"    set --global subword_nontail_regexes[{}] {nontail_regexes}"#,
-                state + 1,
+                state + ARRAY_START,
             )?;
             let nontail_tos: String = itertools::join(
                 nontail_command_transitions
                     .into_iter()
-                    .map(|(_, to)| format!("{}", to + 1)),
+                    .map(|(_, to)| format!("{}", to + ARRAY_START)),
                 " ",
             );
             writeln!(
                 buffer,
                 r#"    set --global subword_nontail_tos[{}] {nontail_tos}"#,
-                state + 1,
+                state + ARRAY_START,
             )?;
         }
     }
@@ -263,7 +275,7 @@ fn write_subword_lookup_tables<W: Write>(
     let match_anything_transitions_from = itertools::join(
         match_anything_transitions
             .iter()
-            .map(|(from, _)| format!("{}", from + 1)),
+            .map(|(from, _)| format!("{}", from + ARRAY_START)),
         " ",
     );
     writeln!(
@@ -273,7 +285,7 @@ fn write_subword_lookup_tables<W: Write>(
     let match_anything_transitions_to = itertools::join(
         match_anything_transitions
             .iter()
-            .map(|(_, to)| format!("{}", to + 1)),
+            .map(|(_, to)| format!("{}", to + ARRAY_START)),
         " ",
     );
     writeln!(
@@ -463,16 +475,16 @@ fn write_subword_fn<W: Write>(
         write_subword_lookup_tables(buffer, dfa, id_from_regex)?;
     writeln!(buffer)?;
 
-    let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(1);
+    let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
     let mut completion_literals: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    completion_literals.resize_with(max_fallback_level + 1, Default::default);
+    completion_literals.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
 
     let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    completion_commands.resize_with(max_fallback_level + 1, Default::default);
+    completion_commands.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
 
     let mut completion_nontails: Vec<HashMap<StateId, Vec<(usize, usize)>>> = Default::default();
-    completion_nontails.resize_with(max_fallback_level + 1, Default::default);
+    completion_nontails.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
 
     for (from, input_id, _) in dfa.iter_transitions() {
         match dfa.get_input(input_id).clone() {
@@ -526,7 +538,7 @@ fn write_subword_fn<W: Write>(
     for (level, transitions) in completion_literals.iter().enumerate() {
         let from_initializer = transitions
             .iter()
-            .map(|(from_state, _)| from_state + 1)
+            .map(|(from_state, _)| from_state + ARRAY_START)
             .join(" ");
         writeln!(
             buffer,
@@ -548,7 +560,7 @@ fn write_subword_fn<W: Write>(
     for (level, transitions) in completion_nontails.iter().enumerate() {
         let from_initializer = transitions
             .iter()
-            .map(|(from_state, _)| from_state + 1)
+            .map(|(from_state, _)| from_state + ARRAY_START)
             .join(" ");
         writeln!(
             buffer,
@@ -574,7 +586,7 @@ fn write_subword_fn<W: Write>(
             .map(|(_, command_ids)| {
                 command_ids
                     .iter()
-                    .map(|(_, regex_id)| format!("{}", regex_id + 1))
+                    .map(|(_, regex_id)| format!("{}", regex_id + ARRAY_START as usize))
                     .join(" ")
             })
             .join(" ");
@@ -587,7 +599,7 @@ fn write_subword_fn<W: Write>(
     for (level, transitions) in completion_commands.iter().enumerate() {
         let from_initializer = transitions
             .iter()
-            .map(|(from_state, _)| from_state + 1)
+            .map(|(from_state, _)| from_state + ARRAY_START)
             .join(" ");
         writeln!(
             buffer,
@@ -614,7 +626,7 @@ fn write_subword_fn<W: Write>(
     writeln!(
         buffer,
         r#"    set --global subword_state {}"#,
-        dfa.starting_state + 1
+        dfa.starting_state + ARRAY_START
     )?;
     writeln!(buffer, r#"    _{command}_subword "$mode" "$word""#)?;
 
@@ -631,7 +643,13 @@ fn write_lookup_tables<W: Write>(
         .get_all_literals()
         .into_iter()
         .enumerate()
-        .map(|(id, (literal, description))| (id + 1, literal, description.unwrap_or(ustr(""))))
+        .map(|(id, (literal, description))| {
+            (
+                id + ARRAY_START as usize,
+                literal,
+                description.unwrap_or(ustr("")),
+            )
+        })
         .collect();
 
     let literal_id_from_input_description: HashMap<(Ustr, Ustr), usize> = all_literals
@@ -722,18 +740,22 @@ fn write_lookup_tables<W: Write>(
             writeln!(
                 buffer,
                 r#"    set literal_transitions_inputs[{}] {}"#,
-                state + 1,
+                state + ARRAY_START,
                 make_string_constant(&state_inputs),
             )?;
 
-            let state_tos: String =
-                itertools::join(transitions.iter().map(|(_, to)| format!("{}", to + 1)), " ");
+            let state_tos: String = itertools::join(
+                transitions
+                    .iter()
+                    .map(|(_, to)| format!("{}", to + ARRAY_START)),
+                " ",
+            );
             // TODO Optimize for output size: Emit a single assigment to literal_transitions_tos
             // instead of many
             writeln!(
                 buffer,
                 r#"    set literal_transitions_tos[{}] {}"#,
-                state + 1,
+                state + ARRAY_START,
                 make_string_constant(&state_tos),
             )?;
         }
@@ -747,13 +769,13 @@ fn write_lookup_tables<W: Write>(
             let state_nontail_transitions: String = itertools::join(
                 nontail_command_transitions
                     .into_iter()
-                    .map(|(regex_id, to)| format!("[{regex_id}]={}", to + 1)),
+                    .map(|(regex_id, to)| format!("[{regex_id}]={}", to + ARRAY_START)),
                 " ",
             );
             writeln!(
                 buffer,
                 r#"    set nontail_transitions[{}] {state_nontail_transitions}"#,
-                state + 1,
+                state + ARRAY_START,
             )?;
         }
     }
@@ -765,7 +787,7 @@ fn write_lookup_tables<W: Write>(
     let match_anything_transitions_from = itertools::join(
         match_anything_transitions
             .iter()
-            .map(|(from, _)| format!("{}", from + 1)),
+            .map(|(from, _)| format!("{}", from + ARRAY_START)),
         " ",
     );
     writeln!(
@@ -775,7 +797,7 @@ fn write_lookup_tables<W: Write>(
     let match_anything_transitions_to = itertools::join(
         match_anything_transitions
             .iter()
-            .map(|(_, to)| format!("{}", to + 1)),
+            .map(|(_, to)| format!("{}", to + ARRAY_START)),
         " ",
     );
     writeln!(
@@ -857,7 +879,7 @@ end
         )?;
     }
 
-    let id_from_dfa = dfa.get_subwords(1);
+    let id_from_dfa = dfa.get_subwords(ARRAY_START as usize);
     if !id_from_dfa.is_empty() {
         write_generic_subword_fn(buffer, command)?;
         writeln!(buffer)?;
@@ -912,19 +934,19 @@ end
         let tos: String = itertools::join(
             subword_transitions
                 .iter()
-                .map(|(_, to)| format!("{}", to + 1)),
+                .map(|(_, to)| format!("{}", to + ARRAY_START)),
             " ",
         );
         writeln!(
             buffer,
             r#"    set subword_transitions_ids[{}] {}"#,
-            state + 1,
+            state + ARRAY_START,
             make_string_constant(&subword_ids),
         )?;
         writeln!(
             buffer,
             r#"    set subword_transitions_tos[{}] {}"#,
-            state + 1,
+            state + ARRAY_START,
             make_string_constant(&tos),
         )?;
     }
@@ -950,7 +972,7 @@ end
             end
         end
 "#,
-        starting_state = dfa.starting_state + 1
+        starting_state = dfa.starting_state + ARRAY_START
     )?;
 
     if dfa.has_subword_transitions() {
@@ -966,7 +988,7 @@ end
                 if _{command}_subword_$subword_id matches "$word"
                     set subword_matched 1
                     set state $tos[$subword_id]
-                    set word_index (math $word_index + 1)
+                    set word_index (math $word_index + ARRAY_START)
                     break
                 end
             end
@@ -997,19 +1019,19 @@ end
 
     // ///////////////////////////// Completion ///////////////////////////////////
 
-    let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(1);
+    let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
     let mut completion_literals: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    completion_literals.resize_with(max_fallback_level + 1, Default::default);
+    completion_literals.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
 
     let mut completion_subwords: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    completion_subwords.resize_with(max_fallback_level + 1, Default::default);
+    completion_subwords.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
 
     let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    completion_commands.resize_with(max_fallback_level + 1, Default::default);
+    completion_commands.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
 
     let mut completion_nontails: Vec<HashMap<StateId, Vec<(usize, usize)>>> = Default::default();
-    completion_nontails.resize_with(max_fallback_level + 1, Default::default);
+    completion_nontails.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
 
     for (from, input_id, _) in dfa.iter_transitions() {
         match dfa.get_input(input_id).clone() {
@@ -1074,7 +1096,7 @@ end
         let froms_initializer = itertools::join(
             transitions
                 .iter()
-                .map(|(from_state, _)| format!("{}", from_state + 1)),
+                .map(|(from_state, _)| format!("{}", from_state + ARRAY_START)),
             " ",
         );
         writeln!(
@@ -1105,7 +1127,7 @@ end
             let froms_initializer = itertools::join(
                 transitions
                     .iter()
-                    .map(|(from_state, _)| format!("{}", from_state + 1)),
+                    .map(|(from_state, _)| format!("{}", from_state + ARRAY_START)),
                 " ",
             );
             writeln!(
@@ -1135,7 +1157,7 @@ end
     for (level, transitions) in completion_nontails.iter().enumerate() {
         let from_initializer = transitions
             .iter()
-            .map(|(from_state, _)| from_state + 1)
+            .map(|(from_state, _)| from_state + ARRAY_START)
             .join(" ");
         writeln!(
             buffer,
@@ -1164,7 +1186,7 @@ end
                 let joined_ids = itertools::join(
                     state_commands
                         .iter()
-                        .map(|(_, regex_id)| format!("{}", regex_id + 1)),
+                        .map(|(_, regex_id)| format!("{}", regex_id + ARRAY_START as usize)),
                     " ",
                 );
                 format!(r#""{}""#, joined_ids)
@@ -1181,7 +1203,7 @@ end
         for (level, transitions) in completion_commands.iter().enumerate() {
             let from_initializer = transitions
                 .iter()
-                .map(|(from_state, _)| from_state + 1)
+                .map(|(from_state, _)| from_state + ARRAY_START)
                 .join(" ");
             writeln!(
                 buffer,
