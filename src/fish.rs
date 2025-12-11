@@ -460,6 +460,7 @@ fn write_subword_fn<W: Write>(
     dfa: &DFA,
     id_from_cmd: &IndexSet<Ustr>,
     id_from_regex: &IndexSet<Ustr>,
+    needs_nontails_code: bool,
 ) -> Result<()> {
     writeln!(
         buffer,
@@ -555,43 +556,45 @@ fn write_subword_fn<W: Write>(
         )?;
     }
 
-    for (level, transitions) in completion_nontails.iter().enumerate() {
-        let from_initializer = transitions
-            .iter()
-            .map(|(from_state, _)| from_state + ARRAY_START)
-            .join(" ");
-        writeln!(
-            buffer,
-            r#"    set --global subword_nontail_command_froms_level_{level} {from_initializer}"#
-        )?;
+    if needs_nontails_code {
+        for (level, transitions) in completion_nontails.iter().enumerate() {
+            let from_initializer = transitions
+                .iter()
+                .map(|(from_state, _)| from_state + ARRAY_START)
+                .join(" ");
+            writeln!(
+                buffer,
+                r#"    set --global subword_nontail_command_froms_level_{level} {from_initializer}"#
+            )?;
 
-        let commands_initializer = transitions
-            .iter()
-            .map(|(_, command_ids)| {
-                command_ids
-                    .iter()
-                    .map(|(cmd_id, _)| format!("{}", cmd_id))
-                    .join(" ")
-            })
-            .join(" ");
-        writeln!(
-            buffer,
-            r#"    set --global subword_nontail_commands_level_{level} {commands_initializer}"#
-        )?;
+            let commands_initializer = transitions
+                .iter()
+                .map(|(_, command_ids)| {
+                    command_ids
+                        .iter()
+                        .map(|(cmd_id, _)| format!("{}", cmd_id))
+                        .join(" ")
+                })
+                .join(" ");
+            writeln!(
+                buffer,
+                r#"    set --global subword_nontail_commands_level_{level} {commands_initializer}"#
+            )?;
 
-        let regexes_initializer = transitions
-            .iter()
-            .map(|(_, command_ids)| {
-                command_ids
-                    .iter()
-                    .map(|(_, regex_id)| format!("{}", regex_id + ARRAY_START as usize))
-                    .join(" ")
-            })
-            .join(" ");
-        writeln!(
-            buffer,
-            r#"    set --global subword_nontail_regexes_level_{level} {regexes_initializer}"#
-        )?;
+            let regexes_initializer = transitions
+                .iter()
+                .map(|(_, command_ids)| {
+                    command_ids
+                        .iter()
+                        .map(|(_, regex_id)| format!("{}", regex_id + ARRAY_START as usize))
+                        .join(" ")
+                })
+                .join(" ");
+            writeln!(
+                buffer,
+                r#"    set --global subword_nontail_regexes_level_{level} {regexes_initializer}"#
+            )?;
+        }
     }
 
     for (level, transitions) in completion_commands.iter().enumerate() {
@@ -641,6 +644,7 @@ fn write_lookup_tables<W: Write>(
     buffer: &mut W,
     dfa: &DFA,
     id_from_regex: &IndexSet<Ustr>,
+    needs_nontails_code: bool,
 ) -> Result<HashMap<(Ustr, Ustr), usize>> {
     let all_literals: Vec<(usize, Ustr, Ustr)> = dfa
         .get_all_literals()
@@ -717,8 +721,10 @@ fn write_lookup_tables<W: Write>(
 
     writeln!(buffer, r#"    set literal_transitions_inputs"#)?;
 
-    writeln!(buffer, r#"    set nontail_regexes"#)?;
-    writeln!(buffer, r#"    set nontail_tos"#)?;
+    if needs_nontails_code {
+        writeln!(buffer, r#"    set nontail_regexes"#)?;
+        writeln!(buffer, r#"    set nontail_tos"#)?;
+    }
     for state in dfa.get_all_states() {
         let literal_transitions =
             dfa.get_literal_transitions_from(StateId::try_from(state).unwrap());
@@ -765,28 +771,32 @@ fn write_lookup_tables<W: Write>(
             )?;
         }
 
-        let nontail_transitions = dfa.get_nontail_transitions_from(state as StateId);
-        if !nontail_transitions.is_empty() {
-            let state_nontail_regexes: String = nontail_transitions
-                .iter()
-                .map(|(regex, _)| id_from_regex.get_index_of(regex).unwrap() + ARRAY_START as usize)
-                .join(" ");
-            let state_nontail_tos: String = nontail_transitions
-                .iter()
-                .map(|(_, to)| format!("{}", to + ARRAY_START))
-                .join(" ");
-            writeln!(
-                buffer,
-                r#"    set nontail_regexes[{}] {}"#,
-                state + ARRAY_START,
-                make_string_constant(&state_nontail_regexes),
-            )?;
-            writeln!(
-                buffer,
-                r#"    set nontail_tos[{}] {}"#,
-                state + ARRAY_START,
-                make_string_constant(&state_nontail_tos),
-            )?;
+        if needs_nontails_code {
+            let nontail_transitions = dfa.get_nontail_transitions_from(state as StateId);
+            if !nontail_transitions.is_empty() {
+                let state_nontail_regexes: String = nontail_transitions
+                    .iter()
+                    .map(|(regex, _)| {
+                        id_from_regex.get_index_of(regex).unwrap() + ARRAY_START as usize
+                    })
+                    .join(" ");
+                let state_nontail_tos: String = nontail_transitions
+                    .iter()
+                    .map(|(_, to)| format!("{}", to + ARRAY_START))
+                    .join(" ");
+                writeln!(
+                    buffer,
+                    r#"    set nontail_regexes[{}] {}"#,
+                    state + ARRAY_START,
+                    make_string_constant(&state_nontail_regexes),
+                )?;
+                writeln!(
+                    buffer,
+                    r#"    set nontail_tos[{}] {}"#,
+                    state + ARRAY_START,
+                    make_string_constant(&state_nontail_tos),
+                )?;
+            }
         }
     }
 
@@ -897,7 +907,15 @@ end
         write_generic_subword_fn(buffer, command)?;
         for (dfaid, id) in &id_from_dfa {
             let dfa = dfa.subdfas.lookup(*dfaid);
-            write_subword_fn(buffer, command, *id, dfa, &id_from_cmd, &id_from_regex)?;
+            write_subword_fn(
+                buffer,
+                command,
+                *id,
+                dfa,
+                &id_from_cmd,
+                &id_from_regex,
+                needs_nontails_code,
+            )?;
         }
     }
 
@@ -927,7 +945,8 @@ end
 "#
     )?;
 
-    let literal_id_from_input_description = write_lookup_tables(buffer, dfa, &id_from_regex)?;
+    let literal_id_from_input_description =
+        write_lookup_tables(buffer, dfa, &id_from_regex, needs_nontails_code)?;
 
     if needs_subwords_code {
         for state in dfa.get_all_states() {
@@ -1193,49 +1212,51 @@ end
         }
     }
 
-    for (level, transitions) in completion_nontails.iter().enumerate() {
-        let from_initializer = transitions
-            .iter()
-            .map(|(from_state, _)| from_state + ARRAY_START)
-            .join(" ");
-        writeln!(
-            buffer,
-            r#"    set nontail_command_froms_level_{level} {from_initializer}"#
-        )?;
+    if needs_nontails_code {
+        for (level, transitions) in completion_nontails.iter().enumerate() {
+            let from_initializer = transitions
+                .iter()
+                .map(|(from_state, _)| from_state + ARRAY_START)
+                .join(" ");
+            writeln!(
+                buffer,
+                r#"    set nontail_command_froms_level_{level} {from_initializer}"#
+            )?;
 
-        let commands_initializer = itertools::join(
-            transitions.iter().map(|(_, state_commands)| {
-                let joined_ids = itertools::join(
-                    state_commands
-                        .iter()
-                        .map(|(cmd_id, _)| format!("{}", cmd_id)),
-                    " ",
-                );
-                format!(r#""{}""#, joined_ids)
-            }),
-            " ",
-        );
-        writeln!(
-            buffer,
-            r#"    set nontail_commands_level_{level} {commands_initializer}"#
-        )?;
+            let commands_initializer = itertools::join(
+                transitions.iter().map(|(_, state_commands)| {
+                    let joined_ids = itertools::join(
+                        state_commands
+                            .iter()
+                            .map(|(cmd_id, _)| format!("{}", cmd_id)),
+                        " ",
+                    );
+                    format!(r#""{}""#, joined_ids)
+                }),
+                " ",
+            );
+            writeln!(
+                buffer,
+                r#"    set nontail_commands_level_{level} {commands_initializer}"#
+            )?;
 
-        let regexes_initializer = itertools::join(
-            transitions.iter().map(|(_, state_commands)| {
-                let joined_ids = itertools::join(
-                    state_commands
-                        .iter()
-                        .map(|(_, regex_id)| format!("{}", regex_id + ARRAY_START as usize)),
-                    " ",
-                );
-                format!(r#""{}""#, joined_ids)
-            }),
-            " ",
-        );
-        writeln!(
-            buffer,
-            r#"    set nontail_regexes_level_{level} {regexes_initializer}"#
-        )?;
+            let regexes_initializer = itertools::join(
+                transitions.iter().map(|(_, state_commands)| {
+                    let joined_ids = itertools::join(
+                        state_commands
+                            .iter()
+                            .map(|(_, regex_id)| format!("{}", regex_id + ARRAY_START as usize)),
+                        " ",
+                    );
+                    format!(r#""{}""#, joined_ids)
+                }),
+                " ",
+            );
+            writeln!(
+                buffer,
+                r#"    set nontail_regexes_level_{level} {regexes_initializer}"#
+            )?;
+        }
     }
 
     if !completion_commands.first().unwrap().is_empty() {
@@ -1329,7 +1350,7 @@ end
         )?;
     }
 
-    if !completion_nontails.first().unwrap().is_empty() {
+    if needs_nontails_code {
         write!(
             buffer,
             r#"
