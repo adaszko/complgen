@@ -225,6 +225,13 @@ def test_specializes_for_bash_with_regex(complgen_binary_path: Path):
         assert get_sorted_bash_completions(path, input) == sorted(["bashbar"])
 
 
+def test_nontail_matching(complgen_binary_path: Path):
+    GRAMMAR = """cmd <LEFT> right; <LEFT> ::= {{{ echo left }}}@bash"left";"""
+    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
+        input = r'''COMP_WORDS=(cmd left); COMP_CWORD=2; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(["right"])
+
+
 def test_nontail_matching_alternative(complgen_binary_path: Path):
     GRAMMAR = """cmd <LEFT> | right; <LEFT> ::= {{{ echo left }}}@bash"left";"""
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:

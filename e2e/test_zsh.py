@@ -307,10 +307,10 @@ cmd --opt=(<FOO> || completion-fallback);
 
 
 def test_nontail_matching(complgen_binary_path: Path):
-    GRAMMAR = """cmd <LEFT> | right; <LEFT> ::= {{{ echo left }}}@zsh"left";"""
-    assert get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd l") == sorted(
-        ["left"]
-    )
+    GRAMMAR = """cmd <LEFT> right; <LEFT> ::= {{{ echo left }}}@zsh"left";"""
+    assert get_sorted_aot_completions(
+        complgen_binary_path, GRAMMAR, "cmd left "
+    ) == sorted(["right"])
 
 
 def test_nontail_matching_alternative(complgen_binary_path: Path):
