@@ -959,7 +959,7 @@ end
             r#"
         if set --query subword_transitions_ids[$state] && test -n $subword_transitions_ids[$state]
             set subword_ids (string split ' ' $subword_transitions_ids[$state])
-            set tos $subword_transitions_tos[$state]
+            set tos (string split ' ' $subword_transitions_tos[$state])
 
             set subword_matched 0
             for subword_id in $subword_ids
