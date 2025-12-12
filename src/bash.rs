@@ -160,6 +160,7 @@ fn write_generic_subword_fn<W: Write>(
     buffer: &mut W,
     command: &str,
     needs_nontails_code: bool,
+    needs_commands_code: bool,
 ) -> Result<()> {
     writeln!(
         buffer,
@@ -297,9 +298,10 @@ fn write_generic_subword_fn<W: Write>(
         )?;
     }
 
-    writeln!(
-        buffer,
-        r#"
+    if needs_commands_code {
+        writeln!(
+            buffer,
+            r#"
         eval "local commands_name=commands_level_${{subword_fallback_level}}"
         eval "local -a transitions=(\${{$commands_name[$state]}})"
         for command_id in "${{transitions[@]}}"; do
@@ -307,8 +309,13 @@ fn write_generic_subword_fn<W: Write>(
             for item in "${{candidates[@]}}"; do
                 matches+=("$matched_prefix$item")
             done
-        done
+        done"#
+        )?;
+    }
 
+    write!(
+        buffer,
+        r#"
         if [[ ${{#matches[@]}} -gt 0 ]]; then
             printf '%s\n' "${{matches[@]}}"
             break
@@ -335,6 +342,7 @@ fn write_subword_fn<W: Write>(
     id_from_cmd: &IndexSet<Ustr>,
     id_from_regex: &IndexSet<Ustr>,
     needs_nontails_code: bool,
+    needs_commands_code: bool,
 ) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
 
@@ -445,18 +453,20 @@ fn write_subword_fn<W: Write>(
         }
     }
 
-    for (level, transitions) in completion_commands.iter().enumerate() {
-        let initializer = itertools::join(
-            transitions.iter().map(|(from_state, command_ids)| {
-                let joined_command_ids = itertools::join(command_ids, " ");
-                format!(r#"[{from_state}]="{joined_command_ids}""#)
-            }),
-            " ",
-        );
-        writeln!(
-            buffer,
-            r#"    local -A commands_level_{level}=({initializer})"#
-        )?;
+    if needs_commands_code {
+        for (level, transitions) in completion_commands.iter().enumerate() {
+            let initializer = itertools::join(
+                transitions.iter().map(|(from_state, command_ids)| {
+                    let joined_command_ids = itertools::join(command_ids, " ");
+                    format!(r#"[{from_state}]="{joined_command_ids}""#)
+                }),
+                " ",
+            );
+            writeln!(
+                buffer,
+                r#"    local -A commands_level_{level}=({initializer})"#
+            )?;
+        }
     }
 
     writeln!(
@@ -532,6 +542,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     let needs_subwords_code = dfa.needs_subwords_code();
     let needs_nontails_code = dfa.needs_nontails_code();
     let needs_subword_nontails_code = dfa.needs_subword_nontails_code();
+    let needs_commands_code = dfa.needs_commands_code();
 
     write!(
         buffer,
@@ -559,7 +570,7 @@ fi
 
     let id_from_dfa = dfa.get_subwords(ARRAY_START as usize);
     if needs_subwords_code {
-        write_generic_subword_fn(buffer, command, needs_subwords_code)?;
+        write_generic_subword_fn(buffer, command, needs_nontails_code, needs_commands_code)?;
         for (dfaid, id) in &id_from_dfa {
             let dfa = dfa.subdfas.lookup(*dfaid);
             write_subword_fn(
@@ -570,6 +581,7 @@ fi
                 &id_from_cmd,
                 &id_from_regex,
                 needs_subword_nontails_code,
+                needs_commands_code,
             )?;
             writeln!(buffer)?;
         }
@@ -813,18 +825,20 @@ fi
         }
     }
 
-    for (level, transitions) in completion_commands.iter().enumerate() {
-        let initializer = itertools::join(
-            transitions.iter().map(|(from_state, command_ids)| {
-                let joined_command_ids = itertools::join(command_ids, " ");
-                format!(r#"[{from_state}]="{joined_command_ids}""#)
-            }),
-            " ",
-        );
-        writeln!(
-            buffer,
-            r#"    local -A commands_level_{level}=({initializer})"#
-        )?;
+    if needs_commands_code {
+        for (level, transitions) in completion_commands.iter().enumerate() {
+            let initializer = itertools::join(
+                transitions.iter().map(|(from_state, command_ids)| {
+                    let joined_command_ids = itertools::join(command_ids, " ");
+                    format!(r#"[{from_state}]="{joined_command_ids}""#)
+                }),
+                " ",
+            );
+            writeln!(
+                buffer,
+                r#"    local -A commands_level_{level}=({initializer})"#
+            )?;
+        }
     }
 
     if needs_nontails_code {
@@ -887,9 +901,10 @@ fi
         )?;
     }
 
-    write!(
-        buffer,
-        r#"
+    if needs_commands_code {
+        write!(
+            buffer,
+            r#"
         eval "local commands_name=commands_level_${{fallback_level}}"
         eval "local -a transitions=(\${{$commands_name[$state]}})"
         for command_id in "${{transitions[@]}}"; do
@@ -898,7 +913,8 @@ fi
                 readarray -t -O "${{#matches[@]}}" matches < <(printf "%s\n" "${{candidates[@]}}" | {MATCH_FN_NAME} "$ignore_case" "$prefix")
             fi
         done"#
-    )?;
+        )?;
+    }
 
     if needs_nontails_code {
         write!(

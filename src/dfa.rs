@@ -932,6 +932,17 @@ impl DFA {
         })
     }
 
+    pub(crate) fn needs_commands_code(&self) -> bool {
+        self.iter_inputs().any(|input| match input {
+            Inp::Subword { subdfa, .. } => self.subdfas.lookup(*subdfa).needs_commands_code(),
+            Inp::Literal { .. } | Inp::Star => false,
+            Inp::Command { regex: None, .. } => true,
+            Inp::Command {
+                regex: Some(..), ..
+            } => false,
+        })
+    }
+
     pub fn to_dot<W: Write>(&self, output: &mut W, array_start: u32) -> Result<()> {
         writeln!(output, "digraph dfa {{")?;
         writeln!(output, "\trankdir=LR;")?;
