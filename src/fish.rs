@@ -270,27 +270,16 @@ fn write_subword_lookup_tables<W: Write>(
 
     writeln!(buffer)?;
 
-    let match_anything_transitions: Vec<(StateId, StateId)> =
-        dfa.iter_match_anything_transitions().collect();
-    let match_anything_transitions_from = itertools::join(
-        match_anything_transitions
+    let star_transitions: Vec<(StateId, StateId)> = dfa.iter_top_level_star_transitions().collect();
+    let star_transitions_from = itertools::join(
+        star_transitions
             .iter()
             .map(|(from, _)| format!("{}", from + ARRAY_START)),
         " ",
     );
     writeln!(
         buffer,
-        r#"    set --global subword_match_anything_transitions_from {match_anything_transitions_from}"#
-    )?;
-    let match_anything_transitions_to = itertools::join(
-        match_anything_transitions
-            .iter()
-            .map(|(_, to)| format!("{}", to + ARRAY_START)),
-        " ",
-    );
-    writeln!(
-        buffer,
-        r#"    set --global subword_match_anything_transitions_to {match_anything_transitions_to}"#
+        r#"    set --global subword_star_transitions_from {star_transitions_from}"#
     )?;
 
     Ok(literal_id_from_input_description)
@@ -376,7 +365,7 @@ fn write_generic_subword_fn<W: Write>(
     write!(
         buffer,
         r#"
-        set index (contains --index -- "$subword_state" $subword_match_anything_transitions_from)
+        set index (contains --index -- "$subword_state" $subword_star_transitions_from)
         if test -n "$index"
             set matched 1
             break
@@ -839,27 +828,26 @@ fn write_lookup_tables<W: Write>(
 
     writeln!(buffer)?;
 
-    let match_anything_transitions: Vec<(StateId, StateId)> =
-        dfa.iter_match_anything_transitions().collect();
-    let match_anything_transitions_from = itertools::join(
-        match_anything_transitions
+    let star_transitions: Vec<(StateId, StateId)> = dfa.iter_top_level_star_transitions().collect();
+    let star_transitions_from = itertools::join(
+        star_transitions
             .iter()
             .map(|(from, _)| format!("{}", from + ARRAY_START)),
         " ",
     );
     writeln!(
         buffer,
-        r#"    set match_anything_transitions_from {match_anything_transitions_from}"#
+        r#"    set star_transitions_from {star_transitions_from}"#
     )?;
-    let match_anything_transitions_to = itertools::join(
-        match_anything_transitions
+    let star_transitions_to = itertools::join(
+        star_transitions
             .iter()
             .map(|(_, to)| format!("{}", to + ARRAY_START)),
         " ",
     );
     writeln!(
         buffer,
-        r#"    set match_anything_transitions_to {match_anything_transitions_to}"#
+        r#"    set star_transitions_to {star_transitions_to}"#
     )?;
 
     Ok(literal_id_from_input_description)
@@ -1107,9 +1095,9 @@ end
     write!(
         buffer,
         r#"
-        if set --query match_anything_transitions_from[$state] && test -n $match_anything_transitions_from[$state]
-            set index (contains --index -- "$state" $match_anything_transitions_from)
-            set state $match_anything_transitions_to[$index]
+        if set --query star_transitions_from[$state] && test -n $star_transitions_from[$state]
+            set index (contains --index -- "$state" $star_transitions_from)
+            set state $star_transitions_to[$index]
             set word_index (math $word_index + 1)
             continue
         end

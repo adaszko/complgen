@@ -160,14 +160,14 @@ fn write_lookup_tables<W: Write>(
         }
     }
 
-    let match_anything_transitions = itertools::join(
-        dfa.iter_match_anything_transitions()
+    let star_transitions = itertools::join(
+        dfa.iter_top_level_star_transitions()
             .map(|(from, to)| format!("[{}]={}", from + ARRAY_START, to + ARRAY_START)),
         " ",
     );
     writeln!(
         buffer,
-        r#"    declare -A {prefix}match_anything_transitions=({match_anything_transitions})"#
+        r#"    declare -A {prefix}star_transitions=({star_transitions})"#
     )?;
 
     Ok(literal_id_from_input_description)
@@ -252,7 +252,7 @@ fn write_generic_subword_fn<W: Write>(
     write!(
         buffer,
         r#"
-        if [[ -v "subword_match_anything_transitions[$subword_state]" ]]; then
+        if [[ -v "subword_star_transitions[$subword_state]" ]]; then
             matched=1
             break
         fi
@@ -868,8 +868,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     writeln!(
         buffer,
         r#"
-        if [[ -v "match_anything_transitions[$state]" ]]; then
-            state=${{match_anything_transitions[$state]}}
+        if [[ -v "star_transitions[$state]" ]]; then
+            state=${{star_transitions[$state]}}
             word_index=$((word_index + 1))
             continue
         fi

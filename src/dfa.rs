@@ -869,17 +869,17 @@ impl DFA {
         states
     }
 
-    pub(crate) fn iter_match_anything_transitions(
+    pub(crate) fn iter_top_level_star_transitions(
         &self,
     ) -> impl Iterator<Item = (StateId, StateId)> + '_ {
         self.iter_transitions()
             .filter_map(move |(from, input_id, to)| {
                 let input = self.get_input(input_id);
-                if input.is_star(&self.subdfas) {
-                    Some((from, to))
-                } else {
-                    None
-                }
+                let is_star = match input {
+                    Inp::Literal { .. } | Inp::Subword { .. } | Inp::Command { .. } => false,
+                    Inp::Star => true,
+                };
+                if is_star { Some((from, to)) } else { None }
             })
     }
 
