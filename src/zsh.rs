@@ -178,6 +178,7 @@ fn write_generic_subword_fn<W: Write>(
     command: &str,
     needs_nontails_code: bool,
     needs_commands_code: bool,
+    needs_compadds_code: bool,
 ) -> Result<()> {
     write!(
         buffer,
@@ -279,9 +280,20 @@ fn write_generic_subword_fn<W: Write>(
     subword_suffixes_trailing_space=()
     subword_suffixes_no_trailing_space=()
     subword_descriptions_trailing_space=()
-    subword_descriptions_no_trailing_space=()
-    compadd_matches_count=0
+    subword_descriptions_no_trailing_space=()"#
+    )?;
 
+    if needs_compadds_code {
+        write!(
+            buffer,
+            r#"
+    compadd_matches_count=0"#
+        )?;
+    }
+
+    write!(
+        buffer,
+        r#"
     for (( subword_fallback_level=0; subword_fallback_level <= subword_max_fallback_level; subword_fallback_level++ )); do
         declare literal_transitions_name=subword_literal_transitions_level_${{subword_fallback_level}}
         eval "declare initializer=\${{${{literal_transitions_name}}[$subword_state]}}"
@@ -370,9 +382,10 @@ fn write_generic_subword_fn<W: Write>(
         )?;
     }
 
-    write!(
-        buffer,
-        r#"
+    if needs_compadds_code {
+        write!(
+            buffer,
+            r#"
         declare compadd_commands_name=subword_compadd_commands_level_${{subword_fallback_level}}
         eval "declare initializer=\${{${{compadd_commands_name}}[$subword_state]}}"
         eval "declare -a transitions=($initializer)"
@@ -397,9 +410,22 @@ fn write_generic_subword_fn<W: Write>(
         else
             functions -c prev_compadd compadd
             unfunction prev_compadd
-        fi
+        fi"#
+        )?;
 
-        if [[ $compadd_matches_count -gt 0 || ${{#subword_completions_no_description_trailing_space}} -gt 0 || ${{#subword_completions_trailing_space}} -gt 0 || ${{#subword_completions_no_trailing_space}} -gt 0 ]]; then
+        write!(
+            buffer,
+            r#"
+        if [[ $compadd_matches_count -gt 0 ]]; then
+            break
+        fi"#
+        )?;
+    }
+
+    write!(
+        buffer,
+        r#"
+        if [[ ${{#subword_completions_no_description_trailing_space}} -gt 0 || ${{#subword_completions_trailing_space}} -gt 0 || ${{#subword_completions_no_trailing_space}} -gt 0 ]]; then
             break
         fi
     done
@@ -422,6 +448,7 @@ fn write_subword_fn<W: Write>(
     id_from_regex: &IndexSet<Ustr>,
     needs_nontails_code: bool,
     needs_commands_code: bool,
+    needs_compadds_code: bool,
 ) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
 
@@ -536,21 +563,23 @@ fn write_subword_fn<W: Write>(
         }
     }
 
-    for (level, transitions) in completion_compadds.iter().enumerate() {
-        let initializer = itertools::join(
-            transitions.iter().map(|(from_state, command_ids)| {
-                let joined_command_ids = itertools::join(command_ids, " ");
-                format!(
-                    r#"[{from_state_zsh}]="{joined_command_ids}""#,
-                    from_state_zsh = from_state + ARRAY_START
-                )
-            }),
-            " ",
-        );
-        writeln!(
-            buffer,
-            r#"    declare -A subword_compadd_commands_level_{level}=({initializer})"#
-        )?;
+    if needs_compadds_code {
+        for (level, transitions) in completion_compadds.iter().enumerate() {
+            let initializer = itertools::join(
+                transitions.iter().map(|(from_state, command_ids)| {
+                    let joined_command_ids = itertools::join(command_ids, " ");
+                    format!(
+                        r#"[{from_state_zsh}]="{joined_command_ids}""#,
+                        from_state_zsh = from_state + ARRAY_START
+                    )
+                }),
+                " ",
+            );
+            writeln!(
+                buffer,
+                r#"    declare -A subword_compadd_commands_level_{level}=({initializer})"#
+            )?;
+        }
     }
 
     if needs_nontails_code {
@@ -661,6 +690,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     let needs_subword_nontails_code = dfa.needs_subword_nontails_code();
     let needs_commands_code = dfa.needs_commands_code();
     let needs_subword_commands_code = dfa.needs_subword_commands_code();
+    let needs_compadds_code = dfa.needs_compadds_code();
+    let needs_subword_compadds_code = dfa.needs_subword_compadds_code();
 
     writeln!(
         buffer,
@@ -681,9 +712,10 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         )?;
     }
 
-    writeln!(
-        buffer,
-        r#"compadd_intercept () {{
+    if needs_compadds_code {
+        writeln!(
+            buffer,
+            r#"compadd_intercept () {{
     declare is_filter_array=false
     declare output_array=""
     while getopts "12aACDdEefFiIJ:klM:nO:o:p:P:QqrRs:S:UW:Xx" opt; do
@@ -700,7 +732,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     prev_compadd "$@"
 }}
 "#
-    )?;
+        )?;
+    }
 
     let id_from_dfa = dfa.get_subwords(ARRAY_START as usize);
     if needs_subwords_code {
@@ -709,6 +742,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             command,
             needs_subword_nontails_code,
             needs_subword_commands_code,
+            needs_subword_compadds_code,
         )?;
         for (dfaid, id) in &id_from_dfa {
             let dfa = dfa.subdfas.lookup(*dfaid);
@@ -721,6 +755,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                 &id_from_regex,
                 needs_subword_nontails_code,
                 needs_subword_commands_code,
+                needs_subword_compadds_code,
             )?;
             writeln!(buffer)?;
         }
@@ -1026,21 +1061,23 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         }
     }
 
-    for (level, transitions) in completion_compadds.iter().enumerate() {
-        let initializer = itertools::join(
-            transitions.iter().map(|(from_state, command_ids)| {
-                let joined_command_ids = itertools::join(command_ids, " ");
-                format!(
-                    r#"[{from_state_zsh}]="{joined_command_ids}""#,
-                    from_state_zsh = from_state + ARRAY_START
-                )
-            }),
-            " ",
-        );
-        writeln!(
-            buffer,
-            r#"    declare -A compadd_commands_level_{level}=({initializer})"#
-        )?;
+    if needs_compadds_code {
+        for (level, transitions) in completion_compadds.iter().enumerate() {
+            let initializer = itertools::join(
+                transitions.iter().map(|(from_state, command_ids)| {
+                    let joined_command_ids = itertools::join(command_ids, " ");
+                    format!(
+                        r#"[{from_state_zsh}]="{joined_command_ids}""#,
+                        from_state_zsh = from_state + ARRAY_START
+                    )
+                }),
+                " ",
+            );
+            writeln!(
+                buffer,
+                r#"    declare -A compadd_commands_level_{level}=({initializer})"#
+            )?;
+        }
     }
 
     write!(
@@ -1056,9 +1093,20 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         completions_no_trailing_space=()
         suffixes_no_trailing_space=()
         descriptions_no_trailing_space=()
-        matches=()
-        compadd_matches_count=0
+        matches=()"#
+    )?;
 
+    if needs_compadds_code {
+        write!(
+            buffer,
+            r#"
+        compadd_matches_count=0"#
+        )?;
+    }
+
+    write!(
+        buffer,
+        r#"
         declare literal_transitions_name=literal_transitions_level_${{fallback_level}}
         eval "declare initializer=\${{${{literal_transitions_name}}[$state]}}"
         eval "declare -a transitions=($initializer)"
@@ -1152,9 +1200,10 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         )?;
     }
 
-    write!(
-        buffer,
-        r#"
+    if needs_compadds_code {
+        write!(
+            buffer,
+            r#"
         declare compadd_commands_name=compadd_commands_level_${{fallback_level}}
         eval "declare initializer=\${{${{compadd_commands_name}}[$state]}}"
         eval "declare -a transitions=($initializer)"
@@ -1179,8 +1228,13 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         else
             functions -c prev_compadd compadd
             unfunction prev_compadd
-        fi
+        fi"#
+        )?;
+    }
 
+    write!(
+        buffer,
+        r#"
         declare maxlen=0
         for suffix in ${{suffixes_trailing_space[@]}}; do
             if [[ ${{#suffix}} -gt $maxlen ]]; then
@@ -1212,15 +1266,38 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         compadd -O m -a completions_no_description_trailing_space; matches+=("${{m[@]}}")
         compadd -O m -a completions_no_description_no_trailing_space; matches+=("${{m[@]}}")
         compadd -O m -a completions_trailing_space; matches+=("${{m[@]}}")
-        compadd -O m -a completions_no_trailing_space; matches+=("${{m[@]}}")
+        compadd -O m -a completions_no_trailing_space; matches+=("${{m[@]}}")"#
+    )?;
 
+    if needs_compadds_code {
+        write!(
+            buffer,
+            r#"
         if [[ $compadd_matches_count -gt 0 || ${{#matches}} -gt 0 ]]; then
             compadd -Q -a completions_no_description_trailing_space
             compadd -Q -S ' ' -a completions_no_description_no_trailing_space
             compadd -l -Q -a -d descriptions_trailing_space completions_trailing_space
             compadd -l -Q -S '' -a -d descriptions_no_trailing_space completions_no_trailing_space
             return 0
-        fi
+        fi"#
+        )?;
+    } else {
+        write!(
+            buffer,
+            r#"
+        if [[ ${{#matches}} -gt 0 ]]; then
+            compadd -Q -a completions_no_description_trailing_space
+            compadd -Q -S ' ' -a completions_no_description_no_trailing_space
+            compadd -l -Q -a -d descriptions_trailing_space completions_trailing_space
+            compadd -l -Q -S '' -a -d descriptions_no_trailing_space completions_no_trailing_space
+            return 0
+        fi"#
+        )?;
+    }
+
+    write!(
+        buffer,
+        r#"
     done
 }}
 "#

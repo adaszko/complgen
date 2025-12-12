@@ -953,6 +953,27 @@ impl DFA {
         })
     }
 
+    pub(crate) fn needs_compadds_code(&self) -> bool {
+        self.iter_inputs().any(|input| match input {
+            Inp::Literal { .. }
+            | Inp::Star
+            | Inp::Command {
+                zsh_compadd: false, ..
+            } => false,
+            Inp::Command {
+                zsh_compadd: true, ..
+            } => true,
+            Inp::Subword { subdfa, .. } => self.subdfas.lookup(*subdfa).needs_compadds_code(),
+        })
+    }
+
+    pub(crate) fn needs_subword_compadds_code(&self) -> bool {
+        self.iter_inputs().any(|input| match input {
+            Inp::Literal { .. } | Inp::Star | Inp::Command { .. } => false,
+            Inp::Subword { subdfa, .. } => self.subdfas.lookup(*subdfa).needs_compadds_code(),
+        })
+    }
+
     pub fn to_dot<W: Write>(&self, output: &mut W, array_start: u32) -> Result<()> {
         writeln!(output, "digraph dfa {{")?;
         writeln!(output, "\trankdir=LR;")?;
