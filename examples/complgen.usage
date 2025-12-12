@@ -3,7 +3,6 @@ complgen <OPTION> <PATH>;
              [(--fish <PATH>) "Write fish completion script"]
              [(--zsh <PATH>) "Write zsh completion script"]
              [(--dfa <PATH>) "Dump resulting DFA as a GraphViz .dot format"]
-             [(--railroad <PATH>) "Dump the parsed grammar as SVG railroad diagram"]
          ;
 complgen --scrape "Read another program's --help output and generate a grammar SKELETON";
 complgen --version;

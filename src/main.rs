@@ -161,11 +161,15 @@ fn handle_error(e: Error, path: &str, source: &str, command: &str) -> anyhow::Re
             eprintln!("{}", err.into_string(path, &first));
         }
         Error::UnknownShell(span) => {
-            let err = ErrMsg::new("Unknown shell").error(&span, source, "");
+            let err = ErrMsg::new("Unknown shell")
+                .error(&span, source, "")
+                .help("Can only use one of: bash, fish, zsh");
             eprintln!("{}", err.into_string(path, &span));
         }
         Error::NonCommandSpecialization(span) => {
-            let err = ErrMsg::new("Can only specialize external commands").error(&span, source, "");
+            let err = ErrMsg::new("Can only specialize external commands")
+                .error(&span, source, "")
+                .help("Use a {{{ ... }}} command here instead");
             eprintln!("{}", err.into_string(path, &span));
         }
         Error::SubwordSpaces(left, right, trace) => {
@@ -184,21 +188,25 @@ fn handle_error(e: Error, path: &str, source: &str, command: &str) -> anyhow::Re
             }
         }
         Error::AmbiguousMatchable(left, right) => {
-            let err = ErrMsg::new("Ambiguous grammar.  Matching can't differentiate:")
-                .error(&left, source, "");
+            let err = ErrMsg::new("Ambiguous grammar").error(
+                &left,
+                source,
+                "matching can't tell apart this",
+            );
             eprintln!("{}", err.into_string(path, &left));
 
-            let err = ErrMsg::new("and:").error(&right, source, "");
+            let err = ErrMsg::new("").error(&right, source, "from this");
             eprintln!("{}", err.into_string(path, &right));
         }
         Error::UnboundedMatchable(left, right) => {
-            let err = ErrMsg::new(
-                "Ambiguous grammar.  Matching can't ascertain where below element ends:",
-            )
-            .error(&left, source, "");
+            let err = ErrMsg::new("Ambiguous grammar").error(
+                &left,
+                source,
+                "matching can't tell where this ends",
+            );
             eprintln!("{}", err.into_string(path, &left));
 
-            let err = ErrMsg::new("...and where below element begins:").error(&right, source, "");
+            let err = ErrMsg::new("").error(&right, source, "and where this begins");
             eprintln!("{}", err.into_string(path, &right));
         }
         Error::AmbiguousDFA(path, ambiguous_inputs) => {
@@ -220,19 +228,25 @@ fn handle_error(e: Error, path: &str, source: &str, command: &str) -> anyhow::Re
             }
         }
         Error::ClashingVariants(left, right) => {
-            let err = ErrMsg::new("Clashing variants.  Completion can't differentiate:")
-                .error(&left, source, "");
+            let err = ErrMsg::new("Clashing variants").error(
+                &left,
+                source,
+                "completion can't tell apart",
+            );
             eprintln!("{}", err.into_string(path, &left));
 
-            let err = ErrMsg::new("and:").error(&right, source, "");
+            let err = ErrMsg::new("").error(&right, source, "from this");
             eprintln!("{}", err.into_string(path, &right));
         }
         Error::ClashingSubwordLeaders(left, right) => {
-            let err = ErrMsg::new("Clashing subword leaders.  Completion can't differentiate:")
-                .error(&left, source, "");
+            let err = ErrMsg::new("Ambiguous grammar").error(
+                &left,
+                source,
+                "subword leader clashes with",
+            );
             eprintln!("{}", err.into_string(path, &left));
 
-            let err = ErrMsg::new("and:").error(&right, source, "");
+            let err = ErrMsg::new("").error(&right, source, "subword leader");
             eprintln!("{}", err.into_string(path, &right));
         }
         e => {
@@ -291,7 +305,7 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
             validated.undefined_nonterminals.values().copied().collect();
         undefs.sort_unstable_by_key(|span| (span.line, span.column_start, span.column_end));
         for span in undefs {
-            let err = WarnMsg::new("Undefined nonterminal").warning(&span, &input, "");
+            let err = WarnMsg::new("Undefined").warning(&span, &input, "");
             eprintln!("{}", err.into_string(usage_file_path, &span));
         }
     }
@@ -300,7 +314,7 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
         let mut unused: Vec<HumanSpan> = validated.unused_nonterminals.values().copied().collect();
         unused.sort_unstable_by_key(|span| (span.line, span.column_start, span.column_end));
         for span in unused {
-            let err = WarnMsg::new("Unused nonterminal").warning(&span, &input, "");
+            let err = WarnMsg::new("Unused").warning(&span, &input, "");
             eprintln!("{}", err.into_string(usage_file_path, &span));
         }
     }

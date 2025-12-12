@@ -57,15 +57,15 @@ def test_ambiguous_transition2(complgen_binary_path: Path):
     )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
--:1:5:error: Ambiguous grammar.  Matching can't differentiate:
+-:1:5:error: Ambiguous grammar
   |
 1 | cmd {{{ echo foo }}} | {{{ echo bar }}};
-  |     ^^^^^^^^^^^^^^^^
+  |     ^^^^^^^^^^^^^^^^ matching can't tell apart this
   |
--:1:24:error: and:
+-:1:24:error
   |
 1 | cmd {{{ echo foo }}} | {{{ echo bar }}};
-  |                        ^^^^^^^^^^^^^^^^
+  |                        ^^^^^^^^^^^^^^^^ from this
   |
 """)
 
@@ -85,15 +85,15 @@ def test_ambiguous_transition4(complgen_binary_path: Path):
     )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
--:1:5:error: Ambiguous grammar.  Matching can't differentiate:
+-:1:5:error: Ambiguous grammar
   |
 1 | cmd {{{ echo foo }}} || {{{ echo bar }}};
-  |     ^^^^^^^^^^^^^^^^
+  |     ^^^^^^^^^^^^^^^^ matching can't tell apart this
   |
--:1:25:error: and:
+-:1:25:error
   |
 1 | cmd {{{ echo foo }}} || {{{ echo bar }}};
-  |                         ^^^^^^^^^^^^^^^^
+  |                         ^^^^^^^^^^^^^^^^ from this
   |
 """)
 
@@ -133,15 +133,15 @@ mygit (<command> || [-c <name>=<value>] <command>);
     r = complgen_check(complgen_binary_path, GRAMMAR)
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
--:2:25:error: Ambiguous grammar.  Matching can't ascertain where below element ends:
+-:2:25:error: Ambiguous grammar
   |
 2 | mygit (<command> || [-c <name>=<value>] <command>);
-  |                         ^^^^^^
+  |                         ^^^^^^ matching can't tell where this ends
   |
--:2:31:error: ...and where below element begins:
+-:2:31:error
   |
 2 | mygit (<command> || [-c <name>=<value>] <command>);
-  |                               ^
+  |                               ^ and where this begins
   |
 """)
 
@@ -259,20 +259,15 @@ def test_bug2(complgen_binary_path: Path):
     r = complgen_check(complgen_binary_path, """darcs ( <FILE> | <DIRECTORY> );""")
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
--:1:9:warning: Undefined nonterminal
+-:1:9:error: Ambiguous grammar
   |
 1 | darcs ( <FILE> | <DIRECTORY> );
-  |         ------
+  |         ^^^^^^ matching can't tell apart this
   |
--:1:9:error: Ambiguous grammar.  Matching can't differentiate:
-  |
-1 | darcs ( <FILE> | <DIRECTORY> );
-  |         ^^^^^^
-  |
--:1:18:error: and:
+-:1:18:error
   |
 1 | darcs ( <FILE> | <DIRECTORY> );
-  |                  ^^^^^^^^^^^
+  |                  ^^^^^^^^^^^ from this
   |
 """)
 
@@ -287,20 +282,15 @@ aerc [<OPTION>]... foo;
     )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
--:3:7:warning: Undefined nonterminal
-  |
-3 | aerc [<OPTION>]... foo;
-  |       --------
-  |
--:2:7:error: Ambiguous grammar.  Matching can't differentiate:
+-:2:7:error: Ambiguous grammar
   |
 2 | aerc [<OPTION>]...;
-  |       ^^^^^^^^
+  |       ^^^^^^^^ matching can't tell apart this
   |
--:3:7:error: and:
+-:3:7:error
   |
 3 | aerc [<OPTION>]... foo;
-  |       ^^^^^^^^
+  |       ^^^^^^^^ from this
   |
 """)
 
@@ -309,25 +299,15 @@ def test_bug4(complgen_binary_path: Path):
     r = complgen_check(complgen_binary_path, """darcs [<INITIALIZATION>] <COMMAND>;""")
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
--:1:8:warning: Undefined nonterminal
+-:1:8:error: Ambiguous grammar
   |
 1 | darcs [<INITIALIZATION>] <COMMAND>;
-  |        ----------------
+  |        ^^^^^^^^^^^^^^^^ matching can't tell apart this
   |
--:1:26:warning: Undefined nonterminal
-  |
-1 | darcs [<INITIALIZATION>] <COMMAND>;
-  |                          ---------
-  |
--:1:8:error: Ambiguous grammar.  Matching can't differentiate:
+-:1:26:error
   |
 1 | darcs [<INITIALIZATION>] <COMMAND>;
-  |        ^^^^^^^^^^^^^^^^
-  |
--:1:26:error: and:
-  |
-1 | darcs [<INITIALIZATION>] <COMMAND>;
-  |                          ^^^^^^^^^
+  |                          ^^^^^^^^^ from this
   |
 """)
 
@@ -341,15 +321,15 @@ mygit (clone "Clone a repository into a new directory" | clone --bare);
     )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
--:2:8:error: Clashing variants.  Completion can't differentiate:
+-:2:8:error: Clashing variants
   |
 2 | mygit (clone "Clone a repository into a new directory" | clone --bare);
-  |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ completion can't tell apart
   |
--:2:58:error: and:
+-:2:58:error
   |
 2 | mygit (clone "Clone a repository into a new directory" | clone --bare);
-  |                                                          ^^^^^
+  |                                                          ^^^^^ from this
   |
 """)
 
@@ -363,25 +343,15 @@ darcs <SOURCE> ... <DESTINATION>;
     )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
--:2:7:warning: Undefined nonterminal
+-:2:7:error: Ambiguous grammar
   |
 2 | darcs <SOURCE> ... <DESTINATION>;
-  |       --------
+  |       ^^^^^^^^ matching can't tell apart this
   |
--:2:20:warning: Undefined nonterminal
-  |
-2 | darcs <SOURCE> ... <DESTINATION>;
-  |                    -------------
-  |
--:2:7:error: Ambiguous grammar.  Matching can't differentiate:
+-:2:20:error
   |
 2 | darcs <SOURCE> ... <DESTINATION>;
-  |       ^^^^^^^^
-  |
--:2:20:error: and:
-  |
-2 | darcs <SOURCE> ... <DESTINATION>;
-  |                    ^^^^^^^^^^^^^
+  |                    ^^^^^^^^^^^^^ from this
   |
 """)
 
@@ -396,15 +366,15 @@ foo baz;
     )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
--:2:5:error: Ambiguous grammar.  Matching can't ascertain where below element ends:
+-:2:5:error: Ambiguous grammar
   |
 2 | foo <BAR>=bar;
-  |     ^^^^^
+  |     ^^^^^ matching can't tell where this ends
   |
--:2:10:error: ...and where below element begins:
+-:2:10:error
   |
 2 | foo <BAR>=bar;
-  |          ^^^^
+  |          ^^^^ and where this begins
   |
 """)
 
@@ -431,25 +401,15 @@ foo bar=<BAZ>;
     )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
--:2:9:warning: Undefined nonterminal
+-:2:5:error: Ambiguous grammar
   |
 2 | foo bar=<BAR>;
-  |         -----
+  |     ^^^^^^^^^ subword leader clashes with
   |
--:3:9:warning: Undefined nonterminal
-  |
-3 | foo bar=<BAZ>;
-  |         -----
-  |
--:2:5:error: Clashing subword leaders.  Completion can't differentiate:
-  |
-2 | foo bar=<BAR>;
-  |     ^^^^^^^^^
-  |
--:3:5:error: and:
+-:3:5:error
   |
 3 | foo bar=<BAZ>;
-  |     ^^^^^^^^^
+  |     ^^^^^^^^^ subword leader
   |
 """)
 
@@ -492,6 +452,7 @@ foo quux;
 3 | <BAR@quux> ::= {{{ echo foo }}};
   |      ^^^^
   |
+  = help: Can only use one of: bash, fish, zsh
 """)
 
 
@@ -592,6 +553,7 @@ cmd <FOO>;
 3 | <FOO@bash> ::= foo;
   |                ^^^
   |
+  = help: Use a {{{ ... }}} command here instead
 """)
 
 
