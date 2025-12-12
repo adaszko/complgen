@@ -109,6 +109,7 @@ fn write_subword_lookup_tables<W: Write>(
     buffer: &mut W,
     dfa: &DFA,
     id_from_regex: &IndexSet<Ustr>,
+    needs_nontails_code: bool,
 ) -> Result<HashMap<(Ustr, Ustr), usize>> {
     let all_literals: Vec<(usize, Ustr, Ustr)> = dfa
         .get_all_literals()
@@ -234,34 +235,36 @@ fn write_subword_lookup_tables<W: Write>(
             )?;
         }
 
-        let nontail_transitions = dfa.get_nontail_transitions_from(state as StateId);
-        if !nontail_transitions.is_empty() {
-            let nontail_command_transitions: Vec<(usize, StateId)> = nontail_transitions
-                .iter()
-                .map(|(regex, to)| (id_from_regex.get_index_of(regex).unwrap(), *to))
-                .collect();
-            let nontail_regexes: String = itertools::join(
-                nontail_command_transitions
+        if needs_nontails_code {
+            let nontail_transitions = dfa.get_nontail_transitions_from(state as StateId);
+            if !nontail_transitions.is_empty() {
+                let nontail_command_transitions: Vec<(usize, StateId)> = nontail_transitions
                     .iter()
-                    .map(|(regex_id, _)| format!("{}", *regex_id + ARRAY_START as usize)),
-                " ",
-            );
-            writeln!(
-                buffer,
-                r#"    set --global subword_nontail_regexes[{}] {nontail_regexes}"#,
-                state + ARRAY_START,
-            )?;
-            let nontail_tos: String = itertools::join(
-                nontail_command_transitions
-                    .into_iter()
-                    .map(|(_, to)| format!("{}", to + ARRAY_START)),
-                " ",
-            );
-            writeln!(
-                buffer,
-                r#"    set --global subword_nontail_tos[{}] {nontail_tos}"#,
-                state + ARRAY_START,
-            )?;
+                    .map(|(regex, to)| (id_from_regex.get_index_of(regex).unwrap(), *to))
+                    .collect();
+                let nontail_regexes: String = itertools::join(
+                    nontail_command_transitions
+                        .iter()
+                        .map(|(regex_id, _)| format!("{}", *regex_id + ARRAY_START as usize)),
+                    " ",
+                );
+                writeln!(
+                    buffer,
+                    r#"    set --global subword_nontail_regexes[{}] {nontail_regexes}"#,
+                    state + ARRAY_START,
+                )?;
+                let nontail_tos: String = itertools::join(
+                    nontail_command_transitions
+                        .into_iter()
+                        .map(|(_, to)| format!("{}", to + ARRAY_START)),
+                    " ",
+                );
+                writeln!(
+                    buffer,
+                    r#"    set --global subword_nontail_tos[{}] {nontail_tos}"#,
+                    state + ARRAY_START,
+                )?;
+            }
         }
     }
 
@@ -293,7 +296,11 @@ fn write_subword_lookup_tables<W: Write>(
     Ok(literal_id_from_input_description)
 }
 
-fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<()> {
+fn write_generic_subword_fn<W: Write>(
+    buffer: &mut W,
+    command: &str,
+    needs_nontails_code: bool,
+) -> Result<()> {
     write!(
         buffer,
         r#"function _{command}_subword
@@ -335,8 +342,13 @@ fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<(
             if test $literal_matched -ne 0
                 continue
             end
-        end
+        end"#
+    )?;
 
+    if needs_nontails_code {
+        write!(
+            buffer,
+            r#"
         if set --query subword_nontail_regexes[$subword_state] && test -n $subword_nontail_regexes[$subword_state]
             set regex_ids (string split ' ' $subword_nontail_regexes[$subword_state])
             set tos (string split ' ' $subword_nontail_tos[$subword_state])
@@ -356,8 +368,13 @@ fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<(
             if test $nontail_matched -ne 0
                 continue
             end
-        end
+        end"#
+        )?;
+    }
 
+    write!(
+        buffer,
+        r#"
         set index (contains --index -- "$subword_state" $subword_match_anything_transitions_from)
         if test -n "$index"
             set matched 1
@@ -411,8 +428,13 @@ fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<(
                     set --append candidates (printf '%s%s\n' $matched_prefix $subword_literals[$literal_id])
                 end
             end
-        end
+        end"#
+    )?;
 
+    if needs_nontails_code {
+        write!(
+            buffer,
+            r#"
         set name subword_nontail_command_froms_level_$fallback_level
         set commands $$name
         set index (contains --index -- "$subword_state" $commands)
@@ -430,8 +452,13 @@ fn write_generic_subword_fn<W: Write>(buffer: &mut W, command: &str) -> Result<(
                     set --append candidates (printf "%s%s\n" $matched_prefix $match)
                 end
             end
-        end
+        end"#
+        )?;
+    }
 
+    write!(
+        buffer,
+        r#"
         set froms_name subword_commands_from_level_$fallback_level
         set froms (string split ' ' $$froms_name)
         set index (contains --index -- "$subword_state" $froms)
@@ -471,7 +498,7 @@ fn write_subword_fn<W: Write>(
     )?;
 
     let literal_id_from_input_description =
-        write_subword_lookup_tables(buffer, dfa, id_from_regex)?;
+        write_subword_lookup_tables(buffer, dfa, id_from_regex, needs_nontails_code)?;
     writeln!(buffer)?;
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
@@ -887,6 +914,7 @@ pub fn write_completion_script<W: Write>(
 ) -> anyhow::Result<()> {
     let needs_subwords_code = dfa.needs_subwords_code();
     let needs_nontails_code = dfa.needs_nontails_code();
+    let needs_subword_nontails_code = dfa.needs_subword_nontails_code();
 
     let (id_from_cmd, id_from_regex) = make_id_from_command_map(dfa);
     for cmd in &id_from_cmd {
@@ -904,7 +932,7 @@ end
 
     let id_from_dfa = dfa.get_subwords(ARRAY_START as usize);
     if needs_subwords_code {
-        write_generic_subword_fn(buffer, command)?;
+        write_generic_subword_fn(buffer, command, needs_subword_nontails_code)?;
         for (dfaid, id) in &id_from_dfa {
             let dfa = dfa.subdfas.lookup(*dfaid);
             write_subword_fn(
@@ -914,7 +942,7 @@ end
                 dfa,
                 &id_from_cmd,
                 &id_from_regex,
-                needs_nontails_code,
+                needs_subword_nontails_code,
             )?;
         }
     }
