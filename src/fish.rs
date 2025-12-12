@@ -300,6 +300,7 @@ fn write_generic_subword_fn<W: Write>(
     buffer: &mut W,
     command: &str,
     needs_nontails_code: bool,
+    needs_commands_code: bool,
 ) -> Result<()> {
     write!(
         buffer,
@@ -456,9 +457,10 @@ fn write_generic_subword_fn<W: Write>(
         )?;
     }
 
-    write!(
-        buffer,
-        r#"
+    if needs_commands_code {
+        write!(
+            buffer,
+            r#"
         set froms_name subword_commands_from_level_$fallback_level
         set froms (string split ' ' $$froms_name)
         set index (contains --index -- "$subword_state" $froms)
@@ -468,8 +470,13 @@ fn write_generic_subword_fn<W: Write>(
             $function_name "$completed_prefix" "$matched_prefix" | while read line
                 set --append candidates (printf '%s%s\n' $matched_prefix $line)
             end
-        end
+        end"#
+        )?;
+    }
 
+    write!(
+        buffer,
+        r#"
         printf '%s\n' $candidates | {MATCH_FN_NAME} && break
     end
 end
@@ -488,6 +495,7 @@ fn write_subword_fn<W: Write>(
     id_from_cmd: &IndexSet<Ustr>,
     id_from_regex: &IndexSet<Ustr>,
     needs_nontails_code: bool,
+    needs_commands_code: bool,
 ) -> Result<()> {
     writeln!(
         buffer,
@@ -624,24 +632,26 @@ fn write_subword_fn<W: Write>(
         }
     }
 
-    for (level, transitions) in completion_commands.iter().enumerate() {
-        let from_initializer = transitions
-            .iter()
-            .map(|(from_state, _)| from_state + ARRAY_START)
-            .join(" ");
-        writeln!(
-            buffer,
-            r#"    set --global subword_commands_from_level_{level} {from_initializer}"#
-        )?;
+    if needs_commands_code {
+        for (level, transitions) in completion_commands.iter().enumerate() {
+            let from_initializer = transitions
+                .iter()
+                .map(|(from_state, _)| from_state + ARRAY_START)
+                .join(" ");
+            writeln!(
+                buffer,
+                r#"    set --global subword_commands_from_level_{level} {from_initializer}"#
+            )?;
 
-        let commands_initializer = transitions
-            .iter()
-            .map(|(_, command_ids)| command_ids.iter().map(|id| format!("{}", id)).join(" "))
-            .join(" ");
-        writeln!(
-            buffer,
-            r#"    set --global subword_commands_level_{level} {commands_initializer}"#
-        )?;
+            let commands_initializer = transitions
+                .iter()
+                .map(|(_, command_ids)| command_ids.iter().map(|id| format!("{}", id)).join(" "))
+                .join(" ");
+            writeln!(
+                buffer,
+                r#"    set --global subword_commands_level_{level} {commands_initializer}"#
+            )?;
+        }
     }
 
     writeln!(
@@ -915,6 +925,8 @@ pub fn write_completion_script<W: Write>(
     let needs_subwords_code = dfa.needs_subwords_code();
     let needs_nontails_code = dfa.needs_nontails_code();
     let needs_subword_nontails_code = dfa.needs_subword_nontails_code();
+    let needs_commands_code = dfa.needs_commands_code();
+    let needs_subword_commands_code = dfa.needs_subword_commands_code();
 
     let (id_from_cmd, id_from_regex) = make_id_from_command_map(dfa);
     for cmd in &id_from_cmd {
@@ -932,7 +944,12 @@ end
 
     let id_from_dfa = dfa.get_subwords(ARRAY_START as usize);
     if needs_subwords_code {
-        write_generic_subword_fn(buffer, command, needs_subword_nontails_code)?;
+        write_generic_subword_fn(
+            buffer,
+            command,
+            needs_subword_nontails_code,
+            needs_subword_commands_code,
+        )?;
         for (dfaid, id) in &id_from_dfa {
             let dfa = dfa.subdfas.lookup(*dfaid);
             write_subword_fn(
@@ -943,6 +960,7 @@ end
                 &id_from_cmd,
                 &id_from_regex,
                 needs_subword_nontails_code,
+                needs_subword_commands_code,
             )?;
         }
     }
@@ -1287,7 +1305,7 @@ end
         }
     }
 
-    if !completion_commands.first().unwrap().is_empty() {
+    if needs_commands_code {
         for (level, transitions) in completion_commands.iter().enumerate() {
             let from_initializer = transitions
                 .iter()
@@ -1360,7 +1378,7 @@ end
         )?;
     }
 
-    if !completion_commands.first().unwrap().is_empty() {
+    if needs_commands_code {
         write!(
             buffer,
             r#"
