@@ -177,6 +177,7 @@ fn write_generic_subword_fn<W: Write>(
     buffer: &mut W,
     command: &str,
     needs_nontails_code: bool,
+    needs_commands_code: bool,
 ) -> Result<()> {
     write!(
         buffer,
@@ -340,9 +341,10 @@ fn write_generic_subword_fn<W: Write>(
         )?;
     }
 
-    write!(
-        buffer,
-        r#"
+    if needs_commands_code {
+        write!(
+            buffer,
+            r#"
         declare commands_name=subword_commands_level_${{subword_fallback_level}}
         eval "declare initializer=\${{${{commands_name}}[$subword_state]}}"
         eval "declare -a transitions=($initializer)"
@@ -364,8 +366,13 @@ fn write_generic_subword_fn<W: Write>(
                     fi
                 fi
             done
-        done
+        done"#
+        )?;
+    }
 
+    write!(
+        buffer,
+        r#"
         declare compadd_commands_name=subword_compadd_commands_level_${{subword_fallback_level}}
         eval "declare initializer=\${{${{compadd_commands_name}}[$subword_state]}}"
         eval "declare -a transitions=($initializer)"
@@ -414,6 +421,7 @@ fn write_subword_fn<W: Write>(
     id_from_cmd: &IndexSet<Ustr>,
     id_from_regex: &IndexSet<Ustr>,
     needs_nontails_code: bool,
+    needs_commands_code: bool,
 ) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
 
@@ -509,21 +517,23 @@ fn write_subword_fn<W: Write>(
         )?;
     }
 
-    for (level, transitions) in completion_commands.iter().enumerate() {
-        let initializer = itertools::join(
-            transitions.iter().map(|(from_state, command_ids)| {
-                let joined_command_ids = itertools::join(command_ids, " ");
-                format!(
-                    r#"[{from_state_zsh}]="{joined_command_ids}""#,
-                    from_state_zsh = from_state + ARRAY_START
-                )
-            }),
-            " ",
-        );
-        writeln!(
-            buffer,
-            r#"    declare -A subword_commands_level_{level}=({initializer})"#
-        )?;
+    if needs_commands_code {
+        for (level, transitions) in completion_commands.iter().enumerate() {
+            let initializer = itertools::join(
+                transitions.iter().map(|(from_state, command_ids)| {
+                    let joined_command_ids = itertools::join(command_ids, " ");
+                    format!(
+                        r#"[{from_state_zsh}]="{joined_command_ids}""#,
+                        from_state_zsh = from_state + ARRAY_START
+                    )
+                }),
+                " ",
+            );
+            writeln!(
+                buffer,
+                r#"    declare -A subword_commands_level_{level}=({initializer})"#
+            )?;
+        }
     }
 
     for (level, transitions) in completion_compadds.iter().enumerate() {
@@ -649,6 +659,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     let needs_subwords_code = dfa.needs_subwords_code();
     let needs_nontails_code = dfa.needs_nontails_code();
     let needs_subword_nontails_code = dfa.needs_subword_nontails_code();
+    let needs_commands_code = dfa.needs_commands_code();
+    let needs_subword_commands_code = dfa.needs_subword_commands_code();
 
     writeln!(
         buffer,
@@ -692,7 +704,12 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
     let id_from_dfa = dfa.get_subwords(ARRAY_START as usize);
     if needs_subwords_code {
-        write_generic_subword_fn(buffer, command, needs_subword_nontails_code)?;
+        write_generic_subword_fn(
+            buffer,
+            command,
+            needs_subword_nontails_code,
+            needs_subword_commands_code,
+        )?;
         for (dfaid, id) in &id_from_dfa {
             let dfa = dfa.subdfas.lookup(*dfaid);
             write_subword_fn(
@@ -703,6 +720,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                 &id_from_cmd,
                 &id_from_regex,
                 needs_subword_nontails_code,
+                needs_subword_commands_code,
             )?;
             writeln!(buffer)?;
         }
@@ -949,21 +967,23 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         }
     }
 
-    for (level, transitions) in completion_commands.iter().enumerate() {
-        let initializer = itertools::join(
-            transitions.iter().map(|(from_state, command_ids)| {
-                let joined_command_ids = itertools::join(command_ids, " ");
-                format!(
-                    r#"[{from_state_zsh}]="{joined_command_ids}""#,
-                    from_state_zsh = from_state + ARRAY_START
-                )
-            }),
-            " ",
-        );
-        writeln!(
-            buffer,
-            r#"    declare -A commands_level_{level}=({initializer})"#
-        )?;
+    if needs_commands_code {
+        for (level, transitions) in completion_commands.iter().enumerate() {
+            let initializer = itertools::join(
+                transitions.iter().map(|(from_state, command_ids)| {
+                    let joined_command_ids = itertools::join(command_ids, " ");
+                    format!(
+                        r#"[{from_state_zsh}]="{joined_command_ids}""#,
+                        from_state_zsh = from_state + ARRAY_START
+                    )
+                }),
+                " ",
+            );
+            writeln!(
+                buffer,
+                r#"    declare -A commands_level_{level}=({initializer})"#
+            )?;
+        }
     }
 
     if needs_nontails_code {
@@ -1074,9 +1094,10 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         )?;
     }
 
-    write!(
-        buffer,
-        r#"
+    if needs_commands_code {
+        write!(
+            buffer,
+            r#"
         declare commands_name=commands_level_${{fallback_level}}
         eval "declare initializer=\${{${{commands_name}}[$state]}}"
         eval "declare -a transitions=($initializer)"
@@ -1094,7 +1115,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                 fi
             done
         done"#
-    )?;
+        )?;
+    }
 
     if needs_nontails_code {
         write!(
