@@ -543,6 +543,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     let needs_nontails_code = dfa.needs_nontails_code();
     let needs_subword_nontails_code = dfa.needs_subword_nontails_code();
     let needs_commands_code = dfa.needs_commands_code();
+    let needs_subword_commands_code = dfa.needs_subword_commands_code();
 
     write!(
         buffer,
@@ -570,7 +571,12 @@ fi
 
     let id_from_dfa = dfa.get_subwords(ARRAY_START as usize);
     if needs_subwords_code {
-        write_generic_subword_fn(buffer, command, needs_nontails_code, needs_commands_code)?;
+        write_generic_subword_fn(
+            buffer,
+            command,
+            needs_nontails_code,
+            needs_subword_commands_code,
+        )?;
         for (dfaid, id) in &id_from_dfa {
             let dfa = dfa.subdfas.lookup(*dfaid);
             write_subword_fn(
@@ -581,7 +587,7 @@ fi
                 &id_from_cmd,
                 &id_from_regex,
                 needs_subword_nontails_code,
-                needs_commands_code,
+                needs_subword_commands_code,
             )?;
             writeln!(buffer)?;
         }

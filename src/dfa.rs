@@ -919,9 +919,11 @@ impl DFA {
 
     pub(crate) fn needs_nontails_code(&self) -> bool {
         self.iter_inputs().any(|input| match input {
+            Inp::Literal { .. } | Inp::Star | Inp::Command { regex: None, .. } => false,
+            Inp::Command {
+                regex: Some(..), ..
+            } => true,
             Inp::Subword { subdfa, .. } => self.subdfas.lookup(*subdfa).needs_nontails_code(),
-            Inp::Literal { .. } | Inp::Star => false,
-            Inp::Command { regex, .. } => regex.is_some(),
         })
     }
 
@@ -934,12 +936,20 @@ impl DFA {
 
     pub(crate) fn needs_commands_code(&self) -> bool {
         self.iter_inputs().any(|input| match input {
-            Inp::Subword { subdfa, .. } => self.subdfas.lookup(*subdfa).needs_commands_code(),
-            Inp::Literal { .. } | Inp::Star => false,
-            Inp::Command { regex: None, .. } => true,
-            Inp::Command {
+            Inp::Literal { .. }
+            | Inp::Star
+            | Inp::Command {
                 regex: Some(..), ..
             } => false,
+            Inp::Command { regex: None, .. } => true,
+            Inp::Subword { subdfa, .. } => self.subdfas.lookup(*subdfa).needs_commands_code(),
+        })
+    }
+
+    pub(crate) fn needs_subword_commands_code(&self) -> bool {
+        self.iter_inputs().any(|input| match input {
+            Inp::Literal { .. } | Inp::Star | Inp::Command { .. } => false,
+            Inp::Subword { subdfa, .. } => self.subdfas.lookup(*subdfa).needs_commands_code(),
         })
     }
 
