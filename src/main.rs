@@ -300,6 +300,11 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
         Err(e) => return handle_error(e, usage_file_path, &input, "dummy"),
     };
 
+    let regex = match Regex::from_valid_grammar(&validated, shell) {
+        Ok(regex) => regex,
+        Err(e) => return handle_error(e, usage_file_path, &input, &validated.command),
+    };
+
     if !validated.undefined_nonterminals.is_empty() {
         let mut undefs: Vec<HumanSpan> =
             validated.undefined_nonterminals.values().copied().collect();
@@ -328,11 +333,6 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
             eprintln!("{}", err.into_string(usage_file_path, &span));
         }
     }
-
-    let regex = match Regex::from_valid_grammar(&validated, shell) {
-        Ok(regex) => regex,
-        Err(e) => return handle_error(e, usage_file_path, &input, &validated.command),
-    };
 
     if let Some(regex_dot_file_path) = &args.regex {
         let mut dot_file = get_file_or_stdout(regex_dot_file_path)?;
