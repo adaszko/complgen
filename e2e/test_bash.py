@@ -427,6 +427,16 @@ def test_empty_command(complgen_binary_path: Path):
         assert get_sorted_bash_completions(path, input) == sorted([])
 
 
+def test_merges_subwords(complgen_binary_path: Path):
+    """Bash errors out on empty function body.  It needs to be handled"""
+    GRAMMAR = """cmd (--[no-]ahead-behind | --[no-]renames)"""
+    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
+        input = r'''COMP_WORDS=(cmd --no-); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(
+            ["--no-ahead-behind", "--no-renames"]
+        )
+
+
 LITERALS_ALPHABET = string.ascii_letters + ":="
 
 

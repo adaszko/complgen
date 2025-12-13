@@ -546,6 +546,17 @@ mygrep <OPTION>...;
         )
 
 
+def test_merges_subwords(complgen_binary_path: Path):
+    GRAMMAR = """cmd (--[no-]ahead-behind | --[no-]renames)"""
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        input = """complete --do-complete 'cmd --no-' """
+        assert get_sorted_fish_completions(completions_file_path, input) == sorted(
+            [("--no-ahead-behind", ""), ("--no-renames", "")]
+        )
+
+
 LITERALS_ALPHABET = string.ascii_letters + ":="
 
 
