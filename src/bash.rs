@@ -560,6 +560,11 @@ fi
     let (id_from_cmd, id_from_regex) = make_id_from_command_map(dfa);
     for cmd in &id_from_cmd {
         let id = id_from_cmd.get_index_of(cmd).unwrap();
+        let mut cmd = cmd.trim();
+        if cmd.is_empty() {
+            // Edge case: bash syntax errors on empty function bodies
+            cmd = ":"
+        }
         writeln!(
             buffer,
             r#"_{command}_cmd_{id} () {{

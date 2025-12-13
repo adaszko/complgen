@@ -417,6 +417,16 @@ def test_handles_quotes(complgen_binary_path: Path):
         assert get_sorted_bash_completions(path, input) == sorted(["baz "])
 
 
+def test_empty_command(complgen_binary_path: Path):
+    """Bash errors out on empty function body.  It needs to be handled"""
+    GRAMMAR = r"""cmd {{{}}};"""
+    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
+        input = (
+            r'''COMP_WORDS=(cmd ); COMP_CWORD=1; _cmd; printf '%s' "${COMPREPLY[@]}"'''
+        )
+        assert get_sorted_bash_completions(path, input) == sorted([])
+
+
 LITERALS_ALPHABET = string.ascii_letters + ":="
 
 
