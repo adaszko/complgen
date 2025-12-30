@@ -9,24 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## 0.6.0
 ### Fixed
 
- - Fixed multiple bugs in completion in common cases such as `--option=<PATH>` or `--option=<DIRECTORY>`
- - ZSH specialized commands should now use `compadd` instead of writing on stdout
+ - Fixed multiple completion bugs in common cases such as `--option=<PATH>` or `--option=<DIRECTORY>`
 
 ### Changed
 
- - Improved diagnostics to report precise source location
- - Relax grammar: Final semicolon (;) isn't required anymore
+ - Breaking: ZSH specialized commands should now use `compadd` instead of writing on stdout (problematic interaction with fallbacks has been resolved)
 
 ### Added
 
+ - Precise source location in warnings/errors
  - Specialization command now also support regexes
- - Added `--regex` option for writing generated regular expression into a .dot file for debugging
+ - Added `--regex` option for writing generated regular expression into a `.dot` file for debugging
  - More precise ambiguity detector: Detect clashing subword leaders
+ - Relax grammar: Final semicolon (`;`) isn't required anymore
 
 ### Removed
 
- - Removed `--railroad` option for diagrams generation due to limited utility
- - Breaking: Removed <PID>, <USER>, <GROUP>, <HOST>, <INTERFACE>, <PACKAGE> predefined nonterminals
+ - Breaking: Removed `--railroad` option for diagrams generation due to limited utility
+ - Breaking: Removed `<PID>`, `<USER>`, `<GROUP>`, `<HOST>`, `<INTERFACE>`, `<PACKAGE>` predefined nonterminals as they can be defined in the `.usage` file
 
 ## 0.5.0
 ### Changed
