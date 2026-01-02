@@ -362,6 +362,13 @@ def test_nontail_completion_subword_truncates_to_regex(complgen_binary_path: Pat
     ) == sorted(["leftright"])
 
 
+def test_nontail_escapes_regex(complgen_binary_path: Path):
+    GRAMMAR = """cmd {{{ echo foo }}}@zsh".*" bar;"""
+    assert get_sorted_aot_completions(
+        complgen_binary_path, GRAMMAR, "cmd foo "
+    ) == sorted(["bar"])
+
+
 def test_mycargo(complgen_binary_path: Path):
     GRAMMAR = r"""
 cargo [+<toolchain>] [<COMMAND>];

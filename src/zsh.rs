@@ -15,23 +15,13 @@ use ustr::{Ustr, ustr};
 pub const ARRAY_START: u32 = 1;
 
 fn make_string_constant(s: &str) -> String {
-    if s.is_empty() {
-        return r#""""#.to_string();
-    }
-    if s.contains([' ', '\t', '\n', '|', '!', '^', '=']) {
-        format!(
-            r#""{}""#,
-            s.replace('\\', "\\\\")
-                .replace('\"', "\\\"")
-                .replace('`', "\\`")
-                .replace('$', "\\$")
-        )
-    } else {
+    format!(
+        r#""{}""#,
         s.replace('\\', "\\\\")
             .replace('\"', "\\\"")
             .replace('`', "\\`")
             .replace('$', "\\$")
-    }
+    )
 }
 
 fn write_lookup_tables<W: Write>(

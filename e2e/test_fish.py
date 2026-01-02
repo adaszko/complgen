@@ -355,6 +355,17 @@ def test_nontail_completion_subword_truncates_to_regex(complgen_binary_path: Pat
         ]
 
 
+def test_nontail_escapes_regex(complgen_binary_path: Path):
+    GRAMMAR = """cmd {{{ echo foo }}}@fish".*" bar;"""
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        input = 'complete --do-complete "cmd foo "'
+        assert get_sorted_fish_completions(completions_file_path, input) == [
+            ("bar", "")
+        ]
+
+
 def test_matches_prefix(complgen_binary_path: Path):
     GRAMMAR = """
 cmd +<toolchain> foo;
