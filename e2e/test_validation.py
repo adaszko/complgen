@@ -621,3 +621,18 @@ foo bar;
   | ----------
   |
 """)
+
+
+def test_unused_specialization_issue68(complgen_binary_path: Path):
+    """https://github.com/adaszko/complgen/issues/68"""
+    r = complgen_check(
+        complgen_binary_path,
+        """
+spec_test <COMMAND>;
+<COMMAND> ::= command <ID>;
+<ID@bash> ::= {{{ : }}};
+<ID@zsh> ::= {{{ : }}};
+""",
+    )
+    assert r.returncode == 0
+    assert r.stderr == snapshot("""""")
