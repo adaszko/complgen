@@ -161,7 +161,6 @@ impl Shell {
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Specialization {
-    pub builtin: bool,
     pub bash: Option<(Ustr, Option<Ustr>, HumanSpan)>,
     pub fish: Option<(Ustr, Option<Ustr>, HumanSpan)>,
     pub zsh: Option<(Ustr, Option<Ustr>, HumanSpan)>,
@@ -1531,9 +1530,6 @@ fn get_unused_specializations(
 ) -> UstrMap<HumanSpan> {
     let mut result: UstrMap<HumanSpan> = Default::default();
     for (name, spec) in specializations {
-        if spec.builtin {
-            continue;
-        }
         if let Some((_, _, span)) = spec.bash {
             if nonterm_refs.get(name).is_none() {
                 result.insert(*name, span);
@@ -1555,6 +1551,7 @@ fn get_unused_specializations(
 
 impl ValidGrammar {
     pub fn from_grammar(mut grammar: Grammar, shell: Shell) -> Result<Self> {
+        // 1. Ensure the grammar defines completions for at most one command.
         let (command, command_span) = {
             let mut commands: Vec<(Ustr, HumanSpan)> = grammar
                 .iter_call_variants()
@@ -1579,6 +1576,7 @@ impl ValidGrammar {
             return Err(crate::Error::InvalidCommandName(command_span));
         }
 
+        // 2. Aggregate all call variants into a single alternative expression
         let expr = {
             let call_variants: Vec<ExprId> = grammar
                 .iter_call_variants()
@@ -1598,6 +1596,7 @@ impl ValidGrammar {
             }
         };
 
+        // 3. Collect nonterminal definitions for expansion
         let mut nonterminal_definitions: UstrMap<NontermDefn> = {
             let mut nonterminal_definitions: UstrMap<NontermDefn> = Default::default();
             for defn in grammar.iter_nonterm_defns() {
@@ -1615,37 +1614,40 @@ impl ValidGrammar {
             nonterminal_definitions
         };
 
+        // 4. Expand distributive descriptions
+        for (_, defn) in nonterminal_definitions.iter_mut() {
+            defn.rhs_expr_id = distribute_descriptions(&mut grammar.arena, defn.rhs_expr_id);
+        }
+        let expr = distribute_descriptions(&mut grammar.arena, expr);
+
+        let user_specializations = grammar.get_specializations()?;
+        let builtin_specializations = make_builtin_specializations();
+
+        let nonterm_refs = get_nonterm_refs(&grammar.arena, expr);
+        let unused_specializations =
+            get_unused_specializations(&user_specializations, &nonterm_refs);
+
         let mut unused_nonterminals: UstrMap<HumanSpan> = nonterminal_definitions
             .iter()
             .map(|(nonterm, defn)| (*nonterm, defn.lhs_span))
             .collect();
-
-        for (_, defn) in nonterminal_definitions.iter_mut() {
-            defn.rhs_expr_id = distribute_descriptions(&mut grammar.arena, defn.rhs_expr_id);
-        }
-
-        let specializations = grammar.get_specializations()?;
-
-        let nonterm_refs = get_nonterm_refs(&grammar.arena, expr);
-        let unused_specializations = get_unused_specializations(&specializations, &nonterm_refs);
-
         for (_, defn) in nonterminal_definitions.iter_mut() {
             defn.rhs_expr_id = specialize_nonterminals(
                 defn.rhs_expr_id,
                 &mut grammar.arena,
                 shell,
-                &specializations,
+                &user_specializations,
+                &builtin_specializations,
                 &mut unused_nonterminals,
             );
         }
-
-        let expr = distribute_descriptions(&mut grammar.arena, expr);
 
         let expr = specialize_nonterminals(
             expr,
             &mut grammar.arena,
             shell,
-            &specializations,
+            &user_specializations,
+            &builtin_specializations,
             &mut unused_nonterminals,
         );
 
@@ -1861,7 +1863,8 @@ fn specialize_nonterminals(
     expr_id: ExprId,
     expr_arena: &mut Vec<Expr>,
     shell: Shell,
-    specializations: &UstrMap<Specialization>,
+    user_specializations: &UstrMap<Specialization>,
+    builtin_specializations: &UstrMap<Specialization>,
     unused_nonterminals: &mut UstrMap<HumanSpan>,
 ) -> ExprId {
     match expr_arena[expr_id].clone() {
@@ -1873,7 +1876,10 @@ fn specialize_nonterminals(
         } => {
             unused_nonterminals.remove(&nonterm);
 
-            let Some(spec) = specializations.get(&nonterm) else {
+            let Some(spec) = user_specializations
+                .get(&nonterm)
+                .or_else(|| builtin_specializations.get(&nonterm))
+            else {
                 return expr_id;
             };
 
@@ -1927,7 +1933,8 @@ fn specialize_nonterminals(
                 child,
                 expr_arena,
                 shell,
-                specializations,
+                user_specializations,
+                builtin_specializations,
                 unused_nonterminals,
             );
             if child == new_child {
@@ -1951,7 +1958,8 @@ fn specialize_nonterminals(
                         *child,
                         expr_arena,
                         shell,
-                        specializations,
+                        user_specializations,
+                        builtin_specializations,
                         unused_nonterminals,
                     )
                 })
@@ -1977,7 +1985,8 @@ fn specialize_nonterminals(
                         *child,
                         expr_arena,
                         shell,
-                        specializations,
+                        user_specializations,
+                        builtin_specializations,
                         unused_nonterminals,
                     )
                 })
@@ -2000,7 +2009,8 @@ fn specialize_nonterminals(
                 child,
                 expr_arena,
                 shell,
-                specializations,
+                user_specializations,
+                builtin_specializations,
                 unused_nonterminals,
             );
             if child == new_child {
@@ -2020,7 +2030,8 @@ fn specialize_nonterminals(
                 child,
                 expr_arena,
                 shell,
-                specializations,
+                user_specializations,
+                builtin_specializations,
                 unused_nonterminals,
             );
             if child == new_child {
@@ -2044,7 +2055,8 @@ fn specialize_nonterminals(
                         *child,
                         expr_arena,
                         shell,
-                        specializations,
+                        user_specializations,
+                        builtin_specializations,
                         unused_nonterminals,
                     )
                 })
@@ -2345,6 +2357,48 @@ fn get_nonterminals_resolution_order(
     Ok(result)
 }
 
+fn make_builtin_specializations() -> UstrMap<Specialization> {
+    let mut specializations: UstrMap<Specialization> = Default::default();
+    specializations
+        .entry(ustr("PATH"))
+        .or_insert_with(|| Specialization {
+            bash: Some((ustr(r#"compgen -A file "$1""#), None, HumanSpan::default())),
+            fish: Some((
+                ustr(r#"__fish_complete_path "$1""#),
+                None,
+                HumanSpan::default(),
+            )),
+            zsh: Some((
+                ustr(r#"IPREFIX="$2" PREFIX="$1" _path_files"#),
+                None,
+                HumanSpan::default(),
+            )),
+            generic: None,
+        });
+
+    specializations
+        .entry(ustr("DIRECTORY"))
+        .or_insert_with(|| Specialization {
+            bash: Some((
+                ustr(r#"compgen -A directory "$1""#),
+                None,
+                HumanSpan::default(),
+            )),
+            fish: Some((
+                ustr(r#"__fish_complete_directories "$1""#),
+                None,
+                HumanSpan::default(),
+            )),
+            zsh: Some((
+                ustr(r#"IPREFIX="$2" PREFIX="$1" _path_files -/"#),
+                None,
+                HumanSpan::default(),
+            )),
+            generic: None,
+        });
+    specializations
+}
+
 impl Grammar {
     pub fn parse(input_before: &str) -> Result<Self> {
         let (input_after, (arena, statements)) = match grammar(Span::new(input_before)).finish() {
@@ -2446,46 +2500,6 @@ impl Grammar {
             }
             spec.generic = Some((*command, defn.lhs_span));
         }
-
-        specializations
-            .entry(ustr("PATH"))
-            .or_insert_with(|| Specialization {
-                builtin: true,
-                bash: Some((ustr(r#"compgen -A file "$1""#), None, HumanSpan::default())),
-                fish: Some((
-                    ustr(r#"__fish_complete_path "$1""#),
-                    None,
-                    HumanSpan::default(),
-                )),
-                zsh: Some((
-                    ustr(r#"IPREFIX="$2" PREFIX="$1" _path_files"#),
-                    None,
-                    HumanSpan::default(),
-                )),
-                generic: None,
-            });
-
-        specializations
-            .entry(ustr("DIRECTORY"))
-            .or_insert_with(|| Specialization {
-                builtin: true,
-                bash: Some((
-                    ustr(r#"compgen -A directory "$1""#),
-                    None,
-                    HumanSpan::default(),
-                )),
-                fish: Some((
-                    ustr(r#"__fish_complete_directories "$1""#),
-                    None,
-                    HumanSpan::default(),
-                )),
-                zsh: Some((
-                    ustr(r#"IPREFIX="$2" PREFIX="$1" _path_files -/"#),
-                    None,
-                    HumanSpan::default(),
-                )),
-                generic: None,
-            });
 
         Ok(specializations)
     }
