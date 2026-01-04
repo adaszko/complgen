@@ -636,3 +636,23 @@ spec_test <COMMAND>;
     )
     assert r.returncode == 0
     assert r.stderr == snapshot("""""")
+
+
+def test_transitive_unused_specialization(complgen_binary_path: Path):
+    r = complgen_check(
+        complgen_binary_path,
+        """
+cmd foo;
+<BAR> ::= <BAZ>;
+<BAZ@bash> ::= {{{ : }}};
+<BAZ@zsh> ::= {{{ : }}};
+""",
+    )
+    assert r.returncode == 0
+    assert r.stderr == snapshot("""\
+-:3:1:warning: Unused
+  |
+3 | <BAR> ::= <BAZ>;
+  | -----
+  |
+""")
