@@ -46,9 +46,6 @@ pub enum Error {
     #[error("Clashing variants")]
     ClashingVariants(HumanSpan, HumanSpan),
 
-    #[error("Clashing subword leaders")]
-    ClashingSubwordLeaders(HumanSpan, HumanSpan),
-
     #[error("Two adjacent terminals in a subword expression")]
     SubwordSpaces(HumanSpan, HumanSpan, Box<[HumanSpan]>),
 

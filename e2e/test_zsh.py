@@ -577,11 +577,11 @@ def test_handles_quotes(complgen_binary_path: Path):
     ) == sorted(["baz"])
 
 
-def test_merges_subwords(complgen_binary_path: Path):
+def test_multiple_matching_subwords(complgen_binary_path: Path):
     GRAMMAR = """cmd (--[no-]ahead-behind | --[no-]renames)"""
     assert get_sorted_aot_completions(
         complgen_binary_path, GRAMMAR, r"""cmd --no-"""
-    ) == sorted(["--no-ahead-behind", "--no-renames"])
+    ) == sorted(["--no-ahead-behind ahead-behind", "--no-renames renames     "])
 
 
 LITERALS_ALPHABET = string.ascii_letters + ":="

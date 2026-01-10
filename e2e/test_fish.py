@@ -557,7 +557,7 @@ mygrep <OPTION>...;
         )
 
 
-def test_merges_subwords(complgen_binary_path: Path):
+def test_multiple_matching_subwords(complgen_binary_path: Path):
     GRAMMAR = """cmd (--[no-]ahead-behind | --[no-]renames)"""
     with gen_fish_aot_completion_script_path(
         complgen_binary_path, GRAMMAR

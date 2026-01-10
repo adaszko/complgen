@@ -434,7 +434,7 @@ def test_empty_command(complgen_binary_path: Path):
         assert get_sorted_bash_completions(path, input) == sorted([])
 
 
-def test_merges_subwords(complgen_binary_path: Path):
+def test_multiple_matching_subwords(complgen_binary_path: Path):
     """Bash errors out on empty function body.  It needs to be handled"""
     GRAMMAR = """cmd (--[no-]ahead-behind | --[no-]renames)"""
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:

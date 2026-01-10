@@ -238,17 +238,6 @@ fn handle_error(e: Error, path: &str, source: &str, command: &str) -> anyhow::Re
             let err = ErrMsg::new("").error(&right, source, "from this");
             eprintln!("{}", err.into_string(path, &right));
         }
-        Error::ClashingSubwordLeaders(left, right) => {
-            let err = ErrMsg::new("Ambiguous grammar").error(
-                &left,
-                source,
-                "subword leader clashes with",
-            );
-            eprintln!("{}", err.into_string(path, &left));
-
-            let err = ErrMsg::new("").error(&right, source, "subword leader");
-            eprintln!("{}", err.into_string(path, &right));
-        }
         e => {
             eprintln!("{}", e);
         }

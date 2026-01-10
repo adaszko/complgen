@@ -1,7 +1,6 @@
 use crate::{Error, Result, grammar::ValidGrammar};
 use hashbrown::HashSet;
 use indexmap::IndexSet;
-use slice_group_by::GroupBy;
 use std::{
     collections::{BTreeMap, BTreeSet},
     io::Write,
@@ -886,78 +885,6 @@ impl Regex {
         self.do_check_descr_no_descr_clashes(firstpos, followpos, &mut visited)
     }
 
-    fn do_check_clashing_subword_leaders(
-        &self,
-        firstpos: &RoaringBitmap,
-        followpos: &BTreeMap<Position, RoaringBitmap>,
-        subword_regexes: &RegexInternPool,
-        visited: &mut RoaringBitmap,
-    ) -> Result<()> {
-        let mut leaders: Vec<(Ustr, HumanSpan)> = firstpos
-            .iter()
-            .filter(|pos| *pos != self.endmarker_position)
-            .map(|pos| self.input_from_position[pos as usize].clone())
-            .filter_map(|inp| match inp {
-                RegexInput::Subword {
-                    subword_regex_id,
-                    span,
-                    ..
-                } => {
-                    let subregex = subword_regexes.lookup(subword_regex_id);
-                    let literals: Vec<Ustr> = subregex
-                        .iter_leaders()
-                        .filter_map(|inp| match inp {
-                            RegexInput::Literal { literal, .. } => Some(literal),
-                            RegexInput::Nonterminal { .. } => None,
-                            RegexInput::Command { .. } => None,
-                            RegexInput::Subword { .. } => unreachable!(),
-                        })
-                        .collect();
-                    Some((literals, span))
-                }
-                RegexInput::Literal { .. }
-                | RegexInput::Nonterminal { .. }
-                | RegexInput::Command { .. } => None,
-            })
-            .flat_map(|(literals, span)| {
-                literals
-                    .iter()
-                    .map(|lit| (*lit, span))
-                    .collect::<Vec<(Ustr, HumanSpan)>>()
-            })
-            .collect();
-
-        leaders.sort_by_key(|(literal, _)| *literal);
-
-        for group in leaders.linear_group_by_key(|(literal, _)| *literal) {
-            if group.len() >= 2 {
-                return Err(Error::ClashingSubwordLeaders(group[0].1, group[1].1));
-            }
-        }
-
-        let unvisited = firstpos - visited.clone();
-        for pos in unvisited {
-            let Some(follow) = followpos.get(&pos) else {
-                continue;
-            };
-            visited.insert(pos);
-            self.do_check_clashing_subword_leaders(follow, followpos, subword_regexes, visited)?;
-        }
-        Ok(())
-    }
-
-    // e.g. git (subcommand "description" | subcommand --option);
-    fn check_clashing_subword_leaders(
-        &self,
-        firstpos: &RoaringBitmap,
-        followpos: &BTreeMap<Position, RoaringBitmap>,
-        subword_regexes: &RegexInternPool,
-    ) -> Result<()> {
-        let mut visited: RoaringBitmap = Default::default();
-        visited.insert(self.endmarker_position);
-        self.do_check_clashing_subword_leaders(firstpos, followpos, subword_regexes, &mut visited)
-    }
-
     fn check_subwords(
         &self,
         firstpos: &RoaringBitmap,
@@ -1006,7 +933,6 @@ impl Regex {
         let followpos = self.followpos();
         self.check_transitions_unambiguous(&firstpos, &followpos, subword_regexes)?;
         self.check_descr_no_descr_clashes(&firstpos, &followpos)?;
-        self.check_clashing_subword_leaders(&firstpos, &followpos, subword_regexes)?;
 
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);

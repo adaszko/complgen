@@ -391,29 +391,6 @@ darcs foo=bar{{{ echo second }}};
     assert r.stderr == snapshot("")
 
 
-def test_duplicated_subword_leader(complgen_binary_path: Path):
-    r = complgen_check(
-        complgen_binary_path,
-        """
-foo bar=<BAR>;
-foo bar=<BAZ>;
-""",
-    )
-    assert r.returncode == 1
-    assert r.stderr == snapshot("""\
--:2:5:error: Ambiguous grammar
-  |
-2 | foo bar=<BAR>;
-  |     ^^^^^^^^^ subword leader clashes with
-  |
--:3:5:error
-  |
-3 | foo bar=<BAZ>;
-  |     ^^^^^^^^^ subword leader
-  |
-""")
-
-
 def test_varying_command_names(complgen_binary_path: Path):
     r = complgen_check(
         complgen_binary_path,
