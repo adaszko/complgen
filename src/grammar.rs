@@ -1613,7 +1613,7 @@ impl ValidGrammar {
                 defn.rhs_expr_id,
                 &mut grammar.arena,
                 shell,
-                &mut user_specs.entry(shell).or_default(),
+                user_specs.entry(shell).or_default(),
                 &builtin_specs,
                 &fallback_specs,
                 &mut unused_nonterminals,
@@ -1624,14 +1624,14 @@ impl ValidGrammar {
             expr,
             &mut grammar.arena,
             shell,
-            &mut user_specs.entry(shell).or_default(),
+            user_specs.entry(shell).or_default(),
             &builtin_specs,
             &fallback_specs,
             &mut unused_nonterminals,
         );
 
         let unused_specializations = {
-            let specs: &UstrMap<UserSpec> = &user_specs.entry(shell).or_default();
+            let specs: &UstrMap<UserSpec> = user_specs.entry(shell).or_default();
             specs
                 .iter()
                 .filter(|(_, spec)| !spec.used)
