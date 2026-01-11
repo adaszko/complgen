@@ -10,7 +10,7 @@ use complgen::grammar::{Grammar, HumanSpan, Shell, ValidGrammar};
 
 use complgen::dfa::{DFA, diagnostic_display_input};
 use complgen::regex::{Regex, RegexInternPool};
-use complgen::{Error, bash, fish, zsh};
+use complgen::{Error, bash, fish, zsh, pwsh};
 
 #[derive(clap::Parser)]
 struct Cli {
@@ -33,6 +33,9 @@ struct Cli {
 
     #[clap(long, help = "Write zsh completion script", name = "ZSH_SCRIPT_PATH")]
     zsh: Option<String>,
+
+    #[clap(long, help = "Write PowerShell completion script", name = "PWSH_SCRIPT_PATH")]
+    pwsh: Option<String>,
 
     #[clap(
         long,
@@ -163,7 +166,7 @@ fn handle_error(e: Error, path: &str, source: &str, command: &str) -> anyhow::Re
         Error::UnknownShell(span) => {
             let err = ErrMsg::new("Unknown shell")
                 .error(&span, source, "")
-                .help("Can only use one of: bash, fish, zsh");
+                .help("Can only use one of: bash, fish, zsh, pwsh");
             eprintln!("{}", err.into_string(path, &span));
         }
         Error::NonCommandSpecialization(span) => {
@@ -273,13 +276,14 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
         Err(e) => return handle_error(e, usage_file_path, &input, "dummy"),
     };
 
-    let (shell, path) = match (&args.bash, &args.fish, &args.zsh) {
-        (Some(path), None, None) => (Shell::Bash, path),
-        (None, Some(path), None) => (Shell::Fish, path),
-        (None, None, Some(path)) => (Shell::Zsh, path),
+    let (shell, path) = match (&args.bash, &args.fish, &args.zsh, &args.pwsh) {
+        (Some(path), None, None, None) => (Shell::Bash, path),
+        (None, Some(path), None, None) => (Shell::Fish, path),
+        (None, None, Some(path), None) => (Shell::Zsh, path),
+        (None, None, None, Some(path)) => (Shell::Pwsh, path),
 
         _ => {
-            eprintln!("Please specify exactly one of: --bash, --fish, --zsh");
+            eprintln!("Please specify exactly one of: --bash, --fish, --zsh, --pwsh");
             exit(1);
         }
     };
@@ -374,6 +378,14 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
                 );
             }
             complgen::zsh::write_completion_script(&mut writer, &validated.command, &dfa)?;
+        }
+        Shell::Pwsh => {
+            if let Some(dot_file_path) = &args.dfa {
+                let mut dot_file = get_file_or_stdout(dot_file_path)?;
+                dfa.to_dot(&mut dot_file, pwsh::ARRAY_START)
+                    .context(dot_file_path.clone())?;
+            }
+            complgen::pwsh::write_completion_script(&mut writer, &validated.command, &dfa)?;
         }
     }
 
