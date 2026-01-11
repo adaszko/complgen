@@ -72,6 +72,7 @@ pub enum Expr {
         bash_regex: Option<Ustr>,
         fish_regex: Option<Ustr>,
         zsh_regex: Option<Ustr>,
+        pwsh_regex: Option<Ustr>,
         zsh_compadd: bool,
         fallback: usize,
         span: HumanSpan,
@@ -146,6 +147,7 @@ pub enum Shell {
     Bash,
     Fish,
     Zsh,
+    Pwsh,
 }
 
 impl Shell {
@@ -154,6 +156,7 @@ impl Shell {
             "bash" => Ok(Self::Bash),
             "fish" => Ok(Self::Fish),
             "zsh" => Ok(Self::Zsh),
+            "pwsh" => Ok(Self::Pwsh),
             _ => Err(Error::UnknownShell(span)),
         }
     }
@@ -208,11 +211,12 @@ impl std::fmt::Debug for Expr {
                 bash_regex,
                 fish_regex,
                 zsh_regex,
+                pwsh_regex,
                 zsh_compadd,
                 fallback,
                 span,
             } => f.write_fmt(format_args!(
-                r#"Command(ustr({cmd:?}), {bash_regex:?}, {fish_regex:?}, {zsh_regex:?}, {zsh_compadd}, {fallback}, {span:?})"#
+                r#"Command(ustr({cmd:?}), {bash_regex:?}, {fish_regex:?}, {zsh_regex:?}, {pwsh_regex:?}, {zsh_compadd}, {fallback}, {span:?})"#
             )),
             Self::Sequence { children, span } => {
                 f.write_fmt(format_args!(r#"Sequence(vec!{:?}, {span:?})"#, children))
@@ -644,6 +648,7 @@ fn command_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>,
         bash_regex: None,
         fish_regex: None,
         zsh_regex: None,
+        pwsh_regex: None,
         zsh_compadd: false,
         fallback: 0,
         span: command_span,
@@ -656,7 +661,7 @@ fn at_shell_regex(input: Span) -> IResult<Span, (String, String)> {
     let (input, _) = char('@')(input)?;
     let (input, shell) = terminal(input)?;
     let shell = match shell.as_ref() {
-        "bash" | "fish" | "zsh" => shell,
+        "bash" | "fish" | "zsh" | "pwsh" => shell,
         _ => return fail(input),
     };
     let (input, regex) = description(input)?;
@@ -668,26 +673,28 @@ fn command_regex_expr<'s>(arena: &mut Vec<Expr>, mut input: Span<'s>) -> IResult
     let command_span = HumanSpan::from_range(input, after);
     input = after;
 
-    let (input, bash_regex, fish_regex, zsh_regex) = {
+    let (input, bash_regex, fish_regex, zsh_regex, pwsh_regex) = {
         let mut input = input;
         let mut bash_regex = None;
         let mut fish_regex = None;
         let mut zsh_regex = None;
+        let mut pwsh_regex = None;
         while let Ok((rest, (shell, regex))) = at_shell_regex(input) {
             match shell.as_ref() {
                 "bash" => bash_regex = Some(ustr(regex.as_ref())),
                 "fish" => fish_regex = Some(ustr(regex.as_ref())),
                 "zsh" => zsh_regex = Some(ustr(regex.as_ref())),
+                "pwsh" => pwsh_regex = Some(ustr(regex.as_ref())),
                 _ => unreachable!(),
             }
             input = rest;
         }
 
-        if bash_regex.is_none() && fish_regex.is_none() && zsh_regex.is_none() {
+        if bash_regex.is_none() && fish_regex.is_none() && zsh_regex.is_none() && pwsh_regex.is_none() {
             return fail(input);
         }
 
-        Ok((input, bash_regex, fish_regex, zsh_regex))
+        Ok((input, bash_regex, fish_regex, zsh_regex, pwsh_regex))
     }?;
 
     let e = Expr::Command {
@@ -695,6 +702,7 @@ fn command_regex_expr<'s>(arena: &mut Vec<Expr>, mut input: Span<'s>) -> IResult
         bash_regex,
         fish_regex,
         zsh_regex,
+        pwsh_regex,
         zsh_compadd: false,
         fallback: 0,
         span: command_span,
@@ -1883,6 +1891,7 @@ fn specialize_nonterminals(
                     bash_regex: regex,
                     fish_regex: None,
                     zsh_regex: None,
+                    pwsh_regex: None,
                     zsh_compadd: false,
                     fallback,
                     span,
@@ -1892,6 +1901,7 @@ fn specialize_nonterminals(
                     bash_regex: None,
                     fish_regex: regex,
                     zsh_regex: None,
+                    pwsh_regex: None,
                     zsh_compadd: false,
                     fallback,
                     span,
@@ -1901,7 +1911,18 @@ fn specialize_nonterminals(
                     bash_regex: None,
                     fish_regex: None,
                     zsh_regex: regex,
+                    pwsh_regex: None,
                     zsh_compadd,
+                    fallback,
+                    span,
+                },
+                Shell::Pwsh => Expr::Command {
+                    cmd,
+                    bash_regex: None,
+                    fish_regex: None,
+                    zsh_regex: None,
+                    pwsh_regex: regex,
+                    zsh_compadd: false,
                     fallback,
                     span,
                 },
@@ -2364,6 +2385,10 @@ fn make_builtin_specializations(shell: Shell) -> UstrMap<BuiltinSpec> {
             cmd: ustr(r#"IPREFIX="$2" PREFIX="$1" _path_files"#),
             regex: None,
         },
+        Shell::Pwsh => BuiltinSpec {
+            cmd: ustr(r#"Get-ChildItem -Path "$1*" -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }"#),
+            regex: None,
+        },
     };
     specializations.entry(ustr("PATH")).insert_entry(path_spec);
 
@@ -2378,6 +2403,10 @@ fn make_builtin_specializations(shell: Shell) -> UstrMap<BuiltinSpec> {
         },
         Shell::Zsh => BuiltinSpec {
             cmd: ustr(r#"IPREFIX="$2" PREFIX="$1" _path_files -/"#),
+            regex: None,
+        },
+        Shell::Pwsh => BuiltinSpec {
+            cmd: ustr(r#"Get-ChildItem -Path "$1*" -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }"#),
             regex: None,
         },
     };
@@ -2444,14 +2473,15 @@ impl Grammar {
                 continue;
             };
             let rhs = &self.arena[defn.rhs_expr_id];
-            let (command, bash_regex, fish_regex, zsh_regex) = match rhs {
+            let (command, bash_regex, fish_regex, zsh_regex, pwsh_regex) = match rhs {
                 Expr::Command {
                     cmd,
                     bash_regex,
                     fish_regex,
                     zsh_regex,
+                    pwsh_regex,
                     ..
-                } => (cmd, bash_regex, fish_regex, zsh_regex),
+                } => (cmd, bash_regex, fish_regex, zsh_regex, pwsh_regex),
                 _ => {
                     return Err(Error::NonCommandSpecialization(*rhs.get_span()));
                 }
@@ -2482,6 +2512,14 @@ impl Grammar {
                     spec.entry(defn.lhs_name).insert_entry(UserSpec {
                         cmd: *command,
                         regex: *zsh_regex,
+                        span: defn.lhs_span,
+                        used: false,
+                    });
+                }
+                Shell::Pwsh => {
+                    spec.entry(defn.lhs_name).insert_entry(UserSpec {
+                        cmd: *command,
+                        regex: *pwsh_regex,
                         span: defn.lhs_span,
                         used: false,
                     });
@@ -2591,6 +2629,7 @@ pub mod tests {
                     bash_regex: l_bash_regex,
                     fish_regex: l_fish_regex,
                     zsh_regex: l_zsh_regex,
+                    pwsh_regex: l_pwsh_regex,
                     zsh_compadd: l_zsh_compadd,
                     fallback: l_fallback,
                     span: _,
@@ -2600,6 +2639,7 @@ pub mod tests {
                     bash_regex: r_bash_regex,
                     fish_regex: r_fish_regex,
                     zsh_regex: r_zsh_regex,
+                    pwsh_regex: r_pwsh_regex,
                     zsh_compadd: r_zsh_compadd,
                     fallback: r_fallback,
                     span: _,
@@ -2609,6 +2649,7 @@ pub mod tests {
                     && l_bash_regex == r_bash_regex
                     && l_fish_regex == r_fish_regex
                     && l_zsh_regex == r_zsh_regex
+                    && l_pwsh_regex == r_pwsh_regex
                     && l_zsh_compadd == r_zsh_compadd
                     && l_fallback == r_fallback
             }
@@ -2847,6 +2888,7 @@ pub mod tests {
                 bash_regex: Some(ustr("bar")),
                 fish_regex: None,
                 zsh_regex: None,
+                pwsh_regex: None,
                 zsh_compadd: false,
                 fallback: 0,
                 span: HumanSpan::default(),
@@ -2868,6 +2910,7 @@ pub mod tests {
                 bash_regex: None,
                 fish_regex: None,
                 zsh_regex: None,
+                pwsh_regex: None,
                 zsh_compadd: false,
                 fallback: 0,
                 span: HumanSpan::default(),
@@ -3481,6 +3524,7 @@ cargo [+{{{ rustup toolchain list | cut -d' ' -f1 }}}]
                 bash_regex: None,
                 fish_regex: None,
                 zsh_regex: None,
+                pwsh_regex: None,
                 zsh_compadd: false,
                 fallback: 0,
                 span: HumanSpan::default(),
@@ -4012,6 +4056,7 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
                 bash_regex: None,
                 fish_regex: None,
                 zsh_regex: None,
+                pwsh_regex: None,
                 zsh_compadd: false,
                 fallback: 0,
                 span: HumanSpan::default(),
@@ -4188,6 +4233,7 @@ ls <FILE>;
                 bash_regex: None,
                 fish_regex: None,
                 zsh_regex: None,
+                pwsh_regex: None,
                 zsh_compadd: false,
                 fallback: 0,
                 span: HumanSpan::default(),
@@ -4213,6 +4259,7 @@ ls <FILE>;
                 bash_regex: None,
                 fish_regex: None,
                 zsh_regex: None,
+                pwsh_regex: None,
                 zsh_compadd: false,
                 fallback: 0,
                 span: HumanSpan::default(),
@@ -4448,6 +4495,7 @@ ls <FILE>;
                 bash_regex: None,
                 fish_regex: None,
                 zsh_regex: None,
+                pwsh_regex: None,
                 zsh_compadd: false,
                 fallback: 0,
                 span: HumanSpan::default(),
@@ -4461,6 +4509,7 @@ ls <FILE>;
                 bash_regex: None,
                 fish_regex: None,
                 zsh_regex: None,
+                pwsh_regex: None,
                 zsh_compadd: false,
                 fallback: 0,
                 span: HumanSpan::default(),
@@ -4513,6 +4562,7 @@ ls <FILE>;
                 bash_regex: Some(ustr("bar")),
                 fish_regex: Some(ustr("baz")),
                 zsh_regex: Some(ustr("quux")),
+                pwsh_regex: None,
                 zsh_compadd: false,
                 fallback: 0,
                 span: HumanSpan::default(),

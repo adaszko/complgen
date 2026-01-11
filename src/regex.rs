@@ -374,6 +374,7 @@ fn do_from_expr(
             bash_regex,
             fish_regex,
             zsh_regex,
+            pwsh_regex,
             zsh_compadd,
             fallback,
             span,
@@ -383,6 +384,7 @@ fn do_from_expr(
                 Shell::Bash => bash_regex,
                 Shell::Fish => fish_regex,
                 Shell::Zsh => zsh_regex,
+                Shell::Pwsh => pwsh_regex,
             };
             let input = RegexInput::Command {
                 cmd: *cmd,
