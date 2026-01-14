@@ -536,7 +536,7 @@ def test_completes_options_after_arg(complgen_binary_path: Path):
         assert completions == [("--verbose", "")]
 
 
-LITERALS_ALPHABET = string.ascii_letters + ":="
+LITERALS_ALPHABET = string.ascii_letters + ":=-./0123456789"
 
 
 @given(text(LITERALS_ALPHABET, min_size=1))
