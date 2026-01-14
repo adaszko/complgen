@@ -2386,7 +2386,8 @@ fn make_builtin_specializations(shell: Shell) -> UstrMap<BuiltinSpec> {
             regex: None,
         },
         Shell::Pwsh => BuiltinSpec {
-            cmd: ustr(r#"Get-ChildItem -Path "$1*" -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }"#),
+            // Preserve directory prefix: extract parent dir from prefix and join it back with filename
+            cmd: ustr(r#"$dir = Split-Path -Parent "$1"; Get-ChildItem -Path "$1*" -ErrorAction SilentlyContinue | ForEach-Object { if ($dir) { Join-Path $dir $_.Name } else { $_.Name } }"#),
             regex: None,
         },
     };
@@ -2406,7 +2407,8 @@ fn make_builtin_specializations(shell: Shell) -> UstrMap<BuiltinSpec> {
             regex: None,
         },
         Shell::Pwsh => BuiltinSpec {
-            cmd: ustr(r#"Get-ChildItem -Path "$1*" -Directory -ErrorAction SilentlyContinue | ForEach-Object { $_.Name }"#),
+            // Preserve directory prefix: extract parent dir from prefix and join it back with dirname
+            cmd: ustr(r#"$dir = Split-Path -Parent "$1"; Get-ChildItem -Path "$1*" -Directory -ErrorAction SilentlyContinue | ForEach-Object { if ($dir) { Join-Path $dir $_.Name } else { $_.Name } }"#),
             regex: None,
         },
     };

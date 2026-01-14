@@ -186,13 +186,10 @@ def gen_pwsh_completion_script_path(
         stderr=sys.stderr,
         check=True,
     ).stdout
-    with tempfile.NamedTemporaryFile(suffix=".ps1", delete=False) as f:
+    with tempfile.NamedTemporaryFile(suffix=".ps1") as f:
         f.write(pwsh_script)
         f.flush()
-        try:
-            yield Path(f.name)
-        finally:
-            os.unlink(f.name)
+        yield Path(f.name)
 
 
 def pwsh_completions_from_stdout(stdout: str) -> list[tuple[str, str]]:

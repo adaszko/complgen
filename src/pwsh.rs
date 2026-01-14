@@ -9,34 +9,24 @@ use indexmap::IndexSet;
 use ustr::{Ustr, ustr};
 
 // PowerShell array indexes start at 0 (like Bash).
-// PowerShell uses dynamic scoping.
+// PowerShell uses dynamic scoping. We use $script:state to share state
+// between the main completion function and subword helper functions.
 
 pub const ARRAY_START: u32 = 0;
 
 fn make_string_constant(s: &str) -> String {
     // PowerShell string escaping: backtick is the escape character
-    // Need to escape: backtick (`), double-quote ("), dollar sign ($)
+    // Need to escape: backtick (`), double-quote ("), dollar sign ($), newline, carriage return
     format!(
         r#""{}""#,
         s.replace('`', "``")
             .replace('"', "`\"")
             .replace('$', "`$")
+            .replace('\n', "`n")
+            .replace('\r', "`r")
     )
 }
 
-fn write_match_fn<W: Write>(buffer: &mut W) -> Result<()> {
-    writeln!(
-        buffer,
-        r#"function __complgen_match {{
-    param([string]$prefix, [string[]]$candidates)
-    if ([string]::IsNullOrEmpty($prefix)) {{
-        return $candidates
-    }}
-    $candidates | Where-Object {{ $_.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) }}
-}}"#
-    )?;
-    Ok(())
-}
 
 fn write_lookup_tables<W: Write>(
     buffer: &mut W,
@@ -588,9 +578,6 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 "#
     )?;
 
-    write_match_fn(buffer)?;
-    writeln!(buffer)?;
-
     let (id_from_cmd, id_from_regex) = make_id_from_command_map(dfa);
     for cmd in &id_from_cmd {
         let id = id_from_cmd.get_index_of(cmd).unwrap();
@@ -648,6 +635,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     # Parse command line into words
     $words = @($commandAst.CommandElements | ForEach-Object {{ $_.Extent.Text }})
     $lastElement = $commandAst.CommandElements[-1]
+    # Determine current word index: if cursor is past the last element (trailing space),
+    # we're completing a new word; otherwise we're completing the current word
     $cword = if ($words.Count -eq 0 -or $cursorPosition -gt $lastElement.Extent.EndOffset) {{ $words.Count }} else {{ $words.Count - 1 }}
 "#
     )?;
@@ -770,7 +759,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     )?;
 
     // Build completion data structures by fallback level
-    let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(0);
+    let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
     let mut completion_literals: Vec<HashMap<StateId, Vec<usize>>> =
         vec![HashMap::default(); max_fallback_level + 1];
