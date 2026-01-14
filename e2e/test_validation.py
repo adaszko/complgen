@@ -429,7 +429,7 @@ foo quux;
 3 | <BAR@quux> ::= {{{ echo foo }}};
   |      ^^^^
   |
-  = help: Can only use one of: bash, fish, zsh
+  = help: Can only use one of: bash, fish, zsh, pwsh
 """)
 
 
