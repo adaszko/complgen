@@ -10,7 +10,7 @@ use complgen::grammar::{Grammar, HumanSpan, Shell, ValidGrammar};
 
 use complgen::dfa::{DFA, diagnostic_display_input};
 use complgen::regex::{Regex, RegexInternPool};
-use complgen::{Error, bash, fish, zsh, pwsh};
+use complgen::{Error, bash, fish, pwsh, zsh};
 
 #[derive(clap::Parser)]
 struct Cli {
@@ -34,7 +34,11 @@ struct Cli {
     #[clap(long, help = "Write zsh completion script", name = "ZSH_SCRIPT_PATH")]
     zsh: Option<String>,
 
-    #[clap(long, help = "Write PowerShell completion script", name = "PWSH_SCRIPT_PATH")]
+    #[clap(
+        long,
+        help = "Write PowerShell completion script",
+        name = "PWSH_SCRIPT_PATH"
+    )]
     pwsh: Option<String>,
 
     #[clap(
@@ -223,7 +227,7 @@ fn handle_error(e: Error, path: &str, source: &str, command: &str) -> anyhow::Re
                 }
                 buf
             };
-            eprintln!("Ambiguity:");
+            eprintln!("error: DFA Ambiguity:");
             for input in ambiguous_inputs {
                 let mut buffer = String::new();
                 diagnostic_display_input(&mut buffer, &input)?;

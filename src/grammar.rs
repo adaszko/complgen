@@ -690,7 +690,11 @@ fn command_regex_expr<'s>(arena: &mut Vec<Expr>, mut input: Span<'s>) -> IResult
             input = rest;
         }
 
-        if bash_regex.is_none() && fish_regex.is_none() && zsh_regex.is_none() && pwsh_regex.is_none() {
+        if bash_regex.is_none()
+            && fish_regex.is_none()
+            && zsh_regex.is_none()
+            && pwsh_regex.is_none()
+        {
             return fail(input);
         }
 
@@ -2374,7 +2378,7 @@ fn make_builtin_specializations(shell: Shell) -> UstrMap<BuiltinSpec> {
 
     let path_spec = match shell {
         Shell::Bash => BuiltinSpec {
-            cmd: ustr(r#"compgen -A file "$1""#),
+            cmd: ustr(r#"compgen -A file -- "$1""#),
             regex: None,
         },
         Shell::Fish => BuiltinSpec {
@@ -2387,7 +2391,9 @@ fn make_builtin_specializations(shell: Shell) -> UstrMap<BuiltinSpec> {
         },
         Shell::Pwsh => BuiltinSpec {
             // Preserve directory prefix: extract parent dir from prefix and join it back with filename
-            cmd: ustr(r#"$dir = Split-Path -Parent "$1"; Get-ChildItem -Path "$1*" -ErrorAction SilentlyContinue | ForEach-Object { if ($dir) { Join-Path $dir $_.Name } else { $_.Name } }"#),
+            cmd: ustr(
+                r#"$dir = Split-Path -Parent "$1"; Get-ChildItem -Path "$1*" -ErrorAction SilentlyContinue | ForEach-Object { if ($dir) { Join-Path $dir $_.Name } else { $_.Name } }"#,
+            ),
             regex: None,
         },
     };
@@ -2395,7 +2401,7 @@ fn make_builtin_specializations(shell: Shell) -> UstrMap<BuiltinSpec> {
 
     let directory_spec = match shell {
         Shell::Bash => BuiltinSpec {
-            cmd: ustr(r#"compgen -A directory "$1""#),
+            cmd: ustr(r#"compgen -A directory -- "$1""#),
             regex: None,
         },
         Shell::Fish => BuiltinSpec {
@@ -2408,7 +2414,9 @@ fn make_builtin_specializations(shell: Shell) -> UstrMap<BuiltinSpec> {
         },
         Shell::Pwsh => BuiltinSpec {
             // Preserve directory prefix: extract parent dir from prefix and join it back with dirname
-            cmd: ustr(r#"$dir = Split-Path -Parent "$1"; Get-ChildItem -Path "$1*" -Directory -ErrorAction SilentlyContinue | ForEach-Object { if ($dir) { Join-Path $dir $_.Name } else { $_.Name } }"#),
+            cmd: ustr(
+                r#"$dir = Split-Path -Parent "$1"; Get-ChildItem -Path "$1*" -Directory -ErrorAction SilentlyContinue | ForEach-Object { if ($dir) { Join-Path $dir $_.Name } else { $_.Name } }"#,
+            ),
             regex: None,
         },
     };
