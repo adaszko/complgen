@@ -568,6 +568,20 @@ def test_multiple_matching_subwords(complgen_binary_path: Path):
         )
 
 
+def test_issue_70(complgen_binary_path: Path):
+    GRAMMAR = """
+asdf a [ --file=<T> | --term ]...;
+asdf b [ --file <T> | --term ]...;
+"""
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        input = """complete --do-complete 'asdf b --file asdf ' """
+        assert get_sorted_fish_completions(completions_file_path, input) == sorted(
+            [("--file", ""), ("--term", "")]
+        )
+
+
 LITERALS_ALPHABET = string.ascii_letters + ":="
 
 

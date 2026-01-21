@@ -1086,8 +1086,8 @@ end
     write!(
         buffer,
         r#"
-        if set --query star_transitions_from[$state] && test -n $star_transitions_from[$state]
-            set index (contains --index -- "$state" $star_transitions_from)
+        set index (contains --index -- "$state" $star_transitions_from)
+        if test -n "$index"
             set state $star_transitions_to[$index]
             set word_index (math $word_index + 1)
             continue
