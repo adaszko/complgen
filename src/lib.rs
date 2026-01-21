@@ -66,3 +66,8 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub type StateId = u32;
+
+pub(crate) fn make_dot_string_constant(s: &str) -> String {
+    let escaped = s.replace('\\', "\\\\").replace('"', "\\\"");
+    format!(r#""{escaped}""#)
+}

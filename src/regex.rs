@@ -1,4 +1,4 @@
-use crate::{Error, Result, grammar::ValidGrammar};
+use crate::{Error, Result, grammar::ValidGrammar, make_dot_string_constant};
 use hashbrown::HashSet;
 use indexmap::IndexSet;
 use std::{
@@ -547,7 +547,11 @@ fn do_to_dot<W: Write>(
             )?;
         }
         RegexNode::Command(cmd, pos) => {
-            writeln!(output, r#"{indentation}_{node_id}[label="{pos}: {cmd}"];"#)?;
+            writeln!(
+                output,
+                r#"{indentation}_{node_id}[label={}];"#,
+                make_dot_string_constant(&format!("{pos}: {cmd}"))
+            )?;
         }
         RegexNode::Cat(lhs, rhs) => {
             writeln!(
