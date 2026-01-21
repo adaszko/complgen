@@ -1,0 +1,244 @@
+mygit (status || (<global-option>... status)) (<PATH> || <status-option>)...;
+
+mygit (log || (<global-option>... log)) [<log-option>...] [<revision-range>] [[--] <PATH>...];
+
+mygit (diff || (<global-option>... diff)) [<diff-option>...] [<commit>] [--] [<PATH>...];
+mygit (diff || (<global-option>... diff)) [<diff-option>...] --cached [--merge-base] [<commit>] [--] [<PATH>...];
+mygit (diff || (<global-option>... diff)) [<diff-option>...] [--merge-base] <commit> [<commit>...] <commit> [--] [<PATH>...];
+mygit (diff || (<global-option>... diff)) [<diff-option>...] <commit>...<commit> [--] [<PATH>...];
+mygit (diff || (<global-option>... diff)) [<diff-option>...] <blob> <blob>;
+mygit (diff || (<global-option>... diff)) [<diff-option>...] --no-index [--] <PATH> <PATH> [<PATH>...];
+
+
+<commit> ::= {{{}}}@bash"[a-zA-Z_-]*"@fish"[a-zA-Z_-]*"@zsh"[a-zA-Z_-]*";
+
+<revision-range> ::= {{{}}}@bash"[a-zA-Z_-]*"@fish"[a-zA-Z_-]*"@zsh"[a-zA-Z_-]*";
+
+<blob> ::= {{{}}}@bash"[a-zA-Z_-]*"@fish"[a-zA-Z_-]*"@zsh"[a-zA-Z_-]*";
+
+<global-option> ::= (--version | -v)
+                  | (--help | -h)
+                  | -C <DIRECTORY>
+                  | -c <config-option>
+                  | --exec-path[=<DIRECTORY>]
+                  | --html-path
+                  | --man-path
+                  | --info-path
+                  | (--paginate | --no-pager | -p | -P)
+                  | --no-replace-objects
+                  | --no-lazy-fetch
+                  | --no-optional-locks
+                  | --no-advice
+                  | --bare
+                  | --git-dir=<DIRECTORY>
+                  | --work-tree=<DIRECTORY>
+                  | --namespace=<name>
+                  | --config-env=<config-option>
+                  ;
+
+<status-option> ::= --short
+                  | --branch
+                  | --show-stash
+                  | --porcelain[=<version>]
+                  | --long
+                  | --verbose
+                  | --untracked-files[=(no | normal | all)]
+                  | --ignore-submodules[=(none | untracked | dirty | all)]
+                  | --ignored[=(traditional | no | matching)]
+                  | --column[=(always | never)]
+                  | --no-column
+                  | --no-ahead-behind | --ahead-behind
+                  | --no-renames | --renames
+                  | --find-renames[=<n>]
+                  ;
+
+<log-option> ::= --follow
+       | (--no-decorate | --decorate[=(short|full|auto|no)])
+       | --decorate-refs=<pattern>
+       | --decorate-refs-exclude=<pattern>
+       | --clear-decorations
+       | --source
+       | --mailmap | --no-mailmap
+       | --use-mailmap | --no-use-mailmap
+       | --full-diff
+       | --log-size
+       | -L<line>,<line>:<path>
+       | -L:<funcname>:<path>
+       | -<number> | -n <number> | --max-count=<number>
+       | --skip=<number>
+       | --since=<date>
+       | --after=<date>
+       | --since-as-filter=<date>
+       | --until=<date>
+       | --before=<date>
+       | --author=<pattern>
+       | --committer=<pattern>
+       | --grep-reflog=<pattern>
+       | --grep=<pattern>
+       | --all-match
+       | --invert-grep
+       | --regexp-ignore-case
+       | --basic-regexp
+       | --extended-regexp
+       | --fixed-strings
+       | --perl-regexp
+       | --remove-empty
+       | --merges
+       | --no-merges
+       | --min-parents=<number>
+       | --max-parents=<number>
+       | --no-min-parents
+       | --no-max-parents
+       | --first-parent
+       | --exclude-first-parent-only
+       | --not
+       | --all
+       | --branches[=<pattern>]
+       | --tags[=<pattern>]
+       | --remotes[=<pattern>]
+       | --glob=<glob-pattern>
+       | --exclude=<glob-pattern>
+       | --exclude-hidden=(fetch|receive|uploadpack)
+       | --reflog
+       | --alternate-refs
+       | --single-worktree
+       | --ignore-missing
+       | --bisect
+       | --stdin
+       | --cherry-mark
+       | --cherry-pick
+       | --left-only
+       | --right-only
+       | --cherry
+       | --walk-reflogs
+       | --merge
+       | --boundary
+       | --simplify-by-decoration
+       | --show-pulls
+       | --full-history
+       | --dense
+       | --sparse
+       | --simplify-merges
+       | --ancestry-path[=<commit>]
+       | --dense
+       | --sparse
+       | --simplify-merges
+       | --ancestry-path[=<commit>]
+       | --show-pulls
+       | --date-order
+       | --author-date-order
+       | --topo-order
+       | --reverse
+       | --no-walk[=(sorted|unsorted)]
+       | --do-walk
+       | --pretty[=(oneline | short | medium | full | fuller | reference | email | raw | format: | tformat:)]
+       | --abbrev-commit
+       | --no-abbrev-commit
+       | --oneline
+       | --encoding=<encoding>
+       | --expand-tabs[=<n>]
+       | --no-expand-tabs
+       | --notes[=<ref>]
+       | --no-notes
+       | --show-notes-by-default
+       | --show-notes[=<ref>]
+       | --standard-notes
+       | --no-standard-notes
+       | --show-signature
+       | --relative-date
+       | --date=<format>
+       | --parents
+       | --children
+       | --left-right
+       | --graph
+       | --show-linear-break[=<barrier>]
+       | --patch
+       | --no-patch
+       | --cc
+       | --dd
+       | --remerge-diff
+       | --no-diff-merges
+       | --diff-merges=<format>
+       | --combined-all-paths
+       | --unified=<n>
+       | --output=<file>
+       | --output-indicator-new=<char>
+       | --output-indicator-old=<char>
+       | --output-indicator-context=<char>
+       | --raw
+       | --patch-with-raw
+       | --indent-heuristic
+       | --no-indent-heuristic
+       | --minimal
+       | --patience
+       | --histogram
+       | --anchored=<text>
+       | --diff-algorithm=(patience|minimal|histogram|myers)
+       | --stat[=<number>[,<number>[,<number>]]]
+       | --compact-summary
+       | --numstat
+       | --shortstat
+       | --dirstat[=<params>]
+       | --cumulative
+       | --dirstat-by-file[=<params>]
+       | --summary
+       | --patch-with-stat
+       | --name-only
+       | --name-status
+       | --submodule[=<format>]
+       | --color[=<when>]
+       | --no-color
+       | --color-moved[=<mode>]
+       | --no-color-moved
+       | --color-moved-ws=<mode>
+       | --no-color-moved-ws
+       | --word-diff[=<mode>]
+       | --word-diff-regex=<regex>
+       | --color-words[=<regex>]
+       | --no-renames
+       | --no-rename-empty
+       | --check
+       | --ws-error-highlight=<kind>
+       | --full-index
+       | --binary
+       | --abbrev[=<n>]
+       | --break-rewrites[=<n>]
+       | --find-renames[=<n>]
+       | --find-copies[=<n>]
+       | --find-copies-harder
+       | --irreversible-delete
+       | --diff-filter=[(A|C|D|M|R|T|U|X|B)...[*]]
+       | --find-object=<object-id>
+       | --pickaxe-all
+       | --pickaxe-regex
+       | --skip-to=<file> | --rotate-to=<file>
+       | --relative[=<path>] | --no-relative
+       | --text
+       | --ignore-cr-at-eol
+       | --ignore-space-at-eol
+       | --ignore-space-change
+       | --ignore-all-space
+       | --ignore-blank-lines
+       | --ignore-matching-lines=<regex>
+       | --inter-hunk-context=<number>
+       | --function-context
+       | --ext-diff
+       | --no-ext-diff
+       | --textconv | --no-textconv
+       | --ignore-submodules[=(none|untracked|dirty|all)]
+       | --src-prefix=<prefix>
+       | --dst-prefix=<prefix>
+       | --no-prefix
+       | --default-prefix
+       | --line-prefix=<prefix>
+       | --ita-invisible-in-index
+       ;
+
+<number> ::= {{{}}}@bash"[0-9]*"@fish"[0-9]*"@zsh"[0-9]*";
+
+<line> ::= {{{}}}@bash"[0-9]*"@fish"[0-9]*"@zsh"[0-9]*";
+
+<funcname> ::= {{{}}}@bash"[a-zA-Z_]*"@fish"[a-zA-Z_]*"@zsh"[a-zA-Z_]*";
+
+
+<diff-option> ::= -p | -u | --patch;

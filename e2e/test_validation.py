@@ -21,14 +21,6 @@ def test_examples(complgen_binary_path: Path, examples_directory_path: Path):
         assert r.returncode == 0, usage_file_path
 
 
-def test_complgen_example(complgen_binary_path: Path, examples_directory_path: Path):
-    r = complgen_check_path(
-        complgen_binary_path, str(examples_directory_path / "complgen.usage")
-    )
-    assert r.returncode == 0
-    assert r.stderr == snapshot("")
-
-
 def complgen_check(
     complgen_binary_path: Path, grammar: str
 ) -> subprocess.CompletedProcess:
@@ -309,6 +301,22 @@ def test_bug4(complgen_binary_path: Path):
 1 | darcs [<INITIALIZATION>] <COMMAND>;
   |                          ^^^^^^^^^ from this
   |
+""")
+
+
+def test_bug5(complgen_binary_path: Path):
+    r = complgen_check(
+        complgen_binary_path,
+        """
+mygit diff <PATH>;
+mygit diff {{{}}}@fish"[a-zA-Z_-]*";
+""",
+    )
+    assert r.returncode == 1
+    assert r.stderr == snapshot("""\
+error: DFA Ambiguity:
+  mygit diff {{{ compgen -A file -- "$1" }}}
+  mygit diff {{{  }}}
 """)
 
 
