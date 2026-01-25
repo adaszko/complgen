@@ -31,7 +31,11 @@ fn write_match_fn<W: Write>(buffer: &mut W) -> Result<()> {
     [[ $# -lt 2 ]] && return 1
     local ignore_case=$1
     local prefix=$2
-    [[ -z $prefix ]] && cat
+    if [[ -z $prefix ]]; then
+        readarray -t lines
+        printf '%s\n' "${{lines[@]}}"
+        return
+    fi
     if [[ $ignore_case = on ]]; then
         prefix=${{prefix,,}}
         prefix=$(printf '%q' "$prefix")
@@ -162,6 +166,7 @@ fn write_generic_subword_fn<W: Write>(
 
     local char_index=0
     local matched=0
+    local nliterals=${{#literals[@]}}
     while true; do
         if [[ $char_index -ge ${{#word}} ]]; then
             matched=1
@@ -175,7 +180,7 @@ fn write_generic_subword_fn<W: Write>(
             eval "state_transitions=${{literal_transitions[$state]}}"
 
             local literal_matched=0
-            for literal_id in $(seq 0 $((${{#literals[@]}} - 1))); do
+            for ((literal_id = 0; literal_id < $nliterals; literal_id++)); do
                 local literal=${{literals[$literal_id]}}
                 local literal_len=${{#literal}}
                 if [[ ${{subword:0:$literal_len}} = "$literal" ]]; then
@@ -249,7 +254,6 @@ fn write_generic_subword_fn<W: Write>(
 
     local -a candidates=()
     local -a matches=()
-    local ignore_case=$(bind -v | grep completion-ignore-case | cut -d' ' -f3)
     for (( subword_fallback_level=0; subword_fallback_level <= max_fallback_level; subword_fallback_level++ )) {{
         eval "local literal_transitions_name=literal_transitions_level_${{subword_fallback_level}}"
         eval "local -a transitions=(\${{$literal_transitions_name[$state]}})"
@@ -272,7 +276,7 @@ fn write_generic_subword_fn<W: Write>(
         eval "local -a regexes_transitions=(\${{$regexes_name[$state]}})"
         for (( i = 0; i < ${{#command_transitions[@]}}; i++ )); do
             local command_id=${{command_transitions[$i]}}
-            readarray -t output < <(_{command}_cmd_$command_id "$completed_prefix" "$matched_prefix" | cut -f1)
+            readarray -t output < <(_{command}_cmd_$command_id "$completed_prefix" "$matched_prefix" | while read -r f1 _; do echo "$f1"; done)
             local regex_id=${{regexes_transitions[$i]}}
             local regex="^(${{regexes[$regex_id]}}).*"
             local -a candidates=()
@@ -296,7 +300,7 @@ fn write_generic_subword_fn<W: Write>(
         eval "local commands_name=commands_level_${{subword_fallback_level}}"
         eval "local -a transitions=(\${{$commands_name[$state]}})"
         for command_id in "${{transitions[@]}}"; do
-            readarray -t candidates < <(_{command}_cmd_$command_id "$completed_prefix" "$matched_prefix" | cut -f1)
+            readarray -t candidates < <(_{command}_cmd_$command_id "$completed_prefix" "$matched_prefix" | while read -r f1 _; do echo "$f1"; done)
             for item in "${{candidates[@]}}"; do
                 matches+=("$matched_prefix$item")
             done
@@ -632,6 +636,7 @@ fi
         r#"
     local state={starting_state}
     local word_index=1
+    local nliterals=${{#literals[@]}}
     while [[ $word_index -lt $cword ]]; do
         local word=${{words[$word_index]}}
 
@@ -640,7 +645,7 @@ fi
             eval "state_transitions=${{literal_transitions[$state]}}"
 
             local word_matched=0
-            for literal_id in $(seq 0 $((${{#literals[@]}} - 1))); do
+            for ((literal_id = 0; literal_id < $nliterals; literal_id++)); do
                 if [[ ${{literals[$literal_id]}} = "$word" ]]; then
                     if [[ -v "state_transitions[$literal_id]" ]]; then
                         state=${{state_transitions[$literal_id]}}
@@ -876,7 +881,7 @@ fi
         r#"
     local -a candidates=()
     local -a matches=()
-    local ignore_case=$(bind -v | grep completion-ignore-case | cut -d' ' -f3)
+    local ignore_case=$(bind -v | while read -r set var value; do [[ $var = completion-ignore-case ]] && echo $value; done)
     local max_fallback_level={max_fallback_level}
     local prefix="${{words[$cword]}}"
     for (( fallback_level=0; fallback_level <= max_fallback_level; fallback_level++ )) {{
@@ -910,7 +915,7 @@ fi
         eval "local commands_name=commands_level_${{fallback_level}}"
         eval "local -a transitions=(\${{$commands_name[$state]}})"
         for command_id in "${{transitions[@]}}"; do
-            readarray -t candidates < <(_{command}_cmd_$command_id "$prefix" "" | cut -f1)
+            readarray -t candidates < <(_{command}_cmd_$command_id "$prefix" "" | while read -r f1 _; do echo "$f1"; done)
             if [[ ${{#candidates[@]}} -gt 0 ]]; then
                 readarray -t -O "${{#matches[@]}}" matches < <(printf "%s\n" "${{candidates[@]}}" | {MATCH_FN_NAME} "$ignore_case" "$prefix")
             fi
@@ -930,7 +935,7 @@ fi
             local command_id=${{command_transitions[$i]}}
             local regex_id=${{regexes_transitions[$i]}}
             local regex="^(${{regexes[$regex_id]}}).*"
-            readarray -t output < <(_{command}_cmd_$command_id "$prefix" "" | cut -f1)
+            readarray -t output < <(_{command}_cmd_$command_id "$prefix" "" | while read -r f1 _; do echo "$f1"; done)
             local -a candidates=()
             for line in ${{output[@]}}; do
                 if [[ ${{line}} =~ $regex && -n ${{BASH_REMATCH[1]}} ]]; then
