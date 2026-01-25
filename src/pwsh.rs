@@ -509,50 +509,6 @@ fn write_subword_fn<W: Write>(
     Ok(())
 }
 
-fn make_id_from_command_map(dfa: &DFA) -> IndexSet<Ustr> {
-    let mut id_from_cmd: IndexSet<Ustr> = Default::default();
-
-    for input in dfa.iter_inputs() {
-        match input {
-            Inp::Command {
-                zsh_compadd: true, ..
-            } => {}
-            Inp::Command {
-                cmd,
-                regex: _,
-                zsh_compadd: false,
-                fallback_level: _,
-            } => {
-                id_from_cmd.insert(*cmd);
-            }
-            Inp::Literal { .. } | Inp::Star => {}
-            Inp::Subword {
-                subdfa: subdfaid, ..
-            } => {
-                let subdfa = dfa.subdfas.lookup(*subdfaid);
-                for input in subdfa.iter_inputs() {
-                    match input {
-                        Inp::Command {
-                            zsh_compadd: true, ..
-                        } => unreachable!(),
-                        Inp::Command {
-                            cmd,
-                            regex: _,
-                            zsh_compadd: false,
-                            fallback_level: _,
-                        } => {
-                            id_from_cmd.insert(*cmd);
-                        }
-                        Inp::Literal { .. } | Inp::Subword { .. } | Inp::Star => {}
-                    }
-                }
-            }
-        }
-    }
-
-    id_from_cmd
-}
-
 pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
     let needs_subwords_code = dfa.needs_subwords_code();
     let needs_nontails_code = dfa.needs_nontails_code();
@@ -568,7 +524,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 "#
     )?;
 
-    let id_from_cmd = make_id_from_command_map(dfa);
+    let id_from_cmd = dfa.get_commands();
     for cmd in &id_from_cmd {
         let id = id_from_cmd.get_index_of(cmd).unwrap();
         let cmd = cmd.trim();

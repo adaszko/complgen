@@ -629,44 +629,6 @@ fn write_subword_fn<W: Write>(
     Ok(())
 }
 
-fn make_id_from_command_map(dfa: &DFA) -> IndexSet<Ustr> {
-    let mut id_from_cmd: IndexSet<Ustr> = Default::default();
-
-    for input in dfa.iter_inputs() {
-        match input {
-            Inp::Literal { .. } | Inp::Star => {}
-            Inp::Command {
-                cmd,
-                regex: _,
-                zsh_compadd: _,
-                fallback_level: _,
-            } => {
-                id_from_cmd.insert(*cmd);
-            }
-            Inp::Subword {
-                subdfa: subdfaid, ..
-            } => {
-                let subdfa = dfa.subdfas.lookup(*subdfaid);
-                for input in subdfa.iter_inputs() {
-                    match input {
-                        Inp::Literal { .. } | Inp::Subword { .. } | Inp::Star => {}
-                        Inp::Command {
-                            cmd,
-                            regex: _,
-                            zsh_compadd: _,
-                            fallback_level: _,
-                        } => {
-                            id_from_cmd.insert(*cmd);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    id_from_cmd
-}
-
 pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
     let needs_subwords_code = dfa.needs_subwords_code();
     let needs_nontails_code = dfa.needs_nontails_code();
@@ -682,7 +644,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 "#
     )?;
 
-    let id_from_cmd = make_id_from_command_map(dfa);
+    let id_from_cmd = dfa.get_commands();
     for cmd in &id_from_cmd {
         let id = id_from_cmd.get_index_of(cmd).unwrap();
         write!(

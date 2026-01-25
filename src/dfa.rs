@@ -1065,6 +1065,44 @@ impl DFA {
             })
     }
 
+    pub(crate) fn get_commands(&self) -> IndexSet<Ustr> {
+        let mut id_from_cmd: IndexSet<Ustr> = Default::default();
+
+        for input in self.iter_inputs() {
+            match input {
+                Inp::Literal { .. } | Inp::Star => {}
+                Inp::Command {
+                    cmd,
+                    zsh_compadd: _,
+                    regex: _,
+                    fallback_level: _,
+                } => {
+                    id_from_cmd.insert(*cmd);
+                }
+                Inp::Subword {
+                    subdfa: subdfaid, ..
+                } => {
+                    let subdfa = self.subdfas.lookup(*subdfaid);
+                    for input in subdfa.iter_inputs() {
+                        match input {
+                            Inp::Literal { .. } | Inp::Subword { .. } | Inp::Star => {}
+                            Inp::Command {
+                                cmd,
+                                zsh_compadd: _,
+                                regex: _,
+                                fallback_level: _,
+                            } => {
+                                id_from_cmd.insert(*cmd);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        id_from_cmd
+    }
+
     pub(crate) fn iter_top_level_regexes(&self) -> impl Iterator<Item = Ustr> + '_ {
         self.iter_inputs().filter_map(move |input| match input {
             Inp::Command {
