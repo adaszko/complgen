@@ -1065,6 +1065,20 @@ impl DFA {
             })
     }
 
+    pub(crate) fn iter_top_level_regexes(&self) -> impl Iterator<Item = Ustr> + '_ {
+        self.iter_inputs().filter_map(move |input| match input {
+            Inp::Command {
+                regex: Some(rx), ..
+            } => Some(*rx),
+            Inp::Command { regex: None, .. } => None,
+            Inp::Literal { .. } | Inp::Star | Inp::Subword { .. } => None,
+        })
+    }
+
+    pub(crate) fn get_regexes(&self) -> IndexSet<Ustr> {
+        self.iter_top_level_regexes().collect::<_>()
+    }
+
     pub(crate) fn get_subwords(&self, first_id: usize) -> IndexMap<DFAId, usize> {
         let mut unallocated_id = first_id;
         let mut result: IndexMap<DFAId, usize> = Default::default();

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
  - Removed external command calls from bash completion scripts for lower completion latency
+ - Only populate subword regexes array with ones that are actually used (smaller scripts)
 
 ## 0.7.1
 ### Fixed

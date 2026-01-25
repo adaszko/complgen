@@ -27,7 +27,6 @@ fn make_string_constant(s: &str) -> String {
     )
 }
 
-
 fn write_lookup_tables<W: Write>(
     buffer: &mut W,
     dfa: &DFA,
@@ -213,7 +212,6 @@ fn write_generic_subword_fn<W: Write>(
         )?;
     }
 
-
     write!(
         buffer,
         r#"
@@ -299,10 +297,11 @@ fn write_subword_fn<W: Write>(
     id: usize,
     dfa: &DFA,
     id_from_cmd: &IndexSet<Ustr>,
-    id_from_regex: &IndexSet<Ustr>,
     needs_nontails_code: bool,
     needs_commands_code: bool,
 ) -> Result<()> {
+    let id_from_regex = dfa.get_regexes();
+
     let all_literals: Vec<(usize, Ustr, Ustr)> = dfa
         .get_all_literals()
         .into_iter()
@@ -402,7 +401,6 @@ fn write_subword_fn<W: Write>(
                 )?;
             }
         }
-
     }
 
     let star_transitions: Vec<String> = dfa
@@ -465,7 +463,8 @@ fn write_subword_fn<W: Write>(
         } else {
             let init_str: String = itertools::join(
                 transitions.iter().map(|(from_state, literal_ids)| {
-                    let ids_str = itertools::join(literal_ids.iter().map(|id| id.to_string()), ", ");
+                    let ids_str =
+                        itertools::join(literal_ids.iter().map(|id| id.to_string()), ", ");
                     format!("{from_state} = @({ids_str})")
                 }),
                 "; ",
@@ -485,15 +484,13 @@ fn write_subword_fn<W: Write>(
             } else {
                 let init_str: String = itertools::join(
                     transitions.iter().map(|(from_state, cmd_ids)| {
-                        let ids_str = itertools::join(cmd_ids.iter().map(|id| id.to_string()), ", ");
+                        let ids_str =
+                            itertools::join(cmd_ids.iter().map(|id| id.to_string()), ", ");
                         format!("{from_state} = @({ids_str})")
                     }),
                     "; ",
                 );
-                writeln!(
-                    buffer,
-                    r#"    $commands_level_{level} = @{{ {init_str} }}"#
-                )?;
+                writeln!(buffer, r#"    $commands_level_{level} = @{{ {init_str} }}"#)?;
             }
         }
     }
@@ -512,9 +509,8 @@ fn write_subword_fn<W: Write>(
     Ok(())
 }
 
-fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
+fn make_id_from_command_map(dfa: &DFA) -> IndexSet<Ustr> {
     let mut id_from_cmd: IndexSet<Ustr> = Default::default();
-    let mut id_from_regex: IndexSet<Ustr> = Default::default();
 
     for input in dfa.iter_inputs() {
         match input {
@@ -523,14 +519,11 @@ fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
             } => {}
             Inp::Command {
                 cmd,
-                regex,
+                regex: _,
                 zsh_compadd: false,
                 fallback_level: _,
             } => {
                 id_from_cmd.insert(*cmd);
-                if let Some(rx) = regex {
-                    id_from_regex.insert(*rx);
-                }
             }
             Inp::Literal { .. } | Inp::Star => {}
             Inp::Subword {
@@ -544,14 +537,11 @@ fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
                         } => unreachable!(),
                         Inp::Command {
                             cmd,
-                            regex,
+                            regex: _,
                             zsh_compadd: false,
                             fallback_level: _,
                         } => {
                             id_from_cmd.insert(*cmd);
-                            if let Some(rx) = regex {
-                                id_from_regex.insert(*rx);
-                            }
                         }
                         Inp::Literal { .. } | Inp::Subword { .. } | Inp::Star => {}
                     }
@@ -560,7 +550,7 @@ fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
         }
     }
 
-    (id_from_cmd, id_from_regex)
+    id_from_cmd
 }
 
 pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
@@ -578,7 +568,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 "#
     )?;
 
-    let (id_from_cmd, id_from_regex) = make_id_from_command_map(dfa);
+    let id_from_cmd = make_id_from_command_map(dfa);
     for cmd in &id_from_cmd {
         let id = id_from_cmd.get_index_of(cmd).unwrap();
         let cmd = cmd.trim();
@@ -600,6 +590,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     }
 
     let id_from_dfa = dfa.get_subwords(ARRAY_START as usize);
+    let id_from_regex = dfa.get_regexes();
     if needs_subwords_code {
         write_generic_subword_fn(
             buffer,
@@ -615,7 +606,6 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                 *id,
                 dfa,
                 &id_from_cmd,
-                &id_from_regex,
                 needs_subword_nontails_code,
                 needs_subword_commands_code,
             )?;
@@ -834,7 +824,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         let initializer: Vec<String> = transitions
             .iter()
             .map(|(from_state, literal_ids)| {
-                let joined_literal_ids = itertools::join(literal_ids.iter().map(|id| id.to_string()), ", ");
+                let joined_literal_ids =
+                    itertools::join(literal_ids.iter().map(|id| id.to_string()), ", ");
                 format!(r#"{from_state} = @({joined_literal_ids})"#)
             })
             .collect();
@@ -854,7 +845,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             let initializer: Vec<String> = transitions
                 .iter()
                 .map(|(from_state, subword_ids)| {
-                    let joined_subword_ids = itertools::join(subword_ids.iter().map(|id| id.to_string()), ", ");
+                    let joined_subword_ids =
+                        itertools::join(subword_ids.iter().map(|id| id.to_string()), ", ");
                     format!(r#"{from_state} = @({joined_subword_ids})"#)
                 })
                 .collect();
@@ -875,7 +867,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             let initializer: Vec<String> = transitions
                 .iter()
                 .map(|(from_state, command_ids)| {
-                    let joined_command_ids = itertools::join(command_ids.iter().map(|id| id.to_string()), ", ");
+                    let joined_command_ids =
+                        itertools::join(command_ids.iter().map(|id| id.to_string()), ", ");
                     format!(r#"{from_state} = @({joined_command_ids})"#)
                 })
                 .collect();
@@ -883,10 +876,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                 writeln!(buffer, r#"    $commands_level_{level} = @{{}}"#)?;
             } else {
                 let init_str = itertools::join(initializer, "; ");
-                writeln!(
-                    buffer,
-                    r#"    $commands_level_{level} = @{{ {init_str} }}"#
-                )?;
+                writeln!(buffer, r#"    $commands_level_{level} = @{{ {init_str} }}"#)?;
             }
         }
     }
@@ -896,7 +886,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             let commands_initializer: Vec<String> = transitions
                 .iter()
                 .map(|(from_state, ids)| {
-                    let joined_ids = itertools::join(ids.iter().map(|(cmd_id, _)| cmd_id.to_string()), ", ");
+                    let joined_ids =
+                        itertools::join(ids.iter().map(|(cmd_id, _)| cmd_id.to_string()), ", ");
                     format!(r#"{from_state} = @({joined_ids})"#)
                 })
                 .collect();
@@ -913,7 +904,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             let regexes_initializer: Vec<String> = transitions
                 .iter()
                 .map(|(from_state, ids)| {
-                    let joined_ids = itertools::join(ids.iter().map(|(_, regex_id)| regex_id.to_string()), ", ");
+                    let joined_ids =
+                        itertools::join(ids.iter().map(|(_, regex_id)| regex_id.to_string()), ", ");
                     format!(r#"{from_state} = @({joined_ids})"#)
                 })
                 .collect();

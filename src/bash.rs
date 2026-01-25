@@ -335,14 +335,15 @@ fn write_subword_fn<W: Write>(
     id: usize,
     dfa: &DFA,
     id_from_cmd: &IndexSet<Ustr>,
-    id_from_regex: &IndexSet<Ustr>,
     needs_nontails_code: bool,
     needs_commands_code: bool,
 ) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
 
+    let id_from_regex = dfa.get_regexes();
+
     let literal_id_from_input_description =
-        write_lookup_tables(buffer, dfa, id_from_regex, needs_nontails_code)?;
+        write_lookup_tables(buffer, dfa, &id_from_regex, needs_nontails_code)?;
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
@@ -481,10 +482,9 @@ fn write_subword_fn<W: Write>(
     Ok(())
 }
 
-fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
+fn make_id_from_command_map(dfa: &DFA) -> IndexSet<Ustr> {
     // IndexSet's internal index is used for storing command id
     let mut id_from_cmd: IndexSet<Ustr> = Default::default();
-    let mut id_from_regex: IndexSet<Ustr> = Default::default();
 
     for input in dfa.iter_inputs() {
         match input {
@@ -494,14 +494,11 @@ fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
             } => unreachable!(),
             Inp::Command {
                 cmd,
-                regex,
                 zsh_compadd: false,
+                regex: _,
                 fallback_level: _,
             } => {
                 id_from_cmd.insert(*cmd);
-                if let Some(rx) = regex {
-                    id_from_regex.insert(*rx);
-                }
             }
             Inp::Subword {
                 subdfa: subdfaid, ..
@@ -514,14 +511,11 @@ fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
                         } => unreachable!(),
                         Inp::Command {
                             cmd,
-                            regex,
                             zsh_compadd: false,
+                            regex: _,
                             fallback_level: _,
                         } => {
                             id_from_cmd.insert(*cmd);
-                            if let Some(rx) = regex {
-                                id_from_regex.insert(*rx);
-                            }
                         }
                         Inp::Literal { .. } | Inp::Subword { .. } | Inp::Star => {}
                     }
@@ -530,7 +524,7 @@ fn make_id_from_command_map(dfa: &DFA) -> (IndexSet<Ustr>, IndexSet<Ustr>) {
         }
     }
 
-    (id_from_cmd, id_from_regex)
+    id_from_cmd
 }
 
 pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
@@ -552,7 +546,7 @@ fi
 
     write_match_fn(buffer)?;
 
-    let (id_from_cmd, id_from_regex) = make_id_from_command_map(dfa);
+    let id_from_cmd = make_id_from_command_map(dfa);
     for cmd in &id_from_cmd {
         let id = id_from_cmd.get_index_of(cmd).unwrap();
         let mut cmd = cmd.trim();
@@ -570,6 +564,7 @@ fi
     }
 
     let id_from_dfa = dfa.get_subwords(ARRAY_START as usize);
+    let id_from_regex = dfa.get_regexes();
     if needs_subwords_code {
         write_generic_subword_fn(
             buffer,
@@ -585,7 +580,6 @@ fi
                 *id,
                 dfa,
                 &id_from_cmd,
-                &id_from_regex,
                 needs_subword_nontails_code,
                 needs_subword_commands_code,
             )?;
