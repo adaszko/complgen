@@ -895,10 +895,11 @@ impl Regex {
         &self,
         firstpos: &RoaringBitmap,
         followpos: &BTreeMap<Position, RoaringBitmap>,
-        subword_regexes: &RegexInternPool,
+        subword_regex_pool: &RegexInternPool,
         visited: &mut RoaringBitmap,
+        checked_subword_regexes: &mut RoaringBitmap,
     ) -> Result<()> {
-        let subwords: Vec<RegexId> = firstpos
+        let subword_regexes: Vec<RegexId> = firstpos
             .iter()
             .filter(|pos| *pos != self.endmarker_position)
             .map(|pos| self.input_from_position[pos as usize].clone())
@@ -910,10 +911,11 @@ impl Regex {
                     subword_regex_id, ..
                 } => Some(subword_regex_id),
             })
+            .filter(|subword_regex_id| !checked_subword_regexes.contains(subword_regex_id.0 as u32))
             .collect();
 
-        for subword_regex_id in subwords {
-            let subword_regex = subword_regexes.lookup(subword_regex_id);
+        for subword_regex_id in subword_regexes {
+            let subword_regex = subword_regex_pool.lookup(subword_regex_id);
             let subword_firstpos = RoaringBitmap::from_iter(&subword_regex.firstpos());
             let subword_followpos = subword_regex.followpos();
             subword_regex
@@ -921,6 +923,7 @@ impl Regex {
             subword_regex
                 .check_ambiguous_inputs_tail_only_subword(&subword_firstpos, &subword_followpos)?;
             subword_regex.check_descr_no_descr_clashes(&subword_firstpos, &subword_followpos)?;
+            checked_subword_regexes.insert(subword_regex_id.0 as u32);
         }
 
         let unvisited = firstpos - visited.clone();
@@ -929,7 +932,13 @@ impl Regex {
                 continue;
             };
             visited.insert(pos);
-            self.check_subwords(follow, followpos, subword_regexes, visited)?;
+            self.check_subwords(
+                follow,
+                followpos,
+                subword_regex_pool,
+                visited,
+                checked_subword_regexes,
+            )?;
         }
         Ok(())
     }
@@ -942,7 +951,14 @@ impl Regex {
 
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);
-        self.check_subwords(&firstpos, &followpos, subword_regexes, &mut visited)?;
+        let mut checked_subword_regexes: RoaringBitmap = Default::default();
+        self.check_subwords(
+            &firstpos,
+            &followpos,
+            subword_regexes,
+            &mut visited,
+            &mut checked_subword_regexes,
+        )?;
         Ok(())
     }
 
