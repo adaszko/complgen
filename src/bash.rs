@@ -13,6 +13,7 @@ use ustr::{Ustr, ustr};
 // Bash uses *dynamic* scoping for local variables (!)
 
 pub const ARRAY_START: u32 = 0;
+pub const MATCH_FN_NAME: &str = "__complgen_match";
 
 fn make_string_constant(s: &str) -> String {
     format!(
@@ -21,37 +22,6 @@ fn make_string_constant(s: &str) -> String {
             .replace('`', "\\`")
             .replace('$', "\\$")
     )
-}
-
-pub const MATCH_FN_NAME: &str = "__complgen_match";
-fn write_match_fn<W: Write>(buffer: &mut W) -> Result<()> {
-    writeln!(
-        buffer,
-        r#"{MATCH_FN_NAME} () {{
-    [[ $# -lt 2 ]] && return 1
-    local ignore_case=$1
-    local prefix=$2
-    if [[ -z $prefix ]]; then
-        readarray -t lines
-        printf '%s\n' "${{lines[@]}}"
-        return
-    fi
-    if [[ $ignore_case = on ]]; then
-        prefix=${{prefix,,}}
-        prefix=$(printf '%q' "$prefix")
-        while read -r line; do
-            [[ ${{line,,}} = ${{prefix}}* ]] && echo "$line"
-        done
-    else
-        prefix=$(printf '%q' "$prefix")
-        while read -r line; do
-            [[ $line = ${{prefix}}* ]] && echo "$line"
-        done
-    fi
-}}
-"#
-    )?;
-    Ok(())
 }
 
 fn write_lookup_tables<W: Write>(
@@ -262,7 +232,7 @@ fn write_generic_subword_fn<W: Write>(
             candidates+=("$matched_prefix$literal")
         done
         if [[ ${{#candidates[@]}} -gt 0 ]]; then
-            readarray -t matches < <(printf "%s\n" "${{candidates[@]}}" | {MATCH_FN_NAME} "$ignore_case" "$matched_prefix$completed_prefix")
+            readarray -t matches < <(printf "%s\n" "${{candidates[@]}}" | {MATCH_FN_NAME} "$matched_prefix$completed_prefix")
         fi"#
     )?;
 
@@ -498,8 +468,6 @@ fi
 
 "#
     )?;
-
-    write_match_fn(buffer)?;
 
     let id_from_cmd = dfa.get_commands();
     for cmd in &id_from_cmd {
@@ -828,9 +796,41 @@ fi
     write!(
         buffer,
         r#"
+    local ignore_case=$(bind -v | while read -r _ var value; do [[ $var = completion-ignore-case ]] && echo $value; done)
+    if [[ $ignore_case = on ]]; then
+        {MATCH_FN_NAME} () {{
+            [[ $# -lt 1 ]] && return 1
+            local prefix=$1
+            if [[ -z $prefix ]]; then
+                readarray -t lines
+                printf '%s\n' "${{lines[@]}}"
+                return
+            fi
+            prefix=${{prefix,,}}
+            prefix=$(printf '%q' "$prefix")
+            while read -r line; do
+                [[ ${{line,,}} = ${{prefix}}* ]] && echo $line
+            done
+        }}
+    else
+        {MATCH_FN_NAME} () {{
+            [[ $# -lt 1 ]] && return 1
+            local prefix=$1
+            if [[ -z $prefix ]]; then
+                readarray -t lines
+                printf '%s\n' "${{lines[@]}}"
+                return
+            fi
+            prefix=$(printf '%q' "$prefix")
+            while read -r line; do
+                [[ $line = ${{prefix}}* ]] && echo $line
+            done
+        }}
+    fi
+
+
     local -a candidates=()
     local -a matches=()
-    local ignore_case=$(bind -v | while read -r _ var value; do [[ $var = completion-ignore-case ]] && echo $value; done)
     local max_fallback_level={max_fallback_level}
     local prefix="${{words[$cword]}}"
     for (( fallback_level=0; fallback_level <= max_fallback_level; fallback_level++ )) {{
@@ -841,7 +841,7 @@ fi
             candidates+=("$literal ")
         done
         if [[ ${{#candidates[@]}} -gt 0 ]]; then
-            readarray -t matches < <(printf "%s\n" "${{candidates[@]}}" | {MATCH_FN_NAME} "$ignore_case" "$prefix")
+            readarray -t matches < <(printf "%s\n" "${{candidates[@]}}" | {MATCH_FN_NAME} "$prefix")
         fi"#
     )?;
 
@@ -866,7 +866,7 @@ fi
         for command_id in "${{transitions[@]}}"; do
             readarray -t candidates < <(_{command}_cmd_$command_id "$prefix" "" | while read -r f1 _; do echo "$f1"; done)
             if [[ ${{#candidates[@]}} -gt 0 ]]; then
-                readarray -t -O "${{#matches[@]}}" matches < <(printf "%s\n" "${{candidates[@]}}" | {MATCH_FN_NAME} "$ignore_case" "$prefix")
+                readarray -t -O "${{#matches[@]}}" matches < <(printf "%s\n" "${{candidates[@]}}" | {MATCH_FN_NAME} "$prefix")
             fi
         done"#
         )?;
@@ -893,7 +893,7 @@ fi
                 fi
             done
             if [[ ${{#candidates[@]}} -gt 0 ]]; then
-                readarray -t -O "${{#matches[@]}}" matches < <(printf "%s\n" "${{candidates[@]}}" | {MATCH_FN_NAME} "$ignore_case" "$prefix")
+                readarray -t -O "${{#matches[@]}}" matches < <(printf "%s\n" "${{candidates[@]}}" | {MATCH_FN_NAME} "$prefix")
             fi
         done"#
         )?;
