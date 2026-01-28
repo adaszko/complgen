@@ -1058,8 +1058,14 @@ impl DFA {
             .filter_map(move |(from, input_id, to)| {
                 let input = self.get_input(input_id);
                 let is_star = match input {
-                    Inp::Literal { .. } | Inp::Subword { .. } | Inp::Command { .. } => false,
                     Inp::Star => true,
+                    Inp::Command {
+                        regex: None,
+                        zsh_compadd: false,
+                        ..
+                    } => true,
+                    Inp::Command { .. } => false,
+                    Inp::Literal { .. } | Inp::Subword { .. } => false,
                 };
                 if is_star { Some((from, to)) } else { None }
             })

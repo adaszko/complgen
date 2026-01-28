@@ -557,6 +557,24 @@ mygrep <OPTION>...;
         )
 
 
+def test_bug2(complgen_binary_path: Path):
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path, """cmd <PATH>..."""
+    ) as completions_file_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                Path("foo").touch()
+                Path("bar").touch()
+                input = 'complete --do-complete "cmd foo "'
+                completions = get_sorted_fish_completions(completions_file_path, input)
+                assert completions == sorted(
+                    [
+                        ("foo", ""),
+                        ("bar", ""),
+                    ]
+                )
+
+
 def test_multiple_matching_subwords(complgen_binary_path: Path):
     GRAMMAR = """cmd (--[no-]ahead-behind | --[no-]renames)"""
     with gen_fish_aot_completion_script_path(
