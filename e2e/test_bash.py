@@ -236,14 +236,14 @@ def test_nontail_matching_alternative(complgen_binary_path: Path):
     GRAMMAR = """cmd <LEFT> | right; <LEFT> ::= {{{ echo left }}}@bash"left";"""
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
         input = r'''COMP_WORDS=(cmd rig); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_bash_completions(path, input) == sorted(["right"])
+        assert get_sorted_bash_completions(path, input) == sorted(["right "])
 
 
 def test_nontail_matching_fallback(complgen_binary_path: Path):
     GRAMMAR = """cmd <LEFT> || right; <LEFT> ::= {{{ echo left }}}@bash"left";"""
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
         input = r'''COMP_WORDS=(cmd rig); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_bash_completions(path, input) == sorted(["right"])
+        assert get_sorted_bash_completions(path, input) == sorted(["right "])
 
 
 def test_nontail_matching_subword(complgen_binary_path: Path):
@@ -370,11 +370,11 @@ def test_respects_ignore_case_option(complgen_binary_path: Path):
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
         input = r'''COMP_WORDS=(cmd --case-); COMP_CWORD=1; bind "set completion-ignore-case on"; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_bash_completions(path, input) == sorted(
-            ["--case-lower", "--CASE-UPPER"]
+            ["--case-lower ", "--CASE-UPPER "]
         )
 
         input = r'''COMP_WORDS=(cmd --case-); COMP_CWORD=1; bind "set completion-ignore-case off"; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_bash_completions(path, input) == sorted(["--case-lower"])
+        assert get_sorted_bash_completions(path, input) == sorted(["--case-lower "])
 
 
 def test_respects_ignore_case_option_subwords(complgen_binary_path: Path):
@@ -400,7 +400,7 @@ def test_fallbacks_on_no_matches(complgen_binary_path: Path):
     GRAMMAR = r"""cmd (foo || --bar);"""
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
         input = r'''COMP_WORDS=(cmd --); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_bash_completions(path, input) == sorted(["--bar"])
+        assert get_sorted_bash_completions(path, input) == sorted(["--bar "])
 
 
 def test_subword_fallback_completes_default(complgen_binary_path: Path):

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
  - Performance regression in DFA validation
+ - Substantial reductions in bash completion latency
 
 ### Changed
 
