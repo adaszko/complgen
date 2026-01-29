@@ -61,8 +61,7 @@ fn write_lookup_tables<W: Write>(
         writeln!(buffer, r#"    local -A nontail_transitions=()"#)?;
     }
     for state in dfa.get_all_states() {
-        let literal_transitions =
-            dfa.get_literal_transitions_from(StateId::try_from(state).unwrap());
+        let literal_transitions = dfa.get_literal_transitions_from(state);
         if !literal_transitions.is_empty() {
             let literal_transitions: Vec<(usize, StateId)> = literal_transitions
                 .into_iter()
