@@ -146,8 +146,7 @@ fn write_generic_subword_fn<W: Write>(
         local subword=${{word:$char_index}}
 
         if [[ -v "literal_transitions[$state]" ]]; then
-            local -A state_transitions
-            eval "state_transitions=${{literal_transitions[$state]}}"
+            local -A state_transitions=${{literal_transitions[$state]}}
 
             local literal_matched=0
             for ((literal_id = 0; literal_id < nliterals; literal_id++)); do
@@ -173,8 +172,7 @@ fn write_generic_subword_fn<W: Write>(
             buffer,
             r#"
         if [[ -v "nontail_transitions[$state]" ]]; then
-            local -A state_nontails
-            eval "state_nontails=${{nontail_transitions[$state]}}"
+            local -A state_nontails=${{nontail_transitions[$state]}}
             local nontail_matched=0
             for regex_id in "${{!state_nontails[@]}}"; do
                 local regex="^(${{regexes[$regex_id]}}).*"
@@ -558,8 +556,7 @@ fi
         local word=${{words[$word_index]}}
 
         if [[ -v "literal_transitions[$state]" ]]; then
-            local -A state_transitions
-            eval "state_transitions=${{literal_transitions[$state]}}"
+            local -A state_transitions=${{literal_transitions[$state]}}
 
             local word_matched=0
             for ((literal_id = 0; literal_id < nliterals; literal_id++)); do
@@ -585,8 +582,7 @@ fi
             buffer,
             r#"
         if [[ -v "subword_transitions[$state]" ]]; then
-            local -A state_transitions
-            eval "state_transitions=${{subword_transitions[$state]}}"
+            local -A state_transitions=${{subword_transitions[$state]}}
 
             local subword_matched=0
             for subword_id in "${{!state_transitions[@]}}"; do
@@ -610,8 +606,7 @@ fi
             buffer,
             r#"
         if [[ -v "nontail_transitions[$state]" ]]; then
-            local -A state_nontails
-            eval "local -A state_nontails=${{nontail_transitions[$state]}}"
+            local -A state_nontails=${{nontail_transitions[$state]}}
 
             local nontail_matched=0
             for regex_id in "${{!state_nontails[@]}}"; do
