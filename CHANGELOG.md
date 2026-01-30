@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
  - Fixed bug in completing `<PATH>...` under bash and fish
+ - Bash completion latency optimizations
 
 ## 0.7.2
 ### Fixed

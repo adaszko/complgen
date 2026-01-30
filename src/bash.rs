@@ -219,17 +219,17 @@ fn write_generic_subword_fn<W: Write>(
     local matched_prefix="${{word:0:$char_index}}"
     local completed_prefix="${{word:$char_index}}"
 
-    local -a candidates=()
-    local -a matches=()
+    local -a subword_candidates=()
+    local -a subword_matches=()
     for (( subword_fallback_level=0; subword_fallback_level <= max_fallback_level; subword_fallback_level++ )) {{
         eval "local literal_transitions_name=literal_transitions_level_${{subword_fallback_level}}"
         eval "local -a transitions=(\${{$literal_transitions_name[$state]}})"
         for literal_id in "${{transitions[@]}}"; do
             local literal=${{literals[$literal_id]}}
-            candidates+=("$matched_prefix$literal")
+            subword_candidates+=("$matched_prefix$literal")
         done
-        if [[ ${{#candidates[@]}} -gt 0 ]]; then
-            {MATCH_FN_NAME} "$matched_prefix$completed_prefix" candidates matches
+        if [[ ${{#subword_candidates[@]}} -gt 0 ]]; then
+            {MATCH_FN_NAME} "$matched_prefix$completed_prefix" subword_candidates subword_matches
         fi"#
     )?;
 
@@ -246,15 +246,15 @@ fn write_generic_subword_fn<W: Write>(
             readarray -t output < <(_{command}_cmd_$command_id "$completed_prefix" "$matched_prefix" | while read -r f1 _; do echo "$f1"; done)
             local regex_id=${{regexes_transitions[$i]}}
             local regex="^(${{regexes[$regex_id]}}).*"
-            local -a candidates=()
+            local -a subword_candidates=()
             for line in "${{output[@]}}"; do
                 if [[ ${{line}} =~ $regex && -n ${{BASH_REMATCH[1]}} ]]; then
                     match="${{BASH_REMATCH[1]}}"
-                    candidates+=("$match")
+                    subword_candidates+=("$match")
                 fi
             done
-            for item in "${{candidates[@]}}"; do
-                matches+=("$matched_prefix$item")
+            for item in "${{subword_candidates[@]}}"; do
+                subword_matches+=("$matched_prefix$item")
             done
         done"#
         )?;
@@ -267,9 +267,9 @@ fn write_generic_subword_fn<W: Write>(
         eval "local commands_name=commands_level_${{subword_fallback_level}}"
         eval "local -a transitions=(\${{$commands_name[$state]}})"
         for command_id in "${{transitions[@]}}"; do
-            readarray -t candidates < <(_{command}_cmd_$command_id "$completed_prefix" "$matched_prefix" | while read -r f1 _; do echo "$f1"; done)
-            for item in "${{candidates[@]}}"; do
-                matches+=("$matched_prefix$item")
+            readarray -t subword_candidates < <(_{command}_cmd_$command_id "$completed_prefix" "$matched_prefix" | while read -r f1 _; do echo "$f1"; done)
+            for item in "${{subword_candidates[@]}}"; do
+                subword_matches+=("$matched_prefix$item")
             done
         done"#
         )?;
@@ -278,8 +278,8 @@ fn write_generic_subword_fn<W: Write>(
     write!(
         buffer,
         r#"
-        if [[ ${{#matches[@]}} -gt 0 ]]; then
-            printf '%s\n' "${{matches[@]}}"
+        if [[ ${{#subword_matches[@]}} -gt 0 ]]; then
+            matches+=("${{subword_matches[@]}}")
             break
         fi
     }}"#
@@ -848,7 +848,7 @@ fi
         eval "local subword_transitions_name=subword_transitions_level_${{fallback_level}}"
         eval "local -a transitions=(\${{$subword_transitions_name[$state]}})"
         for subword_id in "${{transitions[@]}}"; do
-            readarray -t -O "${{#matches[@]}}" matches < <(_{command}_subword_$subword_id complete "$prefix")
+            _{command}_subword_$subword_id complete "$prefix"
         done"#
         )?;
     }
