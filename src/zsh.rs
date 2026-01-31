@@ -220,7 +220,6 @@ fn write_generic_subword_fn<W: Write>(
         if [[ -v "subword_nontail_transitions[$subword_state]" ]]; then
             eval "declare -A state_nontails=${{subword_nontail_transitions[$subword_state]}}"
 
-            declare nontail_matched=0
             for regex_id in "${{(k)state_nontails}}"; do
                 declare regex="^(${{subword_regexes[$regex_id]}}).*"
                 if [[ ${{subword}} =~ $regex && -n ${{match[1]}} ]]; then
@@ -228,13 +227,9 @@ fn write_generic_subword_fn<W: Write>(
                     match_len=${{#match}}
                     char_index=$((char_index + match_len))
                     subword_state=${{state_nontails[$regex_id]}}
-                    nontail_matched=1
-                    break
+                    continue 2
                 fi
             done
-            if [[ $nontail_matched -ne 0 ]]; then
-                continue
-            fi
         fi
 "#
         )?;
@@ -744,20 +739,15 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         if [[ -v "literal_transitions[$state]" ]]; then
             eval "declare -A state_transitions=${{literal_transitions[$state]}}"
 
-            declare word_matched=0
             for ((literal_id = 1; literal_id <= $#literals; literal_id++)); do
                 if [[ ${{literals[$literal_id]}} = "$word" ]]; then
                     if [[ -v "state_transitions[$literal_id]" ]]; then
                         state=${{state_transitions[$literal_id]}}
                         word_index=$((word_index + 1))
-                        word_matched=1
-                        break
+                        continue 2
                     fi
                 fi
             done
-            if [[ $word_matched -ne 0 ]]; then
-                continue
-            fi
         fi
 "#,
         starting_state = dfa.starting_state + ARRAY_START
@@ -770,18 +760,13 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         if [[ -v "subword_transitions[$state]" ]]; then
             eval "declare -A state_transitions=${{subword_transitions[$state]}}"
 
-            declare subword_matched=0
             for subword_id in ${{(k)state_transitions}}; do
                 if _{command}_subword_"${{subword_id}}" matches "$word"; then
-                    subword_matched=1
                     state=${{state_transitions[$subword_id]}}
                     word_index=$((word_index + 1))
-                    break
+                    continue 2
                 fi
             done
-            if [[ $subword_matched -ne 0 ]]; then
-                continue
-            fi
         fi
 "#
         )?;
@@ -793,19 +778,14 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             r#"
         if [[ -v "nontail_transitions[$state]" ]]; then
             eval "declare -A state_nontails=${{nontail_transitions[$state]}}"
-            declare nontail_matched=0
             for regex_id in "${{(k)state_nontails}}"; do
                 declare regex="^(${{regexes[$regex_id]}}).*"
                 if [[ $word =~ $regex ]]; then
                     word_index=$((word_index + 1))
                     state=${{state_nontails[$regex_id]}}
-                    nontail_matched=1
-                    break
+                    continue 2
                 fi
             done
-            if [[ $nontail_matched -ne 0 ]]; then
-                continue
-            fi
         fi
 "#
         )?;
