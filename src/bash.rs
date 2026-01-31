@@ -172,7 +172,6 @@ fn write_generic_subword_fn<W: Write>(
             r#"
         if [[ -v "nontail_transitions[$state]" ]]; then
             local -A state_nontails=${{nontail_transitions[$state]}}
-            local nontail_matched=0
             for regex_id in "${{!state_nontails[@]}}"; do
                 local regex="^(${{regexes[$regex_id]}}).*"
                 if [[ ${{subword}} =~ $regex && -n ${{BASH_REMATCH[1]}} ]]; then
@@ -180,13 +179,9 @@ fn write_generic_subword_fn<W: Write>(
                     match_len=${{#match}}
                     char_index=$((char_index + match_len))
                     state=${{state_nontails[$regex_id]}}
-                    nontail_matched=1
-                    break
+                    continue 2
                 fi
             done
-            if [[ $nontail_matched -ne 0 ]]; then
-                continue
-            fi
         fi"#
         )?;
     }
@@ -557,20 +552,15 @@ fi
         if [[ -v "literal_transitions[$state]" ]]; then
             local -A state_transitions=${{literal_transitions[$state]}}
 
-            local word_matched=0
             for ((literal_id = 0; literal_id < nliterals; literal_id++)); do
                 if [[ ${{literals[$literal_id]}} = "$word" ]]; then
                     if [[ -v "state_transitions[$literal_id]" ]]; then
                         state=${{state_transitions[$literal_id]}}
                         word_index=$((word_index + 1))
-                        word_matched=1
-                        break
+                        continue 2
                     fi
                 fi
             done
-            if [[ $word_matched -ne 0 ]]; then
-                continue
-            fi
         fi
 "#,
         starting_state = dfa.starting_state
@@ -583,18 +573,13 @@ fi
         if [[ -v "subword_transitions[$state]" ]]; then
             local -A state_transitions=${{subword_transitions[$state]}}
 
-            local subword_matched=0
             for subword_id in "${{!state_transitions[@]}}"; do
                 if _{command}_subword_"${{subword_id}}" matches "$word"; then
-                    subword_matched=1
                     state=${{state_transitions[$subword_id]}}
                     word_index=$((word_index + 1))
-                    break
+                    continue 2
                 fi
             done
-            if [[ $subword_matched -ne 0 ]]; then
-                continue
-            fi
         fi
 "#
         )?;
@@ -607,19 +592,14 @@ fi
         if [[ -v "nontail_transitions[$state]" ]]; then
             local -A state_nontails=${{nontail_transitions[$state]}}
 
-            local nontail_matched=0
             for regex_id in "${{!state_nontails[@]}}"; do
                 local regex="^(${{regexes[$regex_id]}}).*"
                 if [[ $word =~ $regex ]]; then
                     word_index=$((word_index + 1))
                     state=${{state_nontails[$regex_id]}}
-                    nontail_matched=1
-                    break
+                    continue 2
                 fi
             done
-            if [[ $nontail_matched -ne 0 ]]; then
-                continue
-            fi
         fi
 "#
         )?;
