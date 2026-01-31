@@ -103,7 +103,7 @@ fn write_subword_lookup_tables<W: Write>(
     needs_nontails_code: bool,
 ) -> Result<HashMap<(Ustr, Ustr), usize>> {
     let all_literals: Vec<(usize, Ustr, Ustr)> = dfa
-        .get_all_literals()
+        .get_top_level_literals_decreasing_length()
         .into_iter()
         .enumerate()
         .map(|(id, (literal, description))| {
@@ -307,18 +307,33 @@ fn write_generic_subword_fn<W: Write>(
             set inputs (string split ' ' $subword_literal_transitions_inputs[$subword_state])
             set tos (string split ' ' $subword_literal_transitions_tos[$subword_state])
 
+            set stop_matching 0
             set literal_matched 0
             for literal_id in (seq 1 (count $subword_literals))
                 set literal $subword_literals[$literal_id]
-                set literal_len (string length -- "$literal")
-                set subword_slice (string sub --end=$literal_len -- "$subword")
-                if test $subword_slice = $literal
+                if test $subword = $literal
                     set index (contains --index -- "$literal_id" $inputs)
                     set subword_state $tos[$index]
+                    set literal_len (string length -- "$literal")
                     set char_index (math $char_index + $literal_len)
                     set literal_matched 1
                     break
                 end
+                if string match --quiet -- "$subword*" $literal
+                    set stop_matching 1
+                    break
+                end
+                if string match --quiet -- "$literal*" $subword
+                    set index (contains --index -- "$literal_id" $inputs)
+                    set subword_state $tos[$index]
+                    set literal_len (string length -- "$literal")
+                    set char_index (math $char_index + $literal_len)
+                    set literal_matched 1
+                    break
+                end
+            end
+            if test $stop_matching -ne 0
+                break
             end
             if test $literal_matched -ne 0
                 continue
@@ -665,7 +680,7 @@ fn write_lookup_tables<W: Write>(
     needs_nontails_code: bool,
 ) -> Result<HashMap<(Ustr, Ustr), usize>> {
     let all_literals: Vec<(usize, Ustr, Ustr)> = dfa
-        .get_all_literals()
+        .get_top_level_literals_decreasing_length()
         .into_iter()
         .enumerate()
         .map(|(id, (literal, description))| {

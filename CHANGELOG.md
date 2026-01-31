@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
  - Fixed bug in completing `<PATH>...`
  - Bash completion latency optimizations
  - Fixed bug in completing duplicated literals under fish
+ - Fixed a bug with completing literals where one is a prefix of another
 
 ## 0.7.2
 ### Fixed

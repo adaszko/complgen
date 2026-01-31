@@ -597,6 +597,13 @@ cmd (<PATH> || --help)...;
             ) == sorted(["--help"])
 
 
+def test_bug2(complgen_binary_path: Path):
+    GRAMMAR = """cmd --pretty=(full | fuller);"""
+    assert get_sorted_aot_completions(
+        complgen_binary_path, GRAMMAR, r"""cmd --pretty=fulle"""
+    ) == sorted(["--pretty=fuller fuller"])
+
+
 LITERALS_ALPHABET = string.ascii_letters + ":="
 
 

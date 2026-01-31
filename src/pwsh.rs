@@ -34,7 +34,7 @@ fn write_lookup_tables<W: Write>(
     needs_nontails_code: bool,
 ) -> Result<HashMap<(Ustr, Ustr), usize>> {
     let all_literals: Vec<(usize, Ustr, Ustr)> = dfa
-        .get_all_literals()
+        .get_top_level_literals_decreasing_length()
         .into_iter()
         .enumerate()
         .map(|(id, (literal, description))| (id, literal, description.unwrap_or(ustr(""))))
@@ -303,7 +303,7 @@ fn write_subword_fn<W: Write>(
     let id_from_regex = dfa.get_regexes();
 
     let all_literals: Vec<(usize, Ustr, Ustr)> = dfa
-        .get_all_literals()
+        .get_top_level_literals_decreasing_length()
         .into_iter()
         .enumerate()
         .map(|(id, (literal, description))| (id, literal, description.unwrap_or(ustr(""))))

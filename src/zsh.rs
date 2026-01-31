@@ -32,7 +32,7 @@ fn write_lookup_tables<W: Write>(
     needs_nontails_code: bool,
 ) -> Result<HashMap<(Ustr, Ustr), usize>> {
     let all_literals: Vec<(usize, Ustr, Ustr)> = dfa
-        .get_all_literals()
+        .get_top_level_literals_decreasing_length()
         .into_iter()
         .enumerate()
         .map(|(id, (literal, description))| {
@@ -194,21 +194,22 @@ fn write_generic_subword_fn<W: Write>(
         if [[ -v "subword_literal_transitions[$subword_state]" ]]; then
             eval "declare -A state_transitions=${{subword_literal_transitions[$subword_state]}}"
 
-            declare literal_matched=0
             for ((literal_id = 1; literal_id <= $#subword_literals; literal_id++)); do
                 declare literal=${{subword_literals[$literal_id]}}
-                declare literal_len=${{#literal}}
-                if [[ ${{subword:0:$literal_len}} = "$literal" ]]; then
-                    if [[ -v "state_transitions[$literal_id]" ]]; then
-                        subword_state=${{state_transitions[$literal_id]}}
-                        char_index=$((char_index + literal_len))
-                        literal_matched=1
-                    fi
+                if [[ $subword == $literal && -v "state_transitions[$literal_id]" ]]; then
+                    subword_state=${{state_transitions[$literal_id]}}
+                    char_index=$((char_index + ${{#literal}}))
+                    continue 2
+                fi
+                if [[ $literal == $subword* ]]; then
+                    break 2
+                fi
+                if [[ $subword == $literal* && -v "state_transitions[$literal_id]" ]]; then
+                    subword_state=${{state_transitions[$literal_id]}}
+                    char_index=$((char_index + ${{#literal}}))
+                    continue 2
                 fi
             done
-            if [[ $literal_matched -ne 0 ]]; then
-                continue
-            fi
         fi"#
     )?;
 

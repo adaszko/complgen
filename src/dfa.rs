@@ -961,8 +961,9 @@ impl DFA {
             .flat_map(|(from, tos)| tos.iter().map(|(input, to)| (*from, *input, *to)))
     }
 
-    pub(crate) fn get_all_literals(&self) -> IndexSet<(Ustr, Option<Ustr>)> {
-        self.inputs
+    pub(crate) fn get_top_level_literals_decreasing_length(&self) -> IndexSet<(Ustr, Option<Ustr>)> {
+        let mut result: IndexSet<(Ustr, Option<Ustr>)> = self
+            .inputs
             .elems()
             .filter_map(|input| match input {
                 Inp::Literal {
@@ -974,7 +975,10 @@ impl DFA {
                 Inp::Star => None,
                 Inp::Command { .. } => None,
             })
-            .collect()
+            .collect();
+        result.sort_by_key(|(literal, _)| literal.len());
+        result.reverse();
+        result
     }
 
     pub(crate) fn get_literal_transitions_from(&self, from: StateId) -> Vec<(Ustr, Ustr, StateId)> {

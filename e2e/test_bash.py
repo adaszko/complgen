@@ -459,6 +459,18 @@ def test_bug1(complgen_binary_path: Path):
                 assert completions == sorted(["foo", "bar"])
 
 
+def test_bug2(complgen_binary_path: Path):
+    with completion_script_path(
+        complgen_binary_path,
+        """cmd --pretty=(full | fuller);""",
+    ) as completions_file_path:
+        completions = get_sorted_bash_completions(
+            completions_file_path,
+            '''COMP_WORDS=(cmd --pretty=fulle); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"''',
+        )
+        assert completions == sorted(["fuller"])
+
+
 LITERALS_ALPHABET = string.ascii_letters + ":="
 
 
