@@ -77,7 +77,7 @@ PS> hello --color=<TAB>
 ## Installation
 
 ```sh
-cargo install --git https://github.com/adaszko/complgen --tag v0.7.2 complgen
+cargo install --git https://github.com/adaszko/complgen --tag v0.7.3 complgen
 ```
 
 ## Syntax
