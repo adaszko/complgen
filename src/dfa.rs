@@ -1059,11 +1059,7 @@ impl DFA {
                 let input = self.get_input(input_id);
                 let is_star = match input {
                     Inp::Star => true,
-                    Inp::Command {
-                        regex: None,
-                        zsh_compadd: false,
-                        ..
-                    } => true,
+                    Inp::Command { regex: None, .. } => true,
                     Inp::Command { .. } => false,
                     Inp::Literal { .. } | Inp::Subword { .. } => false,
                 };

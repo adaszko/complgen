@@ -584,6 +584,19 @@ def test_multiple_matching_subwords(complgen_binary_path: Path):
     ) == sorted(["--no-ahead-behind ahead-behind", "--no-renames renames     "])
 
 
+def test_bug1(complgen_binary_path: Path):
+    GRAMMAR = r"""
+cmd (<PATH> || --help)...;
+"""
+    with tempfile.TemporaryDirectory() as dir:
+        with set_working_dir(Path(dir)):
+            Path("foo").touch()
+            Path("bar").touch()
+            assert get_sorted_aot_completions(
+                complgen_binary_path, GRAMMAR, "cmd foo --"
+            ) == sorted(["--help"])
+
+
 LITERALS_ALPHABET = string.ascii_letters + ":="
 
 
