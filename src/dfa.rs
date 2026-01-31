@@ -961,7 +961,7 @@ impl DFA {
             .flat_map(|(from, tos)| tos.iter().map(|(input, to)| (*from, *input, *to)))
     }
 
-    pub(crate) fn get_all_literals(&self) -> Vec<(Ustr, Option<Ustr>)> {
+    pub(crate) fn get_all_literals(&self) -> IndexSet<(Ustr, Option<Ustr>)> {
         self.inputs
             .elems()
             .filter_map(|input| match input {

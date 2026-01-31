@@ -183,7 +183,7 @@ fn write_subword_lookup_tables<W: Write>(
         r#"    set --global subword_literal_transitions_inputs"#
     )?;
     for state in dfa.get_all_states() {
-        let transitions = dfa.get_literal_transitions_from(StateId::try_from(state).unwrap());
+        let transitions = dfa.get_literal_transitions_from(state);
         if !transitions.is_empty() {
             let transitions: Vec<(usize, StateId)> = transitions
                 .into_iter()
@@ -744,8 +744,7 @@ fn write_lookup_tables<W: Write>(
         writeln!(buffer, r#"    set nontail_tos"#)?;
     }
     for state in dfa.get_all_states() {
-        let literal_transitions =
-            dfa.get_literal_transitions_from(StateId::try_from(state).unwrap());
+        let literal_transitions = dfa.get_literal_transitions_from(state);
         if !literal_transitions.is_empty() {
             let transitions: Vec<(usize, StateId)> = literal_transitions
                 .into_iter()

@@ -575,6 +575,19 @@ def test_bug2(complgen_binary_path: Path):
                 )
 
 
+def test_bug3(complgen_binary_path: Path):
+    GRAMMAR = r"""
+mygit (status || (--help status))...;
+"""
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        input = """complete --do-complete 'mygit status --' """
+        assert get_sorted_fish_completions(completions_file_path, input) == sorted(
+            [("--help", "")]
+        )
+
+
 def test_multiple_matching_subwords(complgen_binary_path: Path):
     GRAMMAR = """cmd (--[no-]ahead-behind | --[no-]renames)"""
     with gen_fish_aot_completion_script_path(
