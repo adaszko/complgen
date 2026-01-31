@@ -458,7 +458,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
     write!(
         buffer,
-        r#"if [[ $BASH_VERSINFO -lt 4 ]]; then
+        r#"if [[ ${{BASH_VERSINFO[0]}} -lt 4 ]]; then
     echo "This completion script requires bash 4.0 or newer (current is $BASH_VERSION)"
     exit 1
 fi
