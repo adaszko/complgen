@@ -84,8 +84,9 @@ cargo install --git https://github.com/adaszko/complgen --tag v0.7.3 complgen
 
 See the [`examples` subdirectory](examples/).
 
-Try piping through the `scrape` subcommand to quickly generate grammar skeleton that can be tweaked
-further, e.g.:
+A first approximation of a grammar (not guaranteed to work!) can be produced by piping target program's usage
+info onto `complgen --scrape` as below.  Note that all scraping is meant to do is to save you from too much
+typing.  The produced grammar will still need to be fleshed out by hand.
 
 ```
 $ grep --help | complgen --scrape
@@ -95,10 +96,14 @@ $ grep --help | complgen --scrape
 [...]
 ```
 
-The grammar is based on [compleat](https://github.com/mbrubeck/compleat/blob/master/README.markdown#syntax)'s one.
+***
 
-A grammar is a series of lines terminated by a semicolon (`;`).  Each line either represents a single variant
-of invoking the completed command or is a nonterminal definition.
+complgen's grammar is based on
+[compleat](https://github.com/mbrubeck/compleat/blob/master/README.markdown#syntax)'s one.
+
+A grammar is a series of lines separated by a semicolon (`;`).  Each line either represents a single variant
+of invoking the completed command (e.g. `git status; git log`) or is a nonterminal definition (`<FOO> ::=
+bar`).
 
  * `a b` matches `a` followed by `b`.
  * `a b | c` matches either `a b` or `c` (IOW: sequence binds stronger than alternative).
@@ -114,7 +119,7 @@ Use parentheses to group patterns:
  * `(a | b) ...` matches `a` or `b` followed by any number of additional
    `a` or `b`.
 
-### Filename completion
+### Filename Completion
 
 There's a small set of predefined nonterminals that are handled specially by `complgen`:
 
@@ -123,13 +128,10 @@ There's a small set of predefined nonterminals that are handled specially by `co
 |`<PATH>`       | ✅   | ✅   | ✅  | ✅   | file or directory path |
 |`<DIRECTORY>`  | ✅   | ✅   | ✅  | ✅   | directory path |
 
-The reason there's no predefined `<FILE>` nonterminal is that it would work only for files from the current
-directory which is too specific to be generally useful.
+These can still be redefined in the grammar (`<PATH> ::= ...`), in which case their predefined meaning gets
+overridden.
 
-These nonterminals can still be defined in the grammar in the usual way (`<PATH> ::= ...`), in which case
-their predefined meaning gets overriden.
-
-### Descriptions (fish/zsh/pwsh)
+### Completion Descriptions (fish/zsh/pwsh)
 
 If a literal is immediately followed with a quoted string, it's going to appear as a hint to the user at
 completion time.  E.g. the grammar:
@@ -147,14 +149,18 @@ fish> grep --ex<TAB>
 
 Note that `bash` does not support showing descriptions. In PowerShell, descriptions appear as tooltips.
 
-### External commands as completions source
+### Sourcing Completions from External Commands
 
 It is possible to produce completions based on an external command output:
 
     cmd {{{ echo foo; echo bar; echo baz; echo quux }}};
 
-The stdout of the pipeline above will be automatically filtered by the shell based on the prefix entered so
-far.
+```
+bash$ cmd <TAB>
+bar   baz   foo   quux
+```
+
+Command's stdout is automatically filtered by the respective shell, based on the prefix entered so far.
 
 In order to make the same command work both in super- and sub-word context, following arguments are passed:
 
@@ -191,22 +197,48 @@ For fish and zsh, the `DESCRIPTION` part will be presented to the user.  Under b
 part will be visible.  All external commands nonetheless need to take care as to *not* produce superfluous
 `\t` characters that may confuse the resulting shell scripts.
 
-### Bypassing tail restriction
+### Disambiguate Commands with a Regex
 
-`complgen` will error out if you place `{{{ ... }}}` at a position where it's a subject to matching (as
-opposed to completing).  It is possible to overcome that restriction by providing a regular expression
-matching the command output:
+Some grammars like
 
 ```
-cmd ({{{ echo foo }}}@bash"foo" | bar);
+cmd ({{{ echo foo }}} lhs | {{{ echo bar }}} rhs | baz);
 ```
 
-### Target shell-specific behavior
+will get rejected at compilation time:
 
-In order to make use of shell-specific completion functions, `complgen` supports a mechanism that allows for
-picking a specific nonterminal expansion based on the target shell.  To use an example: all shells are able to
-complete a user on the system, although each has a different function for it.  We unify their interface under
-the nonterminal `<USER>` using few `nonterminal@shell` definitions:
+```
+cmd.usage:1:6:error: Ambiguous grammar
+  |
+1 | cmd ({{{ echo foo }}} lhs | {{{ echo bar }}} rhs | baz);
+  |      ^^^^^^^^^^^^^^^^ matching can't tell apart this
+  |
+cmd.usage:1:29:error
+  |
+1 | cmd ({{{ echo foo }}} lhs | {{{ echo bar }}} rhs | baz);
+  |                             ^^^^^^^^^^^^^^^^ from this
+  |
+```
+
+It is due to complgen not being able to tell which of the `|` branches to take on inputs like `$ cmd foo
+<TAB>`.  It may be apparent to you it should complete to `$ cmd foo lhs` but in fact, external commands like
+`{{{ echo foo }}}` or `{{{ echo bar }}}` are completely opaque to complgen.  The way to salvage like grammars
+is to declare the command's stdout matches a certain regex:
+
+```
+cmd ({{{ echo foo }}}@bash"foo" lhs | {{{ echo bar }}}@bash"bar" rhs | baz);
+```
+
+Now the completion proceeds as intuited: `cmd foo <TAB>` becomes `cmd foo lhs`.
+
+
+### Target Shell-specific Behavior
+
+External commands quickly degrade into necessitating shell-specific syntax.  complgen provides support to
+conditionally choose the command based on the target shell.
+
+To use an example: all shells are able to complete users present on the system although each has a different
+function for it:
 
 ```
 cmd <USER>;
@@ -216,19 +248,19 @@ cmd <USER>;
 <USER@pwsh> ::= {{{ Get-LocalUser | Where-Object { $_.Name -like "$prefix*" } | ForEach-Object { $_.Name } }}}; # PowerShell
 ```
 
-### Completing option arguments
+complgen will pick the right definition of `<USER>` depending on what you're compiling the grammar to.
 
-It's possible to match not only entire words, but also *within* words themselves, using the same grammar
-syntax as for matching entire words.  In that sense, it all fractally works on subwords too (there are
-limitations on `{{{ ... }}}` usage though).  The most common application of that general mechanism is to
-handle equal sign arguments (`--option=ARGUMENT`):
+### Completing Within Shell Words
+
+It's possible to match not only entire shell words, but also *within* words, using largely the same grammar
+syntax as for matching entire words, barring few spaces here and there.  The most common application is to
+handle option arguments (e.g. `--option=ARGUMENT`):
 
 ```
 grep --color=(always | never | auto);
 ```
 
-Note however that equal sign arguments aren't some special case within complgen — the same mechanism works for
-more complicated things, e.g.:
+The same mechanism works for more complicated things:
 
 ```
 strace -e <EXPR>;
@@ -237,15 +269,41 @@ strace -e <EXPR>;
 <value> ::= %file | file | all;
 ```
 
-The above grammar was pulled straight out of [`strace` man page](https://man7.org/linux/man-pages/man1/strace.1.html#OPTIONS).
+The above grammar was pulled straight out of [`strace` man
+page](https://man7.org/linux/man-pages/man1/strace.1.html#OPTIONS), illustrating how complgen follows the de
+facto standard man pages notation.
 
 
-### Cleaning up the list of completion candidates
+### Controlling What Completions Get Shown First
 
-If you do `git <TAB>` in most shells you're presented with a list of git subcommands.  Even though git accepts
-a bunch of global options (`--help`, `--version`, etc.), they don't show up there (sic!).  That's a special
-mechanism intended for reducing clutter.  Under complgen, the same effect is achieved via a construction
-called fallbacks, which are represented in the grammar as the double bar operator (`||`):
+If you do `git <TAB>` under the default completion that comes with git, you get something like:
+
+```
+bash$ git <TAB>
+absorb              bisect              ci                  credential-gcloud   fork                help                mv                  reflog              revert              show                submodule           whatchanged
+ad                  blame               citool              describe            format-patch        init                notes               refs                reword              show-branch         sw                  worktree
+add                 br                  clang-format        diff                fsck                instaweb            prune               remote              rewrite             sparse-checkout     switch
+am                  branch              clean               difftool            gc                  lfs                 pull                repack              rm                  stage               tag
+amend               bundle              clone               dlog                gitk                log                 push                replace             root                stash               touch
+apply               checkout            co                  fetch               grep                maintenance         range-diff          request-pull        scalar              stash-all           tree
+archive             cherry              commit              filter-repo         gui                 merge               rebase              reset               send-email          stash-unstaged      uncommit
+backfill            cherry-pick         config              forgit              head                mergetool           recent              restore             shortlog            status              wdiff
+```
+
+So even though git accepts many global options, they don't show up here!  If OTOH you do `git --<TAB>`
+instead:
+
+```
+bash$ git --<TAB>
+--bare                 --exec-path=           --help                 --info-path            --namespace=           --no-replace-objects   --version
+--exec-path            --git-dir=             --html-path            --man-path             --no-pager             --paginate             --work-tree=
+```
+
+You get presented with options in place of subcommands.  It's a useful mechanism that allows to assigning
+levels of priority to possible choices, surfacing the most frequently used ones.
+
+Under complgen, the same effect is achieved via
+_fallbacks_ (`||`).  An abridged version version of the above would look like below:
 
 ```
 mygit (<SUBCOMMAND> || <OPTION>);
@@ -253,8 +311,23 @@ mygit (<SUBCOMMAND> || <OPTION>);
 <OPTION> ::= --help | --version;
 ```
 
-With the grammar above, `git <TAB>` will offer to complete *only* subcommands.  For `git --<TAB>` OTOH,
-`complgen` will offer to complete options.
+The effect:
+
+```
+bash$ mygit <TAB>
+add      commit   fetch    push
+
+bash$ mygit --<TAB>
+--help      --version
+```
+
+In the 2nd case (`mygit --<TAB>`), the completion script first tries to match the input (`--`) against
+`<SUBCOMMAND>` and failing that, proceeds to try matching the part on the right hand side of the fallback
+operator `||`, i.e. `<OPTION>`.
+
+Note that `||` behaves exactly like the regular `|` in when it comes to matching.  Where its behavior diverges
+is with respect to completion.  Where `|` variants would offer all alternative branches at once, `||` tries to
+match variants from left to right, stopping at the first branch that matches current user input.
 
 `||` has the lowest priority of all operators, so the grammar above might have been written without any use of
 `<NONTERMINALS>`.  They're there only for readability sake.
