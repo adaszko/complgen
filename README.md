@@ -1,7 +1,8 @@
 ## Value Proposition
 
-`complgen` compiles man-page/EBNF-like grammars into standalone completion scripts.  See
-[examples](examples/).
+`complgen` compiles man-page grammars into standalone completion scripts.  One grammar file compiles into
+scripts for most popular shells, freeing you from having to reimplement and maintain the same logic for each
+shell separately.  See [examples](examples/).
 
 ## Demo
 
