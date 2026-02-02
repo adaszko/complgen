@@ -32,14 +32,14 @@ mygit (diff || (<global-option>... diff)) [<diff-option>...] --no-index [--] <PA
                   | --bare
                   | --git-dir=<DIRECTORY>
                   | --work-tree=<DIRECTORY>
-                  | --namespace=<name>
-                  | --config-env=<config-option>
+                  | --namespace=
+                  | --config-env=
                   ;
 
 <status-option> ::= --short
                   | --branch
                   | --show-stash
-                  | --porcelain[=<version>]
+                  | --porcelain[=]
                   | --long
                   | --verbose
                   | --untracked-files[=(no | normal | all)]
@@ -49,32 +49,32 @@ mygit (diff || (<global-option>... diff)) [<diff-option>...] --no-index [--] <PA
                   | --no-column
                   | --no-ahead-behind | --ahead-behind
                   | --no-renames | --renames
-                  | --find-renames[=<n>]
+                  | --find-renames[=]
                   ;
 
 <log-option> ::= --follow
        | (--no-decorate | --decorate[=(short|full|auto|no)])
-       | --decorate-refs=<pattern>
-       | --decorate-refs-exclude=<pattern>
+       | --decorate-refs=
+       | --decorate-refs-exclude=
        | --clear-decorations
        | --source
        | --mailmap | --no-mailmap
        | --use-mailmap | --no-use-mailmap
        | --full-diff
        | --log-size
-       | -L<line>,<line>:<path>
-       | -L:<funcname>:<path>
+       | -L<line>,<line>:<PATH>
+       | -L:<funcname>:<PATH>
        | -<number> | -n <number> | --max-count=<number>
-       | --skip=<number>
-       | --since=<date>
-       | --after=<date>
-       | --since-as-filter=<date>
-       | --until=<date>
-       | --before=<date>
-       | --author=<pattern>
-       | --committer=<pattern>
-       | --grep-reflog=<pattern>
-       | --grep=<pattern>
+       | --skip=
+       | --since=
+       | --after=
+       | --since-as-filter=
+       | --until=
+       | --before=
+       | --author=
+       | --committer=
+       | --grep-reflog=
+       | --grep=
        | --all-match
        | --invert-grep
        | --regexp-ignore-case
@@ -85,19 +85,19 @@ mygit (diff || (<global-option>... diff)) [<diff-option>...] --no-index [--] <PA
        | --remove-empty
        | --merges
        | --no-merges
-       | --min-parents=<number>
-       | --max-parents=<number>
+       | --min-parents=
+       | --max-parents=
        | --no-min-parents
        | --no-max-parents
        | --first-parent
        | --exclude-first-parent-only
        | --not
        | --all
-       | --branches[=<pattern>]
-       | --tags[=<pattern>]
-       | --remotes[=<pattern>]
-       | --glob=<glob-pattern>
-       | --exclude=<glob-pattern>
+       | --branches[=]
+       | --tags[=]
+       | --remotes[=]
+       | --glob=
+       | --exclude=
        | --exclude-hidden=(fetch|receive|uploadpack)
        | --reflog
        | --alternate-refs
@@ -135,36 +135,36 @@ mygit (diff || (<global-option>... diff)) [<diff-option>...] --no-index [--] <PA
        | --abbrev-commit
        | --no-abbrev-commit
        | --oneline
-       | --encoding=<encoding>
-       | --expand-tabs[=<n>]
+       | --encoding=
+       | --expand-tabs[=]
        | --no-expand-tabs
-       | --notes[=<ref>]
+       | --notes[=]
        | --no-notes
        | --show-notes-by-default
-       | --show-notes[=<ref>]
+       | --show-notes[=]
        | --standard-notes
        | --no-standard-notes
        | --show-signature
        | --relative-date
-       | --date=<format>
+       | --date=
        | --parents
        | --children
        | --left-right
        | --graph
-       | --show-linear-break[=<barrier>]
+       | --show-linear-break[=]
        | --patch
        | --no-patch
        | --cc
        | --dd
        | --remerge-diff
        | --no-diff-merges
-       | --diff-merges=<format>
+       | --diff-merges=
        | --combined-all-paths
-       | --unified=<n>
-       | --output=<file>
-       | --output-indicator-new=<char>
-       | --output-indicator-old=<char>
-       | --output-indicator-context=<char>
+       | --unified=
+       | --output=<PATH>
+       | --output-indicator-new=
+       | --output-indicator-old=
+       | --output-indicator-context=
        | --raw
        | --patch-with-raw
        | --indent-heuristic
@@ -172,65 +172,67 @@ mygit (diff || (<global-option>... diff)) [<diff-option>...] --no-index [--] <PA
        | --minimal
        | --patience
        | --histogram
-       | --anchored=<text>
+       | --anchored=
        | --diff-algorithm=(patience|minimal|histogram|myers)
-       | --stat[=<number>[,<number>[,<number>]]]
+       | --stat[=]
        | --compact-summary
        | --numstat
        | --shortstat
-       | --dirstat[=<params>]
+       | --dirstat[=]
        | --cumulative
-       | --dirstat-by-file[=<params>]
+       | --dirstat-by-file[=]
        | --summary
        | --patch-with-stat
        | --name-only
        | --name-status
-       | --submodule[=<format>]
-       | --color[=<when>]
+       | --submodule[=]
+       | --color[=]
        | --no-color
-       | --color-moved[=<mode>]
+       | --color-moved[=]
        | --no-color-moved
-       | --color-moved-ws=<mode>
+       | --color-moved-ws=
        | --no-color-moved-ws
-       | --word-diff[=<mode>]
-       | --word-diff-regex=<regex>
-       | --color-words[=<regex>]
+       | --word-diff[=]
+       | --word-diff-regex=
+       | --color-words[=]
        | --no-renames
        | --no-rename-empty
        | --check
-       | --ws-error-highlight=<kind>
+       | --ws-error-highlight=
        | --full-index
        | --binary
-       | --abbrev[=<n>]
-       | --break-rewrites[=<n>]
-       | --find-renames[=<n>]
-       | --find-copies[=<n>]
+       | --abbrev[=]
+       | --break-rewrites[=]
+       | --find-renames[=]
+       | --find-copies[=]
        | --find-copies-harder
        | --irreversible-delete
        | --diff-filter=[(A|C|D|M|R|T|U|X|B)...[*]]
-       | --find-object=<object-id>
+       | --find-object=
        | --pickaxe-all
        | --pickaxe-regex
-       | --skip-to=<file> | --rotate-to=<file>
-       | --relative[=<path>] | --no-relative
+       | --skip-to=<PATH>
+       | --rotate-to=<PATH>
+       | --relative[=<PATH>]
+       | --no-relative
        | --text
        | --ignore-cr-at-eol
        | --ignore-space-at-eol
        | --ignore-space-change
        | --ignore-all-space
        | --ignore-blank-lines
-       | --ignore-matching-lines=<regex>
-       | --inter-hunk-context=<number>
+       | --ignore-matching-lines=
+       | --inter-hunk-context=
        | --function-context
        | --ext-diff
        | --no-ext-diff
        | --textconv | --no-textconv
        | --ignore-submodules[=(none|untracked|dirty|all)]
-       | --src-prefix=<prefix>
-       | --dst-prefix=<prefix>
+       | --src-prefix=
+       | --dst-prefix=
        | --no-prefix
        | --default-prefix
-       | --line-prefix=<prefix>
+       | --line-prefix=
        | --ita-invisible-in-index
        ;
 
@@ -239,6 +241,5 @@ mygit (diff || (<global-option>... diff)) [<diff-option>...] --no-index [--] <PA
 <line> ::= {{{}}}@bash"[0-9]*"@fish"[0-9]*"@zsh"[0-9]*";
 
 <funcname> ::= {{{}}}@bash"[a-zA-Z_]*"@fish"[a-zA-Z_]*"@zsh"[a-zA-Z_]*";
-
 
 <diff-option> ::= -p | -u | --patch;
