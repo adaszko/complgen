@@ -271,7 +271,9 @@ def test_nontail_matching_alternative(complgen_binary_path: Path):
 
 
 def test_nontail_matching_fallback(complgen_binary_path: Path):
-    GRAMMAR = """cmd <LEFT> || right; <LEFT> ::= {{{ Write-Output left }}}@pwsh"left";"""
+    GRAMMAR = (
+        """cmd <LEFT> || right; <LEFT> ::= {{{ Write-Output left }}}@pwsh"left";"""
+    )
     with gen_pwsh_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
@@ -394,9 +396,7 @@ def test_issue_59(complgen_binary_path: Path):
     with gen_pwsh_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
-        completions = get_sorted_pwsh_completions(
-            completions_file_path, "hello id=42 "
-        )
+        completions = get_sorted_pwsh_completions(completions_file_path, "hello id=42 ")
         assert completions == sorted([("foo", ""), ("id=", "")])
 
 
@@ -507,6 +507,17 @@ mygrep <OPTION>...;
             completions_file_path, "mygrep --color=always --col"
         )
         assert completions == sorted([("--color=", "")])
+
+
+def test_bug2(complgen_binary_path: Path):
+    GRAMMAR = "cmd --pretty=(full | fuller);"
+    with gen_pwsh_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        completions = get_sorted_pwsh_completions(
+            completions_file_path, "cmd --pretty=fulle"
+        )
+        assert completions == [("--pretty=fuller", "")]
 
 
 def test_multiple_matching_subwords(complgen_binary_path: Path):
