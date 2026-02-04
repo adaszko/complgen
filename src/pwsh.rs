@@ -168,13 +168,18 @@ fn write_generic_subword_fn<W: Write>(
 
             for ($literal_id = 0; $literal_id -lt $literals.Count; $literal_id++) {{
                 $literal = $literals[$literal_id]
-                $literal_len = $literal.Length
-                if ($subword.StartsWith($literal)) {{
-                    if ($state_transitions.ContainsKey($literal_id)) {{
-                        $script:state = $state_transitions[$literal_id]
-                        $char_index += $literal_len
-                        continue outer
-                    }}
+                if ($subword -eq $literal -And $state_transitions.ContainsKey($literal_id)) {{
+                    $script:state = $state_transitions[$literal_id]
+                    $char_index += $literal.Length
+                    continue outer
+                }}
+                if ($literal.StartsWith($subword)) {{
+                    break outer
+                }}
+                if ($subword.StartsWith($literal) -And $state_transitions.ContainsKey($literal_id)) {{
+                    $script:state = $state_transitions[$literal_id]
+                    $char_index += $literal.Length
+                    continue outer
                 }}
             }}
         }}"#
