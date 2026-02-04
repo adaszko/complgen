@@ -10,7 +10,11 @@ mygit (diff || (<global-option>... diff)) [<diff-option>...] <blob> <blob>;
 mygit (diff || (<global-option>... diff)) [<diff-option>...] --no-index [--] <PATH> <PATH> [<PATH>...];
 
 
-<commit> ::= {{{}}}@bash"[a-zA-Z_-]*"@fish"[a-zA-Z_-]*"@zsh"[a-zA-Z_-]*";
+<commit> ::= {{{}}}@fish"[a-zA-Z_-]*"@zsh"[a-zA-Z_-]*";
+
+<commit@bash> ::= {{{
+    ls $(rev-parse --show-toplevel)/.git/refs/heads/
+}}}@bash"[a-zA-Z_-]*";
 
 <revision-range> ::= {{{}}}@bash"[a-zA-Z_-]*"@fish"[a-zA-Z_-]*"@zsh"[a-zA-Z_-]*";
 

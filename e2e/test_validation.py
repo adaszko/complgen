@@ -22,9 +22,18 @@ def test_examples(complgen_binary_path: Path, examples_directory_path: Path):
 
 
 def complgen_check(
-    complgen_binary_path: Path, grammar: str
+    complgen_binary_path: Path,
+    grammar: str,
+    shell: str = "bash",
 ) -> subprocess.CompletedProcess:
-    args = [complgen_binary_path, "--bash", "-", "-"]
+    opt_from_shell = {
+        "bash": "--bash",
+        "fish": "--fish",
+        "zsh": "--zsh",
+        "pwsh": "--pwsh",
+    }
+    assert shell in opt_from_shell
+    args = [complgen_binary_path, opt_from_shell[shell], "-", "-"]
     result = subprocess.run(
         args,
         input=grammar,
@@ -318,6 +327,20 @@ error: DFA Ambiguity:
   mygit diff {{{ compgen -A file -- "$1" }}}
   mygit diff {{{  }}}
 """)
+
+
+def test_bug6(complgen_binary_path: Path):
+    r = complgen_check(
+        complgen_binary_path,
+        """
+cmd [<commit>] <PATH>;
+<commit> ::= {{{}}}@zsh"[a-zA-Z_-]*";
+<commit@bash> ::= {{{ ls $(rev-parse --show-toplevel)/.git/refs/heads/ }}}@bash"[a-zA-Z_-]*";
+""",
+        shell="zsh",
+    )
+    assert r.returncode == 0
+    assert r.stderr == snapshot("""""")
 
 
 def test_clashing_variants(complgen_binary_path: Path):
