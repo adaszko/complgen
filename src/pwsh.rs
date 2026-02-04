@@ -155,7 +155,7 @@ fn write_generic_subword_fn<W: Write>(
 
     $char_index = 0
     $matched = $false
-    while ($true) {{
+    :outer while ($true) {{
         if ($char_index -ge $word.Length) {{
             $matched = $true
             break
@@ -166,7 +166,6 @@ fn write_generic_subword_fn<W: Write>(
         if ($literal_transitions.ContainsKey($script:state)) {{
             $state_transitions = $literal_transitions[$script:state]
 
-            $literal_matched = $false
             for ($literal_id = 0; $literal_id -lt $literals.Count; $literal_id++) {{
                 $literal = $literals[$literal_id]
                 $literal_len = $literal.Length
@@ -174,13 +173,9 @@ fn write_generic_subword_fn<W: Write>(
                     if ($state_transitions.ContainsKey($literal_id)) {{
                         $script:state = $state_transitions[$literal_id]
                         $char_index += $literal_len
-                        $literal_matched = $true
-                        break
+                        continue outer
                     }}
                 }}
-            }}
-            if ($literal_matched) {{
-                continue
             }}
         }}"#
     )?;
@@ -192,7 +187,6 @@ fn write_generic_subword_fn<W: Write>(
         if ($nontail_transitions.ContainsKey($script:state)) {{
             $nontail_state_transitions = $nontail_transitions[$script:state]
 
-            $nontail_matched = $false
             foreach ($regex_id in $nontail_state_transitions.Keys) {{
                 $regex = $regexes[$regex_id]
                 if ($subword -match "^($regex)") {{
@@ -200,13 +194,9 @@ fn write_generic_subword_fn<W: Write>(
                     if ($match_len -gt 0) {{
                         $script:state = $nontail_state_transitions[$regex_id]
                         $char_index += $match_len
-                        $nontail_matched = $true
-                        break
+                        continue outer
                     }}
                 }}
-            }}
-            if ($nontail_matched) {{
-                continue
             }}
         }}"#
         )?;
@@ -615,25 +605,20 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         r#"
     $state = {starting_state}
     $word_index = 1
-    while ($word_index -lt $cword) {{
+    :outer while ($word_index -lt $cword) {{
         $word = $words[$word_index]
 
         if ($literal_transitions.ContainsKey($state)) {{
             $state_transitions = $literal_transitions[$state]
 
-            $word_matched = $false
             for ($literal_id = 0; $literal_id -lt $literals.Count; $literal_id++) {{
                 if ($literals[$literal_id] -ceq $word) {{
                     if ($state_transitions.ContainsKey($literal_id)) {{
                         $state = $state_transitions[$literal_id]
                         $word_index++
-                        $word_matched = $true
-                        break
+                        continue outer
                     }}
                 }}
-            }}
-            if ($word_matched) {{
-                continue
             }}
         }}"#,
         starting_state = dfa.starting_state
@@ -647,17 +632,12 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         if ($subword_transitions.ContainsKey($state)) {{
             $subword_state_transitions = $subword_transitions[$state]
 
-            $subword_matched = $false
             foreach ($subword_id in $subword_state_transitions.Keys) {{
                 if (& "_{command}_subword_$subword_id" 'matches' $word) {{
                     $state = $subword_state_transitions[$subword_id]
                     $word_index++
-                    $subword_matched = $true
-                    break
+                    continue outer
                 }}
-            }}
-            if ($subword_matched) {{
-                continue
             }}
         }}"#
         )?;
@@ -671,18 +651,13 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         if ($nontail_transitions.ContainsKey($state)) {{
             $nontail_state_transitions = $nontail_transitions[$state]
 
-            $nontail_matched = $false
             foreach ($regex_id in $nontail_state_transitions.Keys) {{
                 $regex = $regexes[$regex_id]
                 if ($word -match "^($regex)$") {{
                     $state = $nontail_state_transitions[$regex_id]
                     $word_index++
-                    $nontail_matched = $true
-                    break
+                    continue outer
                 }}
-            }}
-            if ($nontail_matched) {{
-                continue
             }}
         }}"#
         )?;
