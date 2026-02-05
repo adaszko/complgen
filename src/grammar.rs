@@ -1,6 +1,6 @@
 use std::{debug_assert, io::Write};
 
-use hashbrown::{HashMap, HashSet};
+use hashbrown::HashSet;
 use nom::{
     Finish, IResult, Parser,
     branch::alt,
@@ -1613,7 +1613,7 @@ impl ValidGrammar {
         }
         let expr = distribute_descriptions(&mut grammar.arena, expr);
 
-        let (mut user_specs, fallback_specs) = grammar.get_specializations()?;
+        let (mut user_specs, fallback_specs) = grammar.get_specializations(shell)?;
         let builtin_specs = make_builtin_specializations(shell);
 
         let mut unused_nonterminals: UstrMap<HumanSpan> = nonterminal_definitions
@@ -1625,7 +1625,7 @@ impl ValidGrammar {
                 defn.rhs_expr_id,
                 &mut grammar.arena,
                 shell,
-                user_specs.entry(shell).or_default(),
+                &mut user_specs,
                 &builtin_specs,
                 &fallback_specs,
                 &mut unused_nonterminals,
@@ -1636,20 +1636,17 @@ impl ValidGrammar {
             expr,
             &mut grammar.arena,
             shell,
-            user_specs.entry(shell).or_default(),
+            &mut user_specs,
             &builtin_specs,
             &fallback_specs,
             &mut unused_nonterminals,
         );
 
-        let unused_specializations = {
-            let specs: &UstrMap<UserSpec> = user_specs.entry(shell).or_default();
-            specs
-                .iter()
-                .filter(|(_, spec)| !spec.used)
-                .map(|(name, spec)| (*name, spec.span))
-                .collect()
-        };
+        let unused_specializations = user_specs
+            .iter()
+            .filter(|(_, spec)| !spec.used)
+            .map(|(name, spec)| (*name, spec.span))
+            .collect();
 
         for nonterminal in
             get_nonterminals_resolution_order(&grammar.arena, &nonterminal_definitions)?
@@ -2467,11 +2464,9 @@ impl Grammar {
 
     fn get_specializations(
         &self,
-    ) -> Result<(
-        HashMap<Shell, UstrMap<UserSpec>>,
-        UstrMap<(Ustr, HumanSpan)>,
-    )> {
-        let mut specializations: HashMap<Shell, UstrMap<UserSpec>> = Default::default();
+        target_shell: Shell,
+    ) -> Result<(UstrMap<UserSpec>, UstrMap<(Ustr, HumanSpan)>)> {
+        let mut specializations: UstrMap<UserSpec> = Default::default();
         let mut fallbacks: UstrMap<(Ustr, HumanSpan)> = Default::default();
         let mut specialized_nonterminals: UstrSet = Default::default();
         for defn in self.iter_nonterm_defns() {
@@ -2497,13 +2492,15 @@ impl Grammar {
                 }
             };
             let shell = Shell::from_str(shell_name, *shell_span)?;
-            let spec = specializations.entry(shell).or_default();
-            if let Some(UserSpec { span, .. }) = spec.get(&defn.lhs_name) {
+            if shell != target_shell {
+                continue;
+            }
+            if let Some(UserSpec { span, .. }) = specializations.get(&defn.lhs_name) {
                 return Err(Error::DuplicateNonterminalDefinition(*span, defn.lhs_span));
             }
             match shell {
                 Shell::Bash => {
-                    spec.entry(defn.lhs_name).insert_entry(UserSpec {
+                    specializations.entry(defn.lhs_name).insert_entry(UserSpec {
                         cmd: *command,
                         regex: *bash_regex,
                         span: defn.lhs_span,
@@ -2511,7 +2508,7 @@ impl Grammar {
                     });
                 }
                 Shell::Fish => {
-                    spec.entry(defn.lhs_name).insert_entry(UserSpec {
+                    specializations.entry(defn.lhs_name).insert_entry(UserSpec {
                         cmd: *command,
                         regex: *fish_regex,
                         span: defn.lhs_span,
@@ -2519,7 +2516,7 @@ impl Grammar {
                     });
                 }
                 Shell::Zsh => {
-                    spec.entry(defn.lhs_name).insert_entry(UserSpec {
+                    specializations.entry(defn.lhs_name).insert_entry(UserSpec {
                         cmd: *command,
                         regex: *zsh_regex,
                         span: defn.lhs_span,
@@ -2527,7 +2524,7 @@ impl Grammar {
                     });
                 }
                 Shell::Pwsh => {
-                    spec.entry(defn.lhs_name).insert_entry(UserSpec {
+                    specializations.entry(defn.lhs_name).insert_entry(UserSpec {
                         cmd: *command,
                         regex: *pwsh_regex,
                         span: defn.lhs_span,
