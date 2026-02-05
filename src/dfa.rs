@@ -5,7 +5,7 @@ use std::{cmp::Ordering, collections::BTreeSet, hash::Hash, io::Write, rc::Rc};
 use roaring::{MultiOps, RoaringBitmap};
 use ustr::{Ustr, ustr};
 
-use crate::regex::{Position, Regex, RegexInput, RegexInternPool};
+use crate::regex::{Position, Regex, RegexId, RegexInput, RegexInternPool};
 use crate::{Error, Result, StateId};
 
 // Every state in a DFA is formally defined to have a transition on *every* input symbol.  In
@@ -119,10 +119,15 @@ impl Inp {
                 fallback_level,
                 span: _,
             } => {
-                let regex = subword_regexes.lookup(subword_regex_id);
-                let subdfa = DFA::from_regex(regex.clone(), subword_regexes)?;
-                let subdfa = subdfa.minimize();
-                let subdfaid = subdfas.intern(subdfa);
+                let subdfaid = if let Some(subdfaid) = subdfas.resolve(subword_regex_id) {
+                    subdfaid
+                } else {
+                    let regex = subword_regexes.lookup(subword_regex_id);
+                    let subdfa = DFA::from_regex(regex.clone(), subword_regexes)?;
+                    let subdfa = subdfa.minimize();
+                    let subdfaid = subdfas.insert(subword_regex_id, subdfa);
+                    subdfaid
+                };
                 Self::Subword {
                     subdfa: subdfaid,
                     fallback_level,
@@ -243,17 +248,22 @@ pub struct DFAId(usize);
 
 #[derive(Debug, Clone, Default)]
 pub struct DFAInternPool {
-    store: IndexSet<DFA>,
+    store: IndexMap<RegexId, DFA>,
 }
 
 impl DFAInternPool {
-    fn intern(&mut self, value: DFA) -> DFAId {
-        let (id, _) = self.store.insert_full(value);
-        DFAId(id)
+    fn resolve(&self, regex_id: RegexId) -> Option<DFAId> {
+        self.store.get(&regex_id).map(|_| DFAId(regex_id.0))
+    }
+
+    fn insert(&mut self, regex_id: RegexId, value: DFA) -> DFAId {
+        self.store.insert(regex_id, value);
+        DFAId(regex_id.0)
     }
 
     pub(crate) fn lookup(&self, id: DFAId) -> &DFA {
-        self.store.get_index(id.0).unwrap()
+        let regex_id = RegexId(id.0);
+        self.store.get(&regex_id).unwrap()
     }
 }
 

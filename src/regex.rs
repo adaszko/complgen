@@ -608,7 +608,7 @@ fn do_to_dot<W: Write>(
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-pub struct RegexId(usize);
+pub struct RegexId(pub(crate) usize);
 
 impl std::fmt::Display for RegexId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
