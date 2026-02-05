@@ -961,7 +961,9 @@ impl DFA {
             .flat_map(|(from, tos)| tos.iter().map(|(input, to)| (*from, *input, *to)))
     }
 
-    pub(crate) fn get_top_level_literals_decreasing_length(&self) -> IndexSet<(Ustr, Option<Ustr>)> {
+    pub(crate) fn get_top_level_literals_decreasing_length(
+        &self,
+    ) -> IndexSet<(Ustr, Option<Ustr>)> {
         let mut result: IndexSet<(Ustr, Option<Ustr>)> = self
             .inputs
             .elems()

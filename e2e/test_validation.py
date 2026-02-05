@@ -314,6 +314,12 @@ def test_bug4(complgen_binary_path: Path):
 
 
 def test_bug5(complgen_binary_path: Path):
+    """
+    Normally, the ambiguity arising from not being able to distinguish <PATH> and {{{}}} should be detected at regex compilation phase.
+    In this case however two "diff" literals at two different source Spans are not considered equal (due to differring Spans).
+    It leads to the ambiguity only being detectable at the DFA stage, where we lack the information about token source locations.
+    It's an important case illustrating shortcomings of regex stage validation.
+    """
     r = complgen_check(
         complgen_binary_path,
         """

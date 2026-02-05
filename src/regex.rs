@@ -710,8 +710,10 @@ impl Regex {
             ));
         }
 
-        let unvisited = firstpos - visited.clone();
-        for pos in unvisited {
+        for pos in firstpos {
+            if visited.contains(pos) {
+                continue;
+            }
             let Some(follow) = followpos.get(&pos) else {
                 continue;
             };
@@ -751,8 +753,10 @@ impl Regex {
             ));
         }
 
-        let unvisited = firstpos - visited.clone();
-        for pos in unvisited {
+        for pos in firstpos {
+            if visited.contains(pos) {
+                continue;
+            }
             let Some(follow) = followpos.get(&pos) else {
                 continue;
             };
@@ -799,8 +803,10 @@ impl Regex {
             }
         }
 
-        let unvisited = firstpos - visited.clone();
-        for pos in unvisited {
+        for pos in firstpos {
+            if visited.contains(pos) {
+                continue;
+            }
             let Some(follow) = followpos.get(&pos) else {
                 continue;
             };
@@ -869,8 +875,10 @@ impl Regex {
             return Err(Error::ClashingVariants(*left_span, *right_span));
         }
 
-        let unvisited = firstpos - visited.clone();
-        for pos in unvisited {
+        for pos in firstpos {
+            if visited.contains(pos) {
+                continue;
+            }
             let Some(follow) = followpos.get(&pos) else {
                 continue;
             };
@@ -897,7 +905,6 @@ impl Regex {
         followpos: &BTreeMap<Position, RoaringBitmap>,
         subword_regex_pool: &RegexInternPool,
         visited: &mut RoaringBitmap,
-        checked_subword_regexes: &mut RoaringBitmap,
     ) -> Result<()> {
         let subword_regexes: Vec<RegexId> = firstpos
             .iter()
@@ -911,7 +918,6 @@ impl Regex {
                     subword_regex_id, ..
                 } => Some(subword_regex_id),
             })
-            .filter(|subword_regex_id| !checked_subword_regexes.contains(subword_regex_id.0 as u32))
             .collect();
 
         for subword_regex_id in subword_regexes {
@@ -923,22 +929,17 @@ impl Regex {
             subword_regex
                 .check_ambiguous_inputs_tail_only_subword(&subword_firstpos, &subword_followpos)?;
             subword_regex.check_descr_no_descr_clashes(&subword_firstpos, &subword_followpos)?;
-            checked_subword_regexes.insert(subword_regex_id.0 as u32);
         }
 
-        let unvisited = firstpos - visited.clone();
-        for pos in unvisited {
+        for pos in firstpos {
+            if visited.contains(pos) {
+                continue;
+            }
             let Some(follow) = followpos.get(&pos) else {
                 continue;
             };
             visited.insert(pos);
-            self.check_subwords(
-                follow,
-                followpos,
-                subword_regex_pool,
-                visited,
-                checked_subword_regexes,
-            )?;
+            self.check_subwords(follow, followpos, subword_regex_pool, visited)?;
         }
         Ok(())
     }
@@ -951,14 +952,7 @@ impl Regex {
 
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);
-        let mut checked_subword_regexes: RoaringBitmap = Default::default();
-        self.check_subwords(
-            &firstpos,
-            &followpos,
-            subword_regexes,
-            &mut visited,
-            &mut checked_subword_regexes,
-        )?;
+        self.check_subwords(&firstpos, &followpos, subword_regexes, &mut visited)?;
         Ok(())
     }
 
