@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  - PowerShell `--pretty=fulle` bug
  - Substantially improved compilation performance by eliminating redundant work
+ - A bug where some specialization regexes weren't being taken into account
 
 ## 0.7.3
 ### Fixed

@@ -1862,7 +1862,7 @@ fn specialize_nonterminals(
     shell: Shell,
     user_specs: &mut UstrMap<UserSpec>,
     builtin_specs: &UstrMap<BuiltinSpec>,
-    fallback_specs: &UstrMap<(Ustr, HumanSpan)>,
+    fallback_specs: &UstrMap<(Ustr, Option<Ustr>, HumanSpan)>,
     unused_nonterminals: &mut UstrMap<HumanSpan>,
 ) -> ExprId {
     match expr_arena[expr_id].clone() {
@@ -1880,8 +1880,8 @@ fn specialize_nonterminals(
                 (spec.cmd, spec.regex, true)
             } else if let Some(BuiltinSpec { cmd, regex }) = builtin_specs.get(&nonterm) {
                 (*cmd, *regex, true)
-            } else if let Some((cmd, _)) = fallback_specs.get(&nonterm) {
-                (*cmd, None, false)
+            } else if let Some((cmd, regex, _)) = fallback_specs.get(&nonterm) {
+                (*cmd, *regex, false)
             } else {
                 return expr_id;
             };
@@ -2465,9 +2465,9 @@ impl Grammar {
     fn get_specializations(
         &self,
         target_shell: Shell,
-    ) -> Result<(UstrMap<UserSpec>, UstrMap<(Ustr, HumanSpan)>)> {
+    ) -> Result<(UstrMap<UserSpec>, UstrMap<(Ustr, Option<Ustr>, HumanSpan)>)> {
         let mut specializations: UstrMap<UserSpec> = Default::default();
-        let mut fallbacks: UstrMap<(Ustr, HumanSpan)> = Default::default();
+        let mut fallbacks: UstrMap<(Ustr, Option<Ustr>, HumanSpan)> = Default::default();
         let mut specialized_nonterminals: UstrSet = Default::default();
         for defn in self.iter_nonterm_defns() {
             let NontermDefn {
@@ -2491,14 +2491,13 @@ impl Grammar {
                     return Err(Error::NonCommandSpecialization(*rhs.get_span()));
                 }
             };
-            let shell = Shell::from_str(shell_name, *shell_span)?;
-            if shell != target_shell {
+            if Shell::from_str(shell_name, *shell_span)? != target_shell {
                 continue;
             }
             if let Some(UserSpec { span, .. }) = specializations.get(&defn.lhs_name) {
                 return Err(Error::DuplicateNonterminalDefinition(*span, defn.lhs_span));
             }
-            match shell {
+            match target_shell {
                 Shell::Bash => {
                     specializations.entry(defn.lhs_name).insert_entry(UserSpec {
                         cmd: *command,
@@ -2543,13 +2542,27 @@ impl Grammar {
                 continue;
             }
             let rhs = &self.arena[defn.rhs_expr_id];
-            let Expr::Command { cmd: command, .. } = rhs else {
+            let Expr::Command {
+                cmd,
+                bash_regex,
+                fish_regex,
+                zsh_regex,
+                pwsh_regex,
+                ..
+            } = rhs
+            else {
                 return Err(Error::NonCommandSpecialization(*rhs.get_span()));
             };
-            if let Some((_, span)) = fallbacks.get(&defn.lhs_name) {
+            if let Some((_, _, span)) = fallbacks.get(&defn.lhs_name) {
                 return Err(Error::DuplicateNonterminalDefinition(*span, defn.lhs_span));
             }
-            fallbacks.insert(defn.lhs_name, (*command, defn.lhs_span));
+            let regex = match target_shell {
+                Shell::Bash => bash_regex,
+                Shell::Fish => fish_regex,
+                Shell::Zsh => zsh_regex,
+                Shell::Pwsh => pwsh_regex,
+            };
+            fallbacks.insert(defn.lhs_name, (*cmd, *regex, defn.lhs_span));
         }
 
         Ok((specializations, fallbacks))
