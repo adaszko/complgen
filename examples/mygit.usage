@@ -13,12 +13,12 @@ mygit (diff || (<global-option>... diff)) [<diff-option>...] --no-index [--] <PA
 <commit> ::= {{{}}}@fish"[a-zA-Z_-]*"@zsh"[a-zA-Z_-]*";
 
 <commit@bash> ::= {{{
-    ls $(rev-parse --show-toplevel)/.git/refs/heads/
-}}}@bash"[a-zA-Z_-]*";
+    ls -1 $(git rev-parse --show-toplevel)/.git/refs/heads/
+}}}@bash"[a-zA-Z_-]+";
 
-<revision-range> ::= {{{}}}@bash"[a-zA-Z_-]*"@fish"[a-zA-Z_-]*"@zsh"[a-zA-Z_-]*";
+<revision-range> ::= {{{}}}@bash"[a-zA-Z_-]*"@fish"[a-zA-Z_-]+"@zsh"[a-zA-Z_-]+";
 
-<blob> ::= {{{}}}@bash"[a-zA-Z_-]*"@fish"[a-zA-Z_-]*"@zsh"[a-zA-Z_-]*";
+<blob> ::= {{{}}}@bash"[a-zA-Z_-]+"@fish"[a-zA-Z_-]+"@zsh"[a-zA-Z_-]+";
 
 <global-option> ::= (--version | -v)
                   | (--help | -h)
@@ -240,10 +240,10 @@ mygit (diff || (<global-option>... diff)) [<diff-option>...] --no-index [--] <PA
        | --ita-invisible-in-index
        ;
 
-<number> ::= {{{}}}@bash"[0-9]*"@fish"[0-9]*"@zsh"[0-9]*";
+<number> ::= {{{}}}@bash"[0-9]+"@fish"[0-9]+"@zsh"[0-9]+";
 
-<line> ::= {{{}}}@bash"[0-9]*"@fish"[0-9]*"@zsh"[0-9]*";
+<line> ::= {{{}}}@bash"[0-9]+"@fish"[0-9]+"@zsh"[0-9]+";
 
-<funcname> ::= {{{}}}@bash"[a-zA-Z_]*"@fish"[a-zA-Z_]*"@zsh"[a-zA-Z_]*";
+<funcname> ::= {{{}}}@bash"[a-zA-Z_]+"@fish"[a-zA-Z_]+"@zsh"[a-zA-Z_]+";
 
 <diff-option> ::= -p | -u | --patch;
