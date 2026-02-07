@@ -2,6 +2,7 @@ use crate::{Error, Result, grammar::ValidGrammar, make_dot_string_constant};
 use hashbrown::HashSet;
 use indexmap::IndexSet;
 use std::{
+    cell::OnceCell,
     collections::{BTreeMap, BTreeSet},
     io::Write,
 };
@@ -632,12 +633,52 @@ impl RegexInternPool {
     }
 }
 
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct Regex {
     pub root_id: RegexNodeId,
     pub input_from_position: Vec<RegexInput>,
     pub endmarker_position: Position,
     pub arena: Vec<RegexNode>,
+    follow_cache: OnceCell<BTreeMap<Position, RoaringBitmap>>,
+}
+
+// Ignore `follow_cache`
+impl PartialEq for Regex {
+    fn eq(&self, other: &Self) -> bool {
+        let Self {
+            root_id: self_root_id,
+            input_from_position: self_input_from_position,
+            endmarker_position: self_endmarker_position,
+            arena: self_arena,
+            follow_cache: _,
+        } = self;
+
+        let Self {
+            root_id: other_root_id,
+            input_from_position: other_input_from_position,
+            endmarker_position: other_endmarker_position,
+            arena: other_arena,
+            follow_cache: _,
+        } = other;
+
+        self_root_id == other_root_id
+            && self_input_from_position == other_input_from_position
+            && self_endmarker_position == other_endmarker_position
+            && self_arena == other_arena
+    }
+}
+
+// Ignore `follow_cache`
+impl Eq for Regex {}
+
+// Ignore `follow_cache`
+impl std::hash::Hash for Regex {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.root_id.hash(state);
+        self.input_from_position.hash(state);
+        self.endmarker_position.hash(state);
+        self.arena.hash(state);
+    }
 }
 
 impl Regex {
@@ -677,6 +718,7 @@ impl Regex {
             endmarker_position,
             input_from_position,
             arena,
+            follow_cache: Default::default(),
         };
         Ok(retval)
     }
@@ -980,8 +1022,9 @@ impl Regex {
         self.get_root().firstpos(&self.arena)
     }
 
-    pub(crate) fn followpos(&self) -> BTreeMap<Position, RoaringBitmap> {
-        self.get_root().followpos(&self.arena)
+    pub(crate) fn followpos(&self) -> &BTreeMap<Position, RoaringBitmap> {
+        self.follow_cache
+            .get_or_init(|| self.get_root().followpos(&self.arena))
     }
 
     pub fn to_dot<W: Write>(
