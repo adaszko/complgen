@@ -713,7 +713,16 @@ fn do_minimize(dfa: DFA) -> DFA {
 
 pub fn diagnostic_display_input<W: std::fmt::Write>(w: &mut W, input: &Inp) -> Result<()> {
     match input {
-        Inp::Literal { literal, .. } => write!(w, r#"{literal}"#)?,
+        Inp::Literal {
+            literal,
+            description: None,
+            ..
+        } => write!(w, r#"{literal}"#)?,
+        Inp::Literal {
+            literal,
+            description: Some(descr),
+            ..
+        } => write!(w, r#"{literal} {descr:?}"#)?,
         Inp::Star => write!(w, r#"*"#)?,
         Inp::Command {
             cmd,
