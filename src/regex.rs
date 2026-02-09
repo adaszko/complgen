@@ -43,26 +43,6 @@ pub enum RegexInput {
 }
 
 impl RegexInput {
-    fn is_star(&self, subword_regexes: &RegexInternPool) -> bool {
-        match self {
-            Self::Literal { .. } => false,
-            Self::Subword {
-                subword_regex_id, ..
-            } => {
-                let subword_regex = subword_regexes.lookup(*subword_regex_id);
-                for input in subword_regex.iter_leaders() {
-                    if input.is_star_subword() {
-                        return true;
-                    }
-                }
-                false
-            }
-            Self::Nonterminal { .. } => true,
-            Self::Command { regex: None, .. } => true,
-            Self::Command { .. } => false,
-        }
-    }
-
     fn is_star_subword(&self) -> bool {
         match self {
             Self::Literal { .. } => false,
@@ -723,101 +703,6 @@ impl Regex {
         Ok(retval)
     }
 
-    fn iter_leaders(&self) -> impl Iterator<Item = RegexInput> {
-        self.firstpos()
-            .into_iter()
-            .map(|pos| self.input_from_position[pos as usize].clone())
-    }
-
-    // Fail if there's a state with 2 outgoing transitions, where both transitions have "star"
-    // inputs.  Meaning it's not possible to tell which transition to take next at matching time.
-    fn do_check_transitions_unambiguous(
-        &self,
-        firstpos: &RoaringBitmap,
-        followpos: &BTreeMap<Position, RoaringBitmap>,
-        subword_regexes: &RegexInternPool,
-        visited: &mut RoaringBitmap,
-    ) -> Result<()> {
-        let stars: Vec<RegexInput> = firstpos
-            .iter()
-            .filter(|pos| *pos != self.endmarker_position)
-            .map(|pos| self.input_from_position[pos as usize].clone())
-            .filter(|input| input.is_star(subword_regexes))
-            .collect();
-
-        if stars.len() >= 2 {
-            return Err(Error::AmbiguousMatchable(
-                stars[0].get_span(),
-                stars[1].get_span(),
-            ));
-        }
-
-        for pos in firstpos {
-            if visited.contains(pos) {
-                continue;
-            }
-            let Some(follow) = followpos.get(&pos) else {
-                continue;
-            };
-            visited.insert(pos);
-            self.do_check_transitions_unambiguous(follow, followpos, subword_regexes, visited)?;
-        }
-        Ok(())
-    }
-
-    fn check_transitions_unambiguous(
-        &self,
-        firstpos: &RoaringBitmap,
-        followpos: &BTreeMap<Position, RoaringBitmap>,
-        subword_regexes: &RegexInternPool,
-    ) -> Result<()> {
-        let mut visited: RoaringBitmap = Default::default();
-        self.do_check_transitions_unambiguous(firstpos, followpos, subword_regexes, &mut visited)
-    }
-
-    fn do_check_transitions_unambiguous_subword(
-        &self,
-        firstpos: &RoaringBitmap,
-        followpos: &BTreeMap<Position, RoaringBitmap>,
-        visited: &mut RoaringBitmap,
-    ) -> Result<()> {
-        let stars: Vec<RegexInput> = firstpos
-            .iter()
-            .filter(|pos| *pos != self.endmarker_position)
-            .map(|pos| self.input_from_position[pos as usize].clone())
-            .filter(|input| input.is_star_subword())
-            .collect();
-
-        if stars.len() >= 2 {
-            return Err(Error::AmbiguousMatchable(
-                stars[0].get_span(),
-                stars[1].get_span(),
-            ));
-        }
-
-        for pos in firstpos {
-            if visited.contains(pos) {
-                continue;
-            }
-            let Some(follow) = followpos.get(&pos) else {
-                continue;
-            };
-            visited.insert(pos);
-            self.do_check_transitions_unambiguous_subword(follow, followpos, visited)?;
-        }
-        Ok(())
-    }
-
-    fn check_transitions_unambiguous_subword(
-        &self,
-        firstpos: &RoaringBitmap,
-        followpos: &BTreeMap<Position, RoaringBitmap>,
-    ) -> Result<()> {
-        let mut visited: RoaringBitmap = Default::default();
-        visited.insert(self.endmarker_position);
-        self.do_check_transitions_unambiguous_subword(firstpos, followpos, &mut visited)
-    }
-
     fn do_check_ambiguous_inputs_tail_only_subword(
         &self,
         firstpos: &RoaringBitmap,
@@ -901,8 +786,6 @@ impl Regex {
             let subword_firstpos = RoaringBitmap::from_iter(&subword_regex.firstpos());
             let subword_followpos = subword_regex.followpos();
             subword_regex
-                .check_transitions_unambiguous_subword(&subword_firstpos, &subword_followpos)?;
-            subword_regex
                 .check_ambiguous_inputs_tail_only_subword(&subword_firstpos, &subword_followpos)?;
             checked_subword_regexes.insert(subword_regex_id.0 as u32);
         }
@@ -929,8 +812,6 @@ impl Regex {
     pub(crate) fn check_ambiguities(&self, subword_regexes: &RegexInternPool) -> Result<()> {
         let firstpos = RoaringBitmap::from_iter(&self.firstpos());
         let followpos = self.followpos();
-        self.check_transitions_unambiguous(&firstpos, &followpos, subword_regexes)?;
-
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);
         let mut checked_subword_regexes: RoaringBitmap = Default::default();

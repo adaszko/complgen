@@ -39,9 +39,6 @@ pub enum Error {
     #[error("Can only specialize external commands")]
     NonCommandSpecialization(HumanSpan),
 
-    #[error("Ambiguity in matching: {:?} {:?}", .0, .1)]
-    AmbiguousMatchable(HumanSpan, HumanSpan),
-
     #[error("Ambiguity in matching")]
     UnboundedMatchable(HumanSpan, HumanSpan),
 

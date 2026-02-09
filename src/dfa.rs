@@ -877,6 +877,13 @@ impl DFA {
         Ok(dfa)
     }
 
+    // "I'll perform the ambiguity check myself" version.
+    pub fn from_regex_raw(regex: Regex, subword_regexes: &RegexInternPool) -> Result<Self> {
+        let subdfas = DFAInternPool::default();
+        let dfa = dfa_from_regex(regex, subword_regexes, subdfas)?;
+        Ok(dfa)
+    }
+
     fn make_transitions_image(&self) -> Vec<Transition> {
         let mut result: Vec<Transition> = Default::default();
         for (from, tos) in &self.transitions {
@@ -915,35 +922,37 @@ impl DFA {
         visited: &mut RoaringBitmap,
         path: &mut Vec<Inp>,
     ) -> Result<()> {
-        let star_inputs = {
-            let mut star_inputs: Vec<Inp> = Default::default();
-            for (input_id, _) in self.iter_transitions_from(state) {
-                let input = self.get_input(input_id);
-                match input {
-                    Inp::Star => star_inputs.push(input.clone()),
-                    Inp::Command { regex: None, .. } => star_inputs.push(input.clone()),
+        let star_inputs: Vec<(Inp, StateId)> = self
+            .iter_transitions_from(state)
+            .map(|(input_id, to)| (self.get_input(input_id), to))
+            .filter_map(|(input, to)| match input {
+                Inp::Star => Some((input.clone(), to)),
+                Inp::Command { regex: None, .. } => Some((input.clone(), to)),
 
-                    // Literals are always unambiguous.
-                    Inp::Literal { .. } => {}
+                // Literals are always unambiguous.
+                Inp::Literal { .. } => None,
 
-                    // It is untractable to check if two regexes match common sequences in general so
-                    // this is where the ambiguity detection draws the boundary.  It can be seen as
-                    // "escape hatches" too.
-                    Inp::Command {
-                        regex: Some(..), ..
-                    } => {}
+                // It is untractable to check if two regexes match common sequences in general so
+                // this is where the ambiguity detection draws the boundary.  It can be seen as
+                // "escape hatches" too.
+                Inp::Command {
+                    regex: Some(..), ..
+                } => None,
 
-                    // It is assummed subword ambiguity checks happened already at this stage, while
-                    // their regexes were compiled into (sub-)DFAs.
-                    Inp::Subword { .. } => {}
-                }
-            }
-            star_inputs
-        };
-        if star_inputs.len() >= 2 {
+                // It is assummed subword ambiguity checks happened already at this stage, while
+                // their regexes were compiled into (sub-)DFAs.
+                Inp::Subword { .. } => None,
+            })
+            .collect();
+
+        if star_inputs.len() >= 2
+            && star_inputs
+                .iter()
+                .any(|(_, to)| !self.accepting_states.contains(*to))
+        {
             return Err(Error::AmbiguousDFA(
                 path.to_owned().into_boxed_slice(),
-                star_inputs.into_boxed_slice(),
+                star_inputs.into_iter().map(|(input, _)| input).collect(),
             ));
         }
 
@@ -1001,7 +1010,7 @@ impl DFA {
         Ok(())
     }
 
-    fn check_ambiguity_best_effort(&self) -> Result<()> {
+    pub fn check_ambiguity_best_effort(&self) -> Result<()> {
         let mut visited: RoaringBitmap = Default::default();
         let mut path: Vec<Inp> = Default::default();
         self.do_check_ambiguity_best_effort(self.starting_state, &mut visited, &mut path)?;

@@ -194,17 +194,6 @@ fn handle_error(e: Error, path: &str, source: &str, command: &str) -> anyhow::Re
                 eprintln!("{}", err.into_string(path, &t));
             }
         }
-        Error::AmbiguousMatchable(left, right) => {
-            let err = ErrMsg::new("Ambiguous grammar").error(
-                &left,
-                source,
-                "matching can't tell apart this",
-            );
-            eprintln!("{}", err.into_string(path, &left));
-
-            let err = ErrMsg::new("").error(&right, source, "from this");
-            eprintln!("{}", err.into_string(path, &right));
-        }
         Error::UnboundedMatchable(left, right) => {
             let err = ErrMsg::new("Ambiguous grammar").error(
                 &left,
@@ -231,7 +220,11 @@ fn handle_error(e: Error, path: &str, source: &str, command: &str) -> anyhow::Re
             for input in ambiguous_inputs {
                 let mut buffer = String::new();
                 diagnostic_display_input(&mut buffer, &input)?;
-                eprintln!("  {command} {joined_path} {buffer}");
+                if joined_path.is_empty() {
+                    eprintln!("  {command} {buffer}");
+                } else {
+                    eprintln!("  {command} {joined_path} {buffer}");
+                }
             }
         }
         Error::ConflictingDescriptions(path, literal, left_descr, right_descr) => {
@@ -356,39 +349,40 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
             .context(regex_dot_file_path.clone())?;
     }
 
-    let dfa = match DFA::from_regex(regex, &subword_regexes) {
+    let dfa = match DFA::from_regex_raw(regex, &subword_regexes) {
         Ok(dfa) => dfa,
         Err(e) => return handle_error(e, usage_file_path, &input, &validated.command),
     };
 
     let dfa = dfa.minimize();
 
+    if let Some(dot_file_path) = &args.dfa {
+        let array_start = match shell {
+            Shell::Bash => bash::ARRAY_START,
+            Shell::Fish => fish::ARRAY_START,
+            Shell::Zsh => zsh::ARRAY_START,
+            Shell::Pwsh => pwsh::ARRAY_START,
+        };
+        let mut dot_file = get_file_or_stdout(dot_file_path)?;
+        dfa.to_dot(&mut dot_file, array_start)
+            .context(dot_file_path.clone())?;
+    }
+
+    if let Err(e) = dfa.check_ambiguity_best_effort() {
+        return handle_error(e, usage_file_path, &input, &validated.command);
+    }
+
     let script_file = get_file_or_stdout(path)?;
     let mut writer = BufWriter::new(script_file);
 
     match shell {
         Shell::Bash => {
-            if let Some(dot_file_path) = &args.dfa {
-                let mut dot_file = get_file_or_stdout(dot_file_path)?;
-                dfa.to_dot(&mut dot_file, bash::ARRAY_START)
-                    .context(dot_file_path.clone())?;
-            }
             complgen::bash::write_completion_script(&mut writer, &validated.command, &dfa)?
         }
         Shell::Fish => {
-            if let Some(dot_file_path) = &args.dfa {
-                let mut dot_file = get_file_or_stdout(dot_file_path)?;
-                dfa.to_dot(&mut dot_file, fish::ARRAY_START)
-                    .context(dot_file_path.clone())?;
-            }
             complgen::fish::write_completion_script(&mut writer, &validated.command, &dfa)?
         }
         Shell::Zsh => {
-            if let Some(dot_file_path) = &args.dfa {
-                let mut dot_file = get_file_or_stdout(dot_file_path)?;
-                dfa.to_dot(&mut dot_file, zsh::ARRAY_START)
-                    .context(dot_file_path.clone())?;
-            }
             let expected_name = format!("_{}", validated.command);
             if path != "-"
                 && Path::new(path).file_name().unwrap_or_default() != OsStr::new(&expected_name)
@@ -400,12 +394,7 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
             complgen::zsh::write_completion_script(&mut writer, &validated.command, &dfa)?;
         }
         Shell::Pwsh => {
-            if let Some(dot_file_path) = &args.dfa {
-                let mut dot_file = get_file_or_stdout(dot_file_path)?;
-                dfa.to_dot(&mut dot_file, pwsh::ARRAY_START)
-                    .context(dot_file_path.clone())?;
-            }
-            complgen::pwsh::write_completion_script(&mut writer, &validated.command, &dfa)?;
+            complgen::pwsh::write_completion_script(&mut writer, &validated.command, &dfa)?
         }
     }
 

@@ -56,19 +56,8 @@ def test_ambiguous_transition2(complgen_binary_path: Path):
     r = complgen_check(
         complgen_binary_path, """cmd {{{ echo foo }}} | {{{ echo bar }}};"""
     )
-    assert r.returncode == 1
-    assert r.stderr == snapshot("""\
--:1:5:error: Ambiguous grammar
-  |
-1 | cmd {{{ echo foo }}} | {{{ echo bar }}};
-  |     ^^^^^^^^^^^^^^^^ matching can't tell apart this
-  |
--:1:24:error
-  |
-1 | cmd {{{ echo foo }}} | {{{ echo bar }}};
-  |                        ^^^^^^^^^^^^^^^^ from this
-  |
-""")
+    assert r.returncode == 0
+    assert r.stderr == snapshot("")
 
 
 def test_ambiguous_transition3(complgen_binary_path: Path):
@@ -84,19 +73,8 @@ def test_ambiguous_transition4(complgen_binary_path: Path):
     r = complgen_check(
         complgen_binary_path, """cmd {{{ echo foo }}} || {{{ echo bar }}};"""
     )
-    assert r.returncode == 1
-    assert r.stderr == snapshot("""\
--:1:5:error: Ambiguous grammar
-  |
-1 | cmd {{{ echo foo }}} || {{{ echo bar }}};
-  |     ^^^^^^^^^^^^^^^^ matching can't tell apart this
-  |
--:1:25:error
-  |
-1 | cmd {{{ echo foo }}} || {{{ echo bar }}};
-  |                         ^^^^^^^^^^^^^^^^ from this
-  |
-""")
+    assert r.returncode == 0
+    assert r.stderr == snapshot("")
 
 
 def test_ambiguous_transition5(complgen_binary_path: Path):
@@ -258,17 +236,12 @@ def test_bug1(complgen_binary_path: Path):
 
 def test_bug2(complgen_binary_path: Path):
     r = complgen_check(complgen_binary_path, """darcs ( <FILE> | <DIRECTORY> );""")
-    assert r.returncode == 1
+    assert r.returncode == 0
     assert r.stderr == snapshot("""\
--:1:9:error: Ambiguous grammar
+-:1:9:warning: Undefined
   |
 1 | darcs ( <FILE> | <DIRECTORY> );
-  |         ^^^^^^ matching can't tell apart this
-  |
--:1:18:error
-  |
-1 | darcs ( <FILE> | <DIRECTORY> );
-  |                  ^^^^^^^^^^^ from this
+  |         ------
   |
 """)
 
@@ -281,34 +254,29 @@ aerc [<OPTION>]...;
 aerc [<OPTION>]... foo;
 """,
     )
-    assert r.returncode == 1
+    assert r.returncode == 0
     assert r.stderr == snapshot("""\
--:2:7:error: Ambiguous grammar
-  |
-2 | aerc [<OPTION>]...;
-  |       ^^^^^^^^ matching can't tell apart this
-  |
--:3:7:error
+-:3:7:warning: Undefined
   |
 3 | aerc [<OPTION>]... foo;
-  |       ^^^^^^^^ from this
+  |       --------
   |
 """)
 
 
 def test_bug4(complgen_binary_path: Path):
     r = complgen_check(complgen_binary_path, """darcs [<INITIALIZATION>] <COMMAND>;""")
-    assert r.returncode == 1
+    assert r.returncode == 0
     assert r.stderr == snapshot("""\
--:1:8:error: Ambiguous grammar
+-:1:8:warning: Undefined
   |
 1 | darcs [<INITIALIZATION>] <COMMAND>;
-  |        ^^^^^^^^^^^^^^^^ matching can't tell apart this
+  |        ----------------
   |
--:1:26:error
+-:1:26:warning: Undefined
   |
 1 | darcs [<INITIALIZATION>] <COMMAND>;
-  |                          ^^^^^^^^^ from this
+  |                          ---------
   |
 """)
 
@@ -327,12 +295,8 @@ mygit diff <PATH>;
 mygit diff {{{}}}@fish"[a-zA-Z_-]*";
 """,
     )
-    assert r.returncode == 1
-    assert r.stderr == snapshot("""\
-error: DFA Ambiguity:
-  mygit diff {{{ compgen -A file -- "$1" }}}
-  mygit diff {{{  }}}
-""")
+    assert r.returncode == 0
+    assert r.stderr == snapshot("")
 
 
 def test_bug6(complgen_binary_path: Path):
@@ -414,17 +378,17 @@ def test_ambiguous_dfa(complgen_binary_path: Path):
 darcs <SOURCE> ... <DESTINATION>;
 """,
     )
-    assert r.returncode == 1
+    assert r.returncode == 0
     assert r.stderr == snapshot("""\
--:2:7:error: Ambiguous grammar
+-:2:7:warning: Undefined
   |
 2 | darcs <SOURCE> ... <DESTINATION>;
-  |       ^^^^^^^^ matching can't tell apart this
+  |       --------
   |
--:2:20:error
+-:2:20:warning: Undefined
   |
 2 | darcs <SOURCE> ... <DESTINATION>;
-  |                    ^^^^^^^^^^^^^ from this
+  |                    -------------
   |
 """)
 

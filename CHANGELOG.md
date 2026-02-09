@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  - Breaking: Conflicting description check should now detect all cases thanks to moving it from working on
    regexes, into working on DFAs.  This change is at the expense of worse error messages.
+ - Breaking: Ambiguity detection also now works on the DFA instead of regexes.
 
 ## 0.7.4
 ### Fixed
