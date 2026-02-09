@@ -74,6 +74,28 @@ cmd {{{ Write-Output "completion`tdescription" }}};
         assert completions == [("completion", "description")]
 
 
+def test_external_command_filters_candidates(complgen_binary_path: Path):
+    GRAMMAR = r"""
+cmd {{{ Write-Output foo; Write-Output bar; Write-Output baz; }}};
+"""
+    with gen_pwsh_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        completions = get_sorted_pwsh_completions(completions_file_path, "cmd b")
+        assert completions == [("bar", ""), ("baz", "")]
+
+
+def test_external_command_subword_filters_candidates(complgen_binary_path: Path):
+    GRAMMAR = r"""
+cmd --ref={{{ Write-Output foo; Write-Output bar; Write-Output baz; }}};
+"""
+    with gen_pwsh_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        completions = get_sorted_pwsh_completions(completions_file_path, "cmd --ref=b")
+        assert completions == [("--ref=bar", ""), ("--ref=baz", "")]
+
+
 def test_completes_paths(complgen_binary_path: Path):
     with gen_pwsh_completion_script_path(
         complgen_binary_path, """cmd <PATH>"""

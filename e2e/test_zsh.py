@@ -235,6 +235,30 @@ cmd {{{ echo -e "completion\tdescription" }}};
     assert actual == sorted([["completion", "completion", "--", "description"]])
 
 
+def test_external_command_filters_candidates(complgen_binary_path: Path):
+    GRAMMAR = r"""
+cmd {{{echo foo; echo bar; echo baz;}}};
+"""
+    actual = [
+        s.split()
+        for s in get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd b")
+    ]
+    assert actual == sorted([["bar"], ["baz"]])
+
+
+def test_external_command_subword_filters_candidates(complgen_binary_path: Path):
+    GRAMMAR = r"""
+cmd --ref={{{echo foo; echo bar; echo baz;}}};
+"""
+    actual = [
+        s.split()
+        for s in get_sorted_aot_completions(
+            complgen_binary_path, GRAMMAR, "cmd --ref=b"
+        )
+    ]
+    assert actual == sorted([["--ref=bar"], ["--ref=baz"]])
+
+
 def test_specializes_for_zsh(complgen_binary_path: Path):
     GRAMMAR = """
 cmd <FOO>;

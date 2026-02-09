@@ -196,6 +196,24 @@ cmd <COMMAND> [--help];
         ) == sorted([])
 
 
+def test_external_command_filters_candidates(complgen_binary_path: Path):
+    GRAMMAR = r"""
+cmd {{{echo foo; echo bar; echo baz;}}};
+"""
+    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
+        input = r'''COMP_WORDS=(cmd b); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(["bar", "baz"])
+
+
+def test_external_command_subword_filters_candidates(complgen_binary_path: Path):
+    GRAMMAR = r"""
+cmd --ref={{{echo foo; echo bar; echo baz;}}};
+"""
+    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
+        input = r'''COMP_WORDS=(cmd --ref=); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(["bar", "baz"])
+
+
 def test_bash_external_command_produces_description(complgen_binary_path: Path):
     GRAMMAR = r"""
 cmd {{{ echo -e "completion\tdescription" }}};

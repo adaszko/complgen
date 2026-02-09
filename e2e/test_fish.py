@@ -75,6 +75,36 @@ cmd {{{ echo -e "completion\tdescription" }}};
         ]
 
 
+def test_external_command_filters_candidates(complgen_binary_path: Path):
+    GRAMMAR = r"""
+cmd {{{echo foo; echo bar; echo baz;}}};
+"""
+
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        input = 'complete --do-complete "cmd b"'
+        assert get_sorted_fish_completions(completions_file_path, input) == [
+            ("bar", ""),
+            ("baz", ""),
+        ]
+
+
+def test_external_command_subword_filters_candidates(complgen_binary_path: Path):
+    GRAMMAR = r"""
+cmd --ref={{{echo foo; echo bar; echo baz;}}};
+"""
+
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        input = 'complete --do-complete "cmd --ref=b"'
+        assert get_sorted_fish_completions(completions_file_path, input) == [
+            ("--ref=bar", ""),
+            ("--ref=baz", ""),
+        ]
+
+
 def test_completes_paths(complgen_binary_path: Path):
     with gen_fish_aot_completion_script_path(
         complgen_binary_path, """cmd <PATH>"""
