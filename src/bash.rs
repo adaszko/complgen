@@ -11,6 +11,7 @@ use ustr::{Ustr, ustr};
 // Bash array indexes start at 0.
 // Associative arrays are local by default.
 // Bash uses *dynamic* scoping for local variables (!)
+// `declare -n` can be a more readable eval substitute
 
 pub const ARRAY_START: u32 = 0;
 pub const MATCH_FN_NAME: &str = "__complgen_match";
