@@ -125,6 +125,7 @@ impl Inp {
                     let regex = subword_regexes.lookup(subword_regex_id);
                     let subdfa = DFA::from_regex(regex.clone(), subword_regexes)?;
                     let subdfa = subdfa.minimize();
+                    subdfa.check_ambiguity_best_effort()?;
                     let subdfaid = subdfas.insert(subword_regex_id, subdfa);
                     subdfaid
                 };
@@ -914,30 +915,80 @@ impl DFA {
         visited: &mut RoaringBitmap,
         path: &mut Vec<Inp>,
     ) -> Result<()> {
-        let mut ambiguous_inputs: Vec<Inp> = Default::default();
-        for (input_id, _) in self.iter_transitions_from(state) {
-            let input = self.get_input(input_id);
-            match input {
-                Inp::Literal { .. } => {}
-                Inp::Star => ambiguous_inputs.push(input.clone()),
-                Inp::Subword {
-                    subdfa: subdfa_id, ..
-                } => {
-                    let subdfa = self.subdfas.lookup(*subdfa_id);
-                    subdfa.check_ambiguity_best_effort()?
+        let star_inputs = {
+            let mut star_inputs: Vec<Inp> = Default::default();
+            for (input_id, _) in self.iter_transitions_from(state) {
+                let input = self.get_input(input_id);
+                match input {
+                    Inp::Star => star_inputs.push(input.clone()),
+                    Inp::Command { regex: None, .. } => star_inputs.push(input.clone()),
+
+                    // Literals are always unambiguous.
+                    Inp::Literal { .. } => {}
+
+                    // It is untractable to check if two regexes match common sequences in general so
+                    // this is where the ambiguity detection draws the boundary.  It can be seen as
+                    // "escape hatches" too.
+                    Inp::Command {
+                        regex: Some(..), ..
+                    } => {}
+
+                    // It is assummed subword ambiguity checks happened already at this stage, while
+                    // their regexes were compiled into (sub-)DFAs.
+                    Inp::Subword { .. } => {}
                 }
-                Inp::Command { regex: None, .. } => ambiguous_inputs.push(input.clone()),
-                Inp::Command {
-                    regex: Some(..), ..
-                } => {}
             }
-        }
-        if ambiguous_inputs.len() >= 2 {
+            star_inputs
+        };
+        if star_inputs.len() >= 2 {
             return Err(Error::AmbiguousDFA(
                 path.to_owned().into_boxed_slice(),
-                ambiguous_inputs.into_boxed_slice(),
+                star_inputs.into_boxed_slice(),
             ));
         }
+
+        let mut conflicting_description_inputs: Vec<(Ustr, Option<Ustr>)> = self
+            .iter_transitions_from(state)
+            .map(|(input_id, _)| self.get_input(input_id))
+            .filter_map(|inp| match inp {
+                Inp::Literal {
+                    literal,
+                    description,
+                    ..
+                } => Some((*literal, *description)),
+                _ => None,
+            })
+            .collect();
+
+        conflicting_description_inputs.sort_by_key(|(literal, _)| *literal);
+        conflicting_description_inputs
+            .dedup_by_key(|(literal, description)| (*literal, *description));
+
+        for slice in conflicting_description_inputs.windows(2) {
+            let [
+                (left_literal, left_description),
+                (right_literal, right_description),
+            ] = slice
+            else {
+                unreachable!()
+            };
+
+            if left_literal != right_literal {
+                continue;
+            }
+
+            if left_description == right_description {
+                continue;
+            }
+
+            return Err(Error::ConflictingDescriptions(
+                path.to_owned().into_boxed_slice(),
+                *left_literal,
+                left_description.unwrap_or(ustr("")),
+                right_description.unwrap_or(ustr("")),
+            ));
+        }
+
         for (input_id, to) in self.iter_transitions_from(state) {
             if !visited.contains(to) {
                 visited.insert(to);

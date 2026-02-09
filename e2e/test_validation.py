@@ -346,10 +346,21 @@ cmd [<commit>] <PATH>;
         shell="zsh",
     )
     assert r.returncode == 0
-    assert r.stderr == snapshot("""""")
+    assert r.stderr == snapshot("")
 
 
-def test_clashing_variants(complgen_binary_path: Path):
+def test_token_identity(complgen_binary_path: Path):
+    r = complgen_check(
+        complgen_binary_path,
+        """
+cmd dummy clash;
+cmd dummy clash "foo";
+""",
+    )
+    assert r.returncode == 1
+
+
+def test_conflicting_descriptions(complgen_binary_path: Path):
     r = complgen_check(
         complgen_binary_path,
         r"""
@@ -358,16 +369,41 @@ mygit (clone "Clone a repository into a new directory" | clone --bare);
     )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
--:2:8:error: Clashing variants
-  |
-2 | mygit (clone "Clone a repository into a new directory" | clone --bare);
-  |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ completion can't tell apart
-  |
--:2:58:error
-  |
-2 | mygit (clone "Clone a repository into a new directory" | clone --bare);
-  |                                                          ^^^^^ from this
-  |
+error: Conflicting descriptions:
+
+mygit clone "Clone a repository into a new directory"
+mygit clone ""
+""")
+
+
+def test_conflicting_descriptions_defying_regex_check(complgen_binary_path: Path):
+    GRAMMAR = """
+cmd dummy dummy;
+cmd dummy help "foo help" bar;
+cmd dummy help "bar help" baz;
+"""
+    r = complgen_check(complgen_binary_path, GRAMMAR)
+    assert r.returncode == 1
+    assert r.stderr == snapshot("""\
+error: Conflicting descriptions:
+
+cmd dummy help "foo help"
+cmd dummy help "bar help"
+""")
+
+
+def test_after_conflicting_descriptions_defying_regex_check(complgen_binary_path: Path):
+    GRAMMAR = """
+cmd help "foo help" bar;
+cmd help "bar help" baz;
+"""
+    r = complgen_check(complgen_binary_path, GRAMMAR)
+    assert r.returncode == 1
+    assert r.stderr == snapshot("""\
+error: Conflicting descriptions:
+
+cmd help "foo help"
+cmd help "bar help"
 """)
 
 
@@ -649,7 +685,7 @@ spec_test <COMMAND>;
 """,
     )
     assert r.returncode == 0
-    assert r.stderr == snapshot("""""")
+    assert r.stderr == snapshot("")
 
 
 def test_transitive_unused_specialization(complgen_binary_path: Path):

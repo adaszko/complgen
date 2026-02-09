@@ -1,5 +1,6 @@
 use grammar::HumanSpan;
 use std::string::FromUtf8Error;
+use ustr::Ustr;
 
 use crate::dfa::Inp;
 
@@ -45,7 +46,7 @@ pub enum Error {
     UnboundedMatchable(HumanSpan, HumanSpan),
 
     #[error("Clashing variants")]
-    ClashingVariants(HumanSpan, HumanSpan),
+    ConflictingDescriptions(Box<[Inp]>, Ustr, Ustr, Ustr),
 
     #[error("Two adjacent terminals in a subword expression")]
     SubwordSpaces(HumanSpan, HumanSpan, Box<[HumanSpan]>),

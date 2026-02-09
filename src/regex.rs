@@ -873,74 +873,6 @@ impl Regex {
         self.do_check_ambiguous_inputs_tail_only_subword(firstpos, followpos, None, &mut visited)
     }
 
-    fn do_check_descr_no_descr_clashes(
-        &self,
-        firstpos: &RoaringBitmap,
-        followpos: &BTreeMap<Position, RoaringBitmap>,
-        visited: &mut RoaringBitmap,
-    ) -> Result<()> {
-        let mut inputs: Vec<(Ustr, Option<Ustr>, HumanSpan)> = firstpos
-            .iter()
-            .filter(|pos| *pos != self.endmarker_position)
-            .map(|pos| self.input_from_position[pos as usize].clone())
-            .filter_map(|inp| match inp {
-                RegexInput::Literal {
-                    literal,
-                    description,
-                    span,
-                    ..
-                } => Some((literal, description, span)),
-                _ => None,
-            })
-            .collect();
-
-        inputs.sort_by_key(|(literal, _, _)| *literal);
-        inputs.dedup_by_key(|(literal, description, _)| (*literal, *description));
-
-        for slice in inputs.windows(2) {
-            let [
-                (left_literal, left_description, left_span),
-                (right_literal, right_description, right_span),
-            ] = slice
-            else {
-                unreachable!()
-            };
-
-            if left_literal != right_literal {
-                continue;
-            }
-
-            if left_description == right_description {
-                continue;
-            }
-
-            return Err(Error::ClashingVariants(*left_span, *right_span));
-        }
-
-        for pos in firstpos {
-            if visited.contains(pos) {
-                continue;
-            }
-            let Some(follow) = followpos.get(&pos) else {
-                continue;
-            };
-            visited.insert(pos);
-            self.do_check_descr_no_descr_clashes(follow, followpos, visited)?;
-        }
-        Ok(())
-    }
-
-    // e.g. git (subcommand "description" | subcommand --option);
-    fn check_descr_no_descr_clashes(
-        &self,
-        firstpos: &RoaringBitmap,
-        followpos: &BTreeMap<Position, RoaringBitmap>,
-    ) -> Result<()> {
-        let mut visited: RoaringBitmap = Default::default();
-        visited.insert(self.endmarker_position);
-        self.do_check_descr_no_descr_clashes(firstpos, followpos, &mut visited)
-    }
-
     fn check_subwords(
         &self,
         firstpos: &RoaringBitmap,
@@ -972,7 +904,6 @@ impl Regex {
                 .check_transitions_unambiguous_subword(&subword_firstpos, &subword_followpos)?;
             subword_regex
                 .check_ambiguous_inputs_tail_only_subword(&subword_firstpos, &subword_followpos)?;
-            subword_regex.check_descr_no_descr_clashes(&subword_firstpos, &subword_followpos)?;
             checked_subword_regexes.insert(subword_regex_id.0 as u32);
         }
 
@@ -999,7 +930,6 @@ impl Regex {
         let firstpos = RoaringBitmap::from_iter(&self.firstpos());
         let followpos = self.followpos();
         self.check_transitions_unambiguous(&firstpos, &followpos, subword_regexes)?;
-        self.check_descr_no_descr_clashes(&firstpos, &followpos)?;
 
         let mut visited: RoaringBitmap = Default::default();
         visited.insert(self.endmarker_position);

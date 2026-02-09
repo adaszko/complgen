@@ -234,16 +234,32 @@ fn handle_error(e: Error, path: &str, source: &str, command: &str) -> anyhow::Re
                 eprintln!("  {command} {joined_path} {buffer}");
             }
         }
-        Error::ClashingVariants(left, right) => {
-            let err = ErrMsg::new("Clashing variants").error(
-                &left,
-                source,
-                "completion can't tell apart",
-            );
-            eprintln!("{}", err.into_string(path, &left));
-
-            let err = ErrMsg::new("").error(&right, source, "from this");
-            eprintln!("{}", err.into_string(path, &right));
+        Error::ConflictingDescriptions(path, literal, left_descr, right_descr) => {
+            let joined_path = {
+                let mut buf = String::new();
+                for (i, inp) in path.iter().enumerate() {
+                    diagnostic_display_input(&mut buf, inp)?;
+                    if i < path.len() - 1 {
+                        buf.push(' ');
+                    }
+                }
+                buf
+            };
+            eprintln!("error: Conflicting descriptions:");
+            eprintln!();
+            if joined_path.is_empty() {
+                eprintln!("{command} {literal} {:?}", left_descr.as_str());
+                eprintln!("{command} {literal} {:?}", right_descr.as_str());
+            } else {
+                eprintln!(
+                    "{command} {joined_path} {literal} {:?}",
+                    left_descr.as_str()
+                );
+                eprintln!(
+                    "{command} {joined_path} {literal} {:?}",
+                    right_descr.as_str()
+                );
+            }
         }
         e => {
             eprintln!("{}", e);
