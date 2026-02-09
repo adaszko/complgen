@@ -444,7 +444,7 @@ fn write_generic_subword_fn<W: Write>(
             set rx $subword_regexes[$rxs[$index]]
             for line in ($function_name "$completed_prefix" "$matched_prefix")
                 string match --regex --quiet "^(?<match>$rx).*" -- $line
-                if test -n "$match"
+                if test -n "$match" -a "$match" = "$line"
                     set --append candidates (printf "%s%s\n" $matched_prefix $match)
                 end
             end
@@ -1360,7 +1360,7 @@ end
             set rx $regexes[$rxs[$index]]
             for line in ($function_name "$COMP_WORDS[$COMP_CWORD]" "")
                 string match --regex --quiet "^(?<match>$rx).*" -- $line
-                if test -n "$match"
+                if test -n "$match" -a "$match" = "$line"
                     set --append candidates "$match"
                 end
             end

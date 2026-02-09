@@ -267,18 +267,22 @@ def test_nontail_completion_subword(complgen_binary_path: Path):
         assert get_sorted_bash_completions(path, input) == sorted(["leftright"])
 
 
-def test_nontail_completion_truncates_to_regex(complgen_binary_path: Path):
-    GRAMMAR = """cmd {{{ echo leftspam }}}@bash"left";"""
+def test_nontail_completion_preserves_only_regex_matches(complgen_binary_path: Path):
+    GRAMMAR = """cmd {{{ echo foo; echo bar; echo bar2; echo baz }}}@bash"bar";"""
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
-        input = r'''COMP_WORDS=(cmd left); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_bash_completions(path, input) == sorted(["left"])
+        input = (
+            r'''COMP_WORDS=(cmd); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        )
+        assert get_sorted_bash_completions(path, input) == sorted(["bar"])
 
 
-def test_nontail_completion_subword_truncates_to_regex(complgen_binary_path: Path):
-    GRAMMAR = """cmd left{{{ echo rightspam }}}@bash"right";"""
+def test_nontail_completion_subword_preserves_only_regex_matches(
+    complgen_binary_path: Path,
+):
+    GRAMMAR = """cmd left{{{ echo foo; echo bar; echo bar2; echo baz }}}@bash"bar";"""
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
         input = r'''COMP_WORDS=(cmd left); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
-        assert get_sorted_bash_completions(path, input) == sorted(["leftright"])
+        assert get_sorted_bash_completions(path, input) == sorted(["leftbar"])
 
 
 def test_nontail_escapes_regex(complgen_binary_path: Path):

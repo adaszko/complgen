@@ -244,7 +244,7 @@ fn write_generic_subword_fn<W: Write>(
             local regex="^(${{regexes[$regex_id]}}).*"
             local -a subword_candidates=()
             for line in "${{output[@]}}"; do
-                if [[ ${{line}} =~ $regex && -n ${{BASH_REMATCH[1]}} ]]; then
+                if [[ ${{line}} =~ $regex && ${{BASH_REMATCH[1]}} = ${{line}} ]]; then
                     match="${{BASH_REMATCH[1]}}"
                     subword_candidates+=("$match")
                 fi
@@ -866,7 +866,7 @@ fi
             readarray -t output < <(_{command}_cmd_$command_id "$prefix" "" | while read -r f1 _; do echo "$f1"; done)
             local -a candidates=()
             for line in "${{output[@]}}"; do
-                if [[ ${{line}} =~ $regex && -n ${{BASH_REMATCH[1]}} ]]; then
+                if [[ ${{line}} =~ $regex && ${{BASH_REMATCH[1]}} = ${{line}} ]]; then
                     match="${{BASH_REMATCH[1]}}"
                     candidates+=("$match")
                 fi

@@ -333,25 +333,27 @@ def test_nontail_completion_subword(complgen_binary_path: Path):
         ]
 
 
-def test_nontail_completion_truncates_to_regex(complgen_binary_path: Path):
-    GRAMMAR = """cmd {{{ echo leftspam }}}@fish"left";"""
+def test_nontail_completion_preserves_only_regex_matches(complgen_binary_path: Path):
+    GRAMMAR = """cmd {{{ echo foo; echo bar; echo baz }}}@fish"bar";"""
     with gen_fish_aot_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         input = 'complete --do-complete "cmd "'
         assert get_sorted_fish_completions(completions_file_path, input) == [
-            ("left", "")
+            ("bar", "")
         ]
 
 
-def test_nontail_completion_subword_truncates_to_regex(complgen_binary_path: Path):
-    GRAMMAR = """cmd {{{ echo leftspam }}}@fish"left"right;"""
+def test_nontail_completion_subword_preserves_only_regex_matches(
+    complgen_binary_path: Path,
+):
+    GRAMMAR = """cmd left{{{ echo foo; echo bar; echo baz }}}@fish"bar";"""
     with gen_fish_aot_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         input = 'complete --do-complete "cmd left"'
         assert get_sorted_fish_completions(completions_file_path, input) == [
-            ("leftright", "")
+            ("leftbar", "")
         ]
 
 

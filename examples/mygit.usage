@@ -9,12 +9,27 @@ mygit (diff || (<global-option>... diff)) [<diff-option>...] <commit>...<commit>
 mygit (diff || (<global-option>... diff)) [<diff-option>...] <blob> <blob>;
 mygit (diff || (<global-option>... diff)) [<diff-option>...] --no-index [--] <PATH> <PATH> [<PATH>...];
 
+mygit show <commit>;
 
 <commit> ::= {{{}}}@fish"[a-zA-Z_-]*"@zsh"[a-zA-Z_-]*";
 
-<commit@bash> ::= {{{
-    ls -1 $(git rev-parse --show-toplevel)/.git/refs/heads/
-}}}@bash"[a-zA-Z_-]+";
+<commit@bash> ::= {{{(
+    shopt -s globstar
+    local root
+    root="$(git rev-parse --show-toplevel 2>/dev/null)"
+    if [[ -d "$root"/.git/refs/heads ]]; then
+        cd "$root"/.git/refs/heads
+        printf '%s\n' *
+    fi
+    if [[ -d "$root"/.git/refs/remotes ]]; then
+        cd "$root"/.git/refs/remotes
+        printf '%s\n' **/*
+    fi
+    if [[ -d "$root"/.git/refs/tags ]]; then
+        cd "$root"/.git/refs/tags
+        printf '%s\n' **/*
+    fi
+)}}}@bash"[a-zA-Z0-9/._-]+";
 
 <revision-range> ::= {{{}}}@bash"[a-zA-Z_-]*"@fish"[a-zA-Z_-]+"@zsh"[a-zA-Z_-]+";
 

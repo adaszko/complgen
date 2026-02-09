@@ -322,7 +322,7 @@ fn write_generic_subword_fn<W: Write>(
             for line in ${{command_completions[@]}}; do
                 if [[ $line = "${{completed_prefix}}"* ]]; then
                     declare parts=(${{(@s:	:)line}})
-                    if [[ ${{parts[1]}} =~ $regex && -n ${{match[1]}} ]]; then
+                    if [[ ${{parts[1]}} =~ $regex && ${{match[1]}} = ${{parts[1]}} ]]; then
                         parts[1]=${{match[1]}}
                         if [[ -v "parts[2]" ]]; then
                             declare completion=$matched_prefix${{parts[1]}}
@@ -1115,7 +1115,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             declare -a command_completions=("${{(@f)output}}")
             for line in ${{command_completions[@]}}; do
                 declare parts=(${{(@s:	:)line}})
-                if [[ ${{parts[1]}} =~ $regex && -n ${{match[1]}} ]]; then
+                if [[ ${{parts[1]}} =~ $regex && ${{match[1]}} = ${{parts[1]}} ]]; then
                     parts[1]=${{match[1]}}
                     if [[ -v "parts[2]" ]]; then
                         completions_trailing_space+=("${{parts[1]}}")
