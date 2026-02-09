@@ -292,6 +292,19 @@ def test_nontail_escapes_regex(complgen_binary_path: Path):
         assert get_sorted_bash_completions(path, input) == sorted(["bar "])
 
 
+def test_nontail_completes_prefix(complgen_binary_path: Path):
+    GRAMMAR = """
+cmd --ref=<REF>;
+<REF> ::= {{{ echo foo; echo bar; echo baz; }}}@bash"[a-zA-Z0-9/._-]+";
+"""
+    with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
+        completions = get_sorted_bash_completions(
+            completions_file_path,
+            '''COMP_WORDS=(cmd --ref=b); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"''',
+        )
+        assert completions == sorted(["bar"])
+
+
 def test_mycargo(complgen_binary_path: Path):
     GRAMMAR = r"""
 mycargo test <TESTNAME>;

@@ -335,6 +335,18 @@ def test_nontail_escapes_regex(complgen_binary_path: Path):
         assert completions == [("bar", "")]
 
 
+def test_nontail_completes_prefix(complgen_binary_path: Path):
+    GRAMMAR = """
+cmd --ref=<REF>;
+cmd {{{ Write-Output foo; Write-Output bar; Write-Output baz }}}@pwsh"[a-zA-Z0-9/._-]+";
+"""
+    with gen_pwsh_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        completions = get_sorted_pwsh_completions(completions_file_path, "cmd --ref=b")
+        assert completions == [("bar", "")]
+
+
 def test_matches_prefix(complgen_binary_path: Path):
     GRAMMAR = """
 cmd +<toolchain> foo;

@@ -371,6 +371,16 @@ def test_nontail_escapes_regex(complgen_binary_path: Path):
     ) == sorted(["bar"])
 
 
+def test_nontail_completes_prefix(complgen_binary_path: Path):
+    GRAMMAR = """
+cmd --ref=<REF>;
+<REF> ::= {{{ echo foo; echo bar; echo baz; }}}@zsh"[a-zA-Z0-9/._-]+";
+"""
+    assert get_sorted_aot_completions(
+        complgen_binary_path, GRAMMAR, "cmd --ref=b"
+    ) == sorted(["bar"])
+
+
 def test_mycargo(complgen_binary_path: Path):
     GRAMMAR = r"""
 cargo [+<toolchain>] [<COMMAND>];
