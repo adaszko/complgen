@@ -38,7 +38,7 @@ mygit show <commit>;
 <global-option> ::= (--version | -v)
                   | (--help | -h)
                   | -C <DIRECTORY>
-                  | -c <config-option>
+                  | -c <_>
                   | --exec-path[=<DIRECTORY>]
                   | --html-path
                   | --man-path

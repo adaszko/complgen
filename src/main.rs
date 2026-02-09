@@ -301,7 +301,7 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
         }
     };
 
-    let validated = match ValidGrammar::from_grammar(grammar, shell) {
+    let mut validated = match ValidGrammar::from_grammar(grammar, shell) {
         Ok(validated) => validated,
         Err(e) => return handle_error(e, usage_file_path, &input, "dummy"),
     };
@@ -313,6 +313,7 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
         Err(e) => return handle_error(e, usage_file_path, &input, &validated.command),
     };
 
+    validated.undefined_nonterminals.remove(&ustr::ustr("_"));
     if !validated.undefined_nonterminals.is_empty() {
         let mut undefs: Vec<HumanSpan> =
             validated.undefined_nonterminals.values().copied().collect();
