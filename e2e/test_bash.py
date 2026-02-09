@@ -210,7 +210,7 @@ def test_external_command_subword_filters_candidates(complgen_binary_path: Path)
 cmd --ref={{{echo foo; echo bar; echo baz;}}};
 """
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
-        input = r'''COMP_WORDS=(cmd --ref=); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        input = r'''COMP_WORDS=(cmd --ref=b); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_bash_completions(path, input) == sorted(["bar", "baz"])
 
 

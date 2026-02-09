@@ -224,9 +224,8 @@ fn write_generic_subword_fn<W: Write>(
             local literal=${{literals[$literal_id]}}
             subword_candidates+=("$matched_prefix$literal")
         done
-        if [[ ${{#subword_candidates[@]}} -gt 0 ]]; then
-            {MATCH_FN_NAME} "$matched_prefix$completed_prefix" subword_candidates subword_matches
-        fi"#
+        {MATCH_FN_NAME} "$matched_prefix$completed_prefix" subword_candidates subword_matches
+        "#
     )?;
 
     if needs_nontails_code {
@@ -264,7 +263,9 @@ fn write_generic_subword_fn<W: Write>(
         eval "local -a transitions=(\${{$commands_name[$state]}})"
         for command_id in "${{transitions[@]}}"; do
             readarray -t subword_candidates < <(_{command}_cmd_$command_id "$completed_prefix" "$matched_prefix" | while read -r f1 _; do echo "$f1"; done)
-            for item in "${{subword_candidates[@]}}"; do
+            local -a filtered_candidates=()
+            {MATCH_FN_NAME} "$completed_prefix" subword_candidates filtered_candidates
+            for item in "${{filtered_candidates[@]}}"; do
                 subword_matches+=("$matched_prefix$item")
             done
         done"#
