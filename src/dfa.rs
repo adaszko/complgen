@@ -148,21 +148,10 @@ impl Inp {
         Ok(result)
     }
 
-    pub fn is_star(&self, subdfas: &DFAInternPool) -> bool {
+    pub fn is_star(&self) -> bool {
         match self {
-            Self::Literal { .. } => false,
-            Self::Subword { subdfa: id, .. } => {
-                let subdfa = subdfas.lookup(*id);
-                for inp_id in subdfa.iter_leaders() {
-                    let inp = subdfa.get_input(inp_id);
-                    if inp.is_star(subdfas) {
-                        return true;
-                    }
-                }
-                false
-            }
             Self::Star => true,
-            Self::Command { .. } => false,
+            Self::Literal { .. } | Self::Subword { .. } | Self::Command { .. } => false,
         }
     }
 
@@ -1004,11 +993,6 @@ impl DFA {
         }
     }
 
-    pub(crate) fn iter_leaders(&self) -> impl Iterator<Item = InpId> {
-        self.iter_transitions_from(self.starting_state)
-            .map(|(inp_id, _)| inp_id)
-    }
-
     pub(crate) fn iter_transitions(&self) -> impl Iterator<Item = (StateId, InpId, StateId)> + '_ {
         self.transitions
             .iter()
@@ -1113,13 +1097,11 @@ impl DFA {
     ) -> impl Iterator<Item = (StateId, StateId)> + '_ {
         self.iter_transitions()
             .filter_map(move |(from, input_id, to)| {
-                let input = self.get_input(input_id);
-                let is_star = match input {
-                    Inp::Star => true,
-                    Inp::Command { .. } => false,
-                    Inp::Literal { .. } | Inp::Subword { .. } => false,
-                };
-                if is_star { Some((from, to)) } else { None }
+                if self.get_input(input_id).is_star() {
+                    Some((from, to))
+                } else {
+                    None
+                }
             })
     }
 
@@ -1298,7 +1280,7 @@ mod tests {
 
                 for (transition_input_id, to) in self.iter_transitions_from(current_state) {
                     let transition_input = self.get_input(transition_input_id);
-                    if transition_input.is_star(&self.subdfas) {
+                    if transition_input.is_star() {
                         current_state = to;
                         break 'outer;
                     }
@@ -1342,7 +1324,7 @@ mod tests {
 
                 let anys: Vec<(InpId, StateId)> = self
                     .iter_transitions_from(current_state)
-                    .filter(|(input_id, _)| self.get_input(*input_id).is_star(&self.subdfas))
+                    .filter(|(input_id, _)| self.get_input(*input_id).is_star())
                     .map(|(k, v)| (k.clone(), v))
                     .collect();
                 // It's ambiguous which transition to take if there are two transitions
@@ -1351,7 +1333,7 @@ mod tests {
 
                 for (transition_input_id, to) in anys {
                     let transition_input = self.get_input(transition_input_id);
-                    if transition_input.is_star(&self.subdfas) {
+                    if transition_input.is_star() {
                         input_index += 1;
                         current_state = to;
                         continue 'outer;

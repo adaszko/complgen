@@ -44,9 +44,8 @@ pub enum RegexInput {
 impl RegexInput {
     fn is_star_subword(&self) -> bool {
         match self {
-            Self::Literal { .. } => false,
             Self::Nonterminal { .. } => true,
-            Self::Command { .. } => false,
+            Self::Literal { .. } | Self::Command { .. } => false,
             Self::Subword { .. } => unreachable!(),
         }
     }
