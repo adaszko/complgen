@@ -6,12 +6,14 @@ use crate::dfa::DFA;
 use crate::dfa::Inp;
 use hashbrown::HashMap;
 use indexmap::IndexSet;
+use itertools::Itertools;
 use ustr::{Ustr, ustr};
 
 // Bash array indexes start at 0.
 // Associative arrays are local by default.
 // Bash uses *dynamic* scoping for local variables (!)
 // `declare -n` can be a more readable eval substitute
+// Under Bash, the completion script is responsible for filtering candidates (!)
 
 pub const ARRAY_START: u32 = 0;
 pub const MATCH_FN_NAME: &str = "__complgen_match";
@@ -28,8 +30,10 @@ fn make_string_constant(s: &str) -> String {
 fn write_lookup_tables<W: Write>(
     buffer: &mut W,
     dfa: &DFA,
+    id_from_cmd: &IndexSet<Ustr>,
     id_from_regex: &IndexSet<Ustr>,
     needs_nontails_code: bool,
+    needs_commands_code: bool,
 ) -> Result<HashMap<(Ustr, Ustr), usize>> {
     let all_literals: Vec<(usize, Ustr, Ustr)> = dfa
         .get_top_level_literals_decreasing_length()
@@ -61,6 +65,11 @@ fn write_lookup_tables<W: Write>(
         writeln!(buffer, r#"    local -a regexes=({regexes})"#)?;
         writeln!(buffer, r#"    local -A nontail_transitions=()"#)?;
     }
+
+    if needs_commands_code {
+        writeln!(buffer, r#"    local -A command_transitions=()"#)?;
+    }
+
     for state in dfa.get_all_states() {
         let literal_transitions = dfa.get_literal_transitions_from(state);
         if !literal_transitions.is_empty() {
@@ -85,6 +94,24 @@ fn write_lookup_tables<W: Write>(
                 buffer,
                 r#"    literal_transitions[{state}]="({state_literal_transitions})""#
             )?;
+        }
+
+        if needs_commands_code {
+            let command_transitions = dfa.get_command_transitions_from(state);
+            if !command_transitions.is_empty() {
+                let resolved_commands: Vec<(usize, StateId)> = command_transitions
+                    .into_iter()
+                    .map(|(cmd, to)| (id_from_cmd.get_index_of(&cmd).unwrap(), to))
+                    .collect();
+                let state_transitions: String = resolved_commands
+                    .into_iter()
+                    .map(|(cmd_id, to)| format!("[{cmd_id}]={to}"))
+                    .join(" ");
+                writeln!(
+                    buffer,
+                    r#"    command_transitions[{state}]="({state_transitions})""#
+                )?;
+            }
         }
 
         if needs_nontails_code {
@@ -183,7 +210,54 @@ fn write_generic_subword_fn<W: Write>(
                     continue 2
                 fi
             done
-        fi"#
+        fi
+"#
+        )?;
+    }
+
+    if needs_commands_code {
+        write!(
+            buffer,
+            r#"
+        if [[ -v "command_transitions[$state]" ]]; then
+            local matched_prefix="${{word:0:$char_index}}"
+            local -A state_commands=${{command_transitions[$state]}}
+            for cmd_id in "${{!state_commands[@]}}"; do
+                readarray -t subword_candidates < <(_{command}_cmd_$cmd_id "$subword" "$matched_prefix" | while read -r f1 _; do echo "$f1"; done)
+                if [[ ${{#subword_candidates[@]}} -gt 0 ]]; then
+                    indexes=( $(
+                        for i in "${{!subword_candidates[@]}}" ; do
+                            printf '%s %s %s\n' $i "${{#subword_candidates[i]}}" "${{subword_candidates[i]}}"
+                        done | sort -nrk2,2 -rk3 | cut -f1 -d' '
+                    ))
+                    sorted=()
+                    for i in "${{indexes[@]}}" ; do
+                        sorted+=("${{subword_candidates[i]}}")
+                    done
+
+                    for candidate in "${{sorted[@]}}"; do
+                        if [[ $candidate == $subword ]]; then
+                            match_len=${{#candidate}}
+                            char_index=$((char_index + match_len))
+                            state=${{state_commands[$cmd_id]}}
+                            continue 3
+                        fi
+
+                        if [[ $candidate == $subword* ]]; then
+                            break 3
+                        fi
+
+                        if [[ $subword == $candidate* ]]; then
+                            match_len=${{#candidate}}
+                            char_index=$((char_index + match_len))
+                            state=${{state_commands[$cmd_id]}}
+                            continue 3
+                        fi
+                    done
+                fi
+            done
+        fi
+"#
         )?;
     }
 
@@ -206,9 +280,6 @@ fn write_generic_subword_fn<W: Write>(
 
     // /////////////// Completion /////////////////////////
 
-    // TODO Implement a way to determine if a transition within a subword is a final one so that a
-    // trailing space can be added
-
     write!(
         buffer,
         r#"
@@ -225,7 +296,7 @@ fn write_generic_subword_fn<W: Write>(
             subword_candidates+=("$matched_prefix$literal")
         done
         {MATCH_FN_NAME} "$matched_prefix$completed_prefix" subword_candidates subword_matches
-        "#
+"#
     )?;
 
     if needs_nontails_code {
@@ -233,11 +304,11 @@ fn write_generic_subword_fn<W: Write>(
             buffer,
             r#"
         eval "local commands_name=nontail_commands_level_${{subword_fallback_level}}"
-        eval "local -a command_transitions=(\${{$commands_name[$state]}})"
+        eval "local -a nontail_command_transitions=(\${{$commands_name[$state]}})"
         eval "local regexes_name=nontail_regexes_level_${{fallback_level}}"
         eval "local -a regexes_transitions=(\${{$regexes_name[$state]}})"
-        for (( i = 0; i < ${{#command_transitions[@]}}; i++ )); do
-            local command_id=${{command_transitions[$i]}}
+        for (( i = 0; i < ${{#nontail_command_transitions[@]}}; i++ )); do
+            local command_id=${{nontail_command_transitions[$i]}}
             readarray -t output < <(_{command}_cmd_$command_id "$completed_prefix" "$matched_prefix" | while read -r f1 _; do echo "$f1"; done)
             local regex_id=${{regexes_transitions[$i]}}
             local regex="^(${{regexes[$regex_id]}}).*"
@@ -306,8 +377,14 @@ fn write_subword_fn<W: Write>(
 
     let id_from_regex = dfa.get_regexes();
 
-    let literal_id_from_input_description =
-        write_lookup_tables(buffer, dfa, &id_from_regex, needs_nontails_code)?;
+    let literal_id_from_input_description = write_lookup_tables(
+        buffer,
+        dfa,
+        &id_from_cmd,
+        &id_from_regex,
+        needs_nontails_code,
+        needs_commands_code,
+    )?;
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
@@ -521,8 +598,14 @@ fi
 "#
     )?;
 
-    let literal_id_from_input_description =
-        write_lookup_tables(buffer, dfa, &id_from_regex, needs_nontails_code)?;
+    let literal_id_from_input_description = write_lookup_tables(
+        buffer,
+        dfa,
+        &id_from_cmd,
+        &id_from_regex,
+        needs_nontails_code,
+        needs_commands_code,
+    )?;
 
     if needs_subwords_code {
         writeln!(buffer, r#"    local -A subword_transitions"#)?;
@@ -857,11 +940,11 @@ fi
             buffer,
             r#"
         eval "local commands_name=nontail_commands_level_${{fallback_level}}"
-        eval "local -a command_transitions=(\${{$commands_name[$state]}})"
+        eval "local -a nontail_command_transitions=(\${{$commands_name[$state]}})"
         eval "local regexes_name=nontail_regexes_level_${{fallback_level}}"
         eval "local -a regexes_transitions=(\${{$regexes_name[$state]}})"
-        for (( i = 0; i < ${{#command_transitions[@]}}; i++ )); do
-            local command_id=${{command_transitions[$i]}}
+        for (( i = 0; i < ${{#nontail_command_transitions[@]}}; i++ )); do
+            local command_id=${{nontail_command_transitions[$i]}}
             local regex_id=${{regexes_transitions[$i]}}
             local regex="^(${{regexes[$regex_id]}}).*"
             readarray -t output < <(_{command}_cmd_$command_id "$prefix" "" | while read -r f1 _; do echo "$f1"; done)

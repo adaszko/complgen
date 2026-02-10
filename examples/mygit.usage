@@ -11,7 +11,7 @@ mygit (diff || (<global-option>... diff)) [<diff-option>...] --no-index [--] <PA
 
 mygit show <commit>;
 
-<commit> ::= {{{}}}@fish"[a-zA-Z_-]*"@zsh"[a-zA-Z_-]*";
+<commit> ::= {{{}}};
 
 <commit@bash> ::= {{{(
     shopt -s globstar
@@ -29,11 +29,11 @@ mygit show <commit>;
         cd "$root"/.git/refs/tags
         printf '%s\n' **/*
     fi
-)}}}@bash"[a-zA-Z0-9/._-]+";
+)}}};
 
-<revision-range> ::= {{{}}}@bash"[a-zA-Z_-]*"@fish"[a-zA-Z_-]+"@zsh"[a-zA-Z_-]+";
+<revision-range> ::= {{{}}};
 
-<blob> ::= {{{}}}@bash"[a-zA-Z_-]+"@fish"[a-zA-Z_-]+"@zsh"[a-zA-Z_-]+";
+<blob> ::= {{{}}};
 
 <global-option> ::= (--version | -v)
                   | (--help | -h)
@@ -81,9 +81,7 @@ mygit show <commit>;
        | --use-mailmap | --no-use-mailmap
        | --full-diff
        | --log-size
-       | -L<line>,<line>:<PATH>
-       | -L:<funcname>:<PATH>
-       | -<number> | -n <number> | --max-count=<number>
+       | -<_> | -n <_> | --max-count=<_>
        | --skip=
        | --since=
        | --after=
@@ -254,11 +252,5 @@ mygit show <commit>;
        | --line-prefix=
        | --ita-invisible-in-index
        ;
-
-<number> ::= {{{}}}@bash"[0-9]+"@fish"[0-9]+"@zsh"[0-9]+";
-
-<line> ::= {{{}}}@bash"[0-9]+"@fish"[0-9]+"@zsh"[0-9]+";
-
-<funcname> ::= {{{}}}@bash"[a-zA-Z_]+"@fish"[a-zA-Z_]+"@zsh"[a-zA-Z_]+";
 
 <diff-option> ::= -p | -u | --patch;

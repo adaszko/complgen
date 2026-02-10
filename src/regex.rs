@@ -47,7 +47,7 @@ impl RegexInput {
         match self {
             Self::Literal { .. } => false,
             Self::Nonterminal { .. } => true,
-            Self::Command { regex: None, .. } => true,
+            Self::Command { regex: None, .. } => false,
             Self::Command { .. } => false,
             Self::Subword { .. } => unreachable!(),
         }
@@ -968,7 +968,7 @@ lsf -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
     fn detects_nontail_command_subword() {
         assert!(matches!(
             get_validated_grammar(r#"cmd {{{ git tag }}}..{{{ git tag }}};"#),
-            Err(Error::UnboundedMatchable(_, _))
+            Ok(_)
         ));
         assert!(matches!(
             get_validated_grammar(r#"cmd --option={{{ echo foo }}};"#),
@@ -976,7 +976,7 @@ lsf -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
         ));
         assert!(matches!(
             get_validated_grammar(r#"cmd {{{ echo foo }}}{{{ echo bar }}};"#),
-            Err(Error::UnboundedMatchable(_, _))
+            Ok(_)
         ));
 
         // https://github.com/adaszko/complgen/issues/49
@@ -984,19 +984,19 @@ lsf -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
             get_validated_grammar(
                 r#"build <PLATFORM>-(amd64|arm64); <PLATFORM> ::= {{{ echo foo }}};"#
             ),
-            Err(Error::UnboundedMatchable(_, _))
+            Ok(_)
         ));
         assert!(matches!(
             get_validated_grammar(
                 r#"build <PLATFORM>[-(amd64|arm64)]; <PLATFORM> ::= {{{ echo foo }}};"#
             ),
-            Err(Error::UnboundedMatchable(_, _))
+            Ok(_)
         ));
 
         // https://github.com/adaszko/complgen/issues/53
         assert!(matches!(
             get_validated_grammar(r#"cmd <DUMMY>,<DUMMY>; <DUMMY@bash> ::= {{{ echo dummy }}};"#),
-            Err(Error::UnboundedMatchable(_, _))
+            Ok(_)
         ));
         assert!(matches!(
             get_validated_grammar(r#"cmd --option=<FOO>; <FOO@bash> ::= {{{ echo bash }}};"#),

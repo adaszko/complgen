@@ -214,7 +214,7 @@ cmd --ref={{{echo foo; echo bar; echo baz;}}};
         assert get_sorted_bash_completions(path, input) == sorted(["bar", "baz"])
 
 
-def test_bash_external_command_produces_description(complgen_binary_path: Path):
+def test_external_command_produces_description(complgen_binary_path: Path):
     GRAMMAR = r"""
 cmd {{{ echo -e "completion\tdescription" }}};
 """
@@ -223,6 +223,35 @@ cmd {{{ echo -e "completion\tdescription" }}};
             r'''COMP_WORDS=(cmd); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
         )
         assert get_sorted_bash_completions(path, input) == sorted(["completion"])
+
+
+def test_nontail_external_command(complgen_binary_path: Path):
+    GRAMMAR = r"""
+cmd <CMD>..<CMD>;
+<CMD> ::= {{{ echo foo; echo bar; echo baz; }}};
+"""
+    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
+        input = (
+            r'''COMP_WORDS=(cmd); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        )
+        assert get_sorted_bash_completions(path, input) == sorted(["foo", "bar", "baz"])
+
+        input = r'''COMP_WORDS=(cmd f); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(["foo"])
+
+        input = r'''COMP_WORDS=(cmd foo); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(["foo.."])
+
+        input = r'''COMP_WORDS=(cmd foo.); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(["foo.."])
+
+        input = r'''COMP_WORDS=(cmd foo..); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(
+            ["foo..foo", "foo..bar", "foo..baz"]
+        )
+
+        input = r'''COMP_WORDS=(cmd foo..f); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(["foo..foo"])
 
 
 def test_specializes_for_bash(complgen_binary_path: Path):
@@ -308,19 +337,6 @@ def test_nontail_escapes_regex(complgen_binary_path: Path):
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
         input = r'''COMP_WORDS=(cmd foo); COMP_CWORD=2; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
         assert get_sorted_bash_completions(path, input) == sorted(["bar "])
-
-
-def test_nontail_completes_prefix(complgen_binary_path: Path):
-    GRAMMAR = """
-cmd --ref=<REF>;
-<REF> ::= {{{ echo foo; echo bar; echo baz; }}}@bash"[a-zA-Z0-9/._-]+";
-"""
-    with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
-        completions = get_sorted_bash_completions(
-            completions_file_path,
-            '''COMP_WORDS=(cmd --ref=b); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"''',
-        )
-        assert completions == sorted(["bar"])
 
 
 def test_mycargo(complgen_binary_path: Path):

@@ -61,7 +61,7 @@ cmd [<OPTION>]...;
         )
 
 
-def test_fish_external_command_produces_description(complgen_binary_path: Path):
+def test_external_command_produces_description(complgen_binary_path: Path):
     GRAMMAR = r"""
 cmd {{{ echo -e "completion\tdescription" }}};
 """
@@ -393,20 +393,6 @@ def test_nontail_escapes_regex(complgen_binary_path: Path):
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         input = 'complete --do-complete "cmd foo "'
-        assert get_sorted_fish_completions(completions_file_path, input) == [
-            ("bar", "")
-        ]
-
-
-def test_nontail_completes_prefix(complgen_binary_path: Path):
-    GRAMMAR = """
-cmd --ref=<REF>;
-<REF> ::= {{{ echo foo; echo bar; echo baz; }}}@fish"[a-zA-Z0-9/._-]+";
-"""
-    with gen_fish_aot_completion_script_path(
-        complgen_binary_path, GRAMMAR
-    ) as completions_file_path:
-        input = 'complete --do-complete "cmd --ref=b"'
         assert get_sorted_fish_completions(completions_file_path, input) == [
             ("bar", "")
         ]

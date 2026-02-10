@@ -11,6 +11,7 @@ use ustr::{Ustr, ustr};
 // `for i in {{1..$#array}}; do ...; done` loops do not behave well if array is empty!  Prefer i++ loops instead.
 // Zsh uses *dynamic* scoping for local variables, even if declared with 'local', hence 'declare'
 // is used as slightly less misleading (!)
+// Under Zsh, candidates filtering is performed implicitly by compadd (!)
 
 pub const ARRAY_START: u32 = 1;
 

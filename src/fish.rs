@@ -17,6 +17,7 @@ use ustr::{Ustr, ustr};
 //   1) $$var_name (https://fishshell.com/docs/current/language.html#dereferencing-variables)
 //   2) printf [...] | source
 // * echo foo:$bar prints nothing if $bar expands to an empty string (!)
+// * The completion script is responsible for filtering candidates (!)
 
 pub const ARRAY_START: u32 = 1;
 

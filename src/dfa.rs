@@ -927,7 +927,8 @@ impl DFA {
             .map(|(input_id, to)| (self.get_input(input_id), to))
             .filter_map(|(input, to)| match input {
                 Inp::Star => Some((input.clone(), to)),
-                Inp::Command { regex: None, .. } => Some((input.clone(), to)),
+
+                Inp::Command { regex: None, .. } => None,
 
                 // Literals are always unambiguous.
                 Inp::Literal { .. } => None,
@@ -1100,6 +1101,29 @@ impl DFA {
                         regex: Some(regex), ..
                     } => Some((*regex, *to)),
                     Inp::Command { regex: None, .. } => None,
+                    Inp::Literal { .. } => None,
+                    Inp::Subword { .. } => None,
+                    Inp::Star => None,
+                }
+            })
+            .collect();
+        transitions
+    }
+
+    pub(crate) fn get_command_transitions_from(&self, from: StateId) -> Vec<(Ustr, StateId)> {
+        let map = match self.transitions.get(&from) {
+            Some(map) => map,
+            None => return vec![],
+        };
+        let transitions: Vec<(Ustr, StateId)> = map
+            .iter()
+            .filter_map(|(input_id, to)| {
+                let input = self.get_input(*input_id);
+                match input {
+                    Inp::Command {
+                        cmd, regex: None, ..
+                    } => Some((*cmd, *to)),
+                    Inp::Command { .. } => None,
                     Inp::Literal { .. } => None,
                     Inp::Subword { .. } => None,
                     Inp::Star => None,
