@@ -90,7 +90,6 @@ pub enum Inp {
     },
     Command {
         cmd: Ustr,
-        regex: Option<Ustr>,
         zsh_compadd: bool,
         fallback_level: usize,
     },
@@ -137,13 +136,11 @@ impl Inp {
             RegexInput::Nonterminal { .. } => Self::Star,
             RegexInput::Command {
                 cmd,
-                regex,
                 fallback_level,
                 zsh_compadd,
                 span: _,
             } => Self::Command {
                 cmd,
-                regex,
                 zsh_compadd,
                 fallback_level,
             },
@@ -165,10 +162,7 @@ impl Inp {
                 false
             }
             Self::Star => true,
-            Self::Command { regex: None, .. } => true,
-            Self::Command {
-                regex: Some(..), ..
-            } => false,
+            Self::Command { .. } => false,
         }
     }
 
@@ -726,23 +720,10 @@ pub fn diagnostic_display_input<W: std::fmt::Write>(w: &mut W, input: &Inp) -> R
         } => write!(w, r#"{literal} {descr:?}"#)?,
         Inp::Star => write!(w, r#"*"#)?,
         Inp::Command {
-            cmd,
-            regex: None,
-            zsh_compadd,
-            ..
+            cmd, zsh_compadd, ..
         } => write!(
             w,
             r#"{{{{{{ {cmd} }}}}}}{}"#,
-            if *zsh_compadd { "compadd" } else { "" }
-        )?,
-        Inp::Command {
-            cmd,
-            regex: Some(regex),
-            zsh_compadd,
-            ..
-        } => write!(
-            w,
-            r#"{{{{{{ {cmd} }}}}}}@shell"{regex}"{}"#,
             if *zsh_compadd { "compadd" } else { "" }
         )?,
         Inp::Subword { .. } => unreachable!(),
@@ -928,17 +909,10 @@ impl DFA {
             .filter_map(|(input, to)| match input {
                 Inp::Star => Some((input.clone(), to)),
 
-                Inp::Command { regex: None, .. } => None,
+                Inp::Command { .. } => None,
 
                 // Literals are always unambiguous.
                 Inp::Literal { .. } => None,
-
-                // It is untractable to check if two regexes match common sequences in general so
-                // this is where the ambiguity detection draws the boundary.  It can be seen as
-                // "escape hatches" too.
-                Inp::Command {
-                    regex: Some(..), ..
-                } => None,
 
                 // It is assummed subword ambiguity checks happened already at this stage, while
                 // their regexes were compiled into (sub-)DFAs.
@@ -1097,10 +1071,7 @@ impl DFA {
             .filter_map(|(input_id, to)| {
                 let input = self.get_input(*input_id);
                 match input {
-                    Inp::Command {
-                        cmd, regex: None, ..
-                    } => Some((*cmd, *to)),
-                    Inp::Command { .. } => None,
+                    Inp::Command { cmd, .. } => Some((*cmd, *to)),
                     Inp::Literal { .. } => None,
                     Inp::Subword { .. } => None,
                     Inp::Star => None,
@@ -1145,7 +1116,6 @@ impl DFA {
                 let input = self.get_input(input_id);
                 let is_star = match input {
                     Inp::Star => true,
-                    Inp::Command { regex: None, .. } => true,
                     Inp::Command { .. } => false,
                     Inp::Literal { .. } | Inp::Subword { .. } => false,
                 };
@@ -1162,7 +1132,6 @@ impl DFA {
                 Inp::Command {
                     cmd,
                     zsh_compadd: _,
-                    regex: _,
                     fallback_level: _,
                 } => {
                     id_from_cmd.insert(*cmd);
@@ -1177,7 +1146,6 @@ impl DFA {
                             Inp::Command {
                                 cmd,
                                 zsh_compadd: _,
-                                regex: _,
                                 fallback_level: _,
                             } => {
                                 id_from_cmd.insert(*cmd);
@@ -1189,20 +1157,6 @@ impl DFA {
         }
 
         id_from_cmd
-    }
-
-    pub(crate) fn iter_top_level_regexes(&self) -> impl Iterator<Item = Ustr> + '_ {
-        self.iter_inputs().filter_map(move |input| match input {
-            Inp::Command {
-                regex: Some(rx), ..
-            } => Some(*rx),
-            Inp::Command { regex: None, .. } => None,
-            Inp::Literal { .. } | Inp::Star | Inp::Subword { .. } => None,
-        })
-    }
-
-    pub(crate) fn get_regexes(&self) -> IndexSet<Ustr> {
-        self.iter_top_level_regexes().collect::<_>()
     }
 
     pub(crate) fn get_subwords(&self, first_id: usize) -> IndexMap<DFAId, usize> {
@@ -1241,12 +1195,8 @@ impl DFA {
 
     pub(crate) fn needs_commands_code(&self) -> bool {
         self.iter_inputs().any(|input| match input {
-            Inp::Literal { .. }
-            | Inp::Star
-            | Inp::Command {
-                regex: Some(..), ..
-            } => false,
-            Inp::Command { regex: None, .. } => true,
+            Inp::Literal { .. } | Inp::Star => false,
+            Inp::Command { .. } => true,
             Inp::Subword { subdfa, .. } => self.subdfas.lookup(*subdfa).needs_commands_code(),
         })
     }

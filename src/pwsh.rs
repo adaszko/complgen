@@ -347,7 +347,6 @@ fn write_subword_fn<W: Write>(
             }
             Inp::Command {
                 cmd,
-                regex: None,
                 fallback_level,
                 zsh_compadd: false,
             } => {
@@ -449,7 +448,6 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     }
 
     let id_from_dfa = dfa.get_subwords(ARRAY_START as usize);
-    let id_from_regex = dfa.get_regexes();
     if needs_subwords_code {
         write_generic_subword_fn(buffer, command, needs_subword_commands_code)?;
         for (dfaid, id) in &id_from_dfa {
@@ -574,8 +572,6 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         vec![HashMap::default(); max_fallback_level + 1];
     let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> =
         vec![HashMap::default(); max_fallback_level + 1];
-    let mut completion_nontails: Vec<HashMap<StateId, Vec<(usize, usize)>>> =
-        vec![HashMap::default(); max_fallback_level + 1];
 
     for (from, inpid, _to) in dfa.iter_transitions() {
         let input = dfa.get_input(inpid);
@@ -606,7 +602,6 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             }
             Inp::Command {
                 cmd,
-                regex: None,
                 zsh_compadd: false,
                 fallback_level,
             } => {
@@ -615,19 +610,6 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                     .entry(from)
                     .or_default()
                     .push(cmd_id);
-            }
-            Inp::Command {
-                cmd,
-                regex: Some(regex),
-                zsh_compadd: false,
-                fallback_level,
-            } => {
-                let cmd_id = id_from_cmd.get_index_of(cmd).unwrap();
-                let regex_id = id_from_regex.get_index_of(regex).unwrap();
-                completion_nontails[*fallback_level]
-                    .entry(from)
-                    .or_default()
-                    .push((cmd_id, regex_id));
             }
             Inp::Command {
                 zsh_compadd: true, ..

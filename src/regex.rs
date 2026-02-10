@@ -30,7 +30,6 @@ pub enum RegexInput {
     },
     Command {
         cmd: Ustr,
-        regex: Option<Ustr>,
         zsh_compadd: bool,
         fallback_level: usize,
         span: HumanSpan,
@@ -47,7 +46,6 @@ impl RegexInput {
         match self {
             Self::Literal { .. } => false,
             Self::Nonterminal { .. } => true,
-            Self::Command { regex: None, .. } => false,
             Self::Command { .. } => false,
             Self::Subword { .. } => unreachable!(),
         }
@@ -352,24 +350,13 @@ fn do_from_expr(
         }
         Expr::Command {
             cmd,
-            bash_regex,
-            fish_regex,
-            zsh_regex,
-            pwsh_regex,
             zsh_compadd,
             fallback,
             span,
         } => {
             let result = RegexNode::Command(*cmd, input_from_position.len() as Position);
-            let rx = match shell {
-                Shell::Bash => bash_regex,
-                Shell::Fish => fish_regex,
-                Shell::Zsh => zsh_regex,
-                Shell::Pwsh => pwsh_regex,
-            };
             let input = RegexInput::Command {
                 cmd: *cmd,
-                regex: *rx,
                 zsh_compadd: *zsh_compadd,
                 fallback_level: *fallback,
                 span: *span,

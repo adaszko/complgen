@@ -341,8 +341,6 @@ fn write_subword_fn<W: Write>(
 ) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
 
-    let id_from_regex = dfa.get_regexes();
-
     let literal_id_from_input_description = write_lookup_tables(buffer, dfa, "subword_")?;
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
@@ -352,9 +350,6 @@ fn write_subword_fn<W: Write>(
 
     let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
     completion_commands.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
-
-    let mut completion_nontails: Vec<HashMap<StateId, Vec<(usize, usize)>>> = Default::default();
-    completion_nontails.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
 
     let mut completion_compadds: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
     completion_compadds.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
@@ -377,7 +372,6 @@ fn write_subword_fn<W: Write>(
             }
             Inp::Command {
                 cmd,
-                regex: None,
                 fallback_level,
                 zsh_compadd: false,
             } => {
@@ -389,20 +383,6 @@ fn write_subword_fn<W: Write>(
             }
             Inp::Command {
                 cmd,
-                regex: Some(rx),
-                fallback_level,
-                zsh_compadd: false,
-            } => {
-                let cmd_id = id_from_cmd.get_index_of(&cmd).unwrap();
-                let regex_id = id_from_regex.get_index_of(&rx).unwrap();
-                completion_nontails[fallback_level]
-                    .entry(from)
-                    .or_default()
-                    .push((cmd_id, regex_id));
-            }
-            Inp::Command {
-                cmd,
-                regex: _,
                 fallback_level,
                 zsh_compadd: true,
             } => {
@@ -543,7 +523,6 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     }
 
     let id_from_dfa = dfa.get_subwords(ARRAY_START as usize);
-    let id_from_regex = dfa.get_regexes();
     if needs_subwords_code {
         write_generic_subword_fn(
             buffer,
@@ -662,9 +641,6 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
     completion_commands.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
 
-    let mut completion_nontails: Vec<HashMap<StateId, Vec<(usize, usize)>>> = Default::default();
-    completion_nontails.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
-
     let mut completion_compadds: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
     completion_compadds.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
 
@@ -697,7 +673,6 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             }
             Inp::Command {
                 cmd,
-                regex: None,
                 fallback_level,
                 zsh_compadd: false,
             } => {
@@ -709,20 +684,6 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             }
             Inp::Command {
                 cmd,
-                regex: Some(rx),
-                fallback_level,
-                zsh_compadd: false,
-            } => {
-                let cmd_id = id_from_cmd.get_index_of(&cmd).unwrap();
-                let regex_id = id_from_regex.get_index_of(&rx).unwrap();
-                completion_nontails[fallback_level]
-                    .entry(from)
-                    .or_default()
-                    .push((cmd_id, regex_id));
-            }
-            Inp::Command {
-                cmd,
-                regex: _,
                 fallback_level,
                 zsh_compadd: true,
             } => {

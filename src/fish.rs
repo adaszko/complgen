@@ -100,7 +100,6 @@ end
 fn write_subword_lookup_tables<W: Write>(
     buffer: &mut W,
     dfa: &DFA,
-    id_from_regex: &IndexSet<Ustr>,
 ) -> Result<HashMap<(Ustr, Ustr), usize>> {
     let all_literals: Vec<(usize, Ustr, Ustr)> = dfa
         .get_top_level_literals_decreasing_length()
@@ -169,14 +168,6 @@ fn write_subword_lookup_tables<W: Write>(
         " ",
     );
     writeln!(buffer, r#"    set --global subword_descr_ids {descr_ids}"#)?;
-
-    let regexes: String = itertools::join(
-        id_from_regex
-            .iter()
-            .map(|regex| make_string_constant(regex)),
-        " ",
-    );
-    writeln!(buffer, r#"    set --global subword_regexes {regexes}"#)?;
 
     writeln!(
         buffer,
@@ -413,10 +404,7 @@ fn write_subword_fn<W: Write>(
 "#
     )?;
 
-    let id_from_regex = dfa.get_regexes();
-
-    let literal_id_from_input_description =
-        write_subword_lookup_tables(buffer, dfa, &id_from_regex)?;
+    let literal_id_from_input_description = write_subword_lookup_tables(buffer, dfa)?;
     writeln!(buffer)?;
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
@@ -426,9 +414,6 @@ fn write_subword_fn<W: Write>(
 
     let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
     completion_commands.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
-
-    let mut completion_nontails: Vec<HashMap<StateId, Vec<(usize, usize)>>> = Default::default();
-    completion_nontails.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
 
     for (from, input_id, _) in dfa.iter_transitions() {
         match dfa.get_input(input_id).clone() {
@@ -451,7 +436,6 @@ fn write_subword_fn<W: Write>(
             } => unreachable!(),
             Inp::Command {
                 cmd,
-                regex: None,
                 fallback_level,
                 zsh_compadd: false,
             } => {
@@ -460,19 +444,6 @@ fn write_subword_fn<W: Write>(
                     .entry(from)
                     .or_default()
                     .push(command_id);
-            }
-            Inp::Command {
-                cmd,
-                regex: Some(rx),
-                fallback_level,
-                zsh_compadd: false,
-            } => {
-                let cmd_id = id_from_cmd.get_index_of(&cmd).unwrap();
-                let regex_id = id_from_regex.get_index_of(&rx).unwrap();
-                completion_nontails[fallback_level]
-                    .entry(from)
-                    .or_default()
-                    .push((cmd_id, regex_id));
             }
             Inp::Star => {}
             Inp::Subword { .. } => unreachable!(),
@@ -549,7 +520,6 @@ fn write_subword_fn<W: Write>(
 fn write_lookup_tables<W: Write>(
     buffer: &mut W,
     dfa: &DFA,
-    id_from_regex: &IndexSet<Ustr>,
 ) -> Result<HashMap<(Ustr, Ustr), usize>> {
     let all_literals: Vec<(usize, Ustr, Ustr)> = dfa
         .get_top_level_literals_decreasing_length()
@@ -615,14 +585,6 @@ fn write_lookup_tables<W: Write>(
         " ",
     );
     writeln!(buffer, r#"    set descr_ids {descr_ids}"#)?;
-
-    let regexes: String = itertools::join(
-        id_from_regex
-            .iter()
-            .map(|regex| make_string_constant(regex)),
-        " ",
-    );
-    writeln!(buffer, r#"    set regexes {regexes}"#)?;
 
     writeln!(buffer, r#"    set literal_transitions_inputs"#)?;
 
@@ -728,7 +690,6 @@ end
     }
 
     let id_from_dfa = dfa.get_subwords(ARRAY_START as usize);
-    let id_from_regex = dfa.get_regexes();
     if needs_subwords_code {
         write_generic_subword_fn(buffer, command, needs_subword_commands_code)?;
         for (dfaid, id) in &id_from_dfa {
@@ -770,7 +731,7 @@ end
 "#
     )?;
 
-    let literal_id_from_input_description = write_lookup_tables(buffer, dfa, &id_from_regex)?;
+    let literal_id_from_input_description = write_lookup_tables(buffer, dfa)?;
 
     if needs_subwords_code {
         for state in dfa.get_all_states() {
@@ -885,9 +846,6 @@ end
     let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
     completion_commands.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
 
-    let mut completion_nontails: Vec<HashMap<StateId, Vec<(usize, usize)>>> = Default::default();
-    completion_nontails.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
-
     for (from, input_id, _) in dfa.iter_transitions() {
         match dfa.get_input(input_id).clone() {
             Inp::Literal {
@@ -920,7 +878,6 @@ end
             } => unreachable!(),
             Inp::Command {
                 cmd,
-                regex: None,
                 fallback_level,
                 zsh_compadd: false,
             } => {
@@ -929,19 +886,6 @@ end
                     .entry(from)
                     .or_default()
                     .push(command_id);
-            }
-            Inp::Command {
-                cmd,
-                regex: Some(rx),
-                fallback_level,
-                zsh_compadd: false,
-            } => {
-                let cmd_id = id_from_cmd.get_index_of(&cmd).unwrap();
-                let regex_id = id_from_regex.get_index_of(&rx).unwrap();
-                completion_nontails[fallback_level]
-                    .entry(from)
-                    .or_default()
-                    .push((cmd_id, regex_id));
             }
             Inp::Star => {}
         }
