@@ -259,6 +259,42 @@ cmd --ref={{{echo foo; echo bar; echo baz;}}};
     assert actual == sorted([["--ref=bar"], ["--ref=baz"]])
 
 
+def test_nontail_external_command(complgen_binary_path: Path):
+    GRAMMAR = r"""
+cmd <CMD>..<CMD>;
+<CMD> ::= {{{ echo foo; echo bar; echo baz; }}};
+"""
+    assert [
+        s.split()
+        for s in get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd ")
+    ] == sorted([["foo"], ["bar"], ["baz"]])
+
+    assert [
+        s.split()
+        for s in get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd f")
+    ] == sorted([["foo"]])
+
+    assert [
+        s.split()
+        for s in get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd foo")
+    ] == sorted([["foo.."]])
+
+    assert [
+        s.split()
+        for s in get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd foo.")
+    ] == sorted([["foo.."]])
+
+    assert [
+        s.split()
+        for s in get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd foo..")
+    ] == sorted([["foo..foo"], ["foo..bar"], ["foo..baz"]])
+
+    assert [
+        s.split()
+        for s in get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd foo..f")
+    ] == sorted([["foo..foo"]])
+
+
 def test_specializes_for_zsh(complgen_binary_path: Path):
     GRAMMAR = """
 cmd <FOO>;
