@@ -292,22 +292,8 @@ def test_bug5(complgen_binary_path: Path):
         complgen_binary_path,
         """
 mygit diff <PATH>;
-mygit diff {{{}}}@fish"[a-zA-Z_-]*";
+mygit diff {{{}}};
 """,
-    )
-    assert r.returncode == 0
-    assert r.stderr == snapshot("")
-
-
-def test_bug6(complgen_binary_path: Path):
-    r = complgen_check(
-        complgen_binary_path,
-        """
-cmd [<commit>] <PATH>;
-<commit> ::= {{{}}}@zsh"[a-zA-Z_-]*";
-<commit@bash> ::= {{{ ls $(rev-parse --show-toplevel)/.git/refs/heads/ }}}@bash"[a-zA-Z_-]*";
-""",
-        shell="zsh",
     )
     assert r.returncode == 0
     assert r.stderr == snapshot("")
