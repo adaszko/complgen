@@ -6,7 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
-## 0.7.5
+## 0.8.0
+### Changed
+
+ - Breaking: Removed nontail commands due to design dead-end.  Regular external commands are now more broadly applicable
+
 ### Fixed
 
  - Breaking: Conflicting description check should now detect all cases thanks to moving it from working on
