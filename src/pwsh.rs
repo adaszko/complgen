@@ -30,8 +30,6 @@ fn make_string_constant(s: &str) -> String {
 fn write_lookup_tables<W: Write>(
     buffer: &mut W,
     dfa: &DFA,
-    id_from_regex: &IndexSet<Ustr>,
-    needs_nontails_code: bool,
 ) -> Result<HashMap<(Ustr, Ustr), usize>> {
     let all_literals: Vec<(usize, Ustr, Ustr)> = dfa
         .get_top_level_literals_decreasing_length()
@@ -69,17 +67,6 @@ fn write_lookup_tables<W: Write>(
 
     writeln!(buffer, r#"    $literal_transitions = @{{}}"#)?;
 
-    if needs_nontails_code {
-        let regexes: String = itertools::join(
-            id_from_regex
-                .iter()
-                .map(|regex| make_string_constant(regex)),
-            ", ",
-        );
-        writeln!(buffer, r#"    $regexes = @({regexes})"#)?;
-        writeln!(buffer, r#"    $nontail_transitions = @{{}}"#)?;
-    }
-
     for state in dfa.get_all_states() {
         let literal_transitions =
             dfa.get_literal_transitions_from(StateId::try_from(state).unwrap());
@@ -106,26 +93,6 @@ fn write_lookup_tables<W: Write>(
                 r#"    $literal_transitions[{state}] = @{{ {state_literal_transitions} }}"#
             )?;
         }
-
-        if needs_nontails_code {
-            let nontail_transitions = dfa.get_nontail_transitions_from(state as StateId);
-            if !nontail_transitions.is_empty() {
-                let nontail_command_transitions: Vec<(usize, StateId)> = nontail_transitions
-                    .into_iter()
-                    .map(|(regex, to)| (id_from_regex.get_index_of(&regex).unwrap(), to))
-                    .collect();
-                let state_nontail_transitions: String = itertools::join(
-                    nontail_command_transitions
-                        .into_iter()
-                        .map(|(regex_id, to)| format!("{regex_id} = {to}")),
-                    "; ",
-                );
-                writeln!(
-                    buffer,
-                    r#"    $nontail_transitions[{state}] = @{{ {state_nontail_transitions} }}"#
-                )?;
-            }
-        }
     }
 
     let star_transitions: Vec<String> = dfa
@@ -145,7 +112,6 @@ fn write_lookup_tables<W: Write>(
 fn write_generic_subword_fn<W: Write>(
     buffer: &mut W,
     command: &str,
-    needs_nontails_code: bool,
     needs_commands_code: bool,
 ) -> Result<()> {
     writeln!(
@@ -184,28 +150,6 @@ fn write_generic_subword_fn<W: Write>(
             }}
         }}"#
     )?;
-
-    if needs_nontails_code {
-        write!(
-            buffer,
-            r#"
-        if ($nontail_transitions.ContainsKey($script:state)) {{
-            $nontail_state_transitions = $nontail_transitions[$script:state]
-
-            foreach ($regex_id in $nontail_state_transitions.Keys) {{
-                $regex = $regexes[$regex_id]
-                if ($subword -match "^($regex)") {{
-                    $match_len = $Matches[1].Length
-                    if ($match_len -gt 0) {{
-                        $script:state = $nontail_state_transitions[$regex_id]
-                        $char_index += $match_len
-                        continue outer
-                    }}
-                }}
-            }}
-        }}"#
-        )?;
-    }
 
     write!(
         buffer,
@@ -292,11 +236,8 @@ fn write_subword_fn<W: Write>(
     id: usize,
     dfa: &DFA,
     id_from_cmd: &IndexSet<Ustr>,
-    needs_nontails_code: bool,
     needs_commands_code: bool,
 ) -> Result<()> {
-    let id_from_regex = dfa.get_regexes();
-
     let all_literals: Vec<(usize, Ustr, Ustr)> = dfa
         .get_top_level_literals_decreasing_length()
         .into_iter()
@@ -339,17 +280,6 @@ fn write_subword_fn<W: Write>(
 
     writeln!(buffer, r#"    $literal_transitions = @{{}}"#)?;
 
-    if needs_nontails_code {
-        let regexes: String = itertools::join(
-            id_from_regex
-                .iter()
-                .map(|regex| make_string_constant(regex)),
-            ", ",
-        );
-        writeln!(buffer, r#"    $regexes = @({regexes})"#)?;
-        writeln!(buffer, r#"    $nontail_transitions = @{{}}"#)?;
-    }
-
     for state in dfa.get_all_states() {
         let literal_transitions =
             dfa.get_literal_transitions_from(StateId::try_from(state).unwrap());
@@ -375,26 +305,6 @@ fn write_subword_fn<W: Write>(
                 buffer,
                 r#"    $literal_transitions[{state}] = @{{ {state_literal_transitions} }}"#
             )?;
-        }
-
-        if needs_nontails_code {
-            let nontail_transitions = dfa.get_nontail_transitions_from(state as StateId);
-            if !nontail_transitions.is_empty() {
-                let nontail_command_transitions: Vec<(usize, StateId)> = nontail_transitions
-                    .into_iter()
-                    .map(|(regex, to)| (id_from_regex.get_index_of(&regex).unwrap(), to))
-                    .collect();
-                let state_nontail_transitions: String = itertools::join(
-                    nontail_command_transitions
-                        .into_iter()
-                        .map(|(regex_id, to)| format!("{regex_id} = {to}")),
-                    "; ",
-                );
-                writeln!(
-                    buffer,
-                    r#"    $nontail_transitions[{state}] = @{{ {state_nontail_transitions} }}"#
-                )?;
-            }
         }
     }
 
@@ -506,8 +416,6 @@ fn write_subword_fn<W: Write>(
 
 pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
     let needs_subwords_code = dfa.needs_subwords_code();
-    let needs_nontails_code = dfa.needs_nontails_code();
-    let needs_subword_nontails_code = dfa.needs_subword_nontails_code();
     let needs_commands_code = dfa.needs_commands_code();
     let needs_subword_commands_code = dfa.needs_subword_commands_code();
 
@@ -543,12 +451,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     let id_from_dfa = dfa.get_subwords(ARRAY_START as usize);
     let id_from_regex = dfa.get_regexes();
     if needs_subwords_code {
-        write_generic_subword_fn(
-            buffer,
-            command,
-            needs_nontails_code,
-            needs_subword_commands_code,
-        )?;
+        write_generic_subword_fn(buffer, command, needs_subword_commands_code)?;
         for (dfaid, id) in &id_from_dfa {
             let dfa = dfa.subdfas.lookup(*dfaid);
             write_subword_fn(
@@ -557,7 +460,6 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                 *id,
                 dfa,
                 &id_from_cmd,
-                needs_subword_nontails_code,
                 needs_subword_commands_code,
             )?;
             writeln!(buffer)?;
@@ -582,8 +484,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 "#
     )?;
 
-    let literal_id_from_input_description =
-        write_lookup_tables(buffer, dfa, &id_from_regex, needs_nontails_code)?;
+    let literal_id_from_input_description = write_lookup_tables(buffer, dfa)?;
 
     if needs_subwords_code {
         writeln!(buffer, r#"    $subword_transitions = @{{}}"#)?;
@@ -640,26 +541,6 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             foreach ($subword_id in $subword_state_transitions.Keys) {{
                 if (& "_{command}_subword_$subword_id" 'matches' $word) {{
                     $state = $subword_state_transitions[$subword_id]
-                    $word_index++
-                    continue outer
-                }}
-            }}
-        }}"#
-        )?;
-    }
-
-    if needs_nontails_code {
-        write!(
-            buffer,
-            r#"
-
-        if ($nontail_transitions.ContainsKey($state)) {{
-            $nontail_state_transitions = $nontail_transitions[$state]
-
-            foreach ($regex_id in $nontail_state_transitions.Keys) {{
-                $regex = $regexes[$regex_id]
-                if ($word -match "^($regex)$") {{
-                    $state = $nontail_state_transitions[$regex_id]
                     $word_index++
                     continue outer
                 }}
@@ -817,46 +698,6 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         }
     }
 
-    if needs_nontails_code {
-        for (level, transitions) in completion_nontails.iter().enumerate() {
-            let commands_initializer: Vec<String> = transitions
-                .iter()
-                .map(|(from_state, ids)| {
-                    let joined_ids =
-                        itertools::join(ids.iter().map(|(cmd_id, _)| cmd_id.to_string()), ", ");
-                    format!(r#"{from_state} = @({joined_ids})"#)
-                })
-                .collect();
-            if commands_initializer.is_empty() {
-                writeln!(buffer, r#"    $nontail_commands_level_{level} = @{{}}"#)?;
-            } else {
-                let init_str = itertools::join(commands_initializer, "; ");
-                writeln!(
-                    buffer,
-                    r#"    $nontail_commands_level_{level} = @{{ {init_str} }}"#
-                )?;
-            }
-
-            let regexes_initializer: Vec<String> = transitions
-                .iter()
-                .map(|(from_state, ids)| {
-                    let joined_ids =
-                        itertools::join(ids.iter().map(|(_, regex_id)| regex_id.to_string()), ", ");
-                    format!(r#"{from_state} = @({joined_ids})"#)
-                })
-                .collect();
-            if regexes_initializer.is_empty() {
-                writeln!(buffer, r#"    $nontail_regexes_level_{level} = @{{}}"#)?;
-            } else {
-                let init_str = itertools::join(regexes_initializer, "; ");
-                writeln!(
-                    buffer,
-                    r#"    $nontail_regexes_level_{level} = @{{ {init_str} }}"#
-                )?;
-            }
-        }
-    }
-
     write!(
         buffer,
         r#"
@@ -935,46 +776,6 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                             'ParameterValue',
                             $desc
                         )
-                    }}
-                }}
-            }}
-        }}"#
-        )?;
-    }
-
-    if needs_nontails_code {
-        write!(
-            buffer,
-            r#"
-
-        # Nontail completions (commands with regex constraints)
-        $commands_var = "nontail_commands_level_$fallback_level"
-        $nontail_commands = Get-Variable -Name $commands_var -ValueOnly -ErrorAction SilentlyContinue
-        $regexes_var = "nontail_regexes_level_$fallback_level"
-        $nontail_regexes = Get-Variable -Name $regexes_var -ValueOnly -ErrorAction SilentlyContinue
-        if ($nontail_commands -and $nontail_commands.ContainsKey($state)) {{
-            $cmd_ids = $nontail_commands[$state]
-            $regex_ids = $nontail_regexes[$state]
-            for ($i = 0; $i -lt $cmd_ids.Count; $i++) {{
-                $cmd_id = $cmd_ids[$i]
-                $regex_id = $regex_ids[$i]
-                $regex = "^(" + $regexes[$regex_id] + ")"
-                $output = & "_{command}_cmd_$cmd_id" $prefix ""
-                foreach ($line in $output) {{
-                    if ([string]::IsNullOrWhiteSpace($line)) {{ continue }}
-                    $parts = $line -split "`t", 2
-                    $text = $parts[0]
-                    if ($text -match $regex -and $Matches[1]) {{
-                        $match_text = $Matches[1]
-                        if ($match_text.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {{
-                            $desc = if ($parts.Count -gt 1) {{ $parts[1] }} else {{ $match_text }}
-                            $level_results += [System.Management.Automation.CompletionResult]::new(
-                                $match_text,
-                                $match_text,
-                                'ParameterValue',
-                                $desc
-                            )
-                        }}
                     }}
                 }}
             }}

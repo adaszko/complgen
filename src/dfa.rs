@@ -1087,29 +1087,6 @@ impl DFA {
         transitions
     }
 
-    pub(crate) fn get_nontail_transitions_from(&self, from: StateId) -> Vec<(Ustr, StateId)> {
-        let map = match self.transitions.get(&from) {
-            Some(map) => map,
-            None => return vec![],
-        };
-        let transitions: Vec<(Ustr, StateId)> = map
-            .iter()
-            .filter_map(|(input_id, to)| {
-                let input = self.get_input(*input_id);
-                match input {
-                    Inp::Command {
-                        regex: Some(regex), ..
-                    } => Some((*regex, *to)),
-                    Inp::Command { regex: None, .. } => None,
-                    Inp::Literal { .. } => None,
-                    Inp::Subword { .. } => None,
-                    Inp::Star => None,
-                }
-            })
-            .collect();
-        transitions
-    }
-
     pub(crate) fn get_command_transitions_from(&self, from: StateId) -> Vec<(Ustr, StateId)> {
         let map = match self.transitions.get(&from) {
             Some(map) => map,
@@ -1258,23 +1235,6 @@ impl DFA {
     pub(crate) fn needs_subwords_code(&self) -> bool {
         self.iter_inputs().any(|input| match input {
             Inp::Subword { .. } => true,
-            Inp::Literal { .. } | Inp::Star | Inp::Command { .. } => false,
-        })
-    }
-
-    pub(crate) fn needs_nontails_code(&self) -> bool {
-        self.iter_inputs().any(|input| match input {
-            Inp::Literal { .. } | Inp::Star | Inp::Command { regex: None, .. } => false,
-            Inp::Command {
-                regex: Some(..), ..
-            } => true,
-            Inp::Subword { subdfa, .. } => self.subdfas.lookup(*subdfa).needs_nontails_code(),
-        })
-    }
-
-    pub(crate) fn needs_subword_nontails_code(&self) -> bool {
-        self.iter_inputs().any(|input| match input {
-            Inp::Subword { subdfa, .. } => self.subdfas.lookup(*subdfa).needs_nontails_code(),
             Inp::Literal { .. } | Inp::Star | Inp::Command { .. } => false,
         })
     }
