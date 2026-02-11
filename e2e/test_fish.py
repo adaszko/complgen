@@ -14,159 +14,6 @@ from conftest import (
 )
 
 
-def test_fish_uses_correct_description_with_duplicated_literals(
-    complgen_binary_path: Path,
-):
-    GRAMMAR = """
-cmd <COMMAND> [--help];
-
-<COMMAND> ::= rm           "Remove a project" <RM-OPTION>
-            | remote       "Manage a project's remotes" [<REMOTE-SUBCOMMAND>]
-            ;
-
-<REMOTE-SUBCOMMAND> ::= rm <name>;
-"""
-
-    with gen_fish_aot_completion_script_path(
-        complgen_binary_path, GRAMMAR
-    ) as completions_file_path:
-        input = 'complete --do-complete "cmd "'
-        assert get_sorted_fish_completions(completions_file_path, input) == sorted(
-            [("rm", "Remove a project"), ("remote", "Manage a project's remotes")],
-            key=lambda pair: pair[0],
-        )
-
-
-def test_fish_uses_correct_description_with_duplicated_descriptions(
-    complgen_binary_path: Path,
-):
-    GRAMMAR = """
-cmd [<OPTION>]...;
-
-<OPTION> ::= --color    "use markers to highlight the matching strings" [<WHEN>]
-           | --colour   "use markers to highlight the matching strings" [<WHEN>]
-           ;
-"""
-
-    with gen_fish_aot_completion_script_path(
-        complgen_binary_path, GRAMMAR
-    ) as completions_file_path:
-        input = 'complete --do-complete "cmd "'
-        assert get_sorted_fish_completions(completions_file_path, input) == sorted(
-            [
-                ("--color", "use markers to highlight the matching strings"),
-                ("--colour", "use markers to highlight the matching strings"),
-            ],
-            key=lambda pair: pair[0],
-        )
-
-
-def test_external_command_produces_description(complgen_binary_path: Path):
-    GRAMMAR = r"""
-cmd {{{ echo -e "completion\tdescription" }}};
-"""
-
-    with gen_fish_aot_completion_script_path(
-        complgen_binary_path, GRAMMAR
-    ) as completions_file_path:
-        input = 'complete --do-complete "cmd "'
-        assert get_sorted_fish_completions(completions_file_path, input) == [
-            ("completion", "description")
-        ]
-
-
-def test_external_command_filters_candidates(complgen_binary_path: Path):
-    GRAMMAR = r"""
-cmd {{{echo foo; echo bar; echo baz;}}};
-"""
-
-    with gen_fish_aot_completion_script_path(
-        complgen_binary_path, GRAMMAR
-    ) as completions_file_path:
-        input = 'complete --do-complete "cmd b"'
-        assert get_sorted_fish_completions(completions_file_path, input) == [
-            ("bar", ""),
-            ("baz", ""),
-        ]
-
-
-def test_external_command_subword_filters_candidates(complgen_binary_path: Path):
-    GRAMMAR = r"""
-cmd --ref={{{echo foo; echo bar; echo baz;}}};
-"""
-
-    with gen_fish_aot_completion_script_path(
-        complgen_binary_path, GRAMMAR
-    ) as completions_file_path:
-        input = 'complete --do-complete "cmd --ref=b"'
-        assert get_sorted_fish_completions(completions_file_path, input) == [
-            ("--ref=bar", ""),
-            ("--ref=baz", ""),
-        ]
-
-
-def test_nontail_external_command(complgen_binary_path: Path):
-    GRAMMAR = r"""
-cmd <CMD>..<CMD>;
-<CMD> ::= {{{ echo foo; echo bar; echo baz; }}};
-"""
-
-    with gen_fish_aot_completion_script_path(
-        complgen_binary_path, GRAMMAR
-    ) as completions_file_path:
-        assert get_sorted_fish_completions(
-            completions_file_path, 'complete --do-complete "cmd "'
-        ) == sorted(
-            [
-                ("foo", ""),
-                ("bar", ""),
-                ("baz", ""),
-            ]
-        )
-
-        assert get_sorted_fish_completions(
-            completions_file_path, 'complete --do-complete "cmd f"'
-        ) == sorted(
-            [
-                ("foo", ""),
-            ]
-        )
-
-        assert get_sorted_fish_completions(
-            completions_file_path, 'complete --do-complete "cmd foo"'
-        ) == sorted(
-            [
-                ("foo..", ""),
-            ]
-        )
-
-        assert get_sorted_fish_completions(
-            completions_file_path, 'complete --do-complete "cmd foo."'
-        ) == sorted(
-            [
-                ("foo..", ""),
-            ]
-        )
-
-        assert get_sorted_fish_completions(
-            completions_file_path, 'complete --do-complete "cmd foo.."'
-        ) == sorted(
-            [
-                ("foo..foo", ""),
-                ("foo..bar", ""),
-                ("foo..baz", ""),
-            ]
-        )
-
-        assert get_sorted_fish_completions(
-            completions_file_path, 'complete --do-complete "cmd foo..f"'
-        ) == sorted(
-            [
-                ("foo..foo", ""),
-            ]
-        )
-
-
 def test_completes_paths(complgen_binary_path: Path):
     with gen_fish_aot_completion_script_path(
         complgen_binary_path, """cmd <PATH>"""
@@ -333,6 +180,177 @@ def test_completes_subword_directories_prefix(complgen_binary_path: Path):
                         ("--dir=baz/", "Directory"),
                     ]
                 )
+
+
+def test_completes_repeated_path(complgen_binary_path: Path):
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path, """cmd <PATH>..."""
+    ) as completions_file_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                Path("foo").touch()
+                Path("bar").touch()
+                input = 'complete --do-complete "cmd foo "'
+                completions = get_sorted_fish_completions(completions_file_path, input)
+                assert completions == sorted(
+                    [
+                        ("foo", ""),
+                        ("bar", ""),
+                    ]
+                )
+
+
+def test_fish_uses_correct_description_with_duplicated_literals(
+    complgen_binary_path: Path,
+):
+    GRAMMAR = """
+cmd <COMMAND> [--help];
+
+<COMMAND> ::= rm           "Remove a project" <RM-OPTION>
+            | remote       "Manage a project's remotes" [<REMOTE-SUBCOMMAND>]
+            ;
+
+<REMOTE-SUBCOMMAND> ::= rm <name>;
+"""
+
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        input = 'complete --do-complete "cmd "'
+        assert get_sorted_fish_completions(completions_file_path, input) == sorted(
+            [("rm", "Remove a project"), ("remote", "Manage a project's remotes")],
+            key=lambda pair: pair[0],
+        )
+
+
+def test_fish_uses_correct_description_with_duplicated_descriptions(
+    complgen_binary_path: Path,
+):
+    GRAMMAR = """
+cmd [<OPTION>]...;
+
+<OPTION> ::= --color    "use markers to highlight the matching strings" [<WHEN>]
+           | --colour   "use markers to highlight the matching strings" [<WHEN>]
+           ;
+"""
+
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        input = 'complete --do-complete "cmd "'
+        assert get_sorted_fish_completions(completions_file_path, input) == sorted(
+            [
+                ("--color", "use markers to highlight the matching strings"),
+                ("--colour", "use markers to highlight the matching strings"),
+            ],
+            key=lambda pair: pair[0],
+        )
+
+
+def test_external_command_produces_description(complgen_binary_path: Path):
+    GRAMMAR = r"""
+cmd {{{ echo -e "completion\tdescription" }}};
+"""
+
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        input = 'complete --do-complete "cmd "'
+        assert get_sorted_fish_completions(completions_file_path, input) == [
+            ("completion", "description")
+        ]
+
+
+def test_external_command_filters_candidates(complgen_binary_path: Path):
+    GRAMMAR = r"""
+cmd {{{echo foo; echo bar; echo baz;}}};
+"""
+
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        input = 'complete --do-complete "cmd b"'
+        assert get_sorted_fish_completions(completions_file_path, input) == [
+            ("bar", ""),
+            ("baz", ""),
+        ]
+
+
+def test_external_command_subword_filters_candidates(complgen_binary_path: Path):
+    GRAMMAR = r"""
+cmd --ref={{{echo foo; echo bar; echo baz;}}};
+"""
+
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        input = 'complete --do-complete "cmd --ref=b"'
+        assert get_sorted_fish_completions(completions_file_path, input) == [
+            ("--ref=bar", ""),
+            ("--ref=baz", ""),
+        ]
+
+
+def test_nontail_external_command(complgen_binary_path: Path):
+    GRAMMAR = r"""
+cmd <CMD>..<CMD>;
+<CMD> ::= {{{ echo foo; echo bar; echo baz; }}};
+"""
+
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        assert get_sorted_fish_completions(
+            completions_file_path, 'complete --do-complete "cmd "'
+        ) == sorted(
+            [
+                ("foo", ""),
+                ("bar", ""),
+                ("baz", ""),
+            ]
+        )
+
+        assert get_sorted_fish_completions(
+            completions_file_path, 'complete --do-complete "cmd f"'
+        ) == sorted(
+            [
+                ("foo", ""),
+            ]
+        )
+
+        assert get_sorted_fish_completions(
+            completions_file_path, 'complete --do-complete "cmd foo"'
+        ) == sorted(
+            [
+                ("foo..", ""),
+            ]
+        )
+
+        assert get_sorted_fish_completions(
+            completions_file_path, 'complete --do-complete "cmd foo."'
+        ) == sorted(
+            [
+                ("foo..", ""),
+            ]
+        )
+
+        assert get_sorted_fish_completions(
+            completions_file_path, 'complete --do-complete "cmd foo.."'
+        ) == sorted(
+            [
+                ("foo..foo", ""),
+                ("foo..bar", ""),
+                ("foo..baz", ""),
+            ]
+        )
+
+        assert get_sorted_fish_completions(
+            completions_file_path, 'complete --do-complete "cmd foo..f"'
+        ) == sorted(
+            [
+                ("foo..foo", ""),
+            ]
+        )
 
 
 def test_specializes_for_fish(complgen_binary_path: Path):
@@ -537,24 +555,6 @@ mygrep <OPTION>...;
         assert get_sorted_fish_completions(completions_file_path, input) == sorted(
             [("--color=", "")]
         )
-
-
-def test_bug2(complgen_binary_path: Path):
-    with gen_fish_aot_completion_script_path(
-        complgen_binary_path, """cmd <PATH>..."""
-    ) as completions_file_path:
-        with tempfile.TemporaryDirectory() as dir:
-            with set_working_dir(Path(dir)):
-                Path("foo").touch()
-                Path("bar").touch()
-                input = 'complete --do-complete "cmd foo "'
-                completions = get_sorted_fish_completions(completions_file_path, input)
-                assert completions == sorted(
-                    [
-                        ("foo", ""),
-                        ("bar", ""),
-                    ]
-                )
 
 
 def test_bug3(complgen_binary_path: Path):
