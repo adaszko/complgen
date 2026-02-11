@@ -172,6 +172,24 @@ def test_completes_subword_directories_prefix(complgen_binary_path: Path):
                 assert completions == sorted(["bar", "baz"])
 
 
+def test_completes_repeated_path(complgen_binary_path: Path):
+    with completion_script_path(
+        complgen_binary_path, """cmd <PATH>..."""
+    ) as completions_file_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                Path("foo").touch()
+                Path("bar").touch()
+                assert get_sorted_bash_completions(
+                    completions_file_path,
+                    '''COMP_WORDS=(cmd foo); COMP_CWORD=2; _cmd; printf '%s\n' "${COMPREPLY[@]}"''',
+                ) == sorted(["foo", "bar"])
+                assert get_sorted_bash_completions(
+                    completions_file_path,
+                    '''COMP_WORDS=(cmd foo bar); COMP_CWORD=3; _cmd; printf '%s\n' "${COMPREPLY[@]}"''',
+                ) == sorted(["foo", "bar"])
+
+
 def test_bash_uses_correct_transition_with_duplicated_literals(
     complgen_binary_path: Path,
 ):
@@ -419,21 +437,6 @@ def test_multiple_matching_subwords(complgen_binary_path: Path):
         assert get_sorted_bash_completions(path, input) == sorted(
             ["--no-ahead-behind", "--no-renames"]
         )
-
-
-def test_bug1(complgen_binary_path: Path):
-    with completion_script_path(
-        complgen_binary_path, """cmd <PATH>..."""
-    ) as completions_file_path:
-        with tempfile.TemporaryDirectory() as dir:
-            with set_working_dir(Path(dir)):
-                Path("foo").touch()
-                Path("bar").touch()
-                completions = get_sorted_bash_completions(
-                    completions_file_path,
-                    '''COMP_WORDS=(cmd foo); COMP_CWORD=2; _cmd; printf '%s\n' "${COMPREPLY[@]}"''',
-                )
-                assert completions == sorted(["foo", "bar"])
 
 
 def test_bug2(complgen_binary_path: Path):

@@ -170,17 +170,17 @@ fn write_generic_subword_fn<W: Write>(
             for cmd_id in "${{!state_commands[@]}}"; do
                 readarray -t subword_candidates < <(_{command}_cmd_$cmd_id "$subword" "$matched_prefix" | while read -r f1 _; do echo "$f1"; done)
                 if [[ ${{#subword_candidates[@]}} -gt 0 ]]; then
-                    indexes=( $(
-                        for i in "${{!subword_candidates[@]}}" ; do
+                    indexes=($(
+                        for i in "${{!subword_candidates[@]}}"; do
                             printf '%s %s %s\n' $i "${{#subword_candidates[i]}}" "${{subword_candidates[i]}}"
                         done | sort -nrk2,2 -rk3 | cut -f1 -d' '
                     ))
-                    sorted=()
+                    decreasing_length=()
                     for i in "${{indexes[@]}}" ; do
-                        sorted+=("${{subword_candidates[i]}}")
+                        decreasing_length+=("${{subword_candidates[i]}}")
                     done
 
-                    for candidate in "${{sorted[@]}}"; do
+                    for candidate in "${{decreasing_length[@]}}"; do
                         if [[ $candidate == $subword ]]; then
                             match_len=${{#candidate}}
                             char_index=$((char_index + match_len))
@@ -511,6 +511,43 @@ fi
                     state=${{state_transitions[$subword_id]}}
                     word_index=$((word_index + 1))
                     continue 2
+                fi
+            done
+        fi
+"#
+        )?;
+    }
+
+    if needs_commands_code {
+        write!(
+            buffer,
+            r#"
+        if [[ -v "command_transitions[$state]" ]]; then
+            local -A state_commands=${{command_transitions[$state]}}
+            for cmd_id in "${{!state_commands[@]}}"; do
+                readarray -t candidates < <(_{command}_cmd_$cmd_id "" "" | while read -r f1 _; do echo "$f1"; done)
+                if [[ ${{#candidates[@]}} -gt 0 ]]; then
+                    indexes=($(
+                        for i in "${{!candidates[@]}}" ; do
+                            printf '%s %s %s\n' $i "${{#candidates[i]}}" "${{candidates[i]}}"
+                        done | sort -nrk2,2 -rk3 | cut -f1 -d' '
+                    ))
+                    decreasing_length=()
+                    for i in "${{indexes[@]}}"; do
+                        decreasing_length+=("${{candidates[i]}}")
+                    done
+
+                    for candidate in "${{decreasing_length[@]}}"; do
+                        if [[ $candidate == $word ]]; then
+                            state=${{state_commands[$cmd_id]}}
+                            word_index=$((word_index + 1))
+                            continue 3
+                        fi
+                    done
+
+                    if [[ $(($word_index + 1)) == $cword ]]; then
+                        break 3
+                    fi
                 fi
             done
         fi

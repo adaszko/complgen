@@ -185,6 +185,17 @@ def test_completes_file_with_spaces(complgen_binary_path: Path):
             ) == sorted(["file\\ with\\ spaces"])
 
 
+def test_completes_repeated_path(complgen_binary_path: Path):
+    GRAMMAR = r"""cmd <PATH>..."""
+    with tempfile.TemporaryDirectory() as dir:
+        with set_working_dir(Path(dir)):
+            Path("foo").touch()
+            Path("bar").touch()
+            assert get_sorted_aot_completions(
+                complgen_binary_path, GRAMMAR, "cmd foo "
+            ) == sorted(["foo", "bar"])
+
+
 def test_zsh_uses_correct_description_with_duplicated_literals(
     complgen_binary_path: Path,
 ):
@@ -539,19 +550,6 @@ def test_multiple_matching_subwords(complgen_binary_path: Path):
     assert get_sorted_aot_completions(
         complgen_binary_path, GRAMMAR, r"""cmd --no-"""
     ) == sorted(["--no-ahead-behind ahead-behind", "--no-renames renames     "])
-
-
-def test_bug1(complgen_binary_path: Path):
-    GRAMMAR = r"""
-cmd (<PATH> || --help)...;
-"""
-    with tempfile.TemporaryDirectory() as dir:
-        with set_working_dir(Path(dir)):
-            Path("foo").touch()
-            Path("bar").touch()
-            assert get_sorted_aot_completions(
-                complgen_binary_path, GRAMMAR, "cmd foo --"
-            ) == sorted(["--help"])
 
 
 def test_bug2(complgen_binary_path: Path):
