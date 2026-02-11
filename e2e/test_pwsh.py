@@ -14,131 +14,6 @@ from conftest import (
 )
 
 
-def test_pwsh_uses_correct_description_with_duplicated_literals(
-    complgen_binary_path: Path,
-):
-    GRAMMAR = """
-cmd <COMMAND> [--help];
-
-<COMMAND> ::= rm           "Remove a project" <RM-OPTION>
-            | remote       "Manage a project's remotes" [<REMOTE-SUBCOMMAND>]
-            ;
-
-<REMOTE-SUBCOMMAND> ::= rm <name>;
-"""
-
-    with gen_pwsh_completion_script_path(
-        complgen_binary_path, GRAMMAR
-    ) as completions_file_path:
-        completions = get_sorted_pwsh_completions(completions_file_path, "cmd ")
-        assert completions == sorted(
-            [("rm", "Remove a project"), ("remote", "Manage a project's remotes")],
-            key=lambda pair: pair[0],
-        )
-
-
-def test_pwsh_uses_correct_description_with_duplicated_descriptions(
-    complgen_binary_path: Path,
-):
-    GRAMMAR = """
-cmd [<OPTION>]...;
-
-<OPTION> ::= --color    "use markers to highlight the matching strings" [<WHEN>]
-           | --colour   "use markers to highlight the matching strings" [<WHEN>]
-           ;
-"""
-
-    with gen_pwsh_completion_script_path(
-        complgen_binary_path, GRAMMAR
-    ) as completions_file_path:
-        completions = get_sorted_pwsh_completions(completions_file_path, "cmd ")
-        assert completions == sorted(
-            [
-                ("--color", "use markers to highlight the matching strings"),
-                ("--colour", "use markers to highlight the matching strings"),
-            ],
-            key=lambda pair: pair[0],
-        )
-
-
-def test_external_command_produces_description(complgen_binary_path: Path):
-    # PowerShell uses Write-Output with tab separator for description
-    GRAMMAR = r"""
-cmd {{{ Write-Output "completion`tdescription" }}};
-"""
-
-    with gen_pwsh_completion_script_path(
-        complgen_binary_path, GRAMMAR
-    ) as completions_file_path:
-        completions = get_sorted_pwsh_completions(completions_file_path, "cmd ")
-        assert completions == [("completion", "description")]
-
-
-def test_external_command_filters_candidates(complgen_binary_path: Path):
-    GRAMMAR = r"""
-cmd {{{ Write-Output foo; Write-Output bar; Write-Output baz; }}};
-"""
-    with gen_pwsh_completion_script_path(
-        complgen_binary_path, GRAMMAR
-    ) as completions_file_path:
-        completions = get_sorted_pwsh_completions(completions_file_path, "cmd b")
-        assert completions == [("bar", ""), ("baz", "")]
-
-
-def test_external_command_subword_filters_candidates(complgen_binary_path: Path):
-    GRAMMAR = r"""
-cmd --ref={{{ Write-Output foo; Write-Output bar; Write-Output baz; }}};
-"""
-    with gen_pwsh_completion_script_path(
-        complgen_binary_path, GRAMMAR
-    ) as completions_file_path:
-        completions = get_sorted_pwsh_completions(completions_file_path, "cmd --ref=b")
-        assert completions == [("--ref=bar", ""), ("--ref=baz", "")]
-
-
-def test_nontail_external_command(complgen_binary_path: Path):
-    GRAMMAR = r"""
-cmd <CMD>..<CMD>;
-<CMD> ::= {{{ Write-Output foo; Write-Output bar; Write-Output baz; }}};
-"""
-    with gen_pwsh_completion_script_path(
-        complgen_binary_path, GRAMMAR
-    ) as completions_file_path:
-        assert get_sorted_pwsh_completions(completions_file_path, "cmd ") == sorted(
-            [
-                ("foo", ""),
-                ("bar", ""),
-                ("baz", ""),
-            ]
-        )
-
-        assert get_sorted_pwsh_completions(completions_file_path, "cmd f") == [
-            ("foo", ""),
-        ]
-
-        assert get_sorted_pwsh_completions(completions_file_path, "cmd foo") == [
-            ("foo..", ""),
-        ]
-
-        assert get_sorted_pwsh_completions(completions_file_path, "cmd foo.") == [
-            ("foo..", ""),
-        ]
-
-        assert get_sorted_pwsh_completions(
-            completions_file_path, "cmd foo.."
-        ) == sorted(
-            [
-                ("foo..foo", ""),
-                ("foo..bar", ""),
-                ("foo..baz", ""),
-            ]
-        )
-
-        assert get_sorted_pwsh_completions(completions_file_path, "cmd foo..f") == [
-            ("foo..foo", ""),
-        ]
-
-
 def test_completes_paths(complgen_binary_path: Path):
     with gen_pwsh_completion_script_path(
         complgen_binary_path, """cmd <PATH>"""
@@ -297,6 +172,160 @@ def test_completes_subword_directories_prefix(complgen_binary_path: Path):
                 assert sorted(completion_texts) == sorted(expected) or sorted(
                     completion_texts
                 ) == sorted(expected_with_slash)
+
+
+def test_completes_repeated_path(complgen_binary_path: Path):
+    with gen_pwsh_completion_script_path(
+        complgen_binary_path, """cmd <PATH>..."""
+    ) as completions_file_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                os.mkdir("foo")
+                os.mkdir("bar")
+                assert get_sorted_pwsh_completions(
+                    completions_file_path, "cmd foo "
+                ) == sorted(["foo", "bar"])
+
+
+def test_path_option_mix(complgen_binary_path: Path):
+    with gen_pwsh_completion_script_path(
+        complgen_binary_path, """cmd (<PATH> || --option)..."""
+    ) as completions_file_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                os.mkdir("foo")
+                os.mkdir("bar")
+                assert get_sorted_pwsh_completions(
+                    completions_file_path, "cmd --"
+                ) == sorted([("--option", "")])
+                assert get_sorted_pwsh_completions(
+                    completions_file_path, "cmd --option "
+                ) == sorted([("foo", ""), ("bar", "")])
+
+
+def test_pwsh_uses_correct_description_with_duplicated_literals(
+    complgen_binary_path: Path,
+):
+    GRAMMAR = """
+cmd <COMMAND> [--help];
+
+<COMMAND> ::= rm           "Remove a project" <RM-OPTION>
+            | remote       "Manage a project's remotes" [<REMOTE-SUBCOMMAND>]
+            ;
+
+<REMOTE-SUBCOMMAND> ::= rm <name>;
+"""
+
+    with gen_pwsh_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        completions = get_sorted_pwsh_completions(completions_file_path, "cmd ")
+        assert completions == sorted(
+            [("rm", "Remove a project"), ("remote", "Manage a project's remotes")],
+            key=lambda pair: pair[0],
+        )
+
+
+def test_pwsh_uses_correct_description_with_duplicated_descriptions(
+    complgen_binary_path: Path,
+):
+    GRAMMAR = """
+cmd [<OPTION>]...;
+
+<OPTION> ::= --color    "use markers to highlight the matching strings" [<WHEN>]
+           | --colour   "use markers to highlight the matching strings" [<WHEN>]
+           ;
+"""
+
+    with gen_pwsh_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        completions = get_sorted_pwsh_completions(completions_file_path, "cmd ")
+        assert completions == sorted(
+            [
+                ("--color", "use markers to highlight the matching strings"),
+                ("--colour", "use markers to highlight the matching strings"),
+            ],
+            key=lambda pair: pair[0],
+        )
+
+
+def test_external_command_produces_description(complgen_binary_path: Path):
+    # PowerShell uses Write-Output with tab separator for description
+    GRAMMAR = r"""
+cmd {{{ Write-Output "completion`tdescription" }}};
+"""
+
+    with gen_pwsh_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        completions = get_sorted_pwsh_completions(completions_file_path, "cmd ")
+        assert completions == [("completion", "description")]
+
+
+def test_external_command_filters_candidates(complgen_binary_path: Path):
+    GRAMMAR = r"""
+cmd {{{ Write-Output foo; Write-Output bar; Write-Output baz; }}};
+"""
+    with gen_pwsh_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        completions = get_sorted_pwsh_completions(completions_file_path, "cmd b")
+        assert completions == [("bar", ""), ("baz", "")]
+
+
+def test_external_command_subword_filters_candidates(complgen_binary_path: Path):
+    GRAMMAR = r"""
+cmd --ref={{{ Write-Output foo; Write-Output bar; Write-Output baz; }}};
+"""
+    with gen_pwsh_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        completions = get_sorted_pwsh_completions(completions_file_path, "cmd --ref=b")
+        assert completions == [("--ref=bar", ""), ("--ref=baz", "")]
+
+
+def test_nontail_external_command(complgen_binary_path: Path):
+    GRAMMAR = r"""
+cmd <CMD>..<CMD>;
+<CMD> ::= {{{ Write-Output foo; Write-Output bar; Write-Output baz; }}};
+"""
+    with gen_pwsh_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        assert get_sorted_pwsh_completions(completions_file_path, "cmd ") == sorted(
+            [
+                ("foo", ""),
+                ("bar", ""),
+                ("baz", ""),
+            ]
+        )
+
+        assert get_sorted_pwsh_completions(completions_file_path, "cmd f") == [
+            ("foo", ""),
+        ]
+
+        assert get_sorted_pwsh_completions(completions_file_path, "cmd foo") == [
+            ("foo..", ""),
+        ]
+
+        assert get_sorted_pwsh_completions(completions_file_path, "cmd foo.") == [
+            ("foo..", ""),
+        ]
+
+        assert get_sorted_pwsh_completions(
+            completions_file_path, "cmd foo.."
+        ) == sorted(
+            [
+                ("foo..foo", ""),
+                ("foo..bar", ""),
+                ("foo..baz", ""),
+            ]
+        )
+
+        assert get_sorted_pwsh_completions(completions_file_path, "cmd foo..f") == [
+            ("foo..foo", ""),
+        ]
 
 
 def test_specializes_for_pwsh(complgen_binary_path: Path):
