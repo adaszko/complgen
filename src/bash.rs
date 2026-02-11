@@ -44,12 +44,10 @@ fn write_lookup_tables<W: Write>(
         .iter()
         .map(|(id, input, description)| ((*input, *description), *id))
         .collect();
-    let literals: String = itertools::join(
-        all_literals
-            .iter()
-            .map(|(_, literal, _)| make_string_constant(literal)),
-        " ",
-    );
+    let literals: String = all_literals
+        .iter()
+        .map(|(_, literal, _)| make_string_constant(literal))
+        .join(" ");
     writeln!(buffer, r#"    local -a literals=({literals})"#)?;
     writeln!(buffer, r#"    local -A literal_transitions=()"#)?;
 
@@ -60,38 +58,30 @@ fn write_lookup_tables<W: Write>(
     for state in dfa.get_all_states() {
         let literal_transitions = dfa.get_literal_transitions_from(state);
         if !literal_transitions.is_empty() {
-            let literal_transitions: Vec<(usize, StateId)> = literal_transitions
-                .into_iter()
+            let state_transitions = literal_transitions
+                .iter()
                 .map(|(literal, description, to)| {
                     (
                         *literal_id_from_input_description
-                            .get(&(literal, description))
+                            .get(&(*literal, *description))
                             .unwrap(),
                         to,
                     )
                 })
-                .collect();
-            let state_literal_transitions: String = itertools::join(
-                literal_transitions
-                    .into_iter()
-                    .map(|(literal_id, to)| format!("[{}]={}", literal_id, to)),
-                " ",
-            );
+                .map(|(literal_id, to)| format!("[{}]={}", literal_id, to))
+                .join(" ");
             writeln!(
                 buffer,
-                r#"    literal_transitions[{state}]="({state_literal_transitions})""#
+                r#"    literal_transitions[{state}]="({state_transitions})""#
             )?;
         }
 
         if needs_commands_code {
             let command_transitions = dfa.get_command_transitions_from(state);
             if !command_transitions.is_empty() {
-                let resolved_commands: Vec<(usize, StateId)> = command_transitions
-                    .into_iter()
-                    .map(|(cmd, to)| (id_from_cmd.get_index_of(&cmd).unwrap(), to))
-                    .collect();
-                let state_transitions: String = resolved_commands
-                    .into_iter()
+                let state_transitions = command_transitions
+                    .iter()
+                    .map(|(cmd, to)| (id_from_cmd.get_index_of(cmd).unwrap(), to))
                     .map(|(cmd_id, to)| format!("[{cmd_id}]={to}"))
                     .join(" ");
                 writeln!(
@@ -102,11 +92,10 @@ fn write_lookup_tables<W: Write>(
         }
     }
 
-    let star_transitions = itertools::join(
-        dfa.iter_top_level_star_transitions()
-            .map(|(from, to)| format!("[{from}]={to}")),
-        " ",
-    );
+    let star_transitions = dfa
+        .iter_top_level_star_transitions()
+        .map(|(from, to)| format!("[{from}]={to}"))
+        .join(" ");
     writeln!(
         buffer,
         r#"    local -A star_transitions=({star_transitions})"#
@@ -338,13 +327,13 @@ fn write_subword_fn<W: Write>(
     }
 
     for (level, transitions) in completion_literals.iter().enumerate() {
-        let initializer = itertools::join(
-            transitions.iter().map(|(from_state, literal_ids)| {
+        let initializer = transitions
+            .iter()
+            .map(|(from_state, literal_ids)| {
                 let joined_literal_ids = itertools::join(literal_ids, " ");
                 format!(r#"[{from_state}]="{joined_literal_ids}""#)
-            }),
-            " ",
-        );
+            })
+            .join(" ");
         writeln!(
             buffer,
             r#"    local -A literal_transitions_level_{level}=({initializer})"#
@@ -353,13 +342,13 @@ fn write_subword_fn<W: Write>(
 
     if needs_commands_code {
         for (level, transitions) in completion_commands.iter().enumerate() {
-            let initializer = itertools::join(
-                transitions.iter().map(|(from_state, command_ids)| {
+            let initializer = transitions
+                .iter()
+                .map(|(from_state, command_ids)| {
                     let joined_command_ids = itertools::join(command_ids, " ");
                     format!(r#"[{from_state}]="{joined_command_ids}""#)
-                }),
-                " ",
-            );
+                })
+                .join(" ");
             writeln!(
                 buffer,
                 r#"    local -A commands_level_{level}=({initializer})"#
@@ -460,12 +449,10 @@ fi
             if subword_transitions.is_empty() {
                 continue;
             }
-            let state_transitions: String = itertools::join(
-                subword_transitions
-                    .into_iter()
-                    .map(|(dfa, to)| format!("[{}]={}", id_from_dfa.get(&dfa).unwrap(), to)),
-                " ",
-            );
+            let state_transitions: String = subword_transitions
+                .into_iter()
+                .map(|(dfa, to)| format!("[{}]={}", id_from_dfa.get(&dfa).unwrap(), to))
+                .join(" ");
             writeln!(
                 buffer,
                 r#"    subword_transitions[{state}]="({state_transitions})""#
@@ -627,13 +614,13 @@ fi
     }
 
     for (level, transitions) in completion_literals.iter().enumerate() {
-        let initializer = itertools::join(
-            transitions.iter().map(|(from_state, literal_ids)| {
+        let initializer = transitions
+            .iter()
+            .map(|(from_state, literal_ids)| {
                 let joined_literal_ids = itertools::join(literal_ids, " ");
                 format!(r#"[{from_state}]="{joined_literal_ids}""#)
-            }),
-            " ",
-        );
+            })
+            .join(" ");
         writeln!(
             buffer,
             r#"    local -A literal_transitions_level_{level}=({initializer})"#
@@ -642,13 +629,13 @@ fi
 
     if needs_subwords_code {
         for (level, transitions) in completion_subwords.iter().enumerate() {
-            let initializer = itertools::join(
-                transitions.iter().map(|(from_state, subword_ids)| {
+            let initializer = transitions
+                .iter()
+                .map(|(from_state, subword_ids)| {
                     let joined_subword_ids = itertools::join(subword_ids, " ");
                     format!(r#"[{from_state}]="{joined_subword_ids}""#)
-                }),
-                " ",
-            );
+                })
+                .join(" ");
             writeln!(
                 buffer,
                 r#"    local -A subword_transitions_level_{level}=({initializer})"#
@@ -658,13 +645,13 @@ fi
 
     if needs_commands_code {
         for (level, transitions) in completion_commands.iter().enumerate() {
-            let initializer = itertools::join(
-                transitions.iter().map(|(from_state, command_ids)| {
+            let initializer = transitions
+                .iter()
+                .map(|(from_state, command_ids)| {
                     let joined_command_ids = itertools::join(command_ids, " ");
                     format!(r#"[{from_state}]="{joined_command_ids}""#)
-                }),
-                " ",
-            );
+                })
+                .join(" ");
             writeln!(
                 buffer,
                 r#"    local -A commands_level_{level}=({initializer})"#
