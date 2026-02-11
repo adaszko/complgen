@@ -200,6 +200,31 @@ def test_completes_repeated_path(complgen_binary_path: Path):
                 )
 
 
+def test_path_option_mix(complgen_binary_path: Path):
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path, """cmd (<PATH> || --option)..."""
+    ) as completions_file_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                Path("foo").touch()
+                Path("bar").touch()
+                assert get_sorted_fish_completions(
+                    completions_file_path, 'complete --do-complete "cmd --"'
+                ) == sorted(
+                    [
+                        ("--option", ""),
+                    ]
+                )
+                assert get_sorted_fish_completions(
+                    completions_file_path, 'complete --do-complete "cmd --option "'
+                ) == sorted(
+                    [
+                        ("foo", ""),
+                        ("bar", ""),
+                    ]
+                )
+
+
 def test_fish_uses_correct_description_with_duplicated_literals(
     complgen_binary_path: Path,
 ):

@@ -190,6 +190,24 @@ def test_completes_repeated_path(complgen_binary_path: Path):
                 ) == sorted(["foo", "bar"])
 
 
+def test_path_option_mix(complgen_binary_path: Path):
+    with completion_script_path(
+        complgen_binary_path, """cmd (<PATH> || --option)..."""
+    ) as completions_file_path:
+        with tempfile.TemporaryDirectory() as dir:
+            with set_working_dir(Path(dir)):
+                Path("foo").touch()
+                Path("bar").touch()
+                assert get_sorted_bash_completions(
+                    completions_file_path,
+                    '''COMP_WORDS=(cmd --); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"''',
+                ) == sorted(["--option "])
+                assert get_sorted_bash_completions(
+                    completions_file_path,
+                    '''COMP_WORDS=(cmd --option); COMP_CWORD=2; _cmd; printf '%s\n' "${COMPREPLY[@]}"''',
+                ) == sorted(["foo", "bar"])
+
+
 def test_bash_uses_correct_transition_with_duplicated_literals(
     complgen_binary_path: Path,
 ):

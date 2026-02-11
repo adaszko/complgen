@@ -196,6 +196,20 @@ def test_completes_repeated_path(complgen_binary_path: Path):
             ) == sorted(["foo", "bar"])
 
 
+def test_path_option_mix(complgen_binary_path: Path):
+    GRAMMAR = r"""cmd (<PATH> || --option)..."""
+    with tempfile.TemporaryDirectory() as dir:
+        with set_working_dir(Path(dir)):
+            Path("foo").touch()
+            Path("bar").touch()
+            assert get_sorted_aot_completions(
+                complgen_binary_path, GRAMMAR, "cmd --"
+            ) == sorted(["--option"])
+            assert get_sorted_aot_completions(
+                complgen_binary_path, GRAMMAR, "cmd --option "
+            ) == sorted(["foo", "bar"])
+
+
 def test_zsh_uses_correct_description_with_duplicated_literals(
     complgen_binary_path: Path,
 ):
