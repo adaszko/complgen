@@ -100,6 +100,8 @@ end
 fn write_subword_lookup_tables<W: Write>(
     buffer: &mut W,
     dfa: &DFA,
+    id_from_cmd: &IndexSet<Ustr>,
+    needs_commands_code: bool,
 ) -> Result<HashMap<(Ustr, Ustr), usize>> {
     let all_literals: Vec<(usize, Ustr, Ustr)> = dfa
         .get_top_level_literals_decreasing_length()
@@ -173,6 +175,7 @@ fn write_subword_lookup_tables<W: Write>(
         buffer,
         r#"    set --global subword_literal_transitions_inputs"#
     )?;
+    writeln!(buffer, r#"    set --global subword_command_transitions"#)?;
     for state in dfa.get_all_states() {
         let transitions = dfa.get_literal_transitions_from(state);
         if !transitions.is_empty() {
@@ -187,9 +190,6 @@ fn write_subword_lookup_tables<W: Write>(
                     )
                 })
                 .collect();
-            if transitions.is_empty() {
-                continue;
-            }
             let state_inputs: String = itertools::join(
                 transitions
                     .iter()
@@ -215,6 +215,25 @@ fn write_subword_lookup_tables<W: Write>(
                 state + ARRAY_START,
                 make_string_constant(&state_tos),
             )?;
+        }
+
+        if needs_commands_code {
+            let command_transitions = dfa.get_command_transitions_from(state);
+            if !command_transitions.is_empty() {
+                let state_transitions = command_transitions
+                    .into_iter()
+                    .map(|(cmd, to)| (id_from_cmd.get_index_of(&cmd).unwrap(), to))
+                    .map(|(cmd, to)| (cmd, to + ARRAY_START))
+                    .map(|(cmd, to)| format!("{cmd},{to}"))
+                    .join(" ");
+
+                writeln!(
+                    buffer,
+                    r#"    set subword_command_transitions[{}] {}"#,
+                    state + ARRAY_START,
+                    make_string_constant(&state_transitions),
+                )?;
+            }
         }
     }
 
@@ -298,6 +317,72 @@ fn write_generic_subword_fn<W: Write>(
             end
         end"#
     )?;
+
+    if needs_commands_code {
+        write!(
+            buffer,
+            r#"
+        if set --query subword_command_transitions[$subword_state] && test -n $subword_command_transitions[$subword_state]
+            set state_transitions (string split ' ' $subword_command_transitions[$subword_state])
+            set command_matched 0
+            set matched 0
+            for cmd_to in $state_transitions
+                set fields (string split ',' $cmd_to)
+                set cmd_id $fields[1]
+                set to $fields[2]
+                set function_name _{command}_cmd_$cmd_id
+                set candidates ($function_name "" "")
+                for i in (seq 1 (count $candidates))
+                    set candidate_description (string split --max 1 -- "	" $candidates[$i])
+                    set candidates[$i] $candidate_description[1]
+                end
+                set indexes (
+                    for i in (seq 1 (count $candidates))
+                        printf '%s %s %s\n' $i (string length -- $candidates[$i]) $candidates[$i]
+                    end | sort -nrk2,2 -rk3 | cut -f1 -d' '
+                )
+                set decreasing_length ""
+                for i in $indexes
+                    set --append decreasing_length $candidates[$i]
+                end
+
+                for candidate in $candidates
+                    if test $candidate = $subword
+                        set subword_state $to
+                        set match_len (string length -- $candidate)
+                        set char_index (math $char_index + $match_len)
+                        set command_matched 1
+                        break
+                    end
+
+                    if string match --quiet -- "$subword*" $candidate
+                        set command_matched 1
+                        set matched 1
+                        break
+                    end
+
+                    if string match --quiet -- "$candidate*" $subword
+                        set subword_state $to
+                        set match_len (string length -- $candidate)
+                        set char_index (math $char_index + $match_len)
+                        set command_matched 1
+                        break
+                    end
+                end
+                if test $command_matched -ne 0
+                    break
+                end
+            end
+            if test $matched -ne 0
+                break
+            end
+            if test $command_matched -ne 0
+                continue
+            end
+        end
+"#
+        )?;
+    }
 
     write!(
         buffer,
@@ -404,7 +489,8 @@ fn write_subword_fn<W: Write>(
 "#
     )?;
 
-    let literal_id_from_input_description = write_subword_lookup_tables(buffer, dfa)?;
+    let literal_id_from_input_description =
+        write_subword_lookup_tables(buffer, dfa, id_from_cmd, needs_commands_code)?;
     writeln!(buffer)?;
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
@@ -520,6 +606,8 @@ fn write_subword_fn<W: Write>(
 fn write_lookup_tables<W: Write>(
     buffer: &mut W,
     dfa: &DFA,
+    id_from_cmd: &IndexSet<Ustr>,
+    needs_commands_code: bool,
 ) -> Result<HashMap<(Ustr, Ustr), usize>> {
     let all_literals: Vec<(usize, Ustr, Ustr)> = dfa
         .get_top_level_literals_decreasing_length()
@@ -632,6 +720,25 @@ fn write_lookup_tables<W: Write>(
                 make_string_constant(&state_tos),
             )?;
         }
+
+        if needs_commands_code {
+            let command_transitions = dfa.get_command_transitions_from(state);
+            if !command_transitions.is_empty() {
+                let state_transitions = command_transitions
+                    .into_iter()
+                    .map(|(cmd, to)| (id_from_cmd.get_index_of(&cmd).unwrap(), to))
+                    .map(|(cmd, to)| (cmd, to + ARRAY_START))
+                    .map(|(cmd, to)| format!("{cmd},{to}"))
+                    .join(" ");
+
+                writeln!(
+                    buffer,
+                    r#"    set command_transitions[{}] {}"#,
+                    state + ARRAY_START,
+                    make_string_constant(&state_transitions),
+                )?;
+            }
+        }
     }
 
     writeln!(buffer)?;
@@ -731,7 +838,8 @@ end
 "#
     )?;
 
-    let literal_id_from_input_description = write_lookup_tables(buffer, dfa)?;
+    let literal_id_from_input_description =
+        write_lookup_tables(buffer, dfa, &id_from_cmd, needs_commands_code)?;
 
     if needs_subwords_code {
         for state in dfa.get_all_states() {
@@ -809,6 +917,63 @@ end
                 end
             end
             if test $subword_matched -ne 0
+                continue
+            end
+        end
+"#
+        )?;
+    }
+
+    if needs_commands_code {
+        write!(
+            buffer,
+            r#"
+        if set --query command_transitions[$state] && test -n $command_transitions[$state]
+            set state_transitions (string split ' ' $command_transitions[$state])
+            set command_matched 0
+            set matched 0
+            for cmd_to in $state_transitions
+                set fields (string split ',' $cmd_to)
+                set cmd_id $fields[1]
+                set to $fields[2]
+                set function_name _{command}_cmd_$cmd_id
+                set candidates ($function_name "" "")
+                for i in (seq 1 (count $candidates))
+                    set candidate_description (string split --max 1 -- "	" $candidates[$i])
+                    set candidates[$i] $candidate_description[1]
+                end
+                set indexes (
+                    for i in (seq 1 (count $candidates))
+                        printf '%s %s %s\n' $i (string length -- $candidates[$i]) $candidates[$i]
+                    end | sort -nrk2,2 -rk3 | cut -f1 -d' '
+                )
+                set decreasing_length ""
+                for i in $indexes
+                    set --append decreasing_length $candidates[$i]
+                end
+
+                for candidate in $candidates
+                    if test $candidate = $word
+                        set state $to
+                        set word_index (math $word_index + 1)
+                        set command_matched 1
+                        break
+                    end
+                end
+                if test $command_matched -ne 0
+                    break
+                end
+
+                if test (math $word_index + 1) = $COMP_CWORD
+                    set command_matched 1
+                    set matched 1
+                    break
+                end
+            end
+            if test $matched -ne 0
+                break
+            end
+            if test $command_matched -ne 0
                 continue
             end
         end

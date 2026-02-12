@@ -190,9 +190,17 @@ def test_completes_repeated_path(complgen_binary_path: Path):
             with set_working_dir(Path(dir)):
                 Path("foo").touch()
                 Path("bar").touch()
-                input = 'complete --do-complete "cmd foo "'
-                completions = get_sorted_fish_completions(completions_file_path, input)
-                assert completions == sorted(
+                assert get_sorted_fish_completions(
+                    completions_file_path, 'complete --do-complete "cmd foo "'
+                ) == sorted(
+                    [
+                        ("foo", ""),
+                        ("bar", ""),
+                    ]
+                )
+                assert get_sorted_fish_completions(
+                    completions_file_path, 'complete --do-complete "cmd foo bar "'
+                ) == sorted(
                     [
                         ("foo", ""),
                         ("bar", ""),
