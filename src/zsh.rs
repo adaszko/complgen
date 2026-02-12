@@ -345,14 +345,14 @@ fn write_subword_fn<W: Write>(
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
-    let mut completion_literals: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    completion_literals.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
+    let mut completion_literals: Vec<HashMap<StateId, Vec<usize>>> =
+        vec![Default::default(); max_fallback_level + 1 as usize];
 
-    let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    completion_commands.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
+    let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> =
+        vec![Default::default(); max_fallback_level + 1 as usize];
 
-    let mut completion_compadds: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    completion_compadds.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
+    let mut completion_compadds: Vec<HashMap<StateId, Vec<usize>>> =
+        vec![Default::default(); max_fallback_level + 1 as usize];
 
     for (from, input_id, _) in dfa.iter_transitions() {
         match dfa.get_input(input_id).clone() {
@@ -632,17 +632,17 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
-    let mut completion_literals: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    completion_literals.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
+    let mut completion_literals: Vec<HashMap<StateId, Vec<usize>>> =
+        vec![Default::default(); max_fallback_level + 1 as usize];
 
-    let mut completion_subwords: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    completion_subwords.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
+    let mut completion_subwords: Vec<HashMap<StateId, Vec<usize>>> =
+        vec![Default::default(); max_fallback_level + 1 as usize];
 
-    let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    completion_commands.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
+    let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> =
+        vec![Default::default(); max_fallback_level + 1 as usize];
 
-    let mut completion_compadds: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    completion_compadds.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
+    let mut completion_compadds: Vec<HashMap<StateId, Vec<usize>>> =
+        vec![Default::default(); max_fallback_level + 1 as usize];
 
     for (from, input_id, _) in dfa.iter_transitions() {
         match dfa.get_input(input_id).clone() {

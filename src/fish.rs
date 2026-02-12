@@ -495,11 +495,11 @@ fn write_subword_fn<W: Write>(
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
-    let mut completion_literals: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    completion_literals.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
+    let mut completion_literals: Vec<HashMap<StateId, Vec<usize>>> =
+        vec![Default::default(); max_fallback_level + 1 as usize];
 
-    let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    completion_commands.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
+    let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> =
+        vec![Default::default(); max_fallback_level + 1 as usize];
 
     for (from, input_id, _) in dfa.iter_transitions() {
         match dfa.get_input(input_id).clone() {
@@ -1002,14 +1002,14 @@ end
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
-    let mut completion_literals: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    completion_literals.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
+    let mut completion_literals: Vec<HashMap<StateId, Vec<usize>>> =
+        vec![Default::default(); max_fallback_level + 1];
 
-    let mut completion_subwords: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    completion_subwords.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
+    let mut completion_subwords: Vec<HashMap<StateId, Vec<usize>>> =
+        vec![Default::default(); max_fallback_level + 1];
 
-    let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    completion_commands.resize_with(max_fallback_level + ARRAY_START as usize, Default::default);
+    let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> =
+        vec![Default::default(); max_fallback_level + 1];
 
     for (from, input_id, _) in dfa.iter_transitions() {
         match dfa.get_input(input_id).clone() {
