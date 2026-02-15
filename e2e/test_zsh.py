@@ -287,7 +287,7 @@ cmd --ref={{{echo foo; echo bar; echo baz;}}};
 def test_nontail_external_command(complgen_binary_path: Path):
     GRAMMAR = r"""
 cmd <CMD>..<CMD>;
-<CMD> ::= {{{ echo foo; echo bar; echo baz; }}};
+<CMD@zsh> ::= {{{ compadd foo; compadd bar; compadd baz; }}};
 """
     assert [
         s.split()
@@ -302,12 +302,12 @@ cmd <CMD>..<CMD>;
     assert [
         s.split()
         for s in get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd foo")
-    ] == sorted([["foo.."]])
+    ] == sorted([["foo..", ".."]])
 
     assert [
         s.split()
         for s in get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd foo.")
-    ] == sorted([["foo.."]])
+    ] == sorted([["foo..", ".."]])
 
     assert [
         s.split()
@@ -334,7 +334,7 @@ cmd <FOO>;
 def test_specializes_for_zsh_fallbacks(complgen_binary_path: Path):
     GRAMMAR = """
 cmd (<FOO> || completion-fallback);
-<FOO@zsh> ::= {{{ IPREFIX="$2" PREFIX="$1" compadd completion-specialized }}};
+<FOO@zsh> ::= {{{ compadd completion-specialized }}};
 """
     assert get_sorted_aot_completions(
         complgen_binary_path, GRAMMAR, "cmd completion-"
@@ -344,7 +344,7 @@ cmd (<FOO> || completion-fallback);
 def test_subword_specializes_for_zsh_fallbacks(complgen_binary_path: Path):
     GRAMMAR = """
 cmd --opt=(<FOO> || completion-fallback);
-<FOO@zsh> ::= {{{ IPREFIX="$2" PREFIX="$1" compadd completion-specialized }}};
+<FOO@zsh> ::= {{{ compadd completion-specialized }}};
 """
     assert get_sorted_aot_completions(
         complgen_binary_path, GRAMMAR, "cmd --opt=c"

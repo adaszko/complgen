@@ -2286,7 +2286,7 @@ fn make_builtin_specializations(shell: Shell) -> UstrMap<BuiltinSpec> {
             cmd: ustr(r#"__fish_complete_path "$1""#),
         },
         Shell::Zsh => BuiltinSpec {
-            cmd: ustr(r#"IPREFIX="$2" PREFIX="$1" _path_files"#),
+            cmd: ustr(r#"_path_files"#),
         },
         Shell::Pwsh => BuiltinSpec {
             // Preserve directory prefix: extract parent dir from prefix and join it back with filename
@@ -2305,7 +2305,7 @@ fn make_builtin_specializations(shell: Shell) -> UstrMap<BuiltinSpec> {
             cmd: ustr(r#"__fish_complete_directories "$1""#),
         },
         Shell::Zsh => BuiltinSpec {
-            cmd: ustr(r#"IPREFIX="$2" PREFIX="$1" _path_files -/"#),
+            cmd: ustr(r#"_path_files -/"#),
         },
         Shell::Pwsh => BuiltinSpec {
             // Preserve directory prefix: extract parent dir from prefix and join it back with dirname

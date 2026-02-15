@@ -210,7 +210,7 @@ function for it:
 cmd <USER>;
 <USER@bash> ::= {{{ compgen -A user "$1" | sort | uniq }}}; # produce candidates on stdout under bash
 <USER@fish> ::= {{{ __fish_complete_users "$1" }}}; # produce candidates on stdout under fish
-<USER@zsh> ::= {{{ IPREFIX="$2" PREFIX="$1" _users }}}; # produce candidates via compadd and friends under zsh
+<USER@zsh> ::= {{{ _users }}}; # produce candidates via compadd and friends under zsh
 <USER@pwsh> ::= {{{ Get-LocalUser | ForEach-Object { $_.Name } }}}; # PowerShell
 ```
 

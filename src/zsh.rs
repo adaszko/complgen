@@ -5,6 +5,7 @@ use crate::dfa::Inp;
 use crate::{Result, StateId};
 use hashbrown::HashMap;
 use indexmap::{IndexMap, IndexSet};
+use itertools::Itertools;
 use ustr::{Ustr, ustr};
 
 // Array indexes in ZSH start from 1 (!)
@@ -29,6 +30,8 @@ fn write_lookup_tables<W: Write>(
     buffer: &mut W,
     dfa: &DFA,
     prefix: &str,
+    id_from_cmd: &IndexSet<Ustr>,
+    needs_commands_code: bool,
 ) -> Result<HashMap<(Ustr, Ustr), usize>> {
     let all_literals: Vec<(usize, Ustr, Ustr)> = dfa
         .get_top_level_literals_decreasing_length()
@@ -87,31 +90,42 @@ fn write_lookup_tables<W: Write>(
 
     writeln!(buffer, r#"    declare -A {prefix}literal_transitions=()"#)?;
     for state in dfa.get_all_states() {
-        let literal_transitions =
-            dfa.get_literal_transitions_from(StateId::try_from(state).unwrap());
+        let literal_transitions = dfa.get_literal_transitions_from(state);
         if !literal_transitions.is_empty() {
-            let literal_transitions: Vec<(usize, StateId)> = literal_transitions
-                .into_iter()
+            let state_transitions = literal_transitions
+                .iter()
                 .map(|(input, description, to)| {
                     (
                         *literal_id_from_input_description
-                            .get(&(input, description))
+                            .get(&(*input, *description))
                             .unwrap(),
                         to,
                     )
                 })
-                .collect();
-            let state_transitions: String = itertools::join(
-                literal_transitions
-                    .into_iter()
-                    .map(|(input, to)| format!("[{}]={}", input, to + ARRAY_START)),
-                " ",
-            );
+                .map(|(input, to)| format!("[{}]={}", input, to + ARRAY_START))
+                .join(" ");
             writeln!(
                 buffer,
                 r#"    {prefix}literal_transitions[{}]="({state_transitions})""#,
                 state + ARRAY_START
             )?;
+        }
+
+        if needs_commands_code {
+            let command_transitions = dfa.get_command_transitions_from(state);
+            if !command_transitions.is_empty() {
+                let state_transitions = command_transitions
+                    .iter()
+                    .map(|(cmd, to)| (id_from_cmd.get_index_of(cmd).unwrap(), to))
+                    .map(|(cmd, to)| (cmd, to + ARRAY_START))
+                    .map(|(cmd_id, to)| format!("[{cmd_id}]={to}"))
+                    .join(" ");
+                writeln!(
+                    buffer,
+                    r#"    {prefix}command_transitions[{}]="({state_transitions})""#,
+                    state + ARRAY_START
+                )?;
+            }
         }
     }
 
@@ -176,6 +190,69 @@ fn write_generic_subword_fn<W: Write>(
             done
         fi"#
     )?;
+
+    if needs_compadds_code {
+        write!(
+            buffer,
+            r#"
+        if [[ -v "subword_command_transitions[$subword_state]" ]]; then
+            eval "local -A state_commands=${{subword_command_transitions[$subword_state]}}"
+            for cmd_id in "${{(k)state_commands}}"; do
+                declare -a compadd_hook_matches=()
+                declare compadd_original_type=${{${{(z)$(type -w compadd)}}[2]}}
+                if [[ "$compadd_original_type" == builtin ]]; then
+                    function compadd_original () {{
+                        builtin compadd "$@"
+                    }}
+                else
+                    functions -c compadd compadd_original
+                fi
+                functions -c compadd_hook compadd
+                local matched_prefix="${{word:0:$char_index}}"
+                IPREFIX="$matched_prefix" PREFIX="$subword" compadd_hook_swallow=true _{command}_cmd_${{cmd_id}}
+                if [[ "$compadd_original_type" == builtin ]]; then
+                    unfunction compadd
+                else
+                    functions -c compadd_original compadd
+                    unfunction compadd_original
+                fi
+
+                if [[ ${{#compadd_hook_matches[@]}} -gt 0 ]]; then
+                    indexes=($(
+                        for ((i = 1; i <= $#compadd_hook_matches; i++)); do
+                            printf '%s %s %s\n' $i "${{#compadd_hook_matches[i]}}" "${{compadd_hook_matches[i]}}"
+                        done | sort -nrk2,2 -rk3 | cut -f1 -d' '
+                    ))
+                    decreasing_length=()
+                    for i in "${{indexes[@]}}"; do
+                        decreasing_length+=("${{compadd_hook_matches[i]}}")
+                    done
+
+                    for candidate in "${{decreasing_length[@]}}"; do
+                        if [[ $candidate == $subword ]]; then
+                            match_len=${{#candidate}}
+                            char_index=$((char_index + match_len))
+                            subword_state=${{state_commands[$cmd_id]}}
+                            continue 3
+                        fi
+
+                        if [[ $candidate == $subword* ]]; then
+                            break 3
+                        fi
+
+                        if [[ $subword == $candidate* ]]; then
+                            match_len=${{#candidate}}
+                            char_index=$((char_index + match_len))
+                            subword_state=${{state_commands[$cmd_id]}}
+                            continue 3
+                        fi
+                    done
+                fi
+            done
+        fi
+"#
+        )?;
+    }
 
     write!(
         buffer,
@@ -253,7 +330,7 @@ fn write_generic_subword_fn<W: Write>(
         eval "declare -a transitions=($initializer)"
         for command_id in "${{transitions[@]}}"; do
             declare candidates=()
-            declare output=$(_{command}_cmd_${{command_id}} "$matched_prefix")
+            declare output=$(IPREFIX="$matched_prefix" _PREFIX="$completed_prefix" _{command}_cmd_${{command_id}})
             declare -a command_completions=("${{(@f)output}}")
             for line in ${{command_completions[@]}}; do
                 if [[ $line = "${{completed_prefix}}"* ]]; then
@@ -280,28 +357,27 @@ fn write_generic_subword_fn<W: Write>(
         declare compadd_commands_name=subword_compadd_commands_level_${{subword_fallback_level}}
         eval "declare initializer=\${{${{compadd_commands_name}}[$subword_state]}}"
         eval "declare -a transitions=($initializer)"
-        declare compadd_type_string=$(type -w compadd)
-        declare compadd_type_fields=(${{(z)compadd_type_string}})
-        declare compadd_type=${{compadd_type_fields[2]}}
-        if [[ "$compadd_type" == builtin ]]; then
-            function prev_compadd () {{
+        declare compadd_original_type=${{${{(z)$(type -w compadd)}}[2]}}
+        if [[ "$compadd_original_type" == builtin ]]; then
+            function compadd_original () {{
                 builtin compadd "$@"
             }}
         else
-            functions -c compadd prev_compadd
+            functions -c compadd compadd_original
         fi
-        functions -c compadd_intercept compadd
+        functions -c compadd_hook compadd
         for command_id in "${{transitions[@]}}"; do
-            declare -a complgen_matches=()
-            _{command}_cmd_${{command_id}} "$completed_prefix" "$matched_prefix"
-            (( compadd_matches_count += ${{#complgen_matches}} ))
+            declare -a compadd_hook_matches=()
+            IPREFIX="$matched_prefix" PREFIX="$completed_prefix" _{command}_cmd_${{command_id}}
+            (( compadd_matches_count += ${{#compadd_hook_matches}} ))
         done
-        if [[ "$compadd_type" == builtin ]]; then
+        if [[ "$compadd_original_type" == builtin ]]; then
             unfunction compadd
         else
-            functions -c prev_compadd compadd
-            unfunction prev_compadd
-        fi"#
+            functions -c compadd_original compadd
+            unfunction compadd_original
+        fi
+"#
         )?;
 
         write!(
@@ -341,7 +417,8 @@ fn write_subword_fn<W: Write>(
 ) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
 
-    let literal_id_from_input_description = write_lookup_tables(buffer, dfa, "subword_")?;
+    let literal_id_from_input_description =
+        write_lookup_tables(buffer, dfa, "subword_", id_from_cmd, needs_commands_code)?;
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
@@ -499,24 +576,29 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         )?;
     }
 
-    if needs_compadds_code {
+    if needs_compadds_code || needs_commands_code {
         writeln!(
             buffer,
-            r#"compadd_intercept () {{
+            r#"compadd_hook () {{
     declare is_filter_array=false
     declare output_array=""
     while getopts "12aACDdEefFiIJ:klM:nO:o:p:P:QqrRs:S:UW:Xx" opt; do
         case "$opt" in
-            D) is_filter_array=1;;
+            D) is_filter_array=true;;
             O) output_array=$OPTARG;;
         esac
     done
     if [[ "$is_filter_array" == true || "$output_array" != "" ]]; then
-        prev_compadd "$@"
+        compadd_original "$@"
         return $?
     fi
-    builtin compadd -O complgen_matches "$@"
-    prev_compadd "$@"
+    declare -a matches=()
+    builtin compadd -U -O matches "$@"
+    compadd_hook_matches+=("${{matches[@]}}")
+    if [[ $compadd_hook_swallow == true ]]; then
+        return 0
+    fi
+    compadd_original "$@"
 }}
 "#
         )?;
@@ -547,7 +629,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
     writeln!(buffer, r#"_{command} () {{"#)?;
 
-    let literal_id_from_input_description = write_lookup_tables(buffer, dfa, "")?;
+    let literal_id_from_input_description =
+        write_lookup_tables(buffer, dfa, "", &id_from_cmd, needs_commands_code)?;
 
     if needs_subwords_code {
         writeln!(buffer, r#"    declare -A subword_transitions=()"#)?;
@@ -607,6 +690,60 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                     state=${{state_transitions[$subword_id]}}
                     word_index=$((word_index + 1))
                     continue 2
+                fi
+            done
+        fi
+"#
+        )?;
+    }
+
+    if needs_commands_code {
+        write!(
+            buffer,
+            r#"
+        if [[ -v "command_transitions[$state]" ]]; then
+            eval "local -A state_commands=${{command_transitions[$state]}}"
+            for cmd_id in "${{(k)state_commands}}"; do
+                declare -a compadd_hook_matches=()
+                declare compadd_original_type=${{${{(z)$(type -w compadd)}}[2]}}
+                if [[ "$compadd_original_type" == builtin ]]; then
+                    function compadd_original () {{
+                        builtin compadd "$@"
+                    }}
+                else
+                    functions -c compadd compadd_original
+                fi
+                functions -c compadd_hook compadd
+                CURRENT=$word_index PREFIX="$word" compadd_hook_swallow=true _{command}_cmd_${{cmd_id}}
+                if [[ "$compadd_original_type" == builtin ]]; then
+                    unfunction compadd
+                else
+                    functions -c compadd_original compadd
+                    unfunction compadd_original
+                fi
+
+                if [[ ${{#compadd_hook_matches[@]}} -gt 0 ]]; then
+                    indexes=($(
+                        for ((i = 1; i <= $#compadd_hook_matches; i++)); do
+                            printf '%s %s %s\n' $i "${{#compadd_hook_matches[i]}}" "${{compadd_hook_matches[i]}}"
+                        done | sort -nrk2,2 -rk3 | cut -f1 -d' '
+                    ))
+                    decreasing_length=()
+                    for i in "${{indexes[@]}}"; do
+                        decreasing_length+=("${{compadd_hook_matches[i]}}")
+                    done
+
+                    for candidate in "${{decreasing_length[@]}}"; do
+                        if [[ $candidate == $word ]]; then
+                            state=${{state_commands[$cmd_id]}}
+                            word_index=$((word_index + 1))
+                            continue 3
+                        fi
+                    done
+
+                    if [[ $(($word_index + 1)) == $CURRENT ]]; then
+                        break 3
+                    fi
                 fi
             done
         fi
@@ -841,7 +978,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         eval "declare initializer=\${{${{commands_name}}[$state]}}"
         eval "declare -a transitions=($initializer)"
         for command_id in "${{transitions[@]}}"; do
-            declare output=$(_{command}_cmd_${{command_id}} "${{words[$CURRENT]}}")
+            declare output=$(PREFIX="${{words[$CURRENT]}}" _{command}_cmd_${{command_id}})
             declare -a command_completions=("${{(@f)output}}")
             for line in ${{command_completions[@]}}; do
                 declare parts=(${{(@s:	:)line}})
@@ -864,28 +1001,27 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         declare compadd_commands_name=compadd_commands_level_${{fallback_level}}
         eval "declare initializer=\${{${{compadd_commands_name}}[$state]}}"
         eval "declare -a transitions=($initializer)"
-        declare compadd_type_string=$(type -w compadd)
-        declare compadd_type_fields=(${{(z)compadd_type_string}})
-        declare compadd_type=${{compadd_type_fields[2]}}
-        if [[ "$compadd_type" == builtin ]]; then
-            function prev_compadd () {{
+        declare compadd_original_type=${{${{(z)$(type -w compadd)}}[2]}}
+        if [[ "$compadd_original_type" == builtin ]]; then
+            function compadd_original () {{
                 builtin compadd "$@"
             }}
         else
-            functions -c compadd prev_compadd
+            functions -c compadd compadd_original
         fi
-        functions -c compadd_intercept compadd
+        functions -c compadd_hook compadd
         for command_id in "${{transitions[@]}}"; do
-            declare -a complgen_matches=()
-            _{command}_cmd_${{command_id}} ${{words[$CURRENT]}} ""
-            (( compadd_matches_count += ${{#complgen_matches}} ))
+            declare -a compadd_hook_matches=()
+            _{command}_cmd_${{command_id}}
+            (( compadd_matches_count += ${{#compadd_hook_matches}} ))
         done
-        if [[ "$compadd_type" == builtin ]]; then
+        if [[ "$compadd_original_type" == builtin ]]; then
             unfunction compadd
         else
-            functions -c prev_compadd compadd
-            unfunction prev_compadd
-        fi"#
+            functions -c compadd_original compadd
+            unfunction compadd_original
+        fi
+"#
         )?;
     }
 
