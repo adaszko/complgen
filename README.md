@@ -162,29 +162,6 @@ bash$ cmd <TAB>
 bar   baz   foo   quux
 ```
 
-Command's stdout is automatically filtered by the respective shell, based on the prefix entered so far.
-
-In order to make the same command work both in super- and sub-word context, following arguments are passed:
-
- * `$1`: completed prefix
- * `$2`: subword input matched thus far (always an empty string in superwords completion context)
-
-For example, given the grammar above, and the input `cmd b<TAB>`:
-
-    $1 = "b"
-    $2 = ""
-
-However, for the grammar:
-
-    cmd --opt={{{ echo foo; echo bar; echo baz; echo quux }}};
-
-and input `cmd --opt=b<TAB>`:
-
-    $1 = "b"
-    $2 = "--opt="
-
-The external command may assume the caller will perform the necessary candidates filtering.
-
 ##### Descriptions
 
 Externals commands are also assumed to produce descriptions similar to those described in the [section
@@ -208,8 +185,8 @@ function for it:
 
 ```
 cmd <USER>;
-<USER@bash> ::= {{{ compgen -A user "$1" | sort | uniq }}}; # produce candidates on stdout under bash
-<USER@fish> ::= {{{ __fish_complete_users "$1" }}}; # produce candidates on stdout under fish
+<USER@bash> ::= {{{ compgen -A user | sort | uniq }}}; # produce candidates on stdout under bash
+<USER@fish> ::= {{{ __fish_complete_users }}}; # produce candidates on stdout under fish
 <USER@zsh> ::= {{{ _users }}}; # produce candidates via compadd and friends under zsh
 <USER@pwsh> ::= {{{ Get-LocalUser | ForEach-Object { $_.Name } }}}; # PowerShell
 ```
