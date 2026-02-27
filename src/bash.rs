@@ -104,7 +104,7 @@ fn write_lookup_tables<W: Write>(
     Ok(literal_id_from_input_description)
 }
 
-fn write_generic_subword_fn<W: Write>(
+fn write_subword_fn<W: Write>(
     buffer: &mut W,
     command: &str,
     needs_commands_code: bool,
@@ -271,7 +271,7 @@ fn write_generic_subword_fn<W: Write>(
     Ok(())
 }
 
-fn write_subword_fn<W: Write>(
+fn write_subword_wrapper_fn<W: Write>(
     buffer: &mut W,
     command: &str,
     id: usize,
@@ -409,10 +409,10 @@ fi
 
     let id_from_dfa = dfa.get_subwords(ARRAY_START as usize);
     if needs_subwords_code {
-        write_generic_subword_fn(buffer, command, needs_subword_commands_code)?;
+        write_subword_fn(buffer, command, needs_subword_commands_code)?;
         for (dfaid, id) in &id_from_dfa {
             let dfa = dfa.subdfas.lookup(*dfaid);
-            write_subword_fn(
+            write_subword_wrapper_fn(
                 buffer,
                 command,
                 *id,
