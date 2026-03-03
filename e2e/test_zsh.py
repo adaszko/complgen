@@ -273,7 +273,7 @@ cmd {{{echo foo; echo bar; echo baz;}}};
 
 def test_external_command_subword_filters_candidates(complgen_binary_path: Path):
     GRAMMAR = r"""
-cmd --ref={{{echo foo; echo bar; echo baz;}}};
+cmd --ref={{{ echo foo; echo bar; echo baz; }}};
 """
     actual = [
         s.split()
@@ -284,7 +284,96 @@ cmd --ref={{{echo foo; echo bar; echo baz;}}};
     assert actual == sorted([["--ref=bar"], ["--ref=baz"]])
 
 
+def test_external_command_completes_subword(complgen_binary_path: Path):
+    GRAMMAR = r"""cmd --option={{{ echo -e "argument\tdescription" }}};"""
+    actual = [
+        s.split()
+        for s in get_sorted_aot_completions(
+            complgen_binary_path, GRAMMAR, "cmd --option="
+        )
+    ]
+    assert actual == sorted(
+        [
+            ["--option=argument", "argument", "--", "description"],
+        ]
+    )
+
+
 def test_nontail_external_command(complgen_binary_path: Path):
+    GRAMMAR = r"""
+cmd <CMD> <CMD>;
+<CMD> ::= {{{ echo foo; echo bar; }}};
+"""
+    assert [
+        s.split()
+        for s in get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd ")
+    ] == sorted([["foo"], ["bar"]])
+
+    assert [
+        s.split()
+        for s in get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd f")
+    ] == sorted([["foo"]])
+
+    assert [
+        s.split()
+        for s in get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd foo")
+    ] == sorted([["foo"]])
+
+    assert [
+        s.split()
+        for s in get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd foo ")
+    ] == sorted([["foo"], ["bar"]])
+
+    assert [
+        s.split()
+        for s in get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd foo b")
+    ] == sorted([["bar"]])
+
+    assert [
+        s.split()
+        for s in get_sorted_aot_completions(
+            complgen_binary_path, GRAMMAR, "cmd foo bar"
+        )
+    ] == sorted([["bar"]])
+
+
+def test_subword_nontail_external_command(complgen_binary_path: Path):
+    GRAMMAR = r"""
+cmd <CMD>..<CMD>;
+<CMD> ::= {{{ echo foo; echo bar; echo baz; }}};
+"""
+    assert [
+        s.split()
+        for s in get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd ")
+    ] == sorted([["foo"], ["bar"], ["baz"]])
+
+    assert [
+        s.split()
+        for s in get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd f")
+    ] == sorted([["foo"]])
+
+    assert [
+        s.split()
+        for s in get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd foo")
+    ] == sorted([["foo..", ".."]])
+
+    assert [
+        s.split()
+        for s in get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd foo.")
+    ] == sorted([["foo..", ".."]])
+
+    assert [
+        s.split()
+        for s in get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd foo..")
+    ] == sorted([["foo..foo"], ["foo..bar"], ["foo..baz"]])
+
+    assert [
+        s.split()
+        for s in get_sorted_aot_completions(complgen_binary_path, GRAMMAR, "cmd foo..f")
+    ] == sorted([["foo..foo"]])
+
+
+def test_nontail_external_command_specialized(complgen_binary_path: Path):
     GRAMMAR = r"""
 cmd <CMD>..<CMD>;
 <CMD@zsh> ::= {{{ compadd foo; compadd bar; compadd baz; }}};
@@ -484,21 +573,6 @@ cmd --binary-files=<TYPE> "assume that binary files are <TYPE>";
                 "--binary-files=without-match",
                 "-- Do not search binary files",
             ],
-        ]
-    )
-
-
-def test_completes_subword_external_command(complgen_binary_path: Path):
-    GRAMMAR = r"""cmd --option={{{ echo -e "argument\tdescription" }}};"""
-    actual = [
-        s.split()
-        for s in get_sorted_aot_completions(
-            complgen_binary_path, GRAMMAR, "cmd --option="
-        )
-    ]
-    assert actual == sorted(
-        [
-            ["--option=argument", "argument", "--", "description"],
         ]
     )
 

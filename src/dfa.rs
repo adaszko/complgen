@@ -1055,10 +1055,38 @@ impl DFA {
             .filter_map(|(input_id, to)| {
                 let input = self.get_input(*input_id);
                 match input {
-                    Inp::Command { cmd, .. } => Some((*cmd, *to)),
-                    Inp::Literal { .. } => None,
-                    Inp::Subword { .. } => None,
-                    Inp::Star => None,
+                    Inp::Command {
+                        cmd,
+                        zsh_compadd: false,
+                        ..
+                    } => Some((*cmd, *to)),
+                    Inp::Command { .. } | Inp::Literal { .. } | Inp::Subword { .. } | Inp::Star => {
+                        None
+                    }
+                }
+            })
+            .collect();
+        transitions
+    }
+
+    pub(crate) fn get_compadd_transitions_from(&self, from: StateId) -> Vec<(Ustr, StateId)> {
+        let map = match self.transitions.get(&from) {
+            Some(map) => map,
+            None => return vec![],
+        };
+        let transitions: Vec<(Ustr, StateId)> = map
+            .iter()
+            .filter_map(|(input_id, to)| {
+                let input = self.get_input(*input_id);
+                match input {
+                    Inp::Command {
+                        cmd,
+                        zsh_compadd: true,
+                        ..
+                    } => Some((*cmd, *to)),
+                    Inp::Command { .. } | Inp::Literal { .. } | Inp::Subword { .. } | Inp::Star => {
+                        None
+                    }
                 }
             })
             .collect();

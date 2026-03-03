@@ -287,6 +287,47 @@ cmd --ref={{{ Write-Output foo; Write-Output bar; Write-Output baz; }}};
 
 def test_nontail_external_command(complgen_binary_path: Path):
     GRAMMAR = r"""
+cmd <CMD> <CMD>;
+<CMD> ::= {{{ Write-Output foo; Write-Output bar; }}};
+"""
+    with gen_pwsh_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        assert get_sorted_pwsh_completions(completions_file_path, "cmd ") == sorted(
+            [
+                ("foo", ""),
+                ("bar", ""),
+            ]
+        )
+
+        assert get_sorted_pwsh_completions(completions_file_path, "cmd f") == [
+            ("foo", ""),
+        ]
+
+        assert get_sorted_pwsh_completions(completions_file_path, "cmd foo") == [
+            ("foo", ""),
+        ]
+
+        assert get_sorted_pwsh_completions(completions_file_path, "cmd foo ") == [
+            ("foo", ""),
+            ("bar", ""),
+        ]
+
+        assert get_sorted_pwsh_completions(
+            completions_file_path, "cmd foo b"
+        ) == sorted(
+            [
+                ("bar", ""),
+            ]
+        )
+
+        assert get_sorted_pwsh_completions(completions_file_path, "cmd foo bar") == [
+            ("bar", ""),
+        ]
+
+
+def test_subword_nontail_external_command(complgen_binary_path: Path):
+    GRAMMAR = r"""
 cmd <CMD>..<CMD>;
 <CMD> ::= {{{ Write-Output foo; Write-Output bar; Write-Output baz; }}};
 """

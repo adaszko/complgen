@@ -326,6 +326,66 @@ cmd --ref={{{echo foo; echo bar; echo baz;}}};
 
 def test_nontail_external_command(complgen_binary_path: Path):
     GRAMMAR = r"""
+cmd <CMD> <CMD>;
+<CMD> ::= {{{ echo foo; echo bar; }}};
+"""
+
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        assert get_sorted_fish_completions(
+            completions_file_path, 'complete --do-complete "cmd "'
+        ) == sorted(
+            [
+                ("foo", ""),
+                ("bar", ""),
+            ]
+        )
+
+        assert get_sorted_fish_completions(
+            completions_file_path, 'complete --do-complete "cmd f"'
+        ) == sorted(
+            [
+                ("foo", ""),
+            ]
+        )
+
+        assert get_sorted_fish_completions(
+            completions_file_path, 'complete --do-complete "cmd foo"'
+        ) == sorted(
+            [
+                ("foo", ""),
+            ]
+        )
+
+        assert get_sorted_fish_completions(
+            completions_file_path, 'complete --do-complete "cmd foo "'
+        ) == sorted(
+            [
+                ("foo", ""),
+                ("bar", ""),
+            ]
+        )
+
+        assert get_sorted_fish_completions(
+            completions_file_path, 'complete --do-complete "cmd foo b"'
+        ) == sorted(
+            [
+                ("bar", ""),
+            ]
+        )
+
+        assert get_sorted_fish_completions(
+            completions_file_path, 'complete --do-complete "cmd foo bar"'
+        ) == sorted(
+            [
+                ("bar", ""),
+            ]
+        )
+
+
+def test_subword_nontail_external_command(complgen_binary_path: Path):
+    GRAMMAR = r"""
 cmd <CMD>..<CMD>;
 <CMD> ::= {{{ echo foo; echo bar; echo baz; }}};
 """

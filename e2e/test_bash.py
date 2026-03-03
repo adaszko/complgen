@@ -263,6 +263,30 @@ cmd {{{ echo -e "completion\tdescription" }}};
 
 def test_nontail_external_command(complgen_binary_path: Path):
     GRAMMAR = r"""
+cmd <CMD> <CMD>;
+<CMD> ::= {{{ echo foo; echo bar; }}};
+"""
+    with completion_script_path(complgen_binary_path, GRAMMAR) as path:
+        input = (
+            r'''COMP_WORDS=(cmd); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        )
+        assert get_sorted_bash_completions(path, input) == sorted(["foo", "bar"])
+
+        input = r'''COMP_WORDS=(cmd f); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(["foo"])
+
+        input = r'''COMP_WORDS=(cmd foo); COMP_CWORD=2; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(["foo", "bar"])
+
+        input = r'''COMP_WORDS=(cmd foo b); COMP_CWORD=2; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(["bar"])
+
+        input = r'''COMP_WORDS=(cmd foo bar); COMP_CWORD=2; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
+        assert get_sorted_bash_completions(path, input) == sorted(["bar"])
+
+
+def test_subword_nontail_external_command(complgen_binary_path: Path):
+    GRAMMAR = r"""
 cmd <CMD>..<CMD>;
 <CMD> ::= {{{ echo foo; echo bar; echo baz; }}};
 """
