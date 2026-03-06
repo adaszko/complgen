@@ -75,7 +75,7 @@ fn write_matching_tables<W: Write>(
     for state in dfa.get_all_states() {
         let literal_transitions = dfa.get_literal_transitions_from(state);
         if !literal_transitions.is_empty() {
-            let literal_transitions: Vec<(usize, StateId)> = literal_transitions
+            let state_transitions = literal_transitions
                 .into_iter()
                 .map(|(literal, description, to)| {
                     (
@@ -85,16 +85,11 @@ fn write_matching_tables<W: Write>(
                         to,
                     )
                 })
-                .collect();
-            let state_literal_transitions: String = itertools::join(
-                literal_transitions
-                    .into_iter()
-                    .map(|(literal_id, to)| format!("{} = {}", literal_id, to)),
-                "; ",
-            );
+                .map(|(literal_id, to)| format!("{} = {}", literal_id, to))
+                .join("; ");
             writeln!(
                 buffer,
-                r#"    $literal_transitions[{state}] = @{{ {state_literal_transitions} }}"#
+                r#"    $literal_transitions[{state}] = @{{ {state_transitions} }}"#
             )?;
         }
 
@@ -105,7 +100,7 @@ fn write_matching_tables<W: Write>(
                     .iter()
                     .map(|(cmd, to)| (id_from_cmd.get_index_of(cmd).unwrap(), to))
                     .map(|(cmd_id, to)| format!("{cmd_id} = {to}"))
-                    .join(" ");
+                    .join("; ");
                 writeln!(
                     buffer,
                     r#"    $command_transitions[{state}] = @{{ {state_transitions} }}"#
