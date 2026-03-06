@@ -6,11 +6,11 @@ use crate::dfa::DFA;
 use crate::dfa::Inp;
 use hashbrown::HashMap;
 use indexmap::IndexSet;
+use itertools::Itertools;
 use ustr::{Ustr, ustr};
 
 // PowerShell array indexes start at 0 (like Bash).
-// PowerShell uses dynamic scoping. We use $script:state to share state
-// between the main completion function and subword helper functions.
+// PowerShell uses dynamic scoping.
 
 pub const ARRAY_START: u32 = 0;
 
@@ -30,6 +30,8 @@ fn make_string_constant(s: &str) -> String {
 fn write_lookup_tables<W: Write>(
     buffer: &mut W,
     dfa: &DFA,
+    id_from_cmd: &IndexSet<Ustr>,
+    needs_commands_code: bool,
 ) -> Result<HashMap<(Ustr, Ustr), usize>> {
     let all_literals: Vec<(usize, Ustr, Ustr)> = dfa
         .get_top_level_literals_decreasing_length()
@@ -66,10 +68,12 @@ fn write_lookup_tables<W: Write>(
     }
 
     writeln!(buffer, r#"    $literal_transitions = @{{}}"#)?;
+    if needs_commands_code {
+        writeln!(buffer, r#"    $command_transitions = @{{}}"#)?;
+    }
 
     for state in dfa.get_all_states() {
-        let literal_transitions =
-            dfa.get_literal_transitions_from(StateId::try_from(state).unwrap());
+        let literal_transitions = dfa.get_literal_transitions_from(state);
         if !literal_transitions.is_empty() {
             let literal_transitions: Vec<(usize, StateId)> = literal_transitions
                 .into_iter()
@@ -92,6 +96,21 @@ fn write_lookup_tables<W: Write>(
                 buffer,
                 r#"    $literal_transitions[{state}] = @{{ {state_literal_transitions} }}"#
             )?;
+        }
+
+        if needs_commands_code {
+            let command_transitions = dfa.get_command_transitions_from(state);
+            if !command_transitions.is_empty() {
+                let state_transitions = command_transitions
+                    .iter()
+                    .map(|(cmd, to)| (id_from_cmd.get_index_of(cmd).unwrap(), to))
+                    .map(|(cmd_id, to)| format!("{cmd_id} = {to}"))
+                    .join(" ");
+                writeln!(
+                    buffer,
+                    r#"    $command_transitions[{state}] = @{{ {state_transitions} }}"#
+                )?;
+            }
         }
     }
 
@@ -129,13 +148,13 @@ fn write_subword_fn<W: Write>(
 
         $subword = $word.Substring($char_index)
 
-        if ($literal_transitions.ContainsKey($script:state)) {{
-            $state_transitions = $literal_transitions[$script:state]
+        if ($literal_transitions.ContainsKey($state)) {{
+            $state_transitions = $literal_transitions[$state]
 
             for ($literal_id = 0; $literal_id -lt $literals.Count; $literal_id++) {{
                 $literal = $literals[$literal_id]
                 if ($subword -eq $literal -And $state_transitions.ContainsKey($literal_id)) {{
-                    $script:state = $state_transitions[$literal_id]
+                    $state = $state_transitions[$literal_id]
                     $char_index += $literal.Length
                     continue outer
                 }}
@@ -143,7 +162,7 @@ fn write_subword_fn<W: Write>(
                     break outer
                 }}
                 if ($subword.StartsWith($literal) -And $state_transitions.ContainsKey($literal_id)) {{
-                    $script:state = $state_transitions[$literal_id]
+                    $state = $state_transitions[$literal_id]
                     $char_index += $literal.Length
                     continue outer
                 }}
@@ -151,10 +170,46 @@ fn write_subword_fn<W: Write>(
         }}"#
     )?;
 
+    if needs_commands_code {
+        write!(
+            buffer,
+            r#"
+        if ($command_transitions.ContainsKey($state)) {{
+            $state_transitions = $command_transitions[$state]
+
+            foreach ($cmd_id in $state_transitions.Keys) {{
+                $output = & "_{command}_cmd_$cmd_id"
+                foreach ($line in $output) {{
+                    if ([string]::IsNullOrWhiteSpace($line)) {{ continue }}
+                    $parts = $line -split "`t", 2
+                    $candidate = $parts[0]
+                    $desc = if ($parts.Count -gt 1) {{ $parts[1] }} else {{ $candidate }}
+
+                    if ($candidate -eq $subword) {{
+                        $char_index += $candidate.Length
+                        $state = $state_transitions[$cmd_id]
+                        continue outer
+                    }}
+
+                    if ($candidate.StartsWith($subword)) {{
+                        break outer
+                    }}
+
+                    if ($subword.StartsWith($candidate)) {{
+                        $char_index += $candidate.Length
+                        $state = $state_transitions[$cmd_id]
+                        continue outer
+                    }}
+                }}
+            }}
+        }}"#
+        )?;
+    }
+
     write!(
         buffer,
         r#"
-        if ($star_transitions.ContainsKey($script:state)) {{
+        if ($star_transitions.ContainsKey($state)) {{
             if ($mode -eq 'matches') {{
                 return $true
             }}
@@ -177,8 +232,8 @@ fn write_subword_fn<W: Write>(
         # Literal completions at this level
         $transitions_var = "literal_transitions_level_$fallback_level"
         $transitions = Get-Variable -Name $transitions_var -ValueOnly -ErrorAction SilentlyContinue
-        if ($transitions -and $transitions.ContainsKey($script:state)) {{
-            foreach ($literal_id in $transitions[$script:state]) {{
+        if ($transitions -and $transitions.ContainsKey($state)) {{
+            foreach ($literal_id in $transitions[$state]) {{
                 $literal = $literals[$literal_id]
                 if ($literal.StartsWith($completed_prefix, [StringComparison]::OrdinalIgnoreCase)) {{
                     $completion = $matched_prefix + $literal
@@ -197,8 +252,8 @@ fn write_subword_fn<W: Write>(
         # Command completions at this level
         $commands_var = "commands_level_$fallback_level"
         $commands = Get-Variable -Name $commands_var -ValueOnly -ErrorAction SilentlyContinue
-        if ($commands -and $commands.ContainsKey($script:state)) {{
-            foreach ($cmd_id in $commands[$script:state]) {{
+        if ($commands -and $commands.ContainsKey($state)) {{
+            foreach ($cmd_id in $commands[$state]) {{
                 $output = & "_{command}_cmd_$cmd_id" $completed_prefix $matched_prefix
                 foreach ($line in $output) {{
                     if ([string]::IsNullOrWhiteSpace($line)) {{ continue }}
@@ -225,6 +280,7 @@ fn write_subword_fn<W: Write>(
 
     return $completions
 }}
+
 "#
     )?;
     Ok(())
@@ -238,97 +294,25 @@ fn write_subword_wrapper_fn<W: Write>(
     id_from_cmd: &IndexSet<Ustr>,
     needs_commands_code: bool,
 ) -> Result<()> {
-    let all_literals: Vec<(usize, Ustr, Ustr)> = dfa
-        .get_top_level_literals_decreasing_length()
-        .into_iter()
-        .enumerate()
-        .map(|(id, (literal, description))| (id, literal, description.unwrap_or(ustr(""))))
-        .collect();
-
-    let literal_id_from_input_description: HashMap<(Ustr, Ustr), usize> = all_literals
-        .iter()
-        .map(|(id, input, description)| ((*input, *description), *id))
-        .collect();
-
     writeln!(
         buffer,
         r#"function _{command}_subword_{id} {{
     param([string]$mode, [string]$word)"#
     )?;
 
-    // Write literals array
-    let literals: String = itertools::join(
-        all_literals
-            .iter()
-            .map(|(_, literal, _)| make_string_constant(literal)),
-        ", ",
-    );
-    writeln!(buffer, r#"    $literals = @({literals})"#)?;
-
-    // Write descriptions hashtable
-    let descriptions: Vec<String> = all_literals
-        .iter()
-        .filter(|(_, _, desc)| !desc.is_empty())
-        .map(|(id, _, desc)| format!("{} = {}", id, make_string_constant(desc)))
-        .collect();
-    if descriptions.is_empty() {
-        writeln!(buffer, r#"    $descriptions = @{{}}"#)?;
-    } else {
-        let desc_str = itertools::join(descriptions, "; ");
-        writeln!(buffer, r#"    $descriptions = @{{ {desc_str} }}"#)?;
-    }
-
-    writeln!(buffer, r#"    $literal_transitions = @{{}}"#)?;
-
-    for state in dfa.get_all_states() {
-        let literal_transitions =
-            dfa.get_literal_transitions_from(StateId::try_from(state).unwrap());
-        if !literal_transitions.is_empty() {
-            let literal_transitions: Vec<(usize, StateId)> = literal_transitions
-                .into_iter()
-                .map(|(literal, description, to)| {
-                    (
-                        *literal_id_from_input_description
-                            .get(&(literal, description))
-                            .unwrap(),
-                        to,
-                    )
-                })
-                .collect();
-            let state_literal_transitions: String = itertools::join(
-                literal_transitions
-                    .into_iter()
-                    .map(|(literal_id, to)| format!("{} = {}", literal_id, to)),
-                "; ",
-            );
-            writeln!(
-                buffer,
-                r#"    $literal_transitions[{state}] = @{{ {state_literal_transitions} }}"#
-            )?;
-        }
-    }
-
-    let star_transitions: Vec<String> = dfa
-        .iter_top_level_star_transitions()
-        .map(|(from, to)| format!("{from} = {to}"))
-        .collect();
-    if star_transitions.is_empty() {
-        writeln!(buffer, r#"    $star_transitions = @{{}}"#)?;
-    } else {
-        let star_str = itertools::join(star_transitions, "; ");
-        writeln!(buffer, r#"    $star_transitions = @{{ {star_str} }}"#)?;
-    }
+    let literal_id_from_input_description =
+        write_lookup_tables(buffer, dfa, &id_from_cmd, needs_commands_code)?;
 
     // Collect command transitions for completion (similar to bash implementation)
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
     // Collect literal transitions by fallback level
-    let mut completion_literals: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    completion_literals.resize_with(max_fallback_level + 1, Default::default);
+    let mut completion_literals: Vec<HashMap<StateId, Vec<usize>>> =
+        vec![Default::default(); max_fallback_level + 1];
 
     // Collect command transitions by fallback level
-    let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> = Default::default();
-    completion_commands.resize_with(max_fallback_level + 1, Default::default);
+    let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> =
+        vec![Default::default(); max_fallback_level + 1];
 
     for (from, input_id, _) in dfa.iter_transitions() {
         match dfa.get_input(input_id) {
@@ -404,7 +388,7 @@ fn write_subword_wrapper_fn<W: Write>(
     writeln!(
         buffer,
         r#"
-    $script:state = {starting_state}
+    $state = {starting_state}
     _{command}_subword $mode $word
 }}"#,
         starting_state = dfa.starting_state
@@ -483,7 +467,8 @@ $ErrorActionPreference = "Stop"
 "#
     )?;
 
-    let literal_id_from_input_description = write_lookup_tables(buffer, dfa)?;
+    let literal_id_from_input_description =
+        write_lookup_tables(buffer, dfa, &id_from_cmd, needs_commands_code)?;
 
     if needs_subwords_code {
         writeln!(buffer, r#"    $subword_transitions = @{{}}"#)?;
@@ -542,6 +527,33 @@ $ErrorActionPreference = "Stop"
                     $state = $subword_state_transitions[$subword_id]
                     $word_index++
                     continue outer
+                }}
+            }}
+        }}"#
+        )?;
+    }
+
+    if needs_commands_code {
+        write!(
+            buffer,
+            r#"
+
+        if ($command_transitions.ContainsKey($state)) {{
+            $state_transitions = $command_transitions[$state]
+
+            foreach ($cmd_id in $state_transitions.Keys) {{
+                $output = & "_{command}_cmd_$cmd_id"
+                foreach ($line in $output) {{
+                    if ([string]::IsNullOrWhiteSpace($line)) {{ continue }}
+                    $parts = $line -split "`t", 2
+                    $text = $parts[0]
+                    $desc = if ($parts.Count -gt 1) {{ $parts[1] }} else {{ $text }}
+
+                    if ($text -eq $word) {{
+                        $state = $state_transitions[$cmd_id]
+                        $word_index++
+                        continue outer
+                    }}
                 }}
             }}
         }}"#

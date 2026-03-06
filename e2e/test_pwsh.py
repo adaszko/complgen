@@ -24,11 +24,12 @@ def test_completes_paths(complgen_binary_path: Path):
                 Path("bar").touch()
                 Path("baz").touch()
                 Path("quux").touch()
-                completions = get_sorted_pwsh_completions(
-                    completions_file_path, "cmd ", cwd=Path(dir)
-                )
-                completion_texts = [c[0] for c in completions]
-                assert sorted(completion_texts) == sorted(["foo", "bar", "baz", "quux"])
+                assert [
+                    completion
+                    for (completion, _) in get_sorted_pwsh_completions(
+                        completions_file_path, "cmd ", cwd=Path(dir)
+                    )
+                ] == sorted(["foo", "bar", "baz", "quux"])
 
 
 def test_completes_subword_paths(complgen_binary_path: Path):
@@ -182,9 +183,12 @@ def test_completes_repeated_path(complgen_binary_path: Path):
             with set_working_dir(Path(dir)):
                 os.mkdir("foo")
                 os.mkdir("bar")
-                assert get_sorted_pwsh_completions(
-                    completions_file_path, "cmd foo "
-                ) == sorted(["foo", "bar"])
+                assert [
+                    completion
+                    for (completion, _) in get_sorted_pwsh_completions(
+                        completions_file_path, "cmd foo "
+                    )
+                ] == sorted(["foo", "bar"])
 
 
 def test_path_option_mix(complgen_binary_path: Path):
@@ -308,10 +312,12 @@ cmd <CMD> <CMD>;
             ("foo", ""),
         ]
 
-        assert get_sorted_pwsh_completions(completions_file_path, "cmd foo ") == [
-            ("foo", ""),
-            ("bar", ""),
-        ]
+        assert get_sorted_pwsh_completions(completions_file_path, "cmd foo ") == sorted(
+            [
+                ("foo", ""),
+                ("bar", ""),
+            ]
+        )
 
         assert get_sorted_pwsh_completions(
             completions_file_path, "cmd foo b"

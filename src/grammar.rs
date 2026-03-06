@@ -2290,9 +2290,7 @@ fn make_builtin_specializations(shell: Shell) -> UstrMap<BuiltinSpec> {
         },
         Shell::Pwsh => BuiltinSpec {
             // Preserve directory prefix: extract parent dir from prefix and join it back with filename
-            cmd: ustr(
-                r#"$dir = Split-Path -Parent "$1"; Get-ChildItem -Path "$1*" -ErrorAction SilentlyContinue | ForEach-Object { if ($dir) { Join-Path $dir $_.Name } else { $_.Name } }"#,
-            ),
+            cmd: ustr(r#"Get-ChildItem | ForEach-Object { $_.Name }"#),
         },
     };
     specializations.entry(ustr("PATH")).insert_entry(path_spec);
@@ -2309,9 +2307,7 @@ fn make_builtin_specializations(shell: Shell) -> UstrMap<BuiltinSpec> {
         },
         Shell::Pwsh => BuiltinSpec {
             // Preserve directory prefix: extract parent dir from prefix and join it back with dirname
-            cmd: ustr(
-                r#"$dir = Split-Path -Parent "$1"; Get-ChildItem -Path "$1*" -Directory -ErrorAction SilentlyContinue | ForEach-Object { if ($dir) { Join-Path $dir $_.Name } else { $_.Name } }"#,
-            ),
+            cmd: ustr(r#"Get-ChildItem -Directory | ForEach-Object { $_.Name }"#),
         },
     };
     specializations
