@@ -603,7 +603,7 @@ fn write_subword_wrapper_fn<W: Write>(
     Ok(())
 }
 
-fn write_lookup_tables<W: Write>(
+fn write_matching_tables<W: Write>(
     buffer: &mut W,
     dfa: &DFA,
     id_from_cmd: &IndexSet<Ustr>,
@@ -839,7 +839,7 @@ end
     )?;
 
     let literal_id_from_input_description =
-        write_lookup_tables(buffer, dfa, &id_from_cmd, needs_commands_code)?;
+        write_matching_tables(buffer, dfa, &id_from_cmd, needs_commands_code)?;
 
     if needs_subwords_code {
         for state in dfa.get_all_states() {

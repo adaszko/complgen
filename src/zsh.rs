@@ -26,7 +26,7 @@ fn make_string_constant(s: &str) -> String {
     )
 }
 
-fn write_lookup_tables<W: Write>(
+fn write_matching_tables<W: Write>(
     buffer: &mut W,
     dfa: &DFA,
     prefix: &str,
@@ -488,7 +488,7 @@ fn write_subword_wrapper_fn<W: Write>(
 ) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
 
-    let literal_id_from_input_description = write_lookup_tables(
+    let literal_id_from_input_description = write_matching_tables(
         buffer,
         dfa,
         "subword_",
@@ -706,7 +706,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
     writeln!(buffer, r#"_{command} () {{"#)?;
 
-    let literal_id_from_input_description = write_lookup_tables(
+    let literal_id_from_input_description = write_matching_tables(
         buffer,
         dfa,
         "",

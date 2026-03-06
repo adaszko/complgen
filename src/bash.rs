@@ -27,7 +27,7 @@ fn make_string_constant(s: &str) -> String {
     )
 }
 
-fn write_lookup_tables<W: Write>(
+fn write_matching_tables<W: Write>(
     buffer: &mut W,
     dfa: &DFA,
     id_from_cmd: &IndexSet<Ustr>,
@@ -282,7 +282,7 @@ fn write_subword_wrapper_fn<W: Write>(
     writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
 
     let literal_id_from_input_description =
-        write_lookup_tables(buffer, dfa, &id_from_cmd, needs_commands_code)?;
+        write_matching_tables(buffer, dfa, &id_from_cmd, needs_commands_code)?;
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
@@ -440,7 +440,7 @@ fi
     )?;
 
     let literal_id_from_input_description =
-        write_lookup_tables(buffer, dfa, &id_from_cmd, needs_commands_code)?;
+        write_matching_tables(buffer, dfa, &id_from_cmd, needs_commands_code)?;
 
     if needs_subwords_code {
         writeln!(buffer, r#"    local -A subword_transitions"#)?;
