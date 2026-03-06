@@ -9,13 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## 0.8.0
 ### Changed
 
- - Breaking: Removed nontail commands due to design dead-end.  Regular external commands are now more broadly applicable
+ - External command definitions (`{{{ ... }}}`) were simplified.  They now work on both supra- and sub-word
+   context out of the box.  Implementing conditional behavior based on `$1` and `$2` special parameters is no
+   longer needed
+
+ - External commands (`{{{ ... }}}`) in a matching context now work by re-executing the command and checking
+   if the user input on the command line matches *any* of the lines produced by the external command
+
+### Removed
+
+ - Breaking: Nontail commands proved to be a design dead-end and thus were removed
 
 ### Fixed
 
  - Breaking: Conflicting description check should now detect all cases thanks to moving it from working on
-   regexes, into working on DFAs.  This change is at the expense of worse error messages.
- - Breaking: Ambiguity detection also now works on the DFA instead of regexes.
+   regexes, into working on DFAs.  This change comes at the expense of worse error messages but more
+   comprehensive error detection
+
+ - Breaking: Ambiguity detection is now also performed at the DFA phase instead of the regex phase
 
 ## 0.7.4
 ### Fixed

@@ -254,7 +254,7 @@ fn write_subword_fn<W: Write>(
         $commands = Get-Variable -Name $commands_var -ValueOnly -ErrorAction SilentlyContinue
         if ($commands -and $commands.ContainsKey($state)) {{
             foreach ($cmd_id in $commands[$state]) {{
-                $output = & "_{command}_cmd_$cmd_id" $completed_prefix $matched_prefix
+                $output = & "_{command}_cmd_$cmd_id"
                 foreach ($line in $output) {{
                     if ([string]::IsNullOrWhiteSpace($line)) {{ continue }}
                     $parts = $line -split "`t", 2
@@ -758,7 +758,7 @@ $ErrorActionPreference = "Stop"
         $commands = Get-Variable -Name $commands_var -ValueOnly -ErrorAction SilentlyContinue
         if ($commands -and $commands.ContainsKey($state)) {{
             foreach ($cmd_id in $commands[$state]) {{
-                $output = & "_{command}_cmd_$cmd_id" $prefix ""
+                $output = & "_{command}_cmd_$cmd_id"
                 foreach ($line in $output) {{
                     if ([string]::IsNullOrWhiteSpace($line)) {{ continue }}
                     $parts = $line -split "`t", 2
