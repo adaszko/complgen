@@ -82,6 +82,8 @@ PS> hello --color=<TAB>
 cargo install --git https://github.com/adaszko/complgen --tag v0.8.0 complgen
 ```
 
+Or download a pre-built binary from [the latest GitHub release](https://github.com/adaszko/complgen/releases).
+
 ## Syntax
 
 See the [`examples` subdirectory](examples/).
