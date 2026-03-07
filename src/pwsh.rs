@@ -279,7 +279,7 @@ fn write_subword_wrapper_fn<W: Write>(
     )?;
 
     let literal_id_from_input_description =
-        write_matching_tables(buffer, dfa, &id_from_cmd, needs_commands_code)?;
+        write_matching_tables(buffer, dfa, id_from_cmd, needs_commands_code)?;
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 

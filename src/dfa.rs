@@ -125,8 +125,7 @@ impl Inp {
                     let subdfa = DFA::from_regex(regex.clone(), subword_regexes)?;
                     let subdfa = subdfa.minimize();
                     subdfa.check_ambiguity_best_effort()?;
-                    let subdfaid = subdfas.insert(subword_regex_id, subdfa);
-                    subdfaid
+                    subdfas.insert(subword_regex_id, subdfa)
                 };
                 Self::Subword {
                     subdfa: subdfaid,

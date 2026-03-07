@@ -772,7 +772,7 @@ impl Regex {
             let subword_firstpos = RoaringBitmap::from_iter(&subword_regex.firstpos());
             let subword_followpos = subword_regex.followpos();
             subword_regex
-                .check_ambiguous_inputs_tail_only_subword(&subword_firstpos, &subword_followpos)?;
+                .check_ambiguous_inputs_tail_only_subword(&subword_firstpos, subword_followpos)?;
             checked_subword_regexes.insert(subword_regex_id.0 as u32);
         }
 
@@ -803,7 +803,7 @@ impl Regex {
         let mut checked_subword_regexes: RoaringBitmap = Default::default();
         self.check_subwords(
             &firstpos,
-            &followpos,
+            followpos,
             subword_regexes,
             &mut visited,
             &mut checked_subword_regexes,
