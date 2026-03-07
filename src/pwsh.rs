@@ -45,27 +45,18 @@ fn write_matching_tables<W: Write>(
         .map(|(id, input, description)| ((*input, *description), *id))
         .collect();
 
-    // Write literals array
-    let literals: String = itertools::join(
-        all_literals
-            .iter()
-            .map(|(_, literal, _)| make_string_constant(literal)),
-        ", ",
-    );
+    let literals = all_literals
+        .iter()
+        .map(|(_, literal, _)| make_string_constant(literal))
+        .join(", ");
     writeln!(buffer, r#"    $literals = @({literals})"#)?;
 
-    // Write descriptions hashtable (sparse - only for literals that have descriptions)
-    let descriptions: Vec<String> = all_literals
+    let descriptions = all_literals
         .iter()
         .filter(|(_, _, desc)| !desc.is_empty())
         .map(|(id, _, desc)| format!("{} = {}", id, make_string_constant(desc)))
-        .collect();
-    if descriptions.is_empty() {
-        writeln!(buffer, r#"    $descriptions = @{{}}"#)?;
-    } else {
-        let desc_str = itertools::join(descriptions, "; ");
-        writeln!(buffer, r#"    $descriptions = @{{ {desc_str} }}"#)?;
-    }
+        .join("; ");
+    writeln!(buffer, r#"    $descriptions = @{{{descriptions}}}"#)?;
 
     writeln!(buffer, r#"    $literal_transitions = @{{}}"#)?;
     if needs_commands_code {
@@ -89,7 +80,7 @@ fn write_matching_tables<W: Write>(
                 .join("; ");
             writeln!(
                 buffer,
-                r#"    $literal_transitions[{state}] = @{{ {state_transitions} }}"#
+                r#"    $literal_transitions[{state}] = @{{{state_transitions}}}"#
             )?;
         }
 
@@ -103,22 +94,17 @@ fn write_matching_tables<W: Write>(
                     .join("; ");
                 writeln!(
                     buffer,
-                    r#"    $command_transitions[{state}] = @{{ {state_transitions} }}"#
+                    r#"    $command_transitions[{state}] = @{{{state_transitions}}}"#
                 )?;
             }
         }
     }
 
-    let star_transitions: Vec<String> = dfa
+    let star_transitions = dfa
         .iter_top_level_star_transitions()
         .map(|(from, to)| format!("{from} = {to}"))
-        .collect();
-    if star_transitions.is_empty() {
-        writeln!(buffer, r#"    $star_transitions = @{{}}"#)?;
-    } else {
-        let star_str = itertools::join(star_transitions, "; ");
-        writeln!(buffer, r#"    $star_transitions = @{{ {star_str} }}"#)?;
-    }
+        .join("; ");
+    writeln!(buffer, r#"    $star_transitions = @{{{star_transitions}}}"#)?;
 
     Ok(literal_id_from_input_description)
 }
@@ -205,9 +191,7 @@ fn write_subword_fn<W: Write>(
         buffer,
         r#"
         if ($star_transitions.ContainsKey($state)) {{
-            if ($mode -eq 'matches') {{
-                return $true
-            }}
+            $matched = $true
             break
         }}
 
@@ -244,7 +228,6 @@ fn write_subword_fn<W: Write>(
             buffer,
             r#"
 
-        # Command completions at this level
         $commands_var = "commands_level_$fallback_level"
         $commands = Get-Variable -Name $commands_var -ValueOnly -ErrorAction SilentlyContinue
         if ($commands -and $commands.ContainsKey($state)) {{
@@ -298,14 +281,11 @@ fn write_subword_wrapper_fn<W: Write>(
     let literal_id_from_input_description =
         write_matching_tables(buffer, dfa, &id_from_cmd, needs_commands_code)?;
 
-    // Collect command transitions for completion (similar to bash implementation)
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
-    // Collect literal transitions by fallback level
     let mut completion_literals: Vec<HashMap<StateId, Vec<usize>>> =
         vec![Default::default(); max_fallback_level + 1];
 
-    // Collect command transitions by fallback level
     let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> =
         vec![Default::default(); max_fallback_level + 1];
 
@@ -339,42 +319,37 @@ fn write_subword_wrapper_fn<W: Write>(
         }
     }
 
-    // Write literal_transitions_level_X
     for (level, transitions) in completion_literals.iter().enumerate() {
-        if transitions.is_empty() {
-            writeln!(buffer, r#"    $literal_transitions_level_{level} = @{{}}"#)?;
-        } else {
-            let init_str: String = itertools::join(
-                transitions.iter().map(|(from_state, literal_ids)| {
-                    let ids_str =
-                        itertools::join(literal_ids.iter().map(|id| id.to_string()), ", ");
-                    format!("{from_state} = @({ids_str})")
-                }),
-                "; ",
-            );
-            writeln!(
-                buffer,
-                r#"    $literal_transitions_level_{level} = @{{ {init_str} }}"#
-            )?;
-        }
+        let initializer = transitions
+            .iter()
+            .map(|(from_state, literal_ids)| {
+                format!(
+                    "{from_state} = @({})",
+                    literal_ids.iter().map(|id| id.to_string()).join(", ")
+                )
+            })
+            .join("; ");
+        writeln!(
+            buffer,
+            r#"    $literal_transitions_level_{level} = @{{{initializer}}}"#
+        )?;
     }
 
-    // Write commands_level_X
     if needs_commands_code {
         for (level, transitions) in completion_commands.iter().enumerate() {
-            if transitions.is_empty() {
-                writeln!(buffer, r#"    $commands_level_{level} = @{{}}"#)?;
-            } else {
-                let init_str: String = itertools::join(
-                    transitions.iter().map(|(from_state, cmd_ids)| {
-                        let ids_str =
-                            itertools::join(cmd_ids.iter().map(|id| id.to_string()), ", ");
-                        format!("{from_state} = @({ids_str})")
-                    }),
-                    "; ",
-                );
-                writeln!(buffer, r#"    $commands_level_{level} = @{{ {init_str} }}"#)?;
-            }
+            let initializer = transitions
+                .iter()
+                .map(|(from_state, cmd_ids)| {
+                    format!(
+                        "{from_state} = @({})",
+                        cmd_ids.iter().map(|id| id.to_string()).join(", ")
+                    )
+                })
+                .join("; ");
+            writeln!(
+                buffer,
+                r#"    $commands_level_{level} = @{{{initializer}}}"#
+            )?;
         }
     }
 
@@ -469,19 +444,16 @@ $ErrorActionPreference = "Stop"
         writeln!(buffer, r#"    $subword_transitions = @{{}}"#)?;
         for state in dfa.get_all_states() {
             let subword_transitions = dfa.get_subword_transitions_from(state);
-            if subword_transitions.is_empty() {
-                continue;
-            }
-            let state_transitions: String = itertools::join(
-                subword_transitions
+            if !subword_transitions.is_empty() {
+                let state_transitions = subword_transitions
                     .into_iter()
-                    .map(|(dfa, to)| format!("{} = {}", id_from_dfa.get(&dfa).unwrap(), to)),
-                "; ",
-            );
-            writeln!(
-                buffer,
-                r#"    $subword_transitions[{state}] = @{{ {state_transitions} }}"#
-            )?;
+                    .map(|(dfa, to)| format!("{} = {to}", id_from_dfa.get(&dfa).unwrap()))
+                    .join("; ");
+                writeln!(
+                    buffer,
+                    r#"    $subword_transitions[{state}] = @{{ {state_transitions} }}"#
+                )?;
+            }
         }
     }
 
@@ -626,65 +598,55 @@ $ErrorActionPreference = "Stop"
         }
     }
 
-    // Write completion tables by fallback level
     for (level, transitions) in completion_literals.iter().enumerate() {
-        let initializer: Vec<String> = transitions
+        let initializer = transitions
             .iter()
             .map(|(from_state, literal_ids)| {
-                let joined_literal_ids =
-                    itertools::join(literal_ids.iter().map(|id| id.to_string()), ", ");
-                format!(r#"{from_state} = @({joined_literal_ids})"#)
+                format!(
+                    r#"{from_state} = @({})"#,
+                    literal_ids.iter().map(|id| id.to_string()).join(", ")
+                )
             })
-            .collect();
-        if initializer.is_empty() {
-            writeln!(buffer, r#"    $literal_transitions_level_{level} = @{{}}"#)?;
-        } else {
-            let init_str = itertools::join(initializer, "; ");
-            writeln!(
-                buffer,
-                r#"    $literal_transitions_level_{level} = @{{ {init_str} }}"#
-            )?;
-        }
+            .join("; ");
+        writeln!(
+            buffer,
+            r#"    $literal_transitions_level_{level} = @{{{initializer}}}"#
+        )?;
     }
 
     if needs_subwords_code {
         for (level, transitions) in completion_subwords.iter().enumerate() {
-            let initializer: Vec<String> = transitions
+            let initializer = transitions
                 .iter()
                 .map(|(from_state, subword_ids)| {
-                    let joined_subword_ids =
-                        itertools::join(subword_ids.iter().map(|id| id.to_string()), ", ");
-                    format!(r#"{from_state} = @({joined_subword_ids})"#)
+                    format!(
+                        r#"{from_state} = @({})"#,
+                        subword_ids.iter().map(|id| id.to_string()).join(", ")
+                    )
                 })
-                .collect();
-            if initializer.is_empty() {
-                writeln!(buffer, r#"    $subword_transitions_level_{level} = @{{}}"#)?;
-            } else {
-                let init_str = itertools::join(initializer, "; ");
-                writeln!(
-                    buffer,
-                    r#"    $subword_transitions_level_{level} = @{{ {init_str} }}"#
-                )?;
-            }
+                .join("; ");
+            writeln!(
+                buffer,
+                r#"    $subword_transitions_level_{level} = @{{{initializer}}}"#
+            )?;
         }
     }
 
     if needs_commands_code {
         for (level, transitions) in completion_commands.iter().enumerate() {
-            let initializer: Vec<String> = transitions
+            let initializer = transitions
                 .iter()
                 .map(|(from_state, command_ids)| {
-                    let joined_command_ids =
-                        itertools::join(command_ids.iter().map(|id| id.to_string()), ", ");
-                    format!(r#"{from_state} = @({joined_command_ids})"#)
+                    format!(
+                        r#"{from_state} = @({})"#,
+                        command_ids.iter().map(|id| id.to_string()).join(", ")
+                    )
                 })
-                .collect();
-            if initializer.is_empty() {
-                writeln!(buffer, r#"    $commands_level_{level} = @{{}}"#)?;
-            } else {
-                let init_str = itertools::join(initializer, "; ");
-                writeln!(buffer, r#"    $commands_level_{level} = @{{ {init_str} }}"#)?;
-            }
+                .join("; ");
+            writeln!(
+                buffer,
+                r#"    $commands_level_{level} = @{{{initializer}}}"#
+            )?;
         }
     }
 
