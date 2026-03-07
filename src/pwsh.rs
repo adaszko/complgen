@@ -385,17 +385,14 @@ $ErrorActionPreference = "Stop"
     for cmd in &id_from_cmd {
         let id = id_from_cmd.get_index_of(cmd).unwrap();
         let cmd = cmd.trim();
-        // Replace $1 and $2 placeholders with PowerShell parameter names
-        let cmd = cmd.replace("$1", "$prefix").replace("$2", "$matchedPrefix");
         let cmd = if cmd.is_empty() {
-            "# empty command".to_string()
+            "# empty command"
         } else {
             cmd
         };
         writeln!(
             buffer,
             r#"function _{command}_cmd_{id} {{
-    param([string]$prefix, [string]$matchedPrefix)
     {cmd}
 }}
 "#
@@ -451,7 +448,7 @@ $ErrorActionPreference = "Stop"
                     .join("; ");
                 writeln!(
                     buffer,
-                    r#"    $subword_transitions[{state}] = @{{ {state_transitions} }}"#
+                    r#"    $subword_transitions[{state}] = @{{{state_transitions}}}"#
                 )?;
             }
         }
