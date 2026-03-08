@@ -640,11 +640,32 @@ def test_multiple_matching_subwords(complgen_binary_path: Path):
     ) == sorted(["--no-ahead-behind ahead-behind", "--no-renames renames     "])
 
 
-def test_bug2(complgen_binary_path: Path):
-    GRAMMAR = """cmd --pretty=(full | fuller);"""
+def test_longest_literal_first(complgen_binary_path: Path):
+    GRAMMAR = """cmd (a | abc | abcd)"""
     assert get_sorted_aot_completions(
-        complgen_binary_path, GRAMMAR, r"""cmd --pretty=fulle"""
-    ) == sorted(["--pretty=fuller fuller"])
+        complgen_binary_path, GRAMMAR, r"""cmd ab"""
+    ) == sorted(["abc", "abcd"])
+
+
+def test_subword_longest_literal_first(complgen_binary_path: Path):
+    GRAMMAR = """cmd --option=(a | abc | abcd)"""
+    assert get_sorted_aot_completions(
+        complgen_binary_path, GRAMMAR, r"""cmd --option=ab"""
+    ) == sorted(["--option=abc abc ", "--option=abcd abcd"])
+
+
+def test_longest_command_candidate_first(complgen_binary_path: Path):
+    GRAMMAR = """cmd {{{ echo a; echo abc; echo abcd; }}}"""
+    assert get_sorted_aot_completions(
+        complgen_binary_path, GRAMMAR, r"""cmd ab"""
+    ) == sorted(["abc", "abcd"])
+
+
+def test_subword_longest_command_candidate_first(complgen_binary_path: Path):
+    GRAMMAR = """cmd --option={{{ echo a; echo abc; echo abcd; }}}"""
+    assert get_sorted_aot_completions(
+        complgen_binary_path, GRAMMAR, r"""cmd --option=ab"""
+    ) == sorted(["--option=abc", "--option=abcd"])
 
 
 LITERALS_ALPHABET = string.ascii_letters + ":="

@@ -544,29 +544,58 @@ def test_handles_quotes(complgen_binary_path: Path):
 def test_bug1(complgen_binary_path: Path):
     GRAMMAR = r"""
 mygrep <OPTION>...;
-
 <OPTION> ::= --color=[<WHEN>] || --colour=[<WHEN>];
-
 <WHEN> ::= always | never | auto;
 """
     with gen_pwsh_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
-        completions = get_sorted_pwsh_completions(
+        assert get_sorted_pwsh_completions(
             completions_file_path, "mygrep --color=always --col"
-        )
-        assert completions == sorted([("--color=", "")])
+        ) == sorted([("--color=", "")])
 
 
-def test_bug2(complgen_binary_path: Path):
-    GRAMMAR = "cmd --pretty=(full | fuller);"
+def test_longest_literal_first(complgen_binary_path: Path):
     with gen_pwsh_completion_script_path(
-        complgen_binary_path, GRAMMAR
+        complgen_binary_path, "cmd (a | abc | abcd)"
     ) as completions_file_path:
-        completions = get_sorted_pwsh_completions(
-            completions_file_path, "cmd --pretty=fulle"
-        )
-        assert completions == [("--pretty=fuller", "")]
+        assert get_sorted_pwsh_completions(completions_file_path, "cmd ab") == [
+            ("abc", ""),
+            ("abcd", ""),
+        ]
+
+
+def test_subword_longest_literal_first(complgen_binary_path: Path):
+    with gen_pwsh_completion_script_path(
+        complgen_binary_path, "cmd --option=(a | abc | abcd)"
+    ) as completions_file_path:
+        assert get_sorted_pwsh_completions(
+            completions_file_path, "cmd --option=ab"
+        ) == [("--option=abc", ""), ("--option=abcd", "")]
+
+
+def test_longest_command_candidate_first(complgen_binary_path: Path):
+    with gen_pwsh_completion_script_path(
+        complgen_binary_path,
+        "cmd {{{ Write-Output a; Write-Output abc; Write-Output abcd }}}",
+    ) as completions_file_path:
+        assert get_sorted_pwsh_completions(completions_file_path, "cmd ab") == [
+            ("abc", ""),
+            ("abcd", ""),
+        ]
+
+
+def test_subword_longest_command_candidate_first(complgen_binary_path: Path):
+    with gen_pwsh_completion_script_path(
+        complgen_binary_path,
+        "cmd --option={{{ Write-Output a; Write-Output abc; Write-Output abcd }}}",
+    ) as completions_file_path:
+        assert get_sorted_pwsh_completions(
+            completions_file_path, "cmd --option=ab"
+        ) == [
+            ("abc", ""),
+            ("abcd", ""),
+        ]
 
 
 def test_multiple_matching_subwords(complgen_binary_path: Path):

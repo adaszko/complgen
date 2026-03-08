@@ -633,12 +633,54 @@ def test_handles_quotes(complgen_binary_path: Path):
         )
 
 
+def test_longest_literal_first(complgen_binary_path: Path):
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path,
+        """cmd (a | abc | abcd)""",
+    ) as completions_file_path:
+        input = """complete --do-complete 'cmd ab' """
+        assert get_sorted_fish_completions(completions_file_path, input) == sorted(
+            [("abc", ""), ("abcd", "")]
+        )
+
+
+def test_subword_longest_literal_first(complgen_binary_path: Path):
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path,
+        """cmd --option=(a | abc | abcd);""",
+    ) as completions_file_path:
+        input = """complete --do-complete 'cmd --option=ab' """
+        assert get_sorted_fish_completions(completions_file_path, input) == sorted(
+            [("--option=abc", ""), ("--option=abcd", "")]
+        )
+
+
+def test_longest_command_candidate_first(complgen_binary_path: Path):
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path,
+        """cmd {{{ echo a; echo abc; echo abcd }}}""",
+    ) as completions_file_path:
+        input = """complete --do-complete 'cmd ab' """
+        assert get_sorted_fish_completions(completions_file_path, input) == sorted(
+            [("abc", ""), ("abcd", "")]
+        )
+
+
+def test_subword_longest_command_candidate_first(complgen_binary_path: Path):
+    with gen_fish_aot_completion_script_path(
+        complgen_binary_path,
+        """cmd --option={{{ echo a; echo abc; echo abcd }}}""",
+    ) as completions_file_path:
+        input = """complete --do-complete 'cmd --option=ab' """
+        assert get_sorted_fish_completions(completions_file_path, input) == sorted(
+            [("abc", ""), ("abcd", "")]
+        )
+
+
 def test_bug1(complgen_binary_path: Path):
     GRAMMAR = r"""
 mygrep <OPTION>...;
-
 <OPTION> ::= --color=[<WHEN>] || --colour=[<WHEN>];
-
 <WHEN> ::= always | never | auto;
 """
     with gen_fish_aot_completion_script_path(
@@ -660,17 +702,6 @@ mygit (status || (--help status))...;
         input = """complete --do-complete 'mygit status --' """
         assert get_sorted_fish_completions(completions_file_path, input) == sorted(
             [("--help", "")]
-        )
-
-
-def test_bug4(complgen_binary_path: Path):
-    GRAMMAR = """cmd --pretty=(full | fuller);"""
-    with gen_fish_aot_completion_script_path(
-        complgen_binary_path, GRAMMAR
-    ) as completions_file_path:
-        input = """complete --do-complete 'cmd --pretty=fulle' """
-        assert get_sorted_fish_completions(completions_file_path, input) == sorted(
-            [("--pretty=fuller", "")]
         )
 
 
