@@ -1,4 +1,4 @@
-use crate::{Error, Result, grammar::ValidGrammar, make_dot_string_constant};
+use crate::{Error, Result, grammar::ValidGrammar};
 use hashbrown::HashSet;
 use indexmap::IndexSet;
 use std::{
@@ -455,6 +455,11 @@ fn do_from_expr(
             Ok(alloc(arena, result))
         }
     }
+}
+
+pub(crate) fn make_dot_string_constant(s: &str) -> String {
+    let escaped = s.replace('\\', "\\\\").replace('"', "\\\"");
+    format!(r#""{escaped}""#)
 }
 
 fn do_to_dot<W: Write>(
