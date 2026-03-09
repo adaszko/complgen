@@ -6,7 +6,7 @@ use roaring::{MultiOps, RoaringBitmap};
 use ustr::{Ustr, ustr};
 
 use crate::regex::{Position, Regex, RegexId, RegexInput, RegexInternPool};
-use crate::{Error, Result, StateId};
+use crate::{CommandId, Error, LiteralId, Result, StateId};
 
 // Every state in a DFA is formally defined to have a transition on *every* input symbol.  In
 // our applications that's not the case, so we add artificial transitions to a special, designated
@@ -1229,6 +1229,66 @@ impl DFA {
             } => true,
             Inp::Subword { subdfa, .. } => self.subdfas.lookup(*subdfa).needs_compadds_code(),
         })
+    }
+
+    pub(crate) fn get_matching_tables(
+        &self,
+        id_from_cmd: &IndexSet<Ustr>,
+    ) -> (
+        Vec<(usize, Ustr, Ustr)>,
+        HashMap<(Ustr, Ustr), usize>,
+        HashMap<StateId, Vec<(LiteralId, StateId)>>,
+        HashMap<StateId, Vec<(CommandId, StateId)>>,
+    ) {
+        let all_literals: Vec<(usize, Ustr, Ustr)> = self
+            .get_top_level_literals_decreasing_length()
+            .into_iter()
+            .enumerate()
+            .map(|(id, (literal, description))| (id, literal, description.unwrap_or(ustr(""))))
+            .collect();
+
+        let id_from_literal_description: HashMap<(Ustr, Ustr), usize> = all_literals
+            .iter()
+            .map(|(id, input, description)| ((*input, *description), *id))
+            .collect();
+
+        let mut literal_transitions: HashMap<StateId, Vec<(LiteralId, StateId)>> =
+            Default::default();
+        let mut command_transitions: HashMap<StateId, Vec<(CommandId, StateId)>> =
+            Default::default();
+        for state in self.get_all_states() {
+            let state_literal_transitions: Vec<(LiteralId, StateId)> = self
+                .get_literal_transitions_from(state)
+                .iter()
+                .map(|(literal, description, to)| {
+                    (
+                        *id_from_literal_description
+                            .get(&(*literal, *description))
+                            .unwrap() as LiteralId,
+                        *to,
+                    )
+                })
+                .collect();
+            if !state_literal_transitions.is_empty() {
+                literal_transitions.insert(state, state_literal_transitions);
+            }
+
+            let state_command_transitions: Vec<(CommandId, StateId)> = self
+                .get_command_transitions_from(state)
+                .iter()
+                .map(|(cmd, to)| (id_from_cmd.get_index_of(cmd).unwrap() as CommandId, *to))
+                .collect();
+            if !state_command_transitions.is_empty() {
+                command_transitions.insert(state, state_command_transitions);
+            }
+        }
+
+        (
+            all_literals,
+            id_from_literal_description,
+            literal_transitions,
+            command_transitions,
+        )
     }
 
     pub(crate) fn needs_subword_compadds_code(&self) -> bool {
