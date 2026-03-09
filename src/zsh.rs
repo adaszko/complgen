@@ -145,6 +145,86 @@ fn write_matching_tables<W: Write>(
     Ok(id_from_literal_description)
 }
 
+fn write_completion_tables<W: Write>(
+    buffer: &mut W,
+    dfa: &DFA,
+    prefix: &str,
+    id_from_literal_description: &HashMap<(Ustr, Ustr), u32>,
+    id_from_cmd: &IndexSet<Ustr>,
+    needs_commands_code: bool,
+    needs_compadds_code: bool,
+    max_fallback_level: usize,
+) -> Result<()> {
+    for (level, transitions) in dfa
+        .get_completion_literals(&id_from_literal_description, max_fallback_level)
+        .iter()
+        .enumerate()
+    {
+        let initializer = transitions
+            .iter()
+            .map(|(from_state, literal_ids)| {
+                format!(
+                    r#"[{from_state_zsh}]="{}""#,
+                    literal_ids.iter().join(" "),
+                    from_state_zsh = from_state + ARRAY_START,
+                )
+            })
+            .join(" ");
+        writeln!(
+            buffer,
+            r#"    declare -A {prefix}literal_transitions_level_{level}=({initializer})"#
+        )?;
+    }
+
+    if needs_commands_code {
+        for (level, transitions) in dfa
+            .get_completion_commands(id_from_cmd, max_fallback_level)
+            .iter()
+            .enumerate()
+        {
+            let initializer = transitions
+                .iter()
+                .map(|(from_state, command_ids)| {
+                    format!(
+                        r#"[{from_state_zsh}]="{}""#,
+                        command_ids.iter().join(" "),
+                        from_state_zsh = from_state + ARRAY_START
+                    )
+                })
+                .join(" ");
+            writeln!(
+                buffer,
+                r#"    declare -A {prefix}commands_level_{level}=({initializer})"#
+            )?;
+        }
+    }
+
+    if needs_compadds_code {
+        for (level, transitions) in dfa
+            .get_completion_compadds(id_from_cmd, max_fallback_level)
+            .iter()
+            .enumerate()
+        {
+            let initializer = transitions
+                .iter()
+                .map(|(from_state, command_ids)| {
+                    format!(
+                        r#"[{from_state_zsh}]="{}""#,
+                        command_ids.iter().join(" "),
+                        from_state_zsh = from_state + ARRAY_START
+                    )
+                })
+                .join(" ");
+            writeln!(
+                buffer,
+                r#"    declare -A {prefix}compadd_commands_level_{level}=({initializer})"#
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
 fn write_subword_fn<W: Write>(
     buffer: &mut W,
     command: &str,
@@ -484,72 +564,16 @@ fn write_subword_wrapper_fn<W: Write>(
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
-    for (level, transitions) in dfa
-        .get_completion_literals(&id_from_literal_description, max_fallback_level)
-        .iter()
-        .enumerate()
-    {
-        let initializer = transitions
-            .iter()
-            .map(|(from_state, literal_ids)| {
-                format!(
-                    r#"[{from_state_zsh}]="{}""#,
-                    literal_ids.iter().join(" "),
-                    from_state_zsh = from_state + ARRAY_START,
-                )
-            })
-            .join(" ");
-        writeln!(
-            buffer,
-            r#"    declare -A subword_literal_transitions_level_{level}=({initializer})"#
-        )?;
-    }
-
-    if needs_commands_code {
-        for (level, transitions) in dfa
-            .get_completion_commands(id_from_cmd, max_fallback_level)
-            .iter()
-            .enumerate()
-        {
-            let initializer = transitions
-                .iter()
-                .map(|(from_state, command_ids)| {
-                    format!(
-                        r#"[{from_state_zsh}]="{}""#,
-                        command_ids.iter().join(" "),
-                        from_state_zsh = from_state + ARRAY_START
-                    )
-                })
-                .join(" ");
-            writeln!(
-                buffer,
-                r#"    declare -A subword_commands_level_{level}=({initializer})"#
-            )?;
-        }
-    }
-
-    if needs_compadds_code {
-        for (level, transitions) in dfa
-            .get_completion_compadds(id_from_cmd, max_fallback_level)
-            .iter()
-            .enumerate()
-        {
-            let initializer = transitions
-                .iter()
-                .map(|(from_state, command_ids)| {
-                    format!(
-                        r#"[{from_state_zsh}]="{}""#,
-                        command_ids.iter().join(" "),
-                        from_state_zsh = from_state + ARRAY_START
-                    )
-                })
-                .join(" ");
-            writeln!(
-                buffer,
-                r#"    declare -A subword_compadd_commands_level_{level}=({initializer})"#
-            )?;
-        }
-    }
+    write_completion_tables(
+        buffer,
+        dfa,
+        "subword_",
+        &id_from_literal_description,
+        id_from_cmd,
+        needs_commands_code,
+        needs_compadds_code,
+        max_fallback_level,
+    )?;
 
     writeln!(
         buffer,
@@ -841,26 +865,16 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
-    for (level, transitions) in dfa
-        .get_completion_literals(&id_from_literal_description, max_fallback_level)
-        .iter()
-        .enumerate()
-    {
-        let initializer = transitions
-            .iter()
-            .map(|(from_state, literal_ids)| {
-                format!(
-                    r#"[{from_state_zsh}]="{}""#,
-                    literal_ids.iter().join(" "),
-                    from_state_zsh = from_state + ARRAY_START
-                )
-            })
-            .join(" ");
-        writeln!(
-            buffer,
-            r#"    declare -A literal_transitions_level_{level}=({initializer})"#
-        )?;
-    }
+    write_completion_tables(
+        buffer,
+        dfa,
+        "",
+        &id_from_literal_description,
+        &id_from_cmd,
+        needs_commands_code,
+        needs_compadds_code,
+        max_fallback_level,
+    )?;
 
     if needs_subwords_code {
         for (level, transitions) in dfa
@@ -881,52 +895,6 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             writeln!(
                 buffer,
                 r#"    declare -A subword_transitions_level_{level}=({initializer})"#
-            )?;
-        }
-    }
-
-    if needs_commands_code {
-        for (level, transitions) in dfa
-            .get_completion_commands(&id_from_cmd, max_fallback_level)
-            .iter()
-            .enumerate()
-        {
-            let initializer = transitions
-                .iter()
-                .map(|(from_state, command_ids)| {
-                    format!(
-                        r#"[{from_state_zsh}]="{}""#,
-                        command_ids.iter().join(" "),
-                        from_state_zsh = from_state + ARRAY_START
-                    )
-                })
-                .join(" ");
-            writeln!(
-                buffer,
-                r#"    declare -A commands_level_{level}=({initializer})"#
-            )?;
-        }
-    }
-
-    if needs_compadds_code {
-        for (level, transitions) in dfa
-            .get_completion_compadds(&id_from_cmd, max_fallback_level)
-            .iter()
-            .enumerate()
-        {
-            let initializer = transitions
-                .iter()
-                .map(|(from_state, command_ids)| {
-                    format!(
-                        r#"[{from_state_zsh}]="{}""#,
-                        command_ids.iter().join(" "),
-                        from_state_zsh = from_state + ARRAY_START
-                    )
-                })
-                .join(" ");
-            writeln!(
-                buffer,
-                r#"    declare -A compadd_commands_level_{level}=({initializer})"#
             )?;
         }
     }
