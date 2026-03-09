@@ -42,13 +42,6 @@ fn write_matching_tables<W: Write>(
         .map(|(id, input, description)| ((*input, *description), *id))
         .collect();
 
-    let all_states = dfa.get_all_states();
-
-    let literal_transitions =
-        dfa.get_literal_transitions(&all_states, &id_from_literal_description);
-
-    let command_transitions = dfa.get_command_transitions(&all_states, id_from_cmd);
-
     let literals = all_literals
         .iter()
         .map(|(_, literal, _)| make_string_constant(literal))
@@ -92,6 +85,10 @@ fn write_matching_tables<W: Write>(
         r#"    declare -A {prefix}descr_id_from_literal_id=({initializer})"#
     )?;
 
+    let all_states = dfa.get_all_states();
+
+    let literal_transitions =
+        dfa.get_literal_transitions(&all_states, &id_from_literal_description);
     writeln!(buffer, r#"    declare -A {prefix}literal_transitions=()"#)?;
     for (state, state_transitions) in literal_transitions {
         let transitions = state_transitions
@@ -106,6 +103,7 @@ fn write_matching_tables<W: Write>(
     }
 
     if needs_commands_code {
+        let command_transitions = dfa.get_command_transitions(&all_states, id_from_cmd);
         for (state, state_transitions) in command_transitions {
             let transitions = state_transitions
                 .iter()
