@@ -87,6 +87,53 @@ fn write_matching_tables<W: Write>(
     Ok(id_from_literal_description)
 }
 
+fn write_completion_tables<W: Write>(
+    buffer: &mut W,
+    dfa: &DFA,
+    id_from_cmd: &IndexSet<Ustr>,
+    needs_commands_code: bool,
+    id_from_literal_description: &HashMap<(Ustr, Ustr), LiteralId>,
+    max_fallback_level: usize,
+) -> Result<()> {
+    for (level, transitions) in dfa
+        .get_completion_literals(&id_from_literal_description, max_fallback_level)
+        .iter()
+        .enumerate()
+    {
+        let initializer = transitions
+            .iter()
+            .map(|(from_state, literal_ids)| {
+                format!(r#"[{from_state}]="{}""#, literal_ids.iter().join(" "))
+            })
+            .join(" ");
+        writeln!(
+            buffer,
+            r#"    local -A literal_transitions_level_{level}=({initializer})"#
+        )?;
+    }
+
+    if needs_commands_code {
+        for (level, transitions) in dfa
+            .get_completion_commands(&id_from_cmd, max_fallback_level)
+            .iter()
+            .enumerate()
+        {
+            let initializer = transitions
+                .iter()
+                .map(|(from_state, command_ids)| {
+                    format!(r#"[{from_state}]="{}""#, command_ids.iter().join(" "))
+                })
+                .join(" ");
+            writeln!(
+                buffer,
+                r#"    local -A commands_level_{level}=({initializer})"#
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
 fn write_subword_fn<W: Write>(
     buffer: &mut W,
     command: &str,
@@ -269,41 +316,14 @@ fn write_subword_wrapper_fn<W: Write>(
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
-    for (level, transitions) in dfa
-        .get_completion_literals(&id_from_literal_description, max_fallback_level)
-        .iter()
-        .enumerate()
-    {
-        let initializer = transitions
-            .iter()
-            .map(|(from_state, literal_ids)| {
-                format!(r#"[{from_state}]="{}""#, literal_ids.iter().join(" "))
-            })
-            .join(" ");
-        writeln!(
-            buffer,
-            r#"    local -A literal_transitions_level_{level}=({initializer})"#
-        )?;
-    }
-
-    if needs_commands_code {
-        for (level, transitions) in dfa
-            .get_completion_commands(&id_from_cmd, max_fallback_level)
-            .iter()
-            .enumerate()
-        {
-            let initializer = transitions
-                .iter()
-                .map(|(from_state, command_ids)| {
-                    format!(r#"[{from_state}]="{}""#, command_ids.iter().join(" "))
-                })
-                .join(" ");
-            writeln!(
-                buffer,
-                r#"    local -A commands_level_{level}=({initializer})"#
-            )?;
-        }
-    }
+    write_completion_tables(
+        buffer,
+        dfa,
+        id_from_cmd,
+        needs_commands_code,
+        &id_from_literal_description,
+        max_fallback_level,
+    )?;
 
     writeln!(
         buffer,
@@ -510,22 +530,14 @@ fi
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
-    for (level, transitions) in dfa
-        .get_completion_literals(&id_from_literal_description, max_fallback_level)
-        .iter()
-        .enumerate()
-    {
-        let initializer = transitions
-            .iter()
-            .map(|(from_state, literal_ids)| {
-                format!(r#"[{from_state}]="{}""#, literal_ids.iter().join(" "))
-            })
-            .join(" ");
-        writeln!(
-            buffer,
-            r#"    local -A literal_transitions_level_{level}=({initializer})"#
-        )?;
-    }
+    write_completion_tables(
+        buffer,
+        dfa,
+        &id_from_cmd,
+        needs_commands_code,
+        &id_from_literal_description,
+        max_fallback_level,
+    )?;
 
     if needs_subwords_code {
         for (level, transitions) in dfa
@@ -542,25 +554,6 @@ fi
             writeln!(
                 buffer,
                 r#"    local -A subword_transitions_level_{level}=({initializer})"#
-            )?;
-        }
-    }
-
-    if needs_commands_code {
-        for (level, transitions) in dfa
-            .get_completion_commands(&id_from_cmd, max_fallback_level)
-            .iter()
-            .enumerate()
-        {
-            let initializer = transitions
-                .iter()
-                .map(|(from_state, command_ids)| {
-                    format!(r#"[{from_state}]="{}""#, command_ids.iter().join(" "))
-                })
-                .join(" ");
-            writeln!(
-                buffer,
-                r#"    local -A commands_level_{level}=({initializer})"#
             )?;
         }
     }
