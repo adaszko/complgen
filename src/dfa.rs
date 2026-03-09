@@ -1231,32 +1231,29 @@ impl DFA {
         })
     }
 
-    pub(crate) fn get_matching_tables(
-        &self,
-        id_from_cmd: &IndexSet<Ustr>,
-    ) -> (
-        Vec<(usize, Ustr, Ustr)>,
-        HashMap<(Ustr, Ustr), usize>,
-        HashMap<StateId, Vec<(LiteralId, StateId)>>,
-        HashMap<StateId, Vec<(CommandId, StateId)>>,
-    ) {
-        let all_literals: Vec<(usize, Ustr, Ustr)> = self
-            .get_top_level_literals_decreasing_length()
+    pub(crate) fn get_all_literals(&self, array_start: usize) -> Vec<(LiteralId, Ustr, Ustr)> {
+        self.get_top_level_literals_decreasing_length()
             .into_iter()
             .enumerate()
-            .map(|(id, (literal, description))| (id, literal, description.unwrap_or(ustr(""))))
-            .collect();
+            .map(|(id, (literal, description))| {
+                (
+                    (id + array_start) as LiteralId,
+                    literal,
+                    description.unwrap_or(ustr("")),
+                )
+            })
+            .collect()
+    }
 
-        let id_from_literal_description: HashMap<(Ustr, Ustr), usize> = all_literals
-            .iter()
-            .map(|(id, input, description)| ((*input, *description), *id))
-            .collect();
-
+    pub(crate) fn get_literal_transitions(
+        &self,
+        all_states: &RoaringBitmap,
+        id_from_literal_description: &HashMap<(Ustr, Ustr), LiteralId>,
+    ) -> HashMap<StateId, Vec<(LiteralId, StateId)>> {
         let mut literal_transitions: HashMap<StateId, Vec<(LiteralId, StateId)>> =
             Default::default();
-        let mut command_transitions: HashMap<StateId, Vec<(CommandId, StateId)>> =
-            Default::default();
-        for state in self.get_all_states() {
+
+        for state in all_states {
             let state_literal_transitions: Vec<(LiteralId, StateId)> = self
                 .get_literal_transitions_from(state)
                 .iter()
@@ -1272,7 +1269,20 @@ impl DFA {
             if !state_literal_transitions.is_empty() {
                 literal_transitions.insert(state, state_literal_transitions);
             }
+        }
 
+        literal_transitions
+    }
+
+    pub(crate) fn get_command_transitions(
+        &self,
+        all_states: &RoaringBitmap,
+        id_from_cmd: &IndexSet<Ustr>,
+    ) -> HashMap<StateId, Vec<(CommandId, StateId)>> {
+        let mut command_transitions: HashMap<StateId, Vec<(CommandId, StateId)>> =
+            Default::default();
+
+        for state in all_states {
             let state_command_transitions: Vec<(CommandId, StateId)> = self
                 .get_command_transitions_from(state)
                 .iter()
@@ -1283,12 +1293,7 @@ impl DFA {
             }
         }
 
-        (
-            all_literals,
-            id_from_literal_description,
-            literal_transitions,
-            command_transitions,
-        )
+        command_transitions
     }
 
     pub(crate) fn needs_subword_compadds_code(&self) -> bool {

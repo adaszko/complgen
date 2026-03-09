@@ -1,5 +1,6 @@
 use std::io::Write;
 
+use crate::LiteralId;
 use crate::Result;
 use crate::StateId;
 use crate::dfa::DFA;
@@ -32,9 +33,20 @@ fn write_matching_tables<W: Write>(
     dfa: &DFA,
     id_from_cmd: &IndexSet<Ustr>,
     needs_commands_code: bool,
-) -> Result<HashMap<(Ustr, Ustr), usize>> {
-    let (all_literals, id_from_literal_description, literal_transitions, command_transitions) =
-        dfa.get_matching_tables(id_from_cmd);
+) -> Result<HashMap<(Ustr, Ustr), LiteralId>> {
+    let all_literals = dfa.get_all_literals(ARRAY_START as usize);
+
+    let id_from_literal_description: HashMap<(Ustr, Ustr), LiteralId> = all_literals
+        .iter()
+        .map(|(id, input, description)| ((*input, *description), *id))
+        .collect();
+
+    let all_states = dfa.get_all_states();
+
+    let literal_transitions =
+        dfa.get_literal_transitions(&all_states, &id_from_literal_description);
+
+    let command_transitions = dfa.get_command_transitions(&all_states, id_from_cmd);
 
     let literals: String = all_literals
         .iter()
@@ -262,7 +274,7 @@ fn write_subword_wrapper_fn<W: Write>(
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
-    let mut completion_literals: Vec<HashMap<StateId, Vec<usize>>> =
+    let mut completion_literals: Vec<HashMap<StateId, Vec<LiteralId>>> =
         vec![Default::default(); max_fallback_level + 1];
 
     let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> =
@@ -537,7 +549,7 @@ fi
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
-    let mut completion_literals: Vec<HashMap<StateId, Vec<usize>>> =
+    let mut completion_literals: Vec<HashMap<StateId, Vec<LiteralId>>> =
         vec![Default::default(); max_fallback_level + 1];
 
     let mut completion_subwords: Vec<HashMap<StateId, Vec<usize>>> =
