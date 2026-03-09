@@ -2,7 +2,6 @@ use std::io::Write;
 
 use crate::LiteralId;
 use crate::dfa::DFA;
-use crate::dfa::Inp;
 use crate::{Result, StateId};
 use hashbrown::HashMap;
 use indexmap::{IndexMap, IndexSet};
@@ -333,7 +332,7 @@ fn write_subword_wrapper_fn<W: Write>(
 "#
     )?;
 
-    let literal_id_from_input_description = write_matching_tables(
+    let id_from_literal_description = write_matching_tables(
         buffer,
         dfa,
         Some("subword_"),
@@ -344,48 +343,11 @@ fn write_subword_wrapper_fn<W: Write>(
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
-    let mut completion_literals: Vec<HashMap<StateId, Vec<u32>>> =
-        vec![Default::default(); max_fallback_level + 1_usize];
-
-    let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> =
-        vec![Default::default(); max_fallback_level + 1_usize];
-
-    for (from, input_id, _) in dfa.iter_transitions() {
-        match dfa.get_input(input_id).clone() {
-            Inp::Literal {
-                literal: lit,
-                description,
-                fallback_level,
-                ..
-            } => {
-                let literal_id = *literal_id_from_input_description
-                    .get(&(lit, description.unwrap_or("".into())))
-                    .unwrap();
-                completion_literals[fallback_level]
-                    .entry(from)
-                    .or_default()
-                    .push(literal_id);
-            }
-            Inp::Command {
-                zsh_compadd: true, ..
-            } => unreachable!(),
-            Inp::Command {
-                cmd,
-                fallback_level,
-                zsh_compadd: false,
-            } => {
-                let command_id = id_from_cmd.get_index_of(&cmd).unwrap();
-                completion_commands[fallback_level]
-                    .entry(from)
-                    .or_default()
-                    .push(command_id);
-            }
-            Inp::Star => {}
-            Inp::Subword { .. } => unreachable!(),
-        }
-    }
-
-    for (level, transitions) in completion_literals.iter().enumerate() {
+    for (level, transitions) in dfa
+        .get_completion_literals(&id_from_literal_description, max_fallback_level)
+        .iter()
+        .enumerate()
+    {
         let from_initializer = transitions
             .iter()
             .map(|(from_state, _)| from_state + ARRAY_START)
@@ -408,7 +370,11 @@ fn write_subword_wrapper_fn<W: Write>(
     }
 
     if needs_commands_code {
-        for (level, transitions) in completion_commands.iter().enumerate() {
+        for (level, transitions) in dfa
+            .get_completion_commands(id_from_cmd, max_fallback_level)
+            .iter()
+            .enumerate()
+        {
             let from_initializer = transitions
                 .iter()
                 .map(|(from_state, _)| from_state + ARRAY_START)
@@ -674,7 +640,7 @@ end
 "#
     )?;
 
-    let literal_id_from_input_description =
+    let id_from_literal_description =
         write_matching_tables(buffer, dfa, None, &id_from_cmd, needs_commands_code)?;
 
     if needs_subwords_code {
@@ -838,61 +804,11 @@ end
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
-    let mut completion_literals: Vec<HashMap<StateId, Vec<LiteralId>>> =
-        vec![Default::default(); max_fallback_level + 1];
-
-    let mut completion_subwords: Vec<HashMap<StateId, Vec<usize>>> =
-        vec![Default::default(); max_fallback_level + 1];
-
-    let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> =
-        vec![Default::default(); max_fallback_level + 1];
-
-    for (from, input_id, _) in dfa.iter_transitions() {
-        match dfa.get_input(input_id).clone() {
-            Inp::Literal {
-                literal: lit,
-                description,
-                fallback_level,
-                ..
-            } => {
-                let literal_id = *literal_id_from_input_description
-                    .get(&(lit, description.unwrap_or("".into())))
-                    .unwrap();
-                completion_literals[fallback_level]
-                    .entry(from)
-                    .or_default()
-                    .push(literal_id);
-            }
-            Inp::Subword {
-                subdfa: dfa,
-                fallback_level,
-                ..
-            } => {
-                let subword_id = *id_from_dfa.get(&dfa).unwrap();
-                completion_subwords[fallback_level]
-                    .entry(from)
-                    .or_default()
-                    .push(subword_id);
-            }
-            Inp::Command {
-                zsh_compadd: true, ..
-            } => unreachable!(),
-            Inp::Command {
-                cmd,
-                fallback_level,
-                zsh_compadd: false,
-            } => {
-                let command_id = id_from_cmd.get_index_of(&cmd).unwrap();
-                completion_commands[fallback_level]
-                    .entry(from)
-                    .or_default()
-                    .push(command_id);
-            }
-            Inp::Star => {}
-        }
-    }
-
-    for (level, transitions) in completion_literals.iter().enumerate() {
+    for (level, transitions) in dfa
+        .get_completion_literals(&id_from_literal_description, max_fallback_level)
+        .iter()
+        .enumerate()
+    {
         let froms_initializer = itertools::join(
             transitions
                 .iter()
@@ -923,7 +839,11 @@ end
     }
 
     if needs_subwords_code {
-        for (level, transitions) in completion_subwords.iter().enumerate() {
+        for (level, transitions) in dfa
+            .get_completion_subwords(id_from_dfa, max_fallback_level)
+            .iter()
+            .enumerate()
+        {
             let froms_initializer = itertools::join(
                 transitions
                     .iter()
@@ -955,7 +875,11 @@ end
     }
 
     if needs_commands_code {
-        for (level, transitions) in completion_commands.iter().enumerate() {
+        for (level, transitions) in dfa
+            .get_completion_commands(&id_from_cmd, max_fallback_level)
+            .iter()
+            .enumerate()
+        {
             let from_initializer = transitions
                 .iter()
                 .map(|(from_state, _)| from_state + ARRAY_START)
