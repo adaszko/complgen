@@ -438,12 +438,10 @@ fn write_matching_tables<W: Write>(
         .map(|(id, input, description)| ((*input, *description), *id))
         .collect();
 
-    let literals: String = itertools::join(
-        all_literals
-            .iter()
-            .map(|(_, literal, _)| make_string_constant(literal)),
-        " ",
-    );
+    let literals: String = all_literals
+        .iter()
+        .map(|(_, literal, _)| make_string_constant(literal))
+        .join(" ");
     writeln!(buffer, r#"    set {scope_patch}literals {literals}"#)?;
     writeln!(buffer)?;
 
@@ -474,22 +472,18 @@ fn write_matching_tables<W: Write>(
         .filter_map(|(id, _, description)| descrs.get_index_of(description).map(|d| (*id, d)))
         .filter(|(_, d)| *d > 0)
         .collect();
-    let descr_literal_ids = itertools::join(
-        descr_id_from_literal_id
-            .iter()
-            .map(|(literal_id, _)| format!("{literal_id}")),
-        " ",
-    );
+    let descr_literal_ids = descr_id_from_literal_id
+        .iter()
+        .map(|(literal_id, _)| format!("{literal_id}"))
+        .join(" ");
     writeln!(
         buffer,
         r#"    set {scope_patch}descr_literal_ids {descr_literal_ids}"#
     )?;
-    let descr_ids = itertools::join(
-        descr_id_from_literal_id
-            .iter()
-            .map(|(_, descr_id)| format!("{descr_id}")),
-        " ",
-    );
+    let descr_ids = descr_id_from_literal_id
+        .iter()
+        .map(|(_, descr_id)| format!("{descr_id}"))
+        .join(" ");
     writeln!(buffer, r#"    set {scope_patch}descr_ids {descr_ids}"#)?;
 
     let all_states = dfa.get_all_states();
@@ -546,22 +540,18 @@ fn write_matching_tables<W: Write>(
     writeln!(buffer)?;
 
     let star_transitions: Vec<(StateId, StateId)> = dfa.iter_top_level_star_transitions().collect();
-    let star_transitions_from = itertools::join(
-        star_transitions
-            .iter()
-            .map(|(from, _)| format!("{}", from + ARRAY_START)),
-        " ",
-    );
+    let star_transitions_from = star_transitions
+        .iter()
+        .map(|(from, _)| format!("{}", from + ARRAY_START))
+        .join(" ");
     writeln!(
         buffer,
         r#"    set {scope_patch}star_transitions_from {star_transitions_from}"#
     )?;
-    let star_transitions_to = itertools::join(
-        star_transitions
-            .iter()
-            .map(|(_, to)| format!("{}", to + ARRAY_START)),
-        " ",
-    );
+    let star_transitions_to = star_transitions
+        .iter()
+        .map(|(_, to)| format!("{}", to + ARRAY_START))
+        .join(" ");
     writeln!(
         buffer,
         r#"    set {scope_patch}star_transitions_to {star_transitions_to}"#
@@ -650,18 +640,14 @@ end
                 continue;
             }
 
-            let subword_ids: String = itertools::join(
-                subword_transitions
-                    .iter()
-                    .map(|(dfa, _)| format!("{}", id_from_dfa.get(dfa).unwrap())),
-                " ",
-            );
-            let tos: String = itertools::join(
-                subword_transitions
-                    .iter()
-                    .map(|(_, to)| format!("{}", to + ARRAY_START)),
-                " ",
-            );
+            let subword_ids: String = subword_transitions
+                .iter()
+                .map(|(dfa, _)| format!("{}", id_from_dfa.get(dfa).unwrap()))
+                .join(" ");
+            let tos: String = subword_transitions
+                .iter()
+                .map(|(_, to)| format!("{}", to + ARRAY_START))
+                .join(" ");
             writeln!(
                 buffer,
                 r#"    set subword_transitions_ids[{}] {}"#,
@@ -809,28 +795,24 @@ end
         .iter()
         .enumerate()
     {
-        let froms_initializer = itertools::join(
-            transitions
-                .iter()
-                .map(|(from_state, _)| format!("{}", from_state + ARRAY_START)),
-            " ",
-        );
+        let froms_initializer = transitions
+            .iter()
+            .map(|(from_state, _)| format!("{}", from_state + ARRAY_START))
+            .join(" ");
         writeln!(
             buffer,
             r#"    set literal_froms_level_{level} {froms_initializer}"#
         )?;
 
-        let inputs_initializer = itertools::join(
-            transitions.iter().map(|(_, state_inputs)| {
-                itertools::join(
-                    state_inputs
-                        .iter()
-                        .map(|literal_id| format!("{}", literal_id)),
-                    " ",
-                )
-            }),
-            "|",
-        );
+        let inputs_initializer = transitions
+            .iter()
+            .map(|(_, state_inputs)| {
+                state_inputs
+                    .iter()
+                    .map(|literal_id| format!("{}", literal_id))
+                    .join(" ")
+            })
+            .join("|");
         writeln!(
             buffer,
             r#"    set literal_inputs_level_{level} {}"#,
@@ -844,29 +826,25 @@ end
             .iter()
             .enumerate()
         {
-            let froms_initializer = itertools::join(
-                transitions
-                    .iter()
-                    .map(|(from_state, _)| format!("{}", from_state + ARRAY_START)),
-                " ",
-            );
+            let froms_initializer = transitions
+                .iter()
+                .map(|(from_state, _)| format!("{}", from_state + ARRAY_START))
+                .join(" ");
             writeln!(
                 buffer,
                 r#"    set subword_froms_level_{level} {froms_initializer}"#
             )?;
 
-            let subwords_initializer = itertools::join(
-                transitions.iter().map(|(_, state_subwords)| {
-                    let cell = itertools::join(
-                        state_subwords
-                            .iter()
-                            .map(|literal_id| format!("{}", literal_id)),
-                        " ",
-                    );
+            let subwords_initializer = transitions
+                .iter()
+                .map(|(_, state_subwords)| {
+                    let cell = state_subwords
+                        .iter()
+                        .map(|literal_id| format!("{}", literal_id))
+                        .join(" ");
                     format!(r#""{}""#, cell)
-                }),
-                " ",
-            );
+                })
+                .join(" ");
             writeln!(
                 buffer,
                 r#"    set subwords_level_{level} {subwords_initializer}"#
@@ -889,18 +867,16 @@ end
                 r#"    set command_froms_level_{level} {from_initializer}"#
             )?;
 
-            let commands_initializer = itertools::join(
-                transitions.iter().map(|(_, state_commands)| {
-                    let cell = itertools::join(
-                        state_commands
-                            .iter()
-                            .map(|literal_id| format!("{}", literal_id)),
-                        " ",
-                    );
+            let commands_initializer = transitions
+                .iter()
+                .map(|(_, state_commands)| {
+                    let cell = state_commands
+                        .iter()
+                        .map(|literal_id| format!("{}", literal_id))
+                        .join(" ");
                     format!(r#""{}""#, cell)
-                }),
-                " ",
-            );
+                })
+                .join(" ");
             writeln!(
                 buffer,
                 r#"    set commands_level_{level} {commands_initializer}"#
