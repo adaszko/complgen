@@ -1,9 +1,8 @@
 use std::io::Write;
 
 use crate::LiteralId;
+use crate::Result;
 use crate::dfa::DFA;
-use crate::dfa::Inp;
-use crate::{Result, StateId};
 use hashbrown::HashMap;
 use indexmap::{IndexMap, IndexSet};
 use itertools::Itertools;
@@ -74,12 +73,10 @@ fn write_matching_tables<W: Write>(
                 .map(|d| (*id as usize, d))
         })
         .collect();
-    let initializer = itertools::join(
-        descr_id_from_literal_id
-            .iter()
-            .map(|(literal_id, descr_id)| format!("[{literal_id}]={descr_id}")),
-        " ",
-    );
+    let initializer = descr_id_from_literal_id
+        .iter()
+        .map(|(literal_id, descr_id)| format!("[{literal_id}]={descr_id}"))
+        .join(" ");
     writeln!(
         buffer,
         r#"    declare -A {prefix}descr_id_from_literal_id=({initializer})"#
@@ -136,11 +133,10 @@ fn write_matching_tables<W: Write>(
         }
     }
 
-    let star_transitions = itertools::join(
-        dfa.iter_top_level_star_transitions()
-            .map(|(from, to)| format!("[{}]={}", from + ARRAY_START, to + ARRAY_START)),
-        " ",
-    );
+    let star_transitions = dfa
+        .iter_top_level_star_transitions()
+        .map(|(from, to)| format!("[{}]={}", from + ARRAY_START, to + ARRAY_START))
+        .join(" ");
     writeln!(
         buffer,
         r#"    declare -A {prefix}star_transitions=({star_transitions})"#
@@ -477,7 +473,7 @@ fn write_subword_wrapper_fn<W: Write>(
 ) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
 
-    let literal_id_from_input_description = write_matching_tables(
+    let id_from_literal_description = write_matching_tables(
         buffer,
         dfa,
         "subword_",
@@ -488,69 +484,21 @@ fn write_subword_wrapper_fn<W: Write>(
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
-    let mut completion_literals: Vec<HashMap<StateId, Vec<LiteralId>>> =
-        vec![Default::default(); max_fallback_level + 1_usize];
-
-    let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> =
-        vec![Default::default(); max_fallback_level + 1_usize];
-
-    let mut completion_compadds: Vec<HashMap<StateId, Vec<usize>>> =
-        vec![Default::default(); max_fallback_level + 1_usize];
-
-    for (from, input_id, _) in dfa.iter_transitions() {
-        match dfa.get_input(input_id).clone() {
-            Inp::Literal {
-                literal: lit,
-                description,
-                fallback_level,
-                ..
-            } => {
-                let literal_id = *literal_id_from_input_description
-                    .get(&(lit, description.unwrap_or("".into())))
-                    .unwrap();
-                completion_literals[fallback_level]
-                    .entry(from)
-                    .or_default()
-                    .push(literal_id);
-            }
-            Inp::Command {
-                cmd,
-                fallback_level,
-                zsh_compadd: false,
-            } => {
-                let command_id = id_from_cmd.get_index_of(&cmd).unwrap();
-                completion_commands[fallback_level]
-                    .entry(from)
-                    .or_default()
-                    .push(command_id);
-            }
-            Inp::Command {
-                cmd,
-                fallback_level,
-                zsh_compadd: true,
-            } => {
-                let cmd_id = id_from_cmd.get_index_of(&cmd).unwrap();
-                completion_compadds[fallback_level]
-                    .entry(from)
-                    .or_default()
-                    .push(cmd_id);
-            }
-            Inp::Star => {}
-            Inp::Subword { .. } => unreachable!(),
-        }
-    }
-
-    for (level, transitions) in completion_literals.iter().enumerate() {
-        let initializer = itertools::join(
-            transitions.iter().map(|(from_state, literal_ids)| {
-                let joined_literal_ids = itertools::join(literal_ids, " ");
+    for (level, transitions) in dfa
+        .get_completion_literals(&id_from_literal_description, max_fallback_level)
+        .iter()
+        .enumerate()
+    {
+        let initializer = transitions
+            .iter()
+            .map(|(from_state, literal_ids)| {
                 format!(
-                    r#"[{from_state_zsh}]="{joined_literal_ids}""#,
-                    from_state_zsh = from_state + ARRAY_START
+                    r#"[{from_state_zsh}]="{}""#,
+                    literal_ids.iter().join(" "),
+                    from_state_zsh = from_state + ARRAY_START,
                 )
-            }),
-            " ",
-        );
+            })
+            .join(" ");
         writeln!(
             buffer,
             r#"    declare -A subword_literal_transitions_level_{level}=({initializer})"#
@@ -558,17 +506,21 @@ fn write_subword_wrapper_fn<W: Write>(
     }
 
     if needs_commands_code {
-        for (level, transitions) in completion_commands.iter().enumerate() {
-            let initializer = itertools::join(
-                transitions.iter().map(|(from_state, command_ids)| {
-                    let joined_command_ids = itertools::join(command_ids, " ");
+        for (level, transitions) in dfa
+            .get_completion_commands(id_from_cmd, max_fallback_level)
+            .iter()
+            .enumerate()
+        {
+            let initializer = transitions
+                .iter()
+                .map(|(from_state, command_ids)| {
                     format!(
-                        r#"[{from_state_zsh}]="{joined_command_ids}""#,
+                        r#"[{from_state_zsh}]="{}""#,
+                        command_ids.iter().join(" "),
                         from_state_zsh = from_state + ARRAY_START
                     )
-                }),
-                " ",
-            );
+                })
+                .join(" ");
             writeln!(
                 buffer,
                 r#"    declare -A subword_commands_level_{level}=({initializer})"#
@@ -577,17 +529,21 @@ fn write_subword_wrapper_fn<W: Write>(
     }
 
     if needs_compadds_code {
-        for (level, transitions) in completion_compadds.iter().enumerate() {
-            let initializer = itertools::join(
-                transitions.iter().map(|(from_state, command_ids)| {
-                    let joined_command_ids = itertools::join(command_ids, " ");
+        for (level, transitions) in dfa
+            .get_completion_compadds(id_from_cmd, max_fallback_level)
+            .iter()
+            .enumerate()
+        {
+            let initializer = transitions
+                .iter()
+                .map(|(from_state, command_ids)| {
                     format!(
-                        r#"[{from_state_zsh}]="{joined_command_ids}""#,
+                        r#"[{from_state_zsh}]="{}""#,
+                        command_ids.iter().join(" "),
                         from_state_zsh = from_state + ARRAY_START
                     )
-                }),
-                " ",
-            );
+                })
+                .join(" ");
             writeln!(
                 buffer,
                 r#"    declare -A subword_compadd_commands_level_{level}=({initializer})"#
@@ -695,7 +651,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
     writeln!(buffer, r#"_{command} () {{"#)?;
 
-    let literal_id_from_input_description = write_matching_tables(
+    let id_from_literal_description = write_matching_tables(
         buffer,
         dfa,
         "",
@@ -711,12 +667,12 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             if subword_transitions.is_empty() {
                 continue;
             }
-            let state_transitions: String = itertools::join(
-                subword_transitions.into_iter().map(|(dfa, to)| {
+            let state_transitions = subword_transitions
+                .into_iter()
+                .map(|(dfa, to)| {
                     format!("[{}]={}", id_from_dfa.get(&dfa).unwrap(), to + ARRAY_START)
-                }),
-                " ",
-            );
+                })
+                .join(" ");
             writeln!(
                 buffer,
                 r#"    subword_transitions[{}]="({state_transitions})""#,
@@ -885,82 +841,21 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
-    let mut completion_literals: Vec<HashMap<StateId, Vec<LiteralId>>> =
-        vec![Default::default(); max_fallback_level + 1_usize];
-
-    let mut completion_subwords: Vec<HashMap<StateId, Vec<usize>>> =
-        vec![Default::default(); max_fallback_level + 1_usize];
-
-    let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> =
-        vec![Default::default(); max_fallback_level + 1_usize];
-
-    let mut completion_compadds: Vec<HashMap<StateId, Vec<usize>>> =
-        vec![Default::default(); max_fallback_level + 1_usize];
-
-    for (from, input_id, _) in dfa.iter_transitions() {
-        match dfa.get_input(input_id).clone() {
-            Inp::Literal {
-                literal: lit,
-                description,
-                fallback_level,
-                ..
-            } => {
-                let literal_id = *literal_id_from_input_description
-                    .get(&(lit, description.unwrap_or("".into())))
-                    .unwrap();
-                completion_literals[fallback_level]
-                    .entry(from)
-                    .or_default()
-                    .push(literal_id);
-            }
-            Inp::Subword {
-                subdfa: dfa,
-                fallback_level,
-                ..
-            } => {
-                let subword_id = *id_from_dfa.get(&dfa).unwrap();
-                completion_subwords[fallback_level]
-                    .entry(from)
-                    .or_default()
-                    .push(subword_id);
-            }
-            Inp::Command {
-                cmd,
-                fallback_level,
-                zsh_compadd: false,
-            } => {
-                let cmd_id = id_from_cmd.get_index_of(&cmd).unwrap();
-                completion_commands[fallback_level]
-                    .entry(from)
-                    .or_default()
-                    .push(cmd_id);
-            }
-            Inp::Command {
-                cmd,
-                fallback_level,
-                zsh_compadd: true,
-            } => {
-                let cmd_id = id_from_cmd.get_index_of(&cmd).unwrap();
-                completion_compadds[fallback_level]
-                    .entry(from)
-                    .or_default()
-                    .push(cmd_id);
-            }
-            Inp::Star => {}
-        }
-    }
-
-    for (level, transitions) in completion_literals.iter().enumerate() {
-        let initializer = itertools::join(
-            transitions.iter().map(|(from_state, literal_ids)| {
-                let joined_literal_ids = itertools::join(literal_ids, " ");
+    for (level, transitions) in dfa
+        .get_completion_literals(&id_from_literal_description, max_fallback_level)
+        .iter()
+        .enumerate()
+    {
+        let initializer = transitions
+            .iter()
+            .map(|(from_state, literal_ids)| {
                 format!(
-                    r#"[{from_state_zsh}]="{joined_literal_ids}""#,
+                    r#"[{from_state_zsh}]="{}""#,
+                    literal_ids.iter().join(" "),
                     from_state_zsh = from_state + ARRAY_START
                 )
-            }),
-            " ",
-        );
+            })
+            .join(" ");
         writeln!(
             buffer,
             r#"    declare -A literal_transitions_level_{level}=({initializer})"#
@@ -968,17 +863,21 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     }
 
     if needs_subwords_code {
-        for (level, transitions) in completion_subwords.iter().enumerate() {
-            let initializer = itertools::join(
-                transitions.iter().map(|(from_state, subword_ids)| {
-                    let joined_subword_ids = itertools::join(subword_ids, " ");
+        for (level, transitions) in dfa
+            .get_completion_subwords(id_from_dfa, max_fallback_level)
+            .iter()
+            .enumerate()
+        {
+            let initializer = transitions
+                .iter()
+                .map(|(from_state, subword_ids)| {
                     format!(
-                        r#"[{from_state_zsh}]="{joined_subword_ids}""#,
+                        r#"[{from_state_zsh}]="{}""#,
+                        subword_ids.iter().join(" "),
                         from_state_zsh = from_state + ARRAY_START
                     )
-                }),
-                " ",
-            );
+                })
+                .join(" ");
             writeln!(
                 buffer,
                 r#"    declare -A subword_transitions_level_{level}=({initializer})"#
@@ -987,17 +886,21 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     }
 
     if needs_commands_code {
-        for (level, transitions) in completion_commands.iter().enumerate() {
-            let initializer = itertools::join(
-                transitions.iter().map(|(from_state, command_ids)| {
-                    let joined_command_ids = itertools::join(command_ids, " ");
+        for (level, transitions) in dfa
+            .get_completion_commands(&id_from_cmd, max_fallback_level)
+            .iter()
+            .enumerate()
+        {
+            let initializer = transitions
+                .iter()
+                .map(|(from_state, command_ids)| {
                     format!(
-                        r#"[{from_state_zsh}]="{joined_command_ids}""#,
+                        r#"[{from_state_zsh}]="{}""#,
+                        command_ids.iter().join(" "),
                         from_state_zsh = from_state + ARRAY_START
                     )
-                }),
-                " ",
-            );
+                })
+                .join(" ");
             writeln!(
                 buffer,
                 r#"    declare -A commands_level_{level}=({initializer})"#
@@ -1006,17 +909,21 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     }
 
     if needs_compadds_code {
-        for (level, transitions) in completion_compadds.iter().enumerate() {
-            let initializer = itertools::join(
-                transitions.iter().map(|(from_state, command_ids)| {
-                    let joined_command_ids = itertools::join(command_ids, " ");
+        for (level, transitions) in dfa
+            .get_completion_compadds(&id_from_cmd, max_fallback_level)
+            .iter()
+            .enumerate()
+        {
+            let initializer = transitions
+                .iter()
+                .map(|(from_state, command_ids)| {
                     format!(
-                        r#"[{from_state_zsh}]="{joined_command_ids}""#,
+                        r#"[{from_state_zsh}]="{}""#,
+                        command_ids.iter().join(" "),
                         from_state_zsh = from_state + ARRAY_START
                     )
-                }),
-                " ",
-            );
+                })
+                .join(" ");
             writeln!(
                 buffer,
                 r#"    declare -A compadd_commands_level_{level}=({initializer})"#

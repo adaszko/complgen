@@ -1385,6 +1385,33 @@ impl DFA {
         completion_commands
     }
 
+    pub(crate) fn get_completion_compadds(
+        &self,
+        id_from_cmd: &IndexSet<Ustr>,
+        max_fallback_level: usize,
+    ) -> Vec<HashMap<StateId, Vec<usize>>> {
+        let mut completion_compadds: Vec<HashMap<StateId, Vec<usize>>> =
+            vec![Default::default(); max_fallback_level + 1];
+
+        for (from, input_id, _) in self.iter_transitions() {
+            match self.get_input(input_id).clone() {
+                Inp::Command {
+                    cmd,
+                    fallback_level,
+                    zsh_compadd: true,
+                } => {
+                    let command_id = id_from_cmd.get_index_of(&cmd).unwrap();
+                    completion_compadds[fallback_level]
+                        .entry(from)
+                        .or_default()
+                        .push(command_id);
+                }
+                Inp::Literal { .. } | Inp::Command { .. } | Inp::Subword { .. } | Inp::Star => {}
+            }
+        }
+        completion_compadds
+    }
+
     pub fn to_dot<W: Write>(&self, output: &mut W, array_start: u32) -> Result<()> {
         writeln!(output, "digraph dfa {{")?;
         writeln!(output, "\trankdir=LR;")?;
