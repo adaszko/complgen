@@ -1303,6 +1303,88 @@ impl DFA {
         })
     }
 
+    pub(crate) fn get_completion_literals(
+        &self,
+        id_from_literal_description: &HashMap<(Ustr, Ustr), LiteralId>,
+        max_fallback_level: usize,
+    ) -> Vec<HashMap<StateId, Vec<LiteralId>>> {
+        let mut completion_literals: Vec<HashMap<StateId, Vec<LiteralId>>> =
+            vec![Default::default(); max_fallback_level + 1];
+
+        for (from, input_id, _) in self.iter_transitions() {
+            match self.get_input(input_id).clone() {
+                Inp::Literal {
+                    literal,
+                    description,
+                    fallback_level,
+                } => {
+                    let literal_id = *id_from_literal_description
+                        .get(&(literal, description.unwrap_or("".into())))
+                        .unwrap();
+                    completion_literals[fallback_level]
+                        .entry(from)
+                        .or_default()
+                        .push(literal_id);
+                }
+                Inp::Subword { .. } | Inp::Command { .. } | Inp::Star => {}
+            }
+        }
+
+        completion_literals
+    }
+
+    pub(crate) fn get_completion_subwords(
+        &self,
+        id_from_dfa: IndexMap<DFAId, usize>,
+        max_fallback_level: usize,
+    ) -> Vec<HashMap<StateId, Vec<usize>>> {
+        let mut completion_subwords: Vec<HashMap<StateId, Vec<usize>>> =
+            vec![Default::default(); max_fallback_level + 1];
+        for (from, input_id, _) in self.iter_transitions() {
+            match self.get_input(input_id).clone() {
+                Inp::Subword {
+                    subdfa,
+                    fallback_level,
+                } => {
+                    let subword_id = *id_from_dfa.get(&subdfa).unwrap();
+                    completion_subwords[fallback_level]
+                        .entry(from)
+                        .or_default()
+                        .push(subword_id);
+                }
+                Inp::Literal { .. } | Inp::Command { .. } | Inp::Star => {}
+            }
+        }
+        completion_subwords
+    }
+
+    pub(crate) fn get_completion_commands(
+        &self,
+        id_from_cmd: &IndexSet<Ustr>,
+        max_fallback_level: usize,
+    ) -> Vec<HashMap<StateId, Vec<usize>>> {
+        let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> =
+            vec![Default::default(); max_fallback_level + 1];
+
+        for (from, input_id, _) in self.iter_transitions() {
+            match self.get_input(input_id).clone() {
+                Inp::Command {
+                    cmd,
+                    fallback_level,
+                    zsh_compadd: false,
+                } => {
+                    let command_id = id_from_cmd.get_index_of(&cmd).unwrap();
+                    completion_commands[fallback_level]
+                        .entry(from)
+                        .or_default()
+                        .push(command_id);
+                }
+                Inp::Literal { .. } | Inp::Command { .. } | Inp::Subword { .. } | Inp::Star => {}
+            }
+        }
+        completion_commands
+    }
+
     pub fn to_dot<W: Write>(&self, output: &mut W, array_start: u32) -> Result<()> {
         writeln!(output, "digraph dfa {{")?;
         writeln!(output, "\trankdir=LR;")?;
