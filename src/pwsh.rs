@@ -1,5 +1,6 @@
 use std::io::Write;
 
+use crate::LiteralId;
 use crate::Result;
 use crate::StateId;
 use crate::dfa::DFA;
@@ -32,15 +33,10 @@ fn write_matching_tables<W: Write>(
     dfa: &DFA,
     id_from_cmd: &IndexSet<Ustr>,
     needs_commands_code: bool,
-) -> Result<HashMap<(Ustr, Ustr), usize>> {
-    let all_literals: Vec<(usize, Ustr, Ustr)> = dfa
-        .get_top_level_literals_decreasing_length()
-        .into_iter()
-        .enumerate()
-        .map(|(id, (literal, description))| (id, literal, description.unwrap_or(ustr(""))))
-        .collect();
+) -> Result<HashMap<(Ustr, Ustr), u32>> {
+    let all_literals = dfa.get_all_literals(ARRAY_START as usize);
 
-    let literal_id_from_input_description: HashMap<(Ustr, Ustr), usize> = all_literals
+    let id_from_literal_description: HashMap<(Ustr, Ustr), LiteralId> = all_literals
         .iter()
         .map(|(id, input, description)| ((*input, *description), *id))
         .collect();
@@ -58,45 +54,33 @@ fn write_matching_tables<W: Write>(
         .join("; ");
     writeln!(buffer, r#"    $descriptions = @{{{descriptions}}}"#)?;
 
+    let all_states = dfa.get_all_states();
+
     writeln!(buffer, r#"    $literal_transitions = @{{}}"#)?;
-    if needs_commands_code {
-        writeln!(buffer, r#"    $command_transitions = @{{}}"#)?;
+    for (state, state_transitions) in
+        dfa.get_literal_transitions(&all_states, &id_from_literal_description)
+    {
+        let transitions = state_transitions
+            .iter()
+            .map(|(literal_id, to)| format!("{} = {}", literal_id, to))
+            .join("; ");
+        writeln!(
+            buffer,
+            r#"    $literal_transitions[{state}] = @{{{transitions}}}"#
+        )?;
     }
 
-    for state in dfa.get_all_states() {
-        let literal_transitions = dfa.get_literal_transitions_from(state);
-        if !literal_transitions.is_empty() {
-            let state_transitions = literal_transitions
-                .into_iter()
-                .map(|(literal, description, to)| {
-                    (
-                        *literal_id_from_input_description
-                            .get(&(literal, description))
-                            .unwrap(),
-                        to,
-                    )
-                })
+    if needs_commands_code {
+        writeln!(buffer, r#"    $command_transitions = @{{}}"#)?;
+        for (state, state_transitions) in dfa.get_command_transitions(&all_states, id_from_cmd) {
+            let transitions = state_transitions
+                .iter()
                 .map(|(literal_id, to)| format!("{} = {}", literal_id, to))
                 .join("; ");
             writeln!(
                 buffer,
-                r#"    $literal_transitions[{state}] = @{{{state_transitions}}}"#
+                r#"    $command_transitions[{state}] = @{{{transitions}}}"#
             )?;
-        }
-
-        if needs_commands_code {
-            let command_transitions = dfa.get_command_transitions_from(state);
-            if !command_transitions.is_empty() {
-                let state_transitions = command_transitions
-                    .iter()
-                    .map(|(cmd, to)| (id_from_cmd.get_index_of(cmd).unwrap(), to))
-                    .map(|(cmd_id, to)| format!("{cmd_id} = {to}"))
-                    .join("; ");
-                writeln!(
-                    buffer,
-                    r#"    $command_transitions[{state}] = @{{{state_transitions}}}"#
-                )?;
-            }
         }
     }
 
@@ -106,7 +90,7 @@ fn write_matching_tables<W: Write>(
         .join("; ");
     writeln!(buffer, r#"    $star_transitions = @{{{star_transitions}}}"#)?;
 
-    Ok(literal_id_from_input_description)
+    Ok(id_from_literal_description)
 }
 
 fn write_subword_fn<W: Write>(
@@ -283,7 +267,7 @@ fn write_subword_wrapper_fn<W: Write>(
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
-    let mut completion_literals: Vec<HashMap<StateId, Vec<usize>>> =
+    let mut completion_literals: Vec<HashMap<StateId, Vec<u32>>> =
         vec![Default::default(); max_fallback_level + 1];
 
     let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> =
@@ -543,7 +527,7 @@ $ErrorActionPreference = "Stop"
     // Build completion data structures by fallback level
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
-    let mut completion_literals: Vec<HashMap<StateId, Vec<usize>>> =
+    let mut completion_literals: Vec<HashMap<StateId, Vec<u32>>> =
         vec![HashMap::default(); max_fallback_level + 1];
     let mut completion_subwords: Vec<HashMap<StateId, Vec<usize>>> =
         vec![HashMap::default(); max_fallback_level + 1];
