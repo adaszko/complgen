@@ -560,6 +560,86 @@ fn write_matching_tables<W: Write>(
     Ok(id_from_literal_description)
 }
 
+fn write_completion_tables<W: Write>(
+    buffer: &mut W,
+    dfa: &DFA,
+    prefix: Option<&str>,
+    id_from_literal_description: &HashMap<(Ustr, Ustr), u32>,
+    id_from_cmd: &IndexSet<Ustr>,
+    needs_commands_code: bool,
+    max_fallback_level: usize,
+) -> Result<()> {
+    let scope_patch = if let Some(prefix) = prefix {
+        &format!("--global {}", prefix)
+    } else {
+        ""
+    };
+
+    for (level, transitions) in dfa
+        .get_completion_literals(&id_from_literal_description, max_fallback_level)
+        .iter()
+        .enumerate()
+    {
+        let froms_initializer = transitions
+            .iter()
+            .map(|(from_state, _)| format!("{}", from_state + ARRAY_START))
+            .join(" ");
+        writeln!(
+            buffer,
+            r#"    set {scope_patch}literal_froms_level_{level} {froms_initializer}"#
+        )?;
+
+        let inputs_initializer = transitions
+            .iter()
+            .map(|(_, state_inputs)| {
+                state_inputs
+                    .iter()
+                    .map(|literal_id| format!("{}", literal_id))
+                    .join(" ")
+            })
+            .join("|");
+        writeln!(
+            buffer,
+            r#"    set {scope_patch}literal_inputs_level_{level} {}"#,
+            make_string_constant(&inputs_initializer),
+        )?;
+    }
+
+    if needs_commands_code {
+        for (level, transitions) in dfa
+            .get_completion_commands(&id_from_cmd, max_fallback_level)
+            .iter()
+            .enumerate()
+        {
+            let from_initializer = transitions
+                .iter()
+                .map(|(from_state, _)| from_state + ARRAY_START)
+                .join(" ");
+            writeln!(
+                buffer,
+                r#"    set {scope_patch}command_froms_level_{level} {from_initializer}"#
+            )?;
+
+            let commands_initializer = transitions
+                .iter()
+                .map(|(_, state_commands)| {
+                    let cell = state_commands
+                        .iter()
+                        .map(|literal_id| format!("{}", literal_id))
+                        .join(" ");
+                    format!(r#""{}""#, cell)
+                })
+                .join(" ");
+            writeln!(
+                buffer,
+                r#"    set {scope_patch}commands_level_{level} {commands_initializer}"#
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
 pub fn write_completion_script<W: Write>(
     buffer: &mut W,
     command: &str,
@@ -790,35 +870,15 @@ end
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
-    for (level, transitions) in dfa
-        .get_completion_literals(&id_from_literal_description, max_fallback_level)
-        .iter()
-        .enumerate()
-    {
-        let froms_initializer = transitions
-            .iter()
-            .map(|(from_state, _)| format!("{}", from_state + ARRAY_START))
-            .join(" ");
-        writeln!(
-            buffer,
-            r#"    set literal_froms_level_{level} {froms_initializer}"#
-        )?;
-
-        let inputs_initializer = transitions
-            .iter()
-            .map(|(_, state_inputs)| {
-                state_inputs
-                    .iter()
-                    .map(|literal_id| format!("{}", literal_id))
-                    .join(" ")
-            })
-            .join("|");
-        writeln!(
-            buffer,
-            r#"    set literal_inputs_level_{level} {}"#,
-            make_string_constant(&inputs_initializer),
-        )?;
-    }
+    write_completion_tables(
+        buffer,
+        dfa,
+        None,
+        &id_from_literal_description,
+        &id_from_cmd,
+        needs_commands_code,
+        max_fallback_level,
+    )?;
 
     if needs_subwords_code {
         for (level, transitions) in dfa
@@ -848,38 +908,6 @@ end
             writeln!(
                 buffer,
                 r#"    set subwords_level_{level} {subwords_initializer}"#
-            )?;
-        }
-    }
-
-    if needs_commands_code {
-        for (level, transitions) in dfa
-            .get_completion_commands(&id_from_cmd, max_fallback_level)
-            .iter()
-            .enumerate()
-        {
-            let from_initializer = transitions
-                .iter()
-                .map(|(from_state, _)| from_state + ARRAY_START)
-                .join(" ");
-            writeln!(
-                buffer,
-                r#"    set command_froms_level_{level} {from_initializer}"#
-            )?;
-
-            let commands_initializer = transitions
-                .iter()
-                .map(|(_, state_commands)| {
-                    let cell = state_commands
-                        .iter()
-                        .map(|literal_id| format!("{}", literal_id))
-                        .join(" ");
-                    format!(r#""{}""#, cell)
-                })
-                .join(" ");
-            writeln!(
-                buffer,
-                r#"    set commands_level_{level} {commands_initializer}"#
             )?;
         }
     }
