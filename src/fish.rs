@@ -185,12 +185,9 @@ fn write_subword_fn<W: Write>(
                         printf '%s %s %s\n' $i (string length -- $candidates[$i]) $candidates[$i]
                     end | sort -nrk2,2 -rk3 | cut -f1 -d' '
                 )
-                set decreasing_length ""
-                for i in $indexes
-                    set --append decreasing_length $candidates[$i]
-                end
+                set decreasing_length (for i in $indexes; echo $candidates[$i]; end)
 
-                for candidate in $candidates
+                for candidate in $decreasing_length
                     if test $candidate = $subword
                         set subword_state $to
                         set match_len (string length -- $candidate)
@@ -772,12 +769,9 @@ end
                         printf '%s %s %s\n' $i (string length -- $candidates[$i]) $candidates[$i]
                     end | sort -nrk2,2 -rk3 | cut -f1 -d' '
                 )
-                set decreasing_length ""
-                for i in $indexes
-                    set --append decreasing_length $candidates[$i]
-                end
+                set decreasing_length (for i in $indexes; echo $candidates[$i]; end)
 
-                for candidate in $candidates
+                for candidate in $decreasing_length
                     if test $candidate = $word
                         set state $to
                         set word_index (math $word_index + 1)

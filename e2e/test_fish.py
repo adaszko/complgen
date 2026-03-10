@@ -673,7 +673,7 @@ def test_subword_longest_command_candidate_first(complgen_binary_path: Path):
     ) as completions_file_path:
         input = """complete --do-complete 'cmd --option=ab' """
         assert get_sorted_fish_completions(completions_file_path, input) == sorted(
-            [("abc", ""), ("abcd", "")]
+            [("--option=abc", ""), ("--option=abcd", "")]
         )
 
 
