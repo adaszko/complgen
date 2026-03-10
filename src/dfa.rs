@@ -1204,8 +1204,14 @@ impl DFA {
 
     pub(crate) fn needs_commands_code(&self) -> bool {
         self.iter_inputs().any(|input| match input {
-            Inp::Literal { .. } | Inp::Star => false,
-            Inp::Command { .. } => true,
+            Inp::Literal { .. }
+            | Inp::Star
+            | Inp::Command {
+                zsh_compadd: true, ..
+            } => false,
+            Inp::Command {
+                zsh_compadd: false, ..
+            } => true,
             Inp::Subword { subdfa, .. } => self.subdfas.lookup(*subdfa).needs_commands_code(),
         })
     }
