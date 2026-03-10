@@ -466,9 +466,9 @@ fn write_subword_fn<W: Write>(
         declare commands_name=subword_commands_level_${{subword_fallback_level}}
         eval "declare initializer=\${{${{commands_name}}[$subword_state]}}"
         eval "declare -a transitions=($initializer)"
-        for command_id in "${{transitions[@]}}"; do
+        for cmd_id in "${{transitions[@]}}"; do
             declare candidates=()
-            declare output=$(IPREFIX="$matched_prefix" PREFIX="$completed_prefix" _{command}_cmd_${{command_id}})
+            declare output=$(IPREFIX="$matched_prefix" PREFIX="$completed_prefix" _{command}_cmd_${{cmd_id}})
             declare -a command_completions=("${{(@f)output}}")
             for line in ${{command_completions[@]}}; do
                 if [[ $line = "${{completed_prefix}}"* ]]; then
@@ -504,9 +504,9 @@ fn write_subword_fn<W: Write>(
             functions -c compadd compadd_original
         fi
         functions -c compadd_hook compadd
-        for command_id in "${{transitions[@]}}"; do
+        for cmd_id in "${{transitions[@]}}"; do
             declare -a compadd_hook_matches=()
-            IPREFIX="$matched_prefix" PREFIX="$completed_prefix" _{command}_cmd_${{command_id}}
+            IPREFIX="$matched_prefix" PREFIX="$completed_prefix" _{command}_cmd_${{cmd_id}}
             (( compadd_matches_count += ${{#compadd_hook_matches}} ))
         done
         if [[ "$compadd_original_type" == builtin ]]; then
@@ -970,8 +970,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         declare commands_name=commands_level_${{fallback_level}}
         eval "declare initializer=\${{${{commands_name}}[$state]}}"
         eval "declare -a transitions=($initializer)"
-        for command_id in "${{transitions[@]}}"; do
-            declare output=$(PREFIX="${{words[$CURRENT]}}" _{command}_cmd_${{command_id}})
+        for cmd_id in "${{transitions[@]}}"; do
+            declare output=$(PREFIX="${{words[$CURRENT]}}" _{command}_cmd_${{cmd_id}})
             declare -a command_completions=("${{(@f)output}}")
             for line in ${{command_completions[@]}}; do
                 declare parts=(${{(@s:	:)line}})
@@ -1003,9 +1003,9 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             functions -c compadd compadd_original
         fi
         functions -c compadd_hook compadd
-        for command_id in "${{transitions[@]}}"; do
+        for cmd_id in "${{transitions[@]}}"; do
             declare -a compadd_hook_matches=()
-            _{command}_cmd_${{command_id}}
+            _{command}_cmd_${{cmd_id}}
             (( compadd_matches_count += ${{#compadd_hook_matches}} ))
         done
         if [[ "$compadd_original_type" == builtin ]]; then
