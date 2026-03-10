@@ -100,6 +100,7 @@ fn write_matching_tables<W: Write>(
     }
 
     if needs_commands_code {
+        writeln!(buffer, r#"    declare -A {prefix}command_transitions=()"#)?;
         let command_transitions = dfa.get_command_transitions(&all_states, id_from_cmd);
         for (state, state_transitions) in command_transitions {
             let transitions = state_transitions
@@ -115,6 +116,7 @@ fn write_matching_tables<W: Write>(
     }
 
     if needs_compadds_code {
+        writeln!(buffer, r#"    declare -A {prefix}compadd_transitions=()"#)?;
         for state in all_states {
             let command_transitions = dfa.get_compadd_transitions_from(state);
             if !command_transitions.is_empty() {

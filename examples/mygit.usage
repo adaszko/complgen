@@ -1,256 +1,43 @@
-mygit (status || (<global-option>... status)) (<PATH> || <status-option>)...;
+mygit (<command> || <global-option>... <command>);
 
-mygit (log || (<global-option>... log)) [<log-option>...] [<revision-range>] [[--] <PATH>...];
+<command> ::= add       "add file contents to the index"
+            | bisect    "find by binary search the change that introduced a bug"
+            | branch    "list, create, or delete branches"
+            | checkout  "checkout a branch or paths to the working tree"
+            | clone     "clone a repository into a new directory"
+            | commit    "record changes to the repository"
+            | diff      "show changes between commits, commit and working tree, etc"
+            | fetch     "download objects and refs from another repository"
+            | grep      "print lines matching a pattern"
+            | init      "create an empty Git repository or reinitialize an existing one"
+            | log       "show commit logs"
+            | merge     "join two or more development histories together"
+            | mv        "move or rename a file, a directory, or a symlink"
+            | pull      "fetch from and merge with another repository or a local branch"
+            | push      "update remote refs along with associated objects"
+            | rebase    "forward-port local commits to the updated upstream head"
+            | reset     "reset current HEAD to the specified state"
+            | restore   "restore working tree files"
+            | rm        "remove files from the working tree and from the index"
+            | show      "show various types of objects"
+            | status    "show the working tree status"
+            | switch    "switch branches"
+            | tag       "create, list, delete or verify a tag object signed with GPG"
+            ;
 
-mygit (diff || (<global-option>... diff)) [<diff-option>...] [<commit>] [--] [<PATH>...];
-mygit (diff || (<global-option>... diff)) [<diff-option>...] --cached [--merge-base] [<commit>] [--] [<PATH>...];
-mygit (diff || (<global-option>... diff)) [<diff-option>...] [--merge-base] <commit> [<commit>...] <commit> [--] [<PATH>...];
-mygit (diff || (<global-option>... diff)) [<diff-option>...] <commit>...<commit> [--] [<PATH>...];
-mygit (diff || (<global-option>... diff)) [<diff-option>...] <blob> <blob>;
-mygit (diff || (<global-option>... diff)) [<diff-option>...] --no-index [--] <PATH> <PATH> [<PATH>...];
 
-mygit show <commit>;
-
-<commit> ::= {{{}}};
-
-<commit@bash> ::= {{{(
-    shopt -s globstar
-    local root
-    root="$(git rev-parse --show-toplevel 2>/dev/null)"
-    if [[ -d "$root"/.git/refs/heads ]]; then
-        cd "$root"/.git/refs/heads
-        printf '%s\n' *
-    fi
-    if [[ -d "$root"/.git/refs/remotes ]]; then
-        cd "$root"/.git/refs/remotes
-        printf '%s\n' **/*
-    fi
-    if [[ -d "$root"/.git/refs/tags ]]; then
-        cd "$root"/.git/refs/tags
-        printf '%s\n' **/*
-    fi
-)}}};
-
-<revision-range> ::= {{{}}};
-
-<blob> ::= {{{}}};
-
-<global-option> ::= (--version | -v)
-                  | (--help | -h)
-                  | -C <DIRECTORY>
-                  | -c <_>
-                  | --exec-path[=<DIRECTORY>]
-                  | --html-path
-                  | --man-path
-                  | --info-path
-                  | (--paginate | --no-pager | -p | -P)
-                  | --no-replace-objects
-                  | --no-lazy-fetch
-                  | --no-optional-locks
-                  | --no-advice
-                  | --bare
-                  | --git-dir=<DIRECTORY>
-                  | --work-tree=<DIRECTORY>
-                  | --namespace=
-                  | --config-env=
-                  ;
-
-<status-option> ::= --short
-                  | --branch
-                  | --show-stash
-                  | --porcelain[=]
-                  | --long
-                  | --verbose
-                  | --untracked-files[=(no | normal | all)]
-                  | --ignore-submodules[=(none | untracked | dirty | all)]
-                  | --ignored[=(traditional | no | matching)]
-                  | --column[=(always | never)]
-                  | --no-column
-                  | --no-ahead-behind | --ahead-behind
-                  | --no-renames | --renames
-                  | --find-renames[=]
-                  ;
-
-<log-option> ::= --follow
-       | (--no-decorate | --decorate[=(short|full|auto|no)])
-       | --decorate-refs=
-       | --decorate-refs-exclude=
-       | --clear-decorations
-       | --source
-       | --mailmap | --no-mailmap
-       | --use-mailmap | --no-use-mailmap
-       | --full-diff
-       | --log-size
-       | -<_> | -n <_> | --max-count=<_>
-       | --skip=
-       | --since=
-       | --after=
-       | --since-as-filter=
-       | --until=
-       | --before=
-       | --author=
-       | --committer=
-       | --grep-reflog=
-       | --grep=
-       | --all-match
-       | --invert-grep
-       | --regexp-ignore-case
-       | --basic-regexp
-       | --extended-regexp
-       | --fixed-strings
-       | --perl-regexp
-       | --remove-empty
-       | --merges
-       | --no-merges
-       | --min-parents=
-       | --max-parents=
-       | --no-min-parents
-       | --no-max-parents
-       | --first-parent
-       | --exclude-first-parent-only
-       | --not
-       | --all
-       | --branches[=]
-       | --tags[=]
-       | --remotes[=]
-       | --glob=
-       | --exclude=
-       | --exclude-hidden=(fetch|receive|uploadpack)
-       | --reflog
-       | --alternate-refs
-       | --single-worktree
-       | --ignore-missing
-       | --bisect
-       | --stdin
-       | --cherry-mark
-       | --cherry-pick
-       | --left-only
-       | --right-only
-       | --cherry
-       | --walk-reflogs
-       | --merge
-       | --boundary
-       | --simplify-by-decoration
-       | --show-pulls
-       | --full-history
-       | --dense
-       | --sparse
-       | --simplify-merges
-       | --ancestry-path[=<commit>]
-       | --dense
-       | --sparse
-       | --simplify-merges
-       | --ancestry-path[=<commit>]
-       | --show-pulls
-       | --date-order
-       | --author-date-order
-       | --topo-order
-       | --reverse
-       | --no-walk[=(sorted|unsorted)]
-       | --do-walk
-       | --pretty[=(oneline | short | medium | full | fuller | reference | email | raw | format: | tformat:)]
-       | --abbrev-commit
-       | --no-abbrev-commit
-       | --oneline
-       | --encoding=
-       | --expand-tabs[=]
-       | --no-expand-tabs
-       | --notes[=]
-       | --no-notes
-       | --show-notes-by-default
-       | --show-notes[=]
-       | --standard-notes
-       | --no-standard-notes
-       | --show-signature
-       | --relative-date
-       | --date=
-       | --parents
-       | --children
-       | --left-right
-       | --graph
-       | --show-linear-break[=]
-       | --patch
-       | --no-patch
-       | --cc
-       | --dd
-       | --remerge-diff
-       | --no-diff-merges
-       | --diff-merges=
-       | --combined-all-paths
-       | --unified=
-       | --output=<PATH>
-       | --output-indicator-new=
-       | --output-indicator-old=
-       | --output-indicator-context=
-       | --raw
-       | --patch-with-raw
-       | --indent-heuristic
-       | --no-indent-heuristic
-       | --minimal
-       | --patience
-       | --histogram
-       | --anchored=
-       | --diff-algorithm=(patience|minimal|histogram|myers)
-       | --stat[=]
-       | --compact-summary
-       | --numstat
-       | --shortstat
-       | --dirstat[=]
-       | --cumulative
-       | --dirstat-by-file[=]
-       | --summary
-       | --patch-with-stat
-       | --name-only
-       | --name-status
-       | --submodule[=]
-       | --color[=]
-       | --no-color
-       | --color-moved[=]
-       | --no-color-moved
-       | --color-moved-ws=
-       | --no-color-moved-ws
-       | --word-diff[=]
-       | --word-diff-regex=
-       | --color-words[=]
-       | --no-renames
-       | --no-rename-empty
-       | --check
-       | --ws-error-highlight=
-       | --full-index
-       | --binary
-       | --abbrev[=]
-       | --break-rewrites[=]
-       | --find-renames[=]
-       | --find-copies[=]
-       | --find-copies-harder
-       | --irreversible-delete
-       | --diff-filter=[(A|C|D|M|R|T|U|X|B)...[*]]
-       | --find-object=
-       | --pickaxe-all
-       | --pickaxe-regex
-       | --skip-to=<PATH>
-       | --rotate-to=<PATH>
-       | --relative[=<PATH>]
-       | --no-relative
-       | --text
-       | --ignore-cr-at-eol
-       | --ignore-space-at-eol
-       | --ignore-space-change
-       | --ignore-all-space
-       | --ignore-blank-lines
-       | --ignore-matching-lines=
-       | --inter-hunk-context=
-       | --function-context
-       | --ext-diff
-       | --no-ext-diff
-       | --textconv | --no-textconv
-       | --ignore-submodules[=(none|untracked|dirty|all)]
-       | --src-prefix=
-       | --dst-prefix=
-       | --no-prefix
-       | --default-prefix
-       | --line-prefix=
-       | --ita-invisible-in-index
-       ;
-
-<diff-option> ::= -p | -u | --patch;
+<global-option> ::=
+      --version | -v
+    | --help | -h
+    | -C <DIRECTORY>
+    | --exec-path[=<DIRECTORY>]
+    | --html-path
+    | --man-path
+    | --info-path
+    | --paginate | --no-pager | -p | -P
+    | --bare
+    | --git-dir=<DIRECTORY>
+    | --work-tree=<DIRECTORY>
+    | --namespace=
+    | --config-env=
+    ;
