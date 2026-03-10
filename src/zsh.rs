@@ -52,7 +52,7 @@ fn write_matching_tables<W: Write>(
         .map(|(_, _, descr)| *descr)
         .filter(|d| !d.is_empty())
         .collect();
-    writeln!(buffer, r#"    declare -A {prefix}descrs=()"#)?;
+    writeln!(buffer, r#"    declare -A {prefix}descriptions=()"#)?;
     for descr in &descriptions {
         if descr.is_empty() {
             continue;
@@ -60,7 +60,7 @@ fn write_matching_tables<W: Write>(
         let id = descriptions.get_index_of(descr).unwrap();
         writeln!(
             buffer,
-            r#"    {prefix}descrs[{id}]={}"#,
+            r#"    {prefix}descriptions[{id}]={}"#,
             make_string_constant(descr)
         )?;
     }
@@ -449,7 +449,7 @@ fn write_subword_fn<W: Write>(
                     declare descr_id=$subword_descr_id_from_literal_id[$literal_id]
                     subword_completions_no_trailing_space+=("${{completion}}")
                     subword_suffixes_no_trailing_space+=("${{completion}}")
-                    subword_descriptions_no_trailing_space+=("${{subword_descrs[$descr_id]}}")
+                    subword_descriptions_no_trailing_space+=("${{subword_descriptions[$descr_id]}}")
                 else
                     subword_completions_no_trailing_space+=("${{completion}}")
                     subword_suffixes_no_trailing_space+=("${{literal}}")
@@ -936,7 +936,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                 declare descr_id=$descr_id_from_literal_id[$literal_id]
                 completions_trailing_space+=("${{literals[$literal_id]}}")
                 suffixes_trailing_space+=("${{literals[$literal_id]}}")
-                descriptions_trailing_space+=("${{descrs[$descr_id]}}")
+                descriptions_trailing_space+=("${{descriptions[$descr_id]}}")
             else
                 completions_no_description_trailing_space+=("${{literals[$literal_id]}}")
             fi
