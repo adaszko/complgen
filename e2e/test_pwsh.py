@@ -593,8 +593,8 @@ def test_subword_longest_command_candidate_first(complgen_binary_path: Path):
         assert get_sorted_pwsh_completions(
             completions_file_path, "cmd --option=ab"
         ) == [
-            ("abc", ""),
-            ("abcd", ""),
+            ("--option=abc", ""),
+            ("--option=abcd", ""),
         ]
 
 

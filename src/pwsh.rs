@@ -195,7 +195,8 @@ fn write_subword_fn<W: Write>(
 
             foreach ($cmd_id in $state_transitions.Keys) {{
                 $output = & "_{command}_cmd_$cmd_id"
-                foreach ($line in $output) {{
+                $decreasing_length = $output | Sort-Object -Property {{ $_.Length }} -Descending
+                foreach ($line in $decreasing_length) {{
                     if ([string]::IsNullOrWhiteSpace($line)) {{ continue }}
                     $parts = $line -split "`t", 2
                     $candidate = $parts[0]
