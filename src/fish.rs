@@ -267,7 +267,7 @@ fn write_subword_fn<W: Write>(
         if contains $subword_state $froms
             set index (contains --index -- "$subword_state" $froms)
             set transitions_name subword_literal_inputs_level_$fallback_level
-            printf 'set transitions (string split \' \' $%s[%d])' $transitions_name $index | source
+            set transitions (string split ' ' $$transitions_name[1][$index])
             for literal_id in $transitions
                 set completed_prefix_len (string length -- $completed_prefix)
                 if test $completed_prefix_len -gt 0
@@ -295,7 +295,8 @@ fn write_subword_fn<W: Write>(
         set froms (string split ' ' $$froms_name)
         set index (contains --index -- "$subword_state" $froms)
         if test -n "$index"
-            printf 'set function_id $subword_commands_level_%s[%d]' $fallback_level $index | source
+            set subword_commands_level_name subword_commands_level_$fallback_level
+            set function_id $$subword_commands_level_name[1][$index]
             set function_name _{command}_cmd_$function_id
             $function_name "$completed_prefix" "$matched_prefix" | while read line
                 set --append candidates (printf '%s%s\n' $matched_prefix $line)
