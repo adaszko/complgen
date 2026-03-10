@@ -15,7 +15,8 @@ use ustr::{Ustr, ustr};
 // * Unlike in other shells, scoping *is not* dynamic in fish!  It's lexical-ish!
 // * Metaprogramming:
 //   1) $$var_name (https://fishshell.com/docs/current/language.html#dereferencing-variables)
-//   2) printf [...] | source
+//   2) $$var_name[1][$index]: deref $index-th elem of the list whose name is held in $var_name holds
+//   3) printf [...] | source
 // * echo foo:$bar prints nothing if $bar expands to an empty string (!)
 // * The completion script is responsible for filtering candidates (!)
 
@@ -261,11 +262,11 @@ fn write_subword_fn<W: Write>(
 
     for fallback_level in (seq 0 $subword_max_fallback_level)
         set candidates
-        set froms_name subword_literal_transitions_from_level_$fallback_level
+        set froms_name subword_literal_froms_level_$fallback_level
         set froms (string split ' ' $$froms_name)
         if contains $subword_state $froms
             set index (contains --index -- "$subword_state" $froms)
-            set transitions_name subword_literal_transitions_level_$fallback_level
+            set transitions_name subword_literal_inputs_level_$fallback_level
             printf 'set transitions (string split \' \' $%s[%d])' $transitions_name $index | source
             for literal_id in $transitions
                 set completed_prefix_len (string length -- $completed_prefix)
@@ -290,7 +291,7 @@ fn write_subword_fn<W: Write>(
         write!(
             buffer,
             r#"
-        set froms_name subword_commands_from_level_$fallback_level
+        set froms_name subword_command_froms_level_$fallback_level
         set froms (string split ' ' $$froms_name)
         set index (contains --index -- "$subword_state" $froms)
         if test -n "$index"
@@ -343,57 +344,15 @@ fn write_subword_wrapper_fn<W: Write>(
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
-    for (level, transitions) in dfa
-        .get_completion_literals(&id_from_literal_description, max_fallback_level)
-        .iter()
-        .enumerate()
-    {
-        let from_initializer = transitions
-            .iter()
-            .map(|(from_state, _)| from_state + ARRAY_START)
-            .join(" ");
-        writeln!(
-            buffer,
-            r#"    set --global subword_literal_transitions_from_level_{level} {from_initializer}"#
-        )?;
-
-        let literals_initializer = transitions
-            .iter()
-            .map(|(_, literal_ids)| {
-                make_string_constant(&literal_ids.iter().map(|id| format!("{}", id)).join(" "))
-            })
-            .join(" ");
-        writeln!(
-            buffer,
-            r#"    set --global subword_literal_transitions_level_{level} {literals_initializer}"#
-        )?;
-    }
-
-    if needs_commands_code {
-        for (level, transitions) in dfa
-            .get_completion_commands(id_from_cmd, max_fallback_level)
-            .iter()
-            .enumerate()
-        {
-            let from_initializer = transitions
-                .iter()
-                .map(|(from_state, _)| from_state + ARRAY_START)
-                .join(" ");
-            writeln!(
-                buffer,
-                r#"    set --global subword_commands_from_level_{level} {from_initializer}"#
-            )?;
-
-            let commands_initializer = transitions
-                .iter()
-                .map(|(_, command_ids)| command_ids.iter().map(|id| format!("{}", id)).join(" "))
-                .join(" ");
-            writeln!(
-                buffer,
-                r#"    set --global subword_commands_level_{level} {commands_initializer}"#
-            )?;
-        }
-    }
+    write_completion_tables(
+        buffer,
+        dfa,
+        Some("subword_"),
+        &id_from_literal_description,
+        &id_from_cmd,
+        needs_commands_code,
+        max_fallback_level,
+    )?;
 
     writeln!(
         buffer,
@@ -589,19 +548,16 @@ fn write_completion_tables<W: Write>(
             r#"    set {scope_patch}literal_froms_level_{level} {froms_initializer}"#
         )?;
 
-        let inputs_initializer = transitions
+        let literals_initializer = transitions
             .iter()
-            .map(|(_, state_inputs)| {
-                state_inputs
-                    .iter()
-                    .map(|literal_id| format!("{}", literal_id))
-                    .join(" ")
+            .map(|(_, literal_ids)| {
+                make_string_constant(&literal_ids.iter().map(|id| format!("{}", id)).join(" "))
             })
-            .join("|");
+            .join(" ");
         writeln!(
             buffer,
             r#"    set {scope_patch}literal_inputs_level_{level} {}"#,
-            make_string_constant(&inputs_initializer),
+            literals_initializer,
         )?;
     }
 
@@ -922,8 +878,7 @@ end
         set index (contains --index -- "$state" $froms)
         if test -n "$index"
             set level_inputs_name literal_inputs_level_$fallback_level
-            set input_assoc_values (string split '|' $$level_inputs_name)
-            set state_inputs (string split ' ' $input_assoc_values[$index])
+            set state_inputs (string split ' ' $$level_inputs_name[1][$index])
             for literal_id in $state_inputs
                 set descr_index (contains --index -- "$literal_id" $descr_literal_ids)
                 if test -n "$descr_index"
