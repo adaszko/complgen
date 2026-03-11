@@ -1234,6 +1234,23 @@ impl DFA {
         })
     }
 
+    pub(crate) fn needs_top_level_star_code(&self) -> bool {
+        self.iter_inputs().any(|input| match input {
+            Inp::Star { .. } => true,
+            Inp::Literal { .. }
+            | Inp::Command { .. }
+            | Inp::Compadd { .. }
+            | Inp::Subword { .. } => false,
+        })
+    }
+
+    pub(crate) fn needs_subword_star_code(&self) -> bool {
+        self.iter_inputs().any(|input| match input {
+            Inp::Literal { .. } | Inp::Star | Inp::Command { .. } | Inp::Compadd { .. } => false,
+            Inp::Subword { subdfa, .. } => self.subdfas.lookup(*subdfa).needs_top_level_star_code(),
+        })
+    }
+
     pub(crate) fn get_all_literals(&self, array_start: usize) -> Vec<(LiteralId, Ustr, Ustr)> {
         self.get_top_level_literals_decreasing_length()
             .into_iter()
