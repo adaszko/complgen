@@ -725,8 +725,8 @@ pub fn diagnostic_display_input<W: std::fmt::Write>(w: &mut W, input: &Inp) -> R
             ..
         } => write!(w, r#"{literal} {descr:?}"#)?,
         Inp::Star => write!(w, r#"*"#)?,
-        Inp::Command { cmd, .. } => write!(w, r#"{{{{{{ {cmd} }}}}}}{}"#, "")?,
-        Inp::Compadd { cmd, .. } => write!(w, r#"{{{{{{ {cmd} }}}}}}{}"#, "compadd")?,
+        Inp::Command { cmd, .. } => write!(w, r#"{{{{{{ {cmd} }}}}}}"#)?,
+        Inp::Compadd { cmd, .. } => write!(w, r#"{{{{{{ {cmd} }}}}}}compadd"#)?,
         Inp::Subword { .. } => unreachable!(),
     }
     Ok(())
@@ -1242,7 +1242,7 @@ impl DFA {
 
     pub(crate) fn needs_top_level_star_code(&self) -> bool {
         self.iter_inputs().any(|input| match input {
-            Inp::Star { .. } => true,
+            Inp::Star => true,
             Inp::Literal { .. }
             | Inp::Command { .. }
             | Inp::Compadd { .. }
