@@ -79,7 +79,7 @@ PS> hello --color=<TAB>
 ## Installation
 
 ```sh
-cargo install --git https://github.com/adaszko/complgen --tag v0.8.1 complgen
+cargo install --git https://github.com/adaszko/complgen --tag v0.8.2 complgen
 ```
 
 Or download a pre-built binary from [the latest GitHub release](https://github.com/adaszko/complgen/releases).
