@@ -30,6 +30,7 @@ fn write_subword_fn<W: Write>(
     buffer: &mut W,
     command: &str,
     needs_commands_code: bool,
+    needs_star_code: bool,
 ) -> Result<()> {
     writeln!(
         buffer,
@@ -105,14 +106,21 @@ fn write_subword_fn<W: Write>(
         )?;
     }
 
-    write!(
-        buffer,
-        r#"
+    if needs_star_code {
+        write!(
+            buffer,
+            r#"
         if ($star_transitions.ContainsKey($state)) {{
             $matched = $true
             break
         }}
+"#
+        )?;
+    }
 
+    write!(
+        buffer,
+        r#"
         break
     }}
 
@@ -187,6 +195,7 @@ fn write_matching_tables<W: Write>(
     dfa: &DFA,
     id_from_cmd: &IndexSet<Ustr>,
     needs_commands_code: bool,
+    needs_star_code: bool,
 ) -> Result<HashMap<(Ustr, Ustr), u32>> {
     let all_literals = dfa.get_all_literals(ARRAY_START as usize);
 
@@ -238,11 +247,13 @@ fn write_matching_tables<W: Write>(
         }
     }
 
-    let star_transitions = dfa
-        .iter_top_level_star_transitions()
-        .map(|(from, to)| format!("{from} = {to}"))
-        .join("; ");
-    writeln!(buffer, r#"    $star_transitions = @{{{star_transitions}}}"#)?;
+    if needs_star_code {
+        let star_transitions = dfa
+            .iter_top_level_star_transitions()
+            .map(|(from, to)| format!("{from} = {to}"))
+            .join("; ");
+        writeln!(buffer, r#"    $star_transitions = @{{{star_transitions}}}"#)?;
+    }
 
     Ok(id_from_literal_description)
 }
@@ -307,6 +318,7 @@ fn write_subword_wrapper_fn<W: Write>(
     dfa: &DFA,
     id_from_cmd: &IndexSet<Ustr>,
     needs_commands_code: bool,
+    needs_star_code: bool,
 ) -> Result<()> {
     writeln!(
         buffer,
@@ -314,8 +326,13 @@ fn write_subword_wrapper_fn<W: Write>(
     param([string]$mode, [string]$word)"#
     )?;
 
-    let id_from_literal_description =
-        write_matching_tables(buffer, dfa, id_from_cmd, needs_commands_code)?;
+    let id_from_literal_description = write_matching_tables(
+        buffer,
+        dfa,
+        id_from_cmd,
+        needs_commands_code,
+        needs_star_code,
+    )?;
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
@@ -346,6 +363,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     let needs_subwords_code = dfa.needs_subwords_code();
     let needs_top_level_commands_code = dfa.needs_top_level_commands_code();
     let needs_subword_commands_code = dfa.needs_subword_commands_code();
+    let needs_top_level_star_code = dfa.needs_top_level_star_code();
+    let needs_subword_star_code = dfa.needs_subword_star_code();
 
     write!(
         buffer,
@@ -386,11 +405,17 @@ $ErrorActionPreference = "Stop"
                 dfa,
                 &id_from_cmd,
                 needs_subword_commands_code,
+                needs_subword_star_code,
             )?;
             writeln!(buffer)?;
         }
 
-        write_subword_fn(buffer, command, needs_subword_commands_code)?;
+        write_subword_fn(
+            buffer,
+            command,
+            needs_subword_commands_code,
+            needs_subword_star_code,
+        )?;
     }
 
     writeln!(
@@ -411,8 +436,13 @@ $ErrorActionPreference = "Stop"
 "#
     )?;
 
-    let id_from_literal_description =
-        write_matching_tables(buffer, dfa, &id_from_cmd, needs_top_level_commands_code)?;
+    let id_from_literal_description = write_matching_tables(
+        buffer,
+        dfa,
+        &id_from_cmd,
+        needs_top_level_commands_code,
+        needs_top_level_star_code,
+    )?;
 
     if needs_subwords_code {
         writeln!(buffer, r#"    $subword_transitions = @{{}}"#)?;
@@ -501,16 +531,23 @@ $ErrorActionPreference = "Stop"
         )?;
     }
 
-    write!(
-        buffer,
-        r#"
+    if needs_top_level_star_code {
+        write!(
+            buffer,
+            r#"
 
         if ($star_transitions.ContainsKey($state)) {{
             $state = $star_transitions[$state]
             $word_index++
             continue
         }}
+"#
+        )?;
+    }
 
+    write!(
+        buffer,
+        r#"
         # No valid transition found
         return
     }}
