@@ -478,6 +478,7 @@ fn write_matching_tables<W: Write>(
     }
 
     if needs_commands_code {
+        writeln!(buffer, r#"    set {scope_patch}command_transitions"#,)?;
         for (state, state_transitions) in dfa.get_command_transitions(&all_states, id_from_cmd) {
             let transitions = state_transitions
                 .into_iter()
