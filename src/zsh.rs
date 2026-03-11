@@ -595,7 +595,7 @@ fn write_subword_wrapper_fn<W: Write>(
 
 pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
     let needs_subwords_code = dfa.needs_subwords_code();
-    let needs_commands_code = dfa.needs_commands_code();
+    let needs_top_level_commands_code = dfa.needs_top_level_commands_code();
     let needs_subword_commands_code = dfa.needs_subword_commands_code();
     let needs_compadds_code = dfa.needs_compadds_code();
     let needs_subword_compadds_code = dfa.needs_subword_compadds_code();
@@ -624,7 +624,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         )?;
     }
 
-    if needs_compadds_code || needs_commands_code {
+    if needs_compadds_code || needs_subword_compadds_code {
         writeln!(
             buffer,
             r#"compadd_hook () {{
@@ -682,7 +682,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         dfa,
         "",
         &id_from_cmd,
-        needs_commands_code,
+        needs_top_level_commands_code,
         needs_compadds_code,
     )?;
 
@@ -751,7 +751,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         )?;
     }
 
-    if needs_commands_code {
+    if needs_top_level_commands_code {
         write!(
             buffer,
             r#"
@@ -873,7 +873,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         "",
         &id_from_literal_description,
         &id_from_cmd,
-        needs_commands_code,
+        needs_top_level_commands_code,
         needs_compadds_code,
         max_fallback_level,
     )?;
@@ -963,7 +963,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         )?;
     }
 
-    if needs_commands_code {
+    if needs_top_level_commands_code {
         write!(
             buffer,
             r#"

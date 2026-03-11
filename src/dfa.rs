@@ -1204,26 +1204,27 @@ impl DFA {
             .max()
     }
 
-    pub(crate) fn needs_subwords_code(&self) -> bool {
-        self.iter_inputs().any(|input| match input {
-            Inp::Subword { .. } => true,
-            Inp::Literal { .. } | Inp::Star | Inp::Command { .. } | Inp::Compadd { .. } => false,
+    pub(crate) fn iter_subwords(&self) -> impl Iterator<Item = &DFA> + '_ {
+        self.iter_inputs().filter_map(|input| match input {
+            Inp::Subword { subdfa, .. } => Some(self.subdfas.lookup(*subdfa)),
+            Inp::Command { .. } | Inp::Literal { .. } | Inp::Star | Inp::Compadd { .. } => None,
         })
     }
 
-    pub(crate) fn needs_commands_code(&self) -> bool {
+    pub(crate) fn needs_subwords_code(&self) -> bool {
+        self.iter_subwords().next().is_some()
+    }
+
+    pub(crate) fn needs_top_level_commands_code(&self) -> bool {
         self.iter_inputs().any(|input| match input {
             Inp::Command { .. } => true,
-            Inp::Literal { .. } | Inp::Star | Inp::Compadd { .. } => false,
-            Inp::Subword { subdfa, .. } => self.subdfas.lookup(*subdfa).needs_commands_code(),
+            Inp::Literal { .. } | Inp::Star | Inp::Compadd { .. } | Inp::Subword { .. } => false,
         })
     }
 
     pub(crate) fn needs_subword_commands_code(&self) -> bool {
-        self.iter_inputs().any(|input| match input {
-            Inp::Literal { .. } | Inp::Star | Inp::Command { .. } | Inp::Compadd { .. } => false,
-            Inp::Subword { subdfa, .. } => self.subdfas.lookup(*subdfa).needs_commands_code(),
-        })
+        self.iter_subwords()
+            .any(|subdfa| subdfa.needs_top_level_commands_code())
     }
 
     pub(crate) fn needs_compadds_code(&self) -> bool {
@@ -1232,6 +1233,11 @@ impl DFA {
             Inp::Literal { .. } | Inp::Star | Inp::Command { .. } => false,
             Inp::Subword { subdfa, .. } => self.subdfas.lookup(*subdfa).needs_compadds_code(),
         })
+    }
+
+    pub(crate) fn needs_subword_compadds_code(&self) -> bool {
+        self.iter_subwords()
+            .any(|subdfa| subdfa.needs_compadds_code())
     }
 
     pub(crate) fn needs_top_level_star_code(&self) -> bool {
@@ -1245,10 +1251,8 @@ impl DFA {
     }
 
     pub(crate) fn needs_subword_star_code(&self) -> bool {
-        self.iter_inputs().any(|input| match input {
-            Inp::Literal { .. } | Inp::Star | Inp::Command { .. } | Inp::Compadd { .. } => false,
-            Inp::Subword { subdfa, .. } => self.subdfas.lookup(*subdfa).needs_top_level_star_code(),
-        })
+        self.iter_subwords()
+            .any(|subdfa| subdfa.needs_top_level_star_code())
     }
 
     pub(crate) fn get_all_literals(&self, array_start: usize) -> Vec<(LiteralId, Ustr, Ustr)> {
@@ -1314,13 +1318,6 @@ impl DFA {
         }
 
         command_transitions
-    }
-
-    pub(crate) fn needs_subword_compadds_code(&self) -> bool {
-        self.iter_inputs().any(|input| match input {
-            Inp::Literal { .. } | Inp::Star | Inp::Command { .. } | Inp::Compadd { .. } => false,
-            Inp::Subword { subdfa, .. } => self.subdfas.lookup(*subdfa).needs_compadds_code(),
-        })
     }
 
     pub(crate) fn get_completion_literals(

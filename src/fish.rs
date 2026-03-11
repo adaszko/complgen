@@ -600,7 +600,7 @@ pub fn write_completion_script<W: Write>(
     dfa: &DFA,
 ) -> anyhow::Result<()> {
     let needs_subwords_code = dfa.needs_subwords_code();
-    let needs_commands_code = dfa.needs_commands_code();
+    let needs_top_level_commands_code = dfa.needs_top_level_commands_code();
     let needs_subword_commands_code = dfa.needs_subword_commands_code();
 
     writeln!(
@@ -664,8 +664,13 @@ end
 "#
     )?;
 
-    let id_from_literal_description =
-        write_matching_tables(buffer, dfa, None, &id_from_cmd, needs_commands_code)?;
+    let id_from_literal_description = write_matching_tables(
+        buffer,
+        dfa,
+        None,
+        &id_from_cmd,
+        needs_top_level_commands_code,
+    )?;
 
     if needs_subwords_code {
         for state in dfa.get_all_states() {
@@ -746,7 +751,7 @@ end
         )?;
     }
 
-    if needs_commands_code {
+    if needs_top_level_commands_code {
         write!(
             buffer,
             r#"
@@ -827,7 +832,7 @@ end
         None,
         &id_from_literal_description,
         &id_from_cmd,
-        needs_commands_code,
+        needs_top_level_commands_code,
         max_fallback_level,
     )?;
 
@@ -905,7 +910,7 @@ end
         )?;
     }
 
-    if needs_commands_code {
+    if needs_top_level_commands_code {
         write!(
             buffer,
             r#"
