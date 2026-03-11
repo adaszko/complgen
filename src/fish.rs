@@ -32,6 +32,7 @@ fn make_string_constant(s: &str) -> String {
 }
 
 pub const MATCH_FN_NAME: &str = "__complgen_match";
+
 fn write_match_fn<W: Write>(output: &mut W) -> Result<()> {
     // Unzip candidates from stdin into two arrays -- candidates and descriptions
     writeln!(
@@ -315,66 +316,6 @@ end
     Ok(())
 }
 
-fn write_subword_wrapper_fn<W: Write>(
-    buffer: &mut W,
-    command: &str,
-    id: usize,
-    dfa: &DFA,
-    id_from_cmd: &IndexSet<Ustr>,
-    needs_commands_code: bool,
-) -> Result<()> {
-    writeln!(
-        buffer,
-        r#"function _{command}_subword_{id}
-    set mode $argv[1]
-    set word $argv[2]
-"#
-    )?;
-
-    let id_from_literal_description = write_matching_tables(
-        buffer,
-        dfa,
-        Some("subword_"),
-        id_from_cmd,
-        needs_commands_code,
-    )?;
-    writeln!(buffer)?;
-
-    let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
-
-    write_completion_tables(
-        buffer,
-        dfa,
-        Some("subword_"),
-        &id_from_literal_description,
-        id_from_cmd,
-        needs_commands_code,
-        max_fallback_level,
-    )?;
-
-    writeln!(
-        buffer,
-        r#"    set --global subword_max_fallback_level {max_fallback_level}"#
-    )?;
-
-    writeln!(buffer)?;
-
-    writeln!(
-        buffer,
-        r#"    set --global subword_state {}"#,
-        dfa.starting_state + ARRAY_START
-    )?;
-    writeln!(buffer, r#"    _{command}_subword "$mode" "$word""#)?;
-
-    writeln!(
-        buffer,
-        r#"end
-
-"#
-    )?;
-    Ok(())
-}
-
 fn write_matching_tables<W: Write>(
     buffer: &mut W,
     dfa: &DFA,
@@ -592,6 +533,66 @@ fn write_completion_tables<W: Write>(
         }
     }
 
+    Ok(())
+}
+
+fn write_subword_wrapper_fn<W: Write>(
+    buffer: &mut W,
+    command: &str,
+    id: usize,
+    dfa: &DFA,
+    id_from_cmd: &IndexSet<Ustr>,
+    needs_commands_code: bool,
+) -> Result<()> {
+    writeln!(
+        buffer,
+        r#"function _{command}_subword_{id}
+    set mode $argv[1]
+    set word $argv[2]
+"#
+    )?;
+
+    let id_from_literal_description = write_matching_tables(
+        buffer,
+        dfa,
+        Some("subword_"),
+        id_from_cmd,
+        needs_commands_code,
+    )?;
+    writeln!(buffer)?;
+
+    let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
+
+    write_completion_tables(
+        buffer,
+        dfa,
+        Some("subword_"),
+        &id_from_literal_description,
+        id_from_cmd,
+        needs_commands_code,
+        max_fallback_level,
+    )?;
+
+    writeln!(
+        buffer,
+        r#"    set --global subword_max_fallback_level {max_fallback_level}"#
+    )?;
+
+    writeln!(buffer)?;
+
+    writeln!(
+        buffer,
+        r#"    set --global subword_state {}"#,
+        dfa.starting_state + ARRAY_START
+    )?;
+    writeln!(buffer, r#"    _{command}_subword "$mode" "$word""#)?;
+
+    writeln!(
+        buffer,
+        r#"end
+
+"#
+    )?;
     Ok(())
 }
 
