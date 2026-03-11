@@ -103,6 +103,7 @@ fn write_subword_fn<W: Write>(
     buffer: &mut W,
     command: &str,
     needs_commands_code: bool,
+    needs_star_code: bool,
 ) -> Result<()> {
     write!(
         buffer,
@@ -226,15 +227,22 @@ fn write_subword_fn<W: Write>(
         )?;
     }
 
-    write!(
-        buffer,
-        r#"
+    if needs_star_code {
+        write!(
+            buffer,
+            r#"
         set index (contains --index -- "$subword_state" $subword_star_transitions_from)
         if test -n "$index"
             set matched 1
             break
         end
+"#
+        )?;
+    }
 
+    write!(
+        buffer,
+        r#"
         break
     end
 
@@ -322,6 +330,7 @@ fn write_matching_tables<W: Write>(
     prefix: Option<&str>,
     id_from_cmd: &IndexSet<Ustr>,
     needs_commands_code: bool,
+    needs_star_code: bool,
 ) -> Result<HashMap<(Ustr, Ustr), u32>> {
     let scope_patch = if let Some(prefix) = prefix {
         &format!("--global {}", prefix)
@@ -341,7 +350,6 @@ fn write_matching_tables<W: Write>(
         .map(|(_, literal, _)| make_string_constant(literal))
         .join(" ");
     writeln!(buffer, r#"    set {scope_patch}literals {literals}"#)?;
-    writeln!(buffer)?;
 
     // Use dummy value as 0th element due to fish arrays starting at 1
     let descrs: IndexSet<Ustr> = std::iter::once(ustr(""))
@@ -436,25 +444,26 @@ fn write_matching_tables<W: Write>(
         }
     }
 
-    writeln!(buffer)?;
-
-    let star_transitions: Vec<(StateId, StateId)> = dfa.iter_top_level_star_transitions().collect();
-    let star_transitions_from = star_transitions
-        .iter()
-        .map(|(from, _)| format!("{}", from + ARRAY_START))
-        .join(" ");
-    writeln!(
-        buffer,
-        r#"    set {scope_patch}star_transitions_from {star_transitions_from}"#
-    )?;
-    let star_transitions_to = star_transitions
-        .iter()
-        .map(|(_, to)| format!("{}", to + ARRAY_START))
-        .join(" ");
-    writeln!(
-        buffer,
-        r#"    set {scope_patch}star_transitions_to {star_transitions_to}"#
-    )?;
+    if needs_star_code {
+        let star_transitions: Vec<(StateId, StateId)> =
+            dfa.iter_top_level_star_transitions().collect();
+        let star_transitions_from = star_transitions
+            .iter()
+            .map(|(from, _)| format!("{}", from + ARRAY_START))
+            .join(" ");
+        writeln!(
+            buffer,
+            r#"    set {scope_patch}star_transitions_from {star_transitions_from}"#
+        )?;
+        let star_transitions_to = star_transitions
+            .iter()
+            .map(|(_, to)| format!("{}", to + ARRAY_START))
+            .join(" ");
+        writeln!(
+            buffer,
+            r#"    set {scope_patch}star_transitions_to {star_transitions_to}"#
+        )?;
+    }
 
     Ok(id_from_literal_description)
 }
@@ -543,6 +552,7 @@ fn write_subword_wrapper_fn<W: Write>(
     dfa: &DFA,
     id_from_cmd: &IndexSet<Ustr>,
     needs_commands_code: bool,
+    needs_star_code: bool,
 ) -> Result<()> {
     writeln!(
         buffer,
@@ -558,6 +568,7 @@ fn write_subword_wrapper_fn<W: Write>(
         Some("subword_"),
         id_from_cmd,
         needs_commands_code,
+        needs_star_code,
     )?;
     writeln!(buffer)?;
 
@@ -600,6 +611,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     let needs_subwords_code = dfa.needs_subwords_code();
     let needs_top_level_commands_code = dfa.needs_top_level_commands_code();
     let needs_subword_commands_code = dfa.needs_subword_commands_code();
+    let needs_top_level_star_code = dfa.needs_top_level_star_code();
+    let needs_subword_star_code = dfa.needs_subword_star_code();
 
     writeln!(
         buffer,
@@ -631,6 +644,7 @@ end
                 dfa,
                 &id_from_cmd,
                 needs_subword_commands_code,
+                needs_subword_star_code,
             )?;
         }
     }
@@ -638,7 +652,12 @@ end
     write_match_fn(buffer)?;
 
     if needs_subwords_code {
-        write_subword_fn(buffer, command, needs_subword_commands_code)?;
+        write_subword_fn(
+            buffer,
+            command,
+            needs_subword_commands_code,
+            needs_subword_star_code,
+        )?;
     }
 
     writeln!(buffer)?;
@@ -672,6 +691,7 @@ end
         None,
         &id_from_cmd,
         needs_top_level_commands_code,
+        needs_top_level_star_code,
     )?;
 
     if needs_subwords_code {
@@ -807,16 +827,23 @@ end
         )?;
     }
 
-    write!(
-        buffer,
-        r#"
+    if needs_top_level_star_code {
+        write!(
+            buffer,
+            r#"
         set index (contains --index -- "$state" $star_transitions_from)
         if test -n "$index"
             set state $star_transitions_to[$index]
             set word_index (math $word_index + 1)
             continue
         end
+"#
+        )?;
+    }
 
+    write!(
+        buffer,
+        r#"
         return 1
     end
 "#
