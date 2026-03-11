@@ -60,6 +60,7 @@ fn write_subword_fn<W: Write>(
     command: &str,
     needs_commands_code: bool,
     needs_compadds_code: bool,
+    needs_star_code: bool,
 ) -> Result<()> {
     write!(
         buffer,
@@ -220,14 +221,21 @@ fn write_subword_fn<W: Write>(
         )?;
     }
 
-    write!(
-        buffer,
-        r#"
+    if needs_star_code {
+        write!(
+            buffer,
+            r#"
         if [[ -v "subword_star_transitions[$subword_state]" ]]; then
             matched=1
             break
         fi
+"#
+        )?;
+    }
 
+    write!(
+        buffer,
+        r#"
         break
     done
 
@@ -379,6 +387,7 @@ fn write_matching_tables<W: Write>(
     id_from_cmd: &IndexSet<Ustr>,
     needs_commands_code: bool,
     needs_compadds_code: bool,
+    needs_star_code: bool,
 ) -> Result<HashMap<(Ustr, Ustr), u32>> {
     let all_literals = dfa.get_all_literals(ARRAY_START as usize);
 
@@ -481,14 +490,16 @@ fn write_matching_tables<W: Write>(
         }
     }
 
-    let star_transitions = dfa
-        .iter_top_level_star_transitions()
-        .map(|(from, to)| format!("[{}]={}", from + ARRAY_START, to + ARRAY_START))
-        .join(" ");
-    writeln!(
-        buffer,
-        r#"    declare -A {prefix}star_transitions=({star_transitions})"#
-    )?;
+    if needs_star_code {
+        let star_transitions = dfa
+            .iter_top_level_star_transitions()
+            .map(|(from, to)| format!("[{}]={}", from + ARRAY_START, to + ARRAY_START))
+            .join(" ");
+        writeln!(
+            buffer,
+            r#"    declare -A {prefix}star_transitions=({star_transitions})"#
+        )?;
+    }
 
     Ok(id_from_literal_description)
 }
@@ -581,6 +592,7 @@ fn write_subword_wrapper_fn<W: Write>(
     id_from_cmd: &IndexSet<Ustr>,
     needs_commands_code: bool,
     needs_compadds_code: bool,
+    needs_star_code: bool,
 ) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
 
@@ -591,6 +603,7 @@ fn write_subword_wrapper_fn<W: Write>(
         id_from_cmd,
         needs_commands_code,
         needs_compadds_code,
+        needs_star_code,
     )?;
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
@@ -628,6 +641,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     let needs_subword_commands_code = dfa.needs_subword_commands_code();
     let needs_top_level_compadds_code = dfa.needs_top_level_compadds_code();
     let needs_subword_compadds_code = dfa.needs_subword_compadds_code();
+    let needs_top_level_star_code = dfa.needs_top_level_star_code();
+    let needs_subword_star_code = dfa.needs_subword_star_code();
 
     writeln!(
         buffer,
@@ -666,6 +681,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
                 &id_from_cmd,
                 needs_subword_commands_code,
                 needs_subword_compadds_code,
+                needs_subword_star_code,
             )?;
             writeln!(buffer)?;
         }
@@ -681,6 +697,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
             command,
             needs_subword_commands_code,
             needs_subword_compadds_code,
+            needs_subword_star_code,
         )?;
     }
 
@@ -693,6 +710,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         &id_from_cmd,
         needs_top_level_commands_code,
         needs_top_level_compadds_code,
+        needs_top_level_star_code,
     )?;
 
     if needs_subwords_code {
@@ -858,15 +876,22 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         )?;
     }
 
-    writeln!(
-        buffer,
-        r#"
+    if needs_top_level_star_code {
+        writeln!(
+            buffer,
+            r#"
         if [[ -v "star_transitions[$state]" ]]; then
             state=${{star_transitions[$state]}}
             word_index=$((word_index + 1))
             continue
         fi
+"#
+        )?;
+    }
 
+    writeln!(
+        buffer,
+        r#"
         return 1
     done
 "#
