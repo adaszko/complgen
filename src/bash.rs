@@ -402,12 +402,6 @@ fi
 
     let id_from_dfa = dfa.get_subwords(ARRAY_START as usize);
     if needs_subwords_code {
-        write_subword_fn(
-            buffer,
-            command,
-            needs_subword_commands_code,
-            needs_subword_star_code,
-        )?;
         for (dfaid, id) in &id_from_dfa {
             let dfa = dfa.subdfas.lookup(*dfaid);
             write_subword_wrapper_fn(
@@ -421,6 +415,13 @@ fi
             )?;
             writeln!(buffer)?;
         }
+
+        write_subword_fn(
+            buffer,
+            command,
+            needs_subword_commands_code,
+            needs_subword_star_code,
+        )?;
     }
 
     write!(buffer, r#"_{command} () {{"#)?;

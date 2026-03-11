@@ -353,6 +353,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 # Requires PowerShell 7.0 or later
 
 $ErrorActionPreference = "Stop"
+
 "#
     )?;
 
@@ -376,7 +377,6 @@ $ErrorActionPreference = "Stop"
 
     let id_from_dfa = dfa.get_subwords(ARRAY_START as usize);
     if needs_subwords_code {
-        write_subword_fn(buffer, command, needs_subword_commands_code)?;
         for (dfaid, id) in &id_from_dfa {
             let dfa = dfa.subdfas.lookup(*dfaid);
             write_subword_wrapper_fn(
@@ -389,6 +389,8 @@ $ErrorActionPreference = "Stop"
             )?;
             writeln!(buffer)?;
         }
+
+        write_subword_fn(buffer, command, needs_subword_commands_code)?;
     }
 
     writeln!(

@@ -32,7 +32,7 @@ fn make_string_constant(s: &str) -> String {
 }
 
 pub const MATCH_FN_NAME: &str = "__complgen_match";
-fn write_match_fn<W: Write>(output: &mut W) -> anyhow::Result<()> {
+fn write_match_fn<W: Write>(output: &mut W) -> Result<()> {
     // Unzip candidates from stdin into two arrays -- candidates and descriptions
     writeln!(
         output,
@@ -594,11 +594,7 @@ fn write_completion_tables<W: Write>(
     Ok(())
 }
 
-pub fn write_completion_script<W: Write>(
-    buffer: &mut W,
-    command: &str,
-    dfa: &DFA,
-) -> anyhow::Result<()> {
+pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
     let needs_subwords_code = dfa.needs_subwords_code();
     let needs_top_level_commands_code = dfa.needs_top_level_commands_code();
     let needs_subword_commands_code = dfa.needs_subword_commands_code();
@@ -624,7 +620,6 @@ end
 
     let id_from_dfa = dfa.get_subwords(ARRAY_START as usize);
     if needs_subwords_code {
-        write_subword_fn(buffer, command, needs_subword_commands_code)?;
         for (dfaid, id) in &id_from_dfa {
             let dfa = dfa.subdfas.lookup(*dfaid);
             write_subword_wrapper_fn(
@@ -639,6 +634,11 @@ end
     }
 
     write_match_fn(buffer)?;
+
+    if needs_subwords_code {
+        write_subword_fn(buffer, command, needs_subword_commands_code)?;
+    }
+
     writeln!(buffer)?;
 
     write!(buffer, r#"function _{command}"#)?;
