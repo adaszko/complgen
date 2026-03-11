@@ -90,7 +90,10 @@ pub enum Inp {
     },
     Command {
         cmd: Ustr,
-        zsh_compadd: bool,
+        fallback_level: usize,
+    },
+    Compadd {
+        cmd: Ustr,
         fallback_level: usize,
     },
     Star,
@@ -138,11 +141,19 @@ impl Inp {
                 fallback_level,
                 zsh_compadd,
                 span: _,
-            } => Self::Command {
-                cmd,
-                zsh_compadd,
-                fallback_level,
-            },
+            } => {
+                if zsh_compadd {
+                    Self::Compadd {
+                        cmd,
+                        fallback_level,
+                    }
+                } else {
+                    Self::Command {
+                        cmd,
+                        fallback_level,
+                    }
+                }
+            }
         };
         Ok(result)
     }
@@ -150,7 +161,10 @@ impl Inp {
     pub fn is_star(&self) -> bool {
         match self {
             Self::Star => true,
-            Self::Literal { .. } | Self::Subword { .. } | Self::Command { .. } => false,
+            Self::Literal { .. }
+            | Self::Subword { .. }
+            | Self::Command { .. }
+            | Self::Compadd { .. } => false,
         }
     }
 
@@ -166,6 +180,10 @@ impl Inp {
             } => Some(*level),
             Self::Star => None,
             Self::Command {
+                fallback_level: level,
+                ..
+            } => Some(*level),
+            Self::Compadd {
                 fallback_level: level,
                 ..
             } => Some(*level),
@@ -707,13 +725,8 @@ pub fn diagnostic_display_input<W: std::fmt::Write>(w: &mut W, input: &Inp) -> R
             ..
         } => write!(w, r#"{literal} {descr:?}"#)?,
         Inp::Star => write!(w, r#"*"#)?,
-        Inp::Command {
-            cmd, zsh_compadd, ..
-        } => write!(
-            w,
-            r#"{{{{{{ {cmd} }}}}}}{}"#,
-            if *zsh_compadd { "compadd" } else { "" }
-        )?,
+        Inp::Command { cmd, .. } => write!(w, r#"{{{{{{ {cmd} }}}}}}{}"#, "")?,
+        Inp::Compadd { cmd, .. } => write!(w, r#"{{{{{{ {cmd} }}}}}}{}"#, "compadd")?,
         Inp::Subword { .. } => unreachable!(),
     }
     Ok(())
@@ -796,7 +809,7 @@ fn do_to_dot<W: Write>(
         for (input_id, to) in tos {
             let input = dfa.get_input(*input_id);
             match input {
-                Inp::Literal { .. } | Inp::Star | Inp::Command { .. } => {
+                Inp::Literal { .. } | Inp::Star | Inp::Command { .. } | Inp::Compadd { .. } => {
                     let label = {
                         let mut buffer = String::new();
                         diagnostic_display_input(&mut buffer, input)?;
@@ -897,7 +910,7 @@ impl DFA {
             .filter_map(|(input, to)| match input {
                 Inp::Star => Some((input.clone(), to)),
 
-                Inp::Command { .. } => None,
+                Inp::Command { .. } | Inp::Compadd { .. } => None,
 
                 // Literals are always unambiguous.
                 Inp::Literal { .. } => None,
@@ -1012,7 +1025,7 @@ impl DFA {
                 } => Some((*literal, *description)),
                 Inp::Subword { .. } => None,
                 Inp::Star => None,
-                Inp::Command { .. } => None,
+                Inp::Command { .. } | Inp::Compadd { .. } => None,
             })
             .collect();
         result.sort_by_key(|(literal, _)| literal.len());
@@ -1035,9 +1048,9 @@ impl DFA {
                         description,
                         ..
                     } => Some((*input, description.unwrap_or(ustr("")), *to)),
-                    Inp::Subword { .. } => None,
-                    Inp::Star => None,
-                    Inp::Command { .. } => None,
+                    Inp::Subword { .. } | Inp::Star | Inp::Command { .. } | Inp::Compadd { .. } => {
+                        None
+                    }
                 }
             })
             .collect();
@@ -1054,12 +1067,8 @@ impl DFA {
             .filter_map(|(input_id, to)| {
                 let input = self.get_input(*input_id);
                 match input {
-                    Inp::Command {
-                        cmd,
-                        zsh_compadd: false,
-                        ..
-                    } => Some((*cmd, *to)),
-                    Inp::Command { .. } | Inp::Literal { .. } | Inp::Subword { .. } | Inp::Star => {
+                    Inp::Command { cmd, .. } => Some((*cmd, *to)),
+                    Inp::Compadd { .. } | Inp::Literal { .. } | Inp::Subword { .. } | Inp::Star => {
                         None
                     }
                 }
@@ -1078,11 +1087,7 @@ impl DFA {
             .filter_map(|(input_id, to)| {
                 let input = self.get_input(*input_id);
                 match input {
-                    Inp::Command {
-                        cmd,
-                        zsh_compadd: true,
-                        ..
-                    } => Some((*cmd, *to)),
+                    Inp::Compadd { cmd, .. } => Some((*cmd, *to)),
                     Inp::Command { .. } | Inp::Literal { .. } | Inp::Subword { .. } | Inp::Star => {
                         None
                     }
@@ -1101,9 +1106,7 @@ impl DFA {
             .iter()
             .filter_map(|(input_id, to)| match self.get_input(*input_id) {
                 Inp::Subword { subdfa: dfa, .. } => Some((*dfa, *to)),
-                Inp::Literal { .. } => None,
-                Inp::Star => None,
-                Inp::Command { .. } => None,
+                Inp::Literal { .. } | Inp::Star | Inp::Command { .. } | Inp::Compadd { .. } => None,
             })
             .collect();
         transitions
@@ -1140,7 +1143,10 @@ impl DFA {
                 Inp::Literal { .. } | Inp::Star => {}
                 Inp::Command {
                     cmd,
-                    zsh_compadd: _,
+                    fallback_level: _,
+                }
+                | Inp::Compadd {
+                    cmd,
                     fallback_level: _,
                 } => {
                     id_from_cmd.insert(*cmd);
@@ -1154,7 +1160,10 @@ impl DFA {
                             Inp::Literal { .. } | Inp::Subword { .. } | Inp::Star => {}
                             Inp::Command {
                                 cmd,
-                                zsh_compadd: _,
+                                fallback_level: _,
+                            }
+                            | Inp::Compadd {
+                                cmd,
                                 fallback_level: _,
                             } => {
                                 id_from_cmd.insert(*cmd);
@@ -1175,9 +1184,9 @@ impl DFA {
             for (input_id, _) in tos {
                 let dfa = match self.get_input(*input_id) {
                     Inp::Subword { subdfa, .. } => subdfa,
-                    Inp::Star => continue,
-                    Inp::Command { .. } => continue,
-                    Inp::Literal { .. } => continue,
+                    Inp::Star | Inp::Command { .. } | Inp::Compadd { .. } | Inp::Literal { .. } => {
+                        continue;
+                    }
                 };
                 result.entry(*dfa).or_insert_with(|| {
                     let save = unallocated_id;
@@ -1198,41 +1207,29 @@ impl DFA {
     pub(crate) fn needs_subwords_code(&self) -> bool {
         self.iter_inputs().any(|input| match input {
             Inp::Subword { .. } => true,
-            Inp::Literal { .. } | Inp::Star | Inp::Command { .. } => false,
+            Inp::Literal { .. } | Inp::Star | Inp::Command { .. } | Inp::Compadd { .. } => false,
         })
     }
 
     pub(crate) fn needs_commands_code(&self) -> bool {
         self.iter_inputs().any(|input| match input {
-            Inp::Literal { .. }
-            | Inp::Star
-            | Inp::Command {
-                zsh_compadd: true, ..
-            } => false,
-            Inp::Command {
-                zsh_compadd: false, ..
-            } => true,
+            Inp::Command { .. } => true,
+            Inp::Literal { .. } | Inp::Star | Inp::Compadd { .. } => false,
             Inp::Subword { subdfa, .. } => self.subdfas.lookup(*subdfa).needs_commands_code(),
         })
     }
 
     pub(crate) fn needs_subword_commands_code(&self) -> bool {
         self.iter_inputs().any(|input| match input {
-            Inp::Literal { .. } | Inp::Star | Inp::Command { .. } => false,
+            Inp::Literal { .. } | Inp::Star | Inp::Command { .. } | Inp::Compadd { .. } => false,
             Inp::Subword { subdfa, .. } => self.subdfas.lookup(*subdfa).needs_commands_code(),
         })
     }
 
     pub(crate) fn needs_compadds_code(&self) -> bool {
         self.iter_inputs().any(|input| match input {
-            Inp::Literal { .. }
-            | Inp::Star
-            | Inp::Command {
-                zsh_compadd: false, ..
-            } => false,
-            Inp::Command {
-                zsh_compadd: true, ..
-            } => true,
+            Inp::Compadd { .. } => true,
+            Inp::Literal { .. } | Inp::Star | Inp::Command { .. } => false,
             Inp::Subword { subdfa, .. } => self.subdfas.lookup(*subdfa).needs_compadds_code(),
         })
     }
@@ -1304,7 +1301,7 @@ impl DFA {
 
     pub(crate) fn needs_subword_compadds_code(&self) -> bool {
         self.iter_inputs().any(|input| match input {
-            Inp::Literal { .. } | Inp::Star | Inp::Command { .. } => false,
+            Inp::Literal { .. } | Inp::Star | Inp::Command { .. } | Inp::Compadd { .. } => false,
             Inp::Subword { subdfa, .. } => self.subdfas.lookup(*subdfa).needs_compadds_code(),
         })
     }
@@ -1332,7 +1329,7 @@ impl DFA {
                         .or_default()
                         .push(literal_id);
                 }
-                Inp::Subword { .. } | Inp::Command { .. } | Inp::Star => {}
+                Inp::Subword { .. } | Inp::Command { .. } | Inp::Compadd { .. } | Inp::Star => {}
             }
         }
 
@@ -1358,7 +1355,7 @@ impl DFA {
                         .or_default()
                         .push(subword_id);
                 }
-                Inp::Literal { .. } | Inp::Command { .. } | Inp::Star => {}
+                Inp::Literal { .. } | Inp::Command { .. } | Inp::Compadd { .. } | Inp::Star => {}
             }
         }
         completion_subwords
@@ -1377,7 +1374,6 @@ impl DFA {
                 Inp::Command {
                     cmd,
                     fallback_level,
-                    zsh_compadd: false,
                 } => {
                     let command_id = id_from_cmd.get_index_of(&cmd).unwrap();
                     completion_commands[fallback_level]
@@ -1385,7 +1381,7 @@ impl DFA {
                         .or_default()
                         .push(command_id);
                 }
-                Inp::Literal { .. } | Inp::Command { .. } | Inp::Subword { .. } | Inp::Star => {}
+                Inp::Literal { .. } | Inp::Compadd { .. } | Inp::Subword { .. } | Inp::Star => {}
             }
         }
         completion_commands
@@ -1401,10 +1397,9 @@ impl DFA {
 
         for (from, input_id, _) in self.iter_transitions() {
             match self.get_input(input_id).clone() {
-                Inp::Command {
+                Inp::Compadd {
                     cmd,
                     fallback_level,
-                    zsh_compadd: true,
                 } => {
                     let command_id = id_from_cmd.get_index_of(&cmd).unwrap();
                     completion_compadds[fallback_level]
