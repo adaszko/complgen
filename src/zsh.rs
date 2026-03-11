@@ -626,7 +626,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     let needs_subwords_code = dfa.needs_subwords_code();
     let needs_top_level_commands_code = dfa.needs_top_level_commands_code();
     let needs_subword_commands_code = dfa.needs_subword_commands_code();
-    let needs_compadds_code = dfa.needs_compadds_code();
+    let needs_top_level_compadds_code = dfa.needs_top_level_compadds_code();
     let needs_subword_compadds_code = dfa.needs_subword_compadds_code();
 
     writeln!(
@@ -671,7 +671,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         }
     }
 
-    if needs_compadds_code || needs_subword_compadds_code {
+    if needs_top_level_compadds_code || needs_subword_compadds_code {
         write_compadd_hook_fn(buffer)?;
     }
 
@@ -692,7 +692,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         "",
         &id_from_cmd,
         needs_top_level_commands_code,
-        needs_compadds_code,
+        needs_top_level_compadds_code,
     )?;
 
     if needs_subwords_code {
@@ -804,7 +804,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         )?;
     }
 
-    if needs_compadds_code {
+    if needs_top_level_compadds_code {
         write!(
             buffer,
             r#"
@@ -883,7 +883,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         &id_from_literal_description,
         &id_from_cmd,
         needs_top_level_commands_code,
-        needs_compadds_code,
+        needs_top_level_compadds_code,
         max_fallback_level,
     )?;
 
@@ -926,7 +926,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         matches=()"#
     )?;
 
-    if needs_compadds_code {
+    if needs_top_level_compadds_code {
         write!(
             buffer,
             r#"
@@ -996,7 +996,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         )?;
     }
 
-    if needs_compadds_code {
+    if needs_top_level_compadds_code {
         write!(
             buffer,
             r#"
@@ -1064,7 +1064,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         compadd -O m -a completions_no_trailing_space; matches+=("${{m[@]}}")"#
     )?;
 
-    if needs_compadds_code {
+    if needs_top_level_compadds_code {
         write!(
             buffer,
             r#"

@@ -1227,17 +1227,16 @@ impl DFA {
             .any(|subdfa| subdfa.needs_top_level_commands_code())
     }
 
-    pub(crate) fn needs_compadds_code(&self) -> bool {
+    pub(crate) fn needs_top_level_compadds_code(&self) -> bool {
         self.iter_inputs().any(|input| match input {
             Inp::Compadd { .. } => true,
-            Inp::Literal { .. } | Inp::Star | Inp::Command { .. } => false,
-            Inp::Subword { subdfa, .. } => self.subdfas.lookup(*subdfa).needs_compadds_code(),
+            Inp::Literal { .. } | Inp::Star | Inp::Command { .. } | Inp::Subword { .. } => false,
         })
     }
 
     pub(crate) fn needs_subword_compadds_code(&self) -> bool {
         self.iter_subwords()
-            .any(|subdfa| subdfa.needs_compadds_code())
+            .any(|subdfa| subdfa.needs_top_level_compadds_code())
     }
 
     pub(crate) fn needs_top_level_star_code(&self) -> bool {
