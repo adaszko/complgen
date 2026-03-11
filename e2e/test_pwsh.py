@@ -42,13 +42,12 @@ def test_completes_subword_paths(complgen_binary_path: Path):
                 Path("bar").touch()
                 Path("baz").touch()
                 Path("quux").touch()
-                completions = get_sorted_pwsh_completions(
-                    completions_file_path, "cmd --file=", cwd=Path(dir)
-                )
-                completion_texts = [c[0] for c in completions]
-                assert sorted(completion_texts) == sorted(
-                    ["--file=foo", "--file=bar", "--file=baz", "--file=quux"]
-                )
+                assert [
+                    completion
+                    for (completion, _) in get_sorted_pwsh_completions(
+                        completions_file_path, "cmd --file=", cwd=Path(dir)
+                    )
+                ] == sorted(["--file=foo", "--file=bar", "--file=baz", "--file=quux"])
 
 
 def test_completes_path_prefix(complgen_binary_path: Path):
@@ -61,11 +60,12 @@ def test_completes_path_prefix(complgen_binary_path: Path):
                 Path("bar").touch()
                 Path("baz").touch()
                 Path("quux").touch()
-                completions = get_sorted_pwsh_completions(
-                    completions_file_path, "cmd b", cwd=Path(dir)
-                )
-                completion_texts = [c[0] for c in completions]
-                assert sorted(completion_texts) == sorted(["bar", "baz"])
+                assert [
+                    completion
+                    for (completion, _) in get_sorted_pwsh_completions(
+                        completions_file_path, "cmd b", cwd=Path(dir)
+                    )
+                ] == sorted(["bar", "baz"])
 
 
 def test_completes_subword_path_prefix(complgen_binary_path: Path):
@@ -78,11 +78,12 @@ def test_completes_subword_path_prefix(complgen_binary_path: Path):
                 Path("bar").touch()
                 Path("baz").touch()
                 Path("quux").touch()
-                completions = get_sorted_pwsh_completions(
-                    completions_file_path, "cmd --file=b", cwd=Path(dir)
-                )
-                completion_texts = [c[0] for c in completions]
-                assert sorted(completion_texts) == sorted(["--file=bar", "--file=baz"])
+                assert [
+                    completion
+                    for (completion, _) in get_sorted_pwsh_completions(
+                        completions_file_path, "cmd --file=b", cwd=Path(dir)
+                    )
+                ] == sorted(["--file=bar", "--file=baz"])
 
 
 def test_completes_directories(complgen_binary_path: Path):
@@ -95,16 +96,13 @@ def test_completes_directories(complgen_binary_path: Path):
                 os.mkdir("bar")
                 os.mkdir("baz")
                 os.mkdir("quux")
-                completions = get_sorted_pwsh_completions(
-                    completions_file_path, "cmd ", cwd=Path(dir)
-                )
-                completion_texts = [c[0] for c in completions]
                 # PowerShell may or may not add trailing slash
-                expected = ["foo", "bar", "baz", "quux"]
-                expected_with_slash = ["foo/", "bar/", "baz/", "quux/"]
-                assert sorted(completion_texts) == sorted(expected) or sorted(
-                    completion_texts
-                ) == sorted(expected_with_slash)
+                assert [
+                    completion.rstrip("/")
+                    for (completion, _) in get_sorted_pwsh_completions(
+                        completions_file_path, "cmd ", cwd=Path(dir)
+                    )
+                ] == sorted(["foo", "bar", "baz", "quux"])
 
 
 def test_completes_subword_directories(complgen_binary_path: Path):
@@ -117,20 +115,12 @@ def test_completes_subword_directories(complgen_binary_path: Path):
                 os.mkdir("bar")
                 os.mkdir("baz")
                 os.mkdir("quux")
-                completions = get_sorted_pwsh_completions(
-                    completions_file_path, "cmd --dir=", cwd=Path(dir)
-                )
-                completion_texts = [c[0] for c in completions]
-                expected = ["--dir=foo", "--dir=bar", "--dir=baz", "--dir=quux"]
-                expected_with_slash = [
-                    "--dir=foo/",
-                    "--dir=bar/",
-                    "--dir=baz/",
-                    "--dir=quux/",
-                ]
-                assert sorted(completion_texts) == sorted(expected) or sorted(
-                    completion_texts
-                ) == sorted(expected_with_slash)
+                assert [
+                    completion.rstrip("/")
+                    for (completion, _) in get_sorted_pwsh_completions(
+                        completions_file_path, "cmd --dir=", cwd=Path(dir)
+                    )
+                ] == sorted(["--dir=foo", "--dir=bar", "--dir=baz", "--dir=quux"])
 
 
 def test_completes_directories_prefix(complgen_binary_path: Path):
@@ -143,15 +133,12 @@ def test_completes_directories_prefix(complgen_binary_path: Path):
                 os.mkdir("bar")
                 os.mkdir("baz")
                 os.mkdir("quux")
-                completions = get_sorted_pwsh_completions(
-                    completions_file_path, "cmd b", cwd=Path(dir)
-                )
-                completion_texts = [c[0] for c in completions]
-                expected = ["bar", "baz"]
-                expected_with_slash = ["bar/", "baz/"]
-                assert sorted(completion_texts) == sorted(expected) or sorted(
-                    completion_texts
-                ) == sorted(expected_with_slash)
+                assert [
+                    completion.rstrip("/")
+                    for (completion, _) in get_sorted_pwsh_completions(
+                        completions_file_path, "cmd b", cwd=Path(dir)
+                    )
+                ] == sorted(["bar", "baz"])
 
 
 def test_completes_subword_directories_prefix(complgen_binary_path: Path):
@@ -164,15 +151,12 @@ def test_completes_subword_directories_prefix(complgen_binary_path: Path):
                 os.mkdir("bar")
                 os.mkdir("baz")
                 os.mkdir("quux")
-                completions = get_sorted_pwsh_completions(
-                    completions_file_path, "cmd --dir=b", cwd=Path(dir)
-                )
-                completion_texts = [c[0] for c in completions]
-                expected = ["--dir=bar", "--dir=baz"]
-                expected_with_slash = ["--dir=bar/", "--dir=baz/"]
-                assert sorted(completion_texts) == sorted(expected) or sorted(
-                    completion_texts
-                ) == sorted(expected_with_slash)
+                assert [
+                    completion.rstrip("/")
+                    for (completion, _) in get_sorted_pwsh_completions(
+                        completions_file_path, "cmd --dir=b", cwd=Path(dir)
+                    )
+                ] == sorted(["--dir=bar", "--dir=baz"])
 
 
 def test_completes_repeated_path(complgen_binary_path: Path):
