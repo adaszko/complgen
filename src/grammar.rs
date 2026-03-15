@@ -1629,7 +1629,7 @@ fn expr_get_head(arena: &[Expr], expr_id: ExprId) -> ExprId {
         | Expr::Optional { .. }
         | Expr::Many1 { .. } => expr_id,
         Expr::Sequence { children, .. } => expr_get_head(arena, *children.first().unwrap()),
-        Expr::Subword { .. } => unreachable!(),
+        Expr::Subword { root_id, .. } => expr_get_head(arena, *root_id),
         Expr::DistributiveDescription { .. } => {
             unreachable!("wrong compilation phases order")
         }
@@ -1645,8 +1645,8 @@ fn expr_get_tail(arena: &[Expr], expr_id: ExprId) -> ExprId {
         | Expr::Fallback { .. }
         | Expr::Optional { .. }
         | Expr::Many1 { .. } => expr_id,
-        Expr::Sequence { children, .. } => expr_get_head(arena, *children.last().unwrap()),
-        Expr::Subword { .. } => unreachable!(),
+        Expr::Sequence { children, .. } => expr_get_tail(arena, *children.last().unwrap()),
+        Expr::Subword { root_id, .. } => expr_get_tail(arena, *root_id),
         Expr::DistributiveDescription { .. } => {
             unreachable!("wrong compilation phases order")
         }
@@ -1667,8 +1667,7 @@ fn check_subword_spaces(
 // aerc :<COMMAND>;
 // <COMMAND> ::= quit -f;
 //
-// On deeply nested <NONTERM>s, this can lead to [surprising spaces
-// removal](https://github.com/adaszko/complgen/issues/63) so forbid it completely.
+// On deeply nested <NONTERM>s, this can lead to [surprising spaces removal](https://github.com/adaszko/complgen/issues/63) so forbid it completely.
 fn do_check_subword_spaces(
     arena: &[Expr],
     expr_id: ExprId,
@@ -4367,5 +4366,17 @@ ls <FILE>;
         );
 
         assert!(teq(e, expected_expr_id, &arena));
+    }
+
+    #[test]
+    fn issue_71() {
+        const INPUT: &str = r#"
+srun --acctg-freq=<FREQ>;
+<FREQ> ::= <DATATYPE>=<INTERVAL>;
+<DATATYPE> ::= task | energy | network | filesystem;
+<INTERVAL> ::= <NUM>[s|m|h];
+"#;
+        let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
+        assert!(matches!(ValidGrammar::from_grammar(g, Shell::Bash), Ok(_)));
     }
 }
