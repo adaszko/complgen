@@ -1,5 +1,6 @@
 use hashbrown::{HashMap, HashSet};
 use indexmap::{IndexMap, IndexSet};
+use std::collections::BTreeMap;
 use std::{cmp::Ordering, collections::BTreeSet, hash::Hash, io::Write, rc::Rc};
 
 use roaring::{MultiOps, RoaringBitmap};
@@ -1272,12 +1273,12 @@ impl DFA {
         &self,
         all_states: &RoaringBitmap,
         id_from_literal_description: &HashMap<(Ustr, Ustr), LiteralId>,
-    ) -> HashMap<StateId, Vec<(LiteralId, StateId)>> {
-        let mut literal_transitions: HashMap<StateId, Vec<(LiteralId, StateId)>> =
+    ) -> BTreeMap<StateId, BTreeMap<LiteralId, StateId>> {
+        let mut literal_transitions: BTreeMap<StateId, BTreeMap<LiteralId, StateId>> =
             Default::default();
 
         for state in all_states {
-            let state_literal_transitions: Vec<(LiteralId, StateId)> = self
+            let state_literal_transitions: BTreeMap<LiteralId, StateId> = self
                 .get_literal_transitions_from(state)
                 .iter()
                 .map(|(literal, description, to)| {
@@ -1323,8 +1324,8 @@ impl DFA {
         &self,
         id_from_literal_description: &HashMap<(Ustr, Ustr), LiteralId>,
         max_fallback_level: usize,
-    ) -> Vec<HashMap<StateId, Vec<LiteralId>>> {
-        let mut completion_literals: Vec<HashMap<StateId, Vec<LiteralId>>> =
+    ) -> Vec<BTreeMap<StateId, Vec<LiteralId>>> {
+        let mut completion_literals: Vec<BTreeMap<StateId, Vec<LiteralId>>> =
             vec![Default::default(); max_fallback_level + 1];
 
         for (from, input_id, _) in self.iter_transitions() {

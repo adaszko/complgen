@@ -1,10 +1,11 @@
+use std::collections::BTreeMap;
 use std::io::Write;
 
 use crate::LiteralId;
 use crate::Result;
 use crate::dfa::DFA;
 use hashbrown::HashMap;
-use indexmap::{IndexMap, IndexSet};
+use indexmap::IndexSet;
 use itertools::Itertools;
 use ustr::Ustr;
 
@@ -420,7 +421,7 @@ fn write_matching_tables<W: Write>(
         )?;
     }
 
-    let descr_id_from_literal_id: IndexMap<usize, usize> = all_literals
+    let descr_id_from_literal_id: BTreeMap<usize, usize> = all_literals
         .iter()
         .filter_map(|(id, _, description)| {
             descriptions
