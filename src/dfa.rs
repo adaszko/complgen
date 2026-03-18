@@ -1302,12 +1302,12 @@ impl DFA {
         &self,
         all_states: &RoaringBitmap,
         id_from_cmd: &IndexSet<Ustr>,
-    ) -> HashMap<StateId, Vec<(CommandId, StateId)>> {
-        let mut command_transitions: HashMap<StateId, Vec<(CommandId, StateId)>> =
+    ) -> BTreeMap<StateId, BTreeMap<CommandId, StateId>> {
+        let mut command_transitions: BTreeMap<StateId, BTreeMap<CommandId, StateId>> =
             Default::default();
 
         for state in all_states {
-            let state_command_transitions: Vec<(CommandId, StateId)> = self
+            let state_command_transitions: BTreeMap<CommandId, StateId> = self
                 .get_command_transitions_from(state)
                 .iter()
                 .map(|(cmd, to)| (id_from_cmd.get_index_of(cmd).unwrap() as CommandId, *to))
