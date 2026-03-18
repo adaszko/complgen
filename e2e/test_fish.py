@@ -1,3 +1,4 @@
+import glob
 import os
 import string
 import tempfile
@@ -8,14 +9,15 @@ from hypothesis.strategies import text
 
 from common import LSOF_FILTER_GRAMMAR, STRACE_EXPR_GRAMMAR
 from conftest import (
-    gen_fish_aot_completion_script_path,
+    gen_fish_completion_script_path,
+    get_fish_completion_script,
     get_sorted_fish_completions,
     set_working_dir,
 )
 
 
 def test_completes_paths(complgen_binary_path: Path):
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, """cmd <PATH>"""
     ) as completions_file_path:
         with tempfile.TemporaryDirectory() as dir:
@@ -37,7 +39,7 @@ def test_completes_paths(complgen_binary_path: Path):
 
 
 def test_completes_subword_paths(complgen_binary_path: Path):
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, """cmd --file=<PATH>"""
     ) as completions_file_path:
         with tempfile.TemporaryDirectory() as dir:
@@ -59,7 +61,7 @@ def test_completes_subword_paths(complgen_binary_path: Path):
 
 
 def test_completes_path_prefix(complgen_binary_path: Path):
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, """cmd <PATH>"""
     ) as completions_file_path:
         with tempfile.TemporaryDirectory() as dir:
@@ -79,7 +81,7 @@ def test_completes_path_prefix(complgen_binary_path: Path):
 
 
 def test_completes_subword_path_prefix(complgen_binary_path: Path):
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, """cmd --file=<PATH>"""
     ) as completions_file_path:
         with tempfile.TemporaryDirectory() as dir:
@@ -99,7 +101,7 @@ def test_completes_subword_path_prefix(complgen_binary_path: Path):
 
 
 def test_completes_directories(complgen_binary_path: Path):
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, """cmd <DIRECTORY>"""
     ) as completions_file_path:
         with tempfile.TemporaryDirectory() as dir:
@@ -121,7 +123,7 @@ def test_completes_directories(complgen_binary_path: Path):
 
 
 def test_completes_subword_directories(complgen_binary_path: Path):
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, """cmd --dir=<DIRECTORY>"""
     ) as completions_file_path:
         with tempfile.TemporaryDirectory() as dir:
@@ -143,7 +145,7 @@ def test_completes_subword_directories(complgen_binary_path: Path):
 
 
 def test_completes_directories_prefix(complgen_binary_path: Path):
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, """cmd <DIRECTORY>"""
     ) as completions_file_path:
         with tempfile.TemporaryDirectory() as dir:
@@ -163,7 +165,7 @@ def test_completes_directories_prefix(complgen_binary_path: Path):
 
 
 def test_completes_subword_directories_prefix(complgen_binary_path: Path):
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, """cmd --dir=<DIRECTORY>"""
     ) as completions_file_path:
         with tempfile.TemporaryDirectory() as dir:
@@ -183,7 +185,7 @@ def test_completes_subword_directories_prefix(complgen_binary_path: Path):
 
 
 def test_completes_repeated_path(complgen_binary_path: Path):
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, """cmd <PATH>..."""
     ) as completions_file_path:
         with tempfile.TemporaryDirectory() as dir:
@@ -209,7 +211,7 @@ def test_completes_repeated_path(complgen_binary_path: Path):
 
 
 def test_path_option_mix(complgen_binary_path: Path):
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, """cmd (<PATH> || --option)..."""
     ) as completions_file_path:
         with tempfile.TemporaryDirectory() as dir:
@@ -246,7 +248,7 @@ cmd <COMMAND> [--help];
 <REMOTE-SUBCOMMAND> ::= rm <name>;
 """
 
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         input = 'complete --do-complete "cmd "'
@@ -267,7 +269,7 @@ cmd [<OPTION>]...;
            ;
 """
 
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         input = 'complete --do-complete "cmd "'
@@ -285,7 +287,7 @@ def test_external_command_produces_description(complgen_binary_path: Path):
 cmd {{{ echo -e "completion\tdescription" }}};
 """
 
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         input = 'complete --do-complete "cmd "'
@@ -299,7 +301,7 @@ def test_external_command_filters_candidates(complgen_binary_path: Path):
 cmd {{{echo foo; echo bar; echo baz;}}};
 """
 
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         input = 'complete --do-complete "cmd b"'
@@ -314,7 +316,7 @@ def test_external_command_subword_filters_candidates(complgen_binary_path: Path)
 cmd --ref={{{echo foo; echo bar; echo baz;}}};
 """
 
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         input = 'complete --do-complete "cmd --ref=b"'
@@ -330,7 +332,7 @@ cmd <CMD> <CMD>;
 <CMD> ::= {{{ echo foo; echo bar; }}};
 """
 
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         assert get_sorted_fish_completions(
@@ -390,7 +392,7 @@ cmd <CMD>..<CMD>;
 <CMD> ::= {{{ echo foo; echo bar; echo baz; }}};
 """
 
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         assert get_sorted_fish_completions(
@@ -450,7 +452,7 @@ def test_specializes_for_fish(complgen_binary_path: Path):
     GRAMMAR = (
         """cmd <FOO>; <FOO> ::= {{{ echo foo }}}; <FOO@fish> ::= {{{ echo fish }}};"""
     )
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         input = 'complete --do-complete "cmd "'
@@ -465,7 +467,7 @@ cmd +<toolchain> foo;
 cmd test --test testname;
 <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 """
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         input = 'complete --do-complete "cmd +stable-aarch64-apple-darwin "'
@@ -478,7 +480,7 @@ def test_completes_prefix(complgen_binary_path: Path):
 cargo +<toolchain>;
 <toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 """
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         input = 'complete --do-complete "cargo +"'
@@ -489,7 +491,7 @@ cargo +<toolchain>;
 
 
 def test_completes_strace_expr(complgen_binary_path: Path):
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, STRACE_EXPR_GRAMMAR
     ) as completions_file_path:
         input = 'complete --do-complete "strace -e "'
@@ -509,7 +511,7 @@ def test_completes_strace_expr(complgen_binary_path: Path):
 
 
 def test_completes_lsof_filter(complgen_binary_path: Path):
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, LSOF_FILTER_GRAMMAR
     ) as completions_file_path:
         input = 'complete --do-complete "lsf "'
@@ -519,7 +521,7 @@ def test_completes_lsof_filter(complgen_binary_path: Path):
 
 def test_issue_59(complgen_binary_path: Path):
     GRAMMAR = """hello [ id=<ID> | foo ]...;"""
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         input = 'complete --do-complete "hello id=42 "'
@@ -529,7 +531,7 @@ def test_issue_59(complgen_binary_path: Path):
 
 def test_subword_descriptions(complgen_binary_path: Path):
     GRAMMAR = r"""cmd --option=(arg1 "descr1" | arg2 "descr2");"""
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         input = 'complete --do-complete "cmd --option="'
@@ -541,7 +543,7 @@ def test_subword_descriptions(complgen_binary_path: Path):
 
 def test_completes_subword_external_command(complgen_binary_path: Path):
     GRAMMAR = r"""cmd --option={{{ echo -e "argument\tdescription" }}};"""
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         input = 'complete --do-complete "cmd --option="'
@@ -556,7 +558,7 @@ cmd --option=<FOO>;
 <FOO> ::= {{{ echo generic }}};
 <FOO@fish> ::= {{{ echo fish }}};
 """
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         input = 'complete --do-complete "cmd --option="'
@@ -569,7 +571,7 @@ def test_description_special_characters(complgen_binary_path: Path):
     GRAMMAR = r"""
 cmd --option "$f\"\\";
 """
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         input = 'complete --do-complete "cmd --option"'
@@ -580,7 +582,7 @@ cmd --option "$f\"\\";
 
 def test_fallback_completes_default(complgen_binary_path: Path):
     GRAMMAR = r"""cmd (foo || --bar);"""
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         input = 'complete --do-complete "cmd "'
@@ -591,7 +593,7 @@ def test_fallback_completes_default(complgen_binary_path: Path):
 
 def test_fallbacks_on_no_matches(complgen_binary_path: Path):
     GRAMMAR = r"""cmd (foo || --bar);"""
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         input = 'complete --do-complete "cmd --"'
@@ -602,7 +604,7 @@ def test_fallbacks_on_no_matches(complgen_binary_path: Path):
 
 def test_subword_fallback_completes_default(complgen_binary_path: Path):
     GRAMMAR = r"""cmd --option=(primary || secondary);"""
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         input = 'complete --do-complete "cmd --option="'
@@ -613,7 +615,7 @@ def test_subword_fallback_completes_default(complgen_binary_path: Path):
 
 def test_subword_fallbacks_on_no_matches(complgen_binary_path: Path):
     GRAMMAR = r"""cmd --option=(primary || secondary);"""
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         input = 'complete --do-complete "cmd --option=sec"'
@@ -624,7 +626,7 @@ def test_subword_fallbacks_on_no_matches(complgen_binary_path: Path):
 
 def test_handles_quotes(complgen_binary_path: Path):
     GRAMMAR = r"""cmd <ANYTHING> baz;"""
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         input = """complete --do-complete 'cmd "foo bar" ' """
@@ -634,7 +636,7 @@ def test_handles_quotes(complgen_binary_path: Path):
 
 
 def test_longest_literal_first(complgen_binary_path: Path):
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path,
         """cmd (a | abc | abcd)""",
     ) as completions_file_path:
@@ -645,7 +647,7 @@ def test_longest_literal_first(complgen_binary_path: Path):
 
 
 def test_subword_longest_literal_first(complgen_binary_path: Path):
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path,
         """cmd --option=(a | abc | abcd);""",
     ) as completions_file_path:
@@ -656,7 +658,7 @@ def test_subword_longest_literal_first(complgen_binary_path: Path):
 
 
 def test_longest_command_candidate_first(complgen_binary_path: Path):
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path,
         """cmd {{{ echo a; echo abc; echo abcd }}}""",
     ) as completions_file_path:
@@ -667,7 +669,7 @@ def test_longest_command_candidate_first(complgen_binary_path: Path):
 
 
 def test_subword_longest_command_candidate_first(complgen_binary_path: Path):
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path,
         """cmd --option={{{ echo a; echo abc; echo abcd }}}""",
     ) as completions_file_path:
@@ -683,7 +685,7 @@ mygrep <OPTION>...;
 <OPTION> ::= --color=[<WHEN>] || --colour=[<WHEN>];
 <WHEN> ::= always | never | auto;
 """
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         input = """complete --do-complete 'mygrep --color=always --col' """
@@ -696,7 +698,7 @@ def test_bug3(complgen_binary_path: Path):
     GRAMMAR = r"""
 mygit (status || (--help status))...;
 """
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         input = """complete --do-complete 'mygit status --' """
@@ -707,7 +709,7 @@ mygit (status || (--help status))...;
 
 def test_multiple_matching_subwords(complgen_binary_path: Path):
     GRAMMAR = """cmd (--[no-]ahead-behind | --[no-]renames)"""
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         input = """complete --do-complete 'cmd --no-' """
@@ -721,13 +723,21 @@ def test_issue_70(complgen_binary_path: Path):
 asdf a [ --file=<T> | --term ]...;
 asdf b [ --file <T> | --term ]...;
 """
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         input = """complete --do-complete 'asdf b --file asdf ' """
         assert get_sorted_fish_completions(completions_file_path, input) == sorted(
             [("--file", ""), ("--term", "")]
         )
+
+
+def test_determinism(complgen_binary_path: Path, examples_directory_path: Path):
+    for usage_file_path in glob.glob(str(examples_directory_path / "*.usage")):
+        grammar = Path(usage_file_path).read_text()
+        left = get_fish_completion_script(complgen_binary_path, grammar)
+        right = get_fish_completion_script(complgen_binary_path, grammar)
+        assert left == right
 
 
 LITERALS_ALPHABET = string.ascii_letters + ":="
@@ -737,7 +747,7 @@ LITERALS_ALPHABET = string.ascii_letters + ":="
 @settings(max_examples=10, deadline=None)
 def test_handles_special_characters(complgen_binary_path: Path, literal: str):
     GRAMMAR = """cmd {};""".format(literal)
-    with gen_fish_aot_completion_script_path(
+    with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
         input = 'complete --do-complete "cmd "'

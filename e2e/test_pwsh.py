@@ -1,3 +1,4 @@
+import glob
 import os
 import string
 import tempfile
@@ -9,6 +10,7 @@ from hypothesis.strategies import text
 from common import LSOF_FILTER_GRAMMAR, STRACE_EXPR_GRAMMAR
 from conftest import (
     gen_pwsh_completion_script_path,
+    get_pwsh_completion_script,
     get_sorted_pwsh_completions,
     set_working_dir,
 )
@@ -607,6 +609,14 @@ def test_completes_options_after_arg(complgen_binary_path: Path):
     ) as completions_file_path:
         completions = get_sorted_pwsh_completions(completions_file_path, "cmd foo --")
         assert completions == [("--verbose", "")]
+
+
+def test_determinism(complgen_binary_path: Path, examples_directory_path: Path):
+    for usage_file_path in glob.glob(str(examples_directory_path / "*.usage")):
+        grammar = Path(usage_file_path).read_text()
+        left = get_pwsh_completion_script(complgen_binary_path, grammar)
+        right = get_pwsh_completion_script(complgen_binary_path, grammar)
+        assert left == right
 
 
 LITERALS_ALPHABET = string.ascii_letters + ":=-./0123456789"

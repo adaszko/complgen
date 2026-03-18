@@ -1,4 +1,5 @@
 import contextlib
+import glob
 import os
 import string
 import subprocess
@@ -18,17 +19,21 @@ from conftest import (
 )
 
 
-@contextlib.contextmanager
-def completion_script_path(
-    complgen_binary_path: Path, grammar: str
-) -> Generator[Path, None, None]:
-    bash_script = subprocess.run(
+def get_bash_completion_script(complgen_binary_path: Path, grammar: str) -> bytes:
+    return subprocess.run(
         [complgen_binary_path, "--bash", "-", "-"],
         input=grammar.encode(),
         stdout=subprocess.PIPE,
         stderr=sys.stderr,
         check=True,
     ).stdout
+
+
+@contextlib.contextmanager
+def completion_script_path(
+    complgen_binary_path: Path, grammar: str
+) -> Generator[Path, None, None]:
+    bash_script = get_bash_completion_script(complgen_binary_path, grammar)
     with tempfile.NamedTemporaryFile() as f:
         f.write("source {}\n".format(get_bash_completion_sh_path()).encode())
         f.write(bash_script)
@@ -526,6 +531,14 @@ def test_subword_longest_command_candidate_first(complgen_binary_path: Path):
             '''COMP_WORDS=(cmd --option=ab); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"''',
         )
         assert completions == sorted(["abc", "abcd"])
+
+
+def test_determinism(complgen_binary_path: Path, examples_directory_path: Path):
+    for usage_file_path in glob.glob(str(examples_directory_path / "*.usage")):
+        grammar = Path(usage_file_path).read_text()
+        left = get_bash_completion_script(complgen_binary_path, grammar)
+        right = get_bash_completion_script(complgen_binary_path, grammar)
+        assert left == right
 
 
 LITERALS_ALPHABET = string.ascii_letters + ":="

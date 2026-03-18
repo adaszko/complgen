@@ -100,17 +100,21 @@ def get_sorted_fish_completions(
     return parsed
 
 
-@contextlib.contextmanager
-def gen_fish_aot_completion_script_path(
-    complgen_binary_path: Path, grammar: str
-) -> Generator[Path, None, None]:
-    fish_script = subprocess.run(
+def get_fish_completion_script(complgen_binary_path: Path, grammar: str) -> bytes:
+    return subprocess.run(
         [complgen_binary_path, "--fish", "-", "-"],
         input=grammar.encode(),
         stdout=subprocess.PIPE,
         stderr=sys.stderr,
         check=True,
     ).stdout
+
+
+@contextlib.contextmanager
+def gen_fish_completion_script_path(
+    complgen_binary_path: Path, grammar: str
+) -> Generator[Path, None, None]:
+    fish_script = get_fish_completion_script(complgen_binary_path, grammar)
     with tempfile.NamedTemporaryFile() as f:
         f.write(fish_script)
         f.flush()
@@ -132,11 +136,8 @@ def gen_zsh_capture_script_path(completion_script: str) -> Generator[Path, None,
         yield Path(f.name)
 
 
-@contextlib.contextmanager
-def gen_grammar_zsh_capture_script_path(
-    complgen_binary_path: Path, grammar: str
-) -> Generator[Path, None, None]:
-    completion_script = subprocess.run(
+def get_zsh_completion_script(complgen_binary_path: Path, grammar: str) -> bytes:
+    return subprocess.run(
         [complgen_binary_path, "--zsh", "-", "-"],
         input=grammar,
         stdout=subprocess.PIPE,
@@ -144,6 +145,13 @@ def gen_grammar_zsh_capture_script_path(
         check=True,
         text=True,
     ).stdout
+
+
+@contextlib.contextmanager
+def gen_grammar_zsh_capture_script_path(
+    complgen_binary_path: Path, grammar: str
+) -> Generator[Path, None, None]:
+    completion_script = get_zsh_completion_script(complgen_binary_path, grammar)
     with gen_zsh_capture_script_path(completion_script) as path:
         yield path
 
@@ -174,18 +182,22 @@ def get_bash_completion_sh_path() -> str:
         assert False, "Make sure OS package bash-completion is installed"
 
 
-@contextlib.contextmanager
-def gen_pwsh_completion_script_path(
-    complgen_binary_path: Path, grammar: str
-) -> Generator[Path, None, None]:
-    """Generate a PowerShell completion script from grammar."""
-    pwsh_script = subprocess.run(
+def get_pwsh_completion_script(complgen_binary_path: Path, grammar: str) -> bytes:
+    return subprocess.run(
         [complgen_binary_path, "--pwsh", "-", "-"],
         input=grammar.encode(),
         stdout=subprocess.PIPE,
         stderr=sys.stderr,
         check=True,
     ).stdout
+
+
+@contextlib.contextmanager
+def gen_pwsh_completion_script_path(
+    complgen_binary_path: Path, grammar: str
+) -> Generator[Path, None, None]:
+    """Generate a PowerShell completion script from grammar."""
+    pwsh_script = get_pwsh_completion_script(complgen_binary_path, grammar)
     with tempfile.NamedTemporaryFile(suffix=".ps1") as f:
         f.write(pwsh_script)
         f.flush()
