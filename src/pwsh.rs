@@ -128,13 +128,11 @@ fn write_subword_fn<W: Write>(
         return $matched
     }}
 
-    # Complete mode: return possible completions
     $matched_prefix = $word.Substring(0, $char_index)
     $completed_prefix = $word.Substring($char_index)
     $completions = @()
 
     for ($fallback_level = 0; $fallback_level -le $max_fallback_level; $fallback_level++) {{
-        # Literal completions at this level
         $transitions_var = "literal_transitions_level_$fallback_level"
         $transitions = Get-Variable -Name $transitions_var -ValueOnly -ErrorAction SilentlyContinue
         if ($transitions -and $transitions.ContainsKey($state)) {{
@@ -213,9 +211,18 @@ fn write_matching_tables<W: Write>(
     let descriptions = all_literals
         .iter()
         .filter(|(_, _, desc)| !desc.is_empty())
-        .map(|(id, _, desc)| format!("{} = {}", id, make_string_constant(desc)))
-        .join("; ");
-    writeln!(buffer, r#"    $descriptions = @{{{descriptions}}}"#)?;
+        .map(|(id, _, desc)| format!("        {} = {};", id, make_string_constant(desc)))
+        .join("\n");
+    if descriptions.is_empty() {
+        writeln!(buffer, r#"    $descriptions = @{{}}"#)?;
+    } else {
+        writeln!(
+            buffer,
+            r#"    $descriptions = @{{
+{descriptions}
+    }}"#
+        )?;
+    }
 
     let all_states = dfa.get_all_states();
 
@@ -225,8 +232,8 @@ fn write_matching_tables<W: Write>(
     {
         let transitions = state_transitions
             .iter()
-            .map(|(literal_id, to)| format!("{} = {}", literal_id, to))
-            .join("; ");
+            .map(|(literal_id, to)| format!("{}={}", literal_id, to))
+            .join(";");
         writeln!(
             buffer,
             r#"    $literal_transitions[{state}] = @{{{transitions}}}"#
@@ -238,8 +245,8 @@ fn write_matching_tables<W: Write>(
         for (state, state_transitions) in dfa.get_command_transitions(&all_states, id_from_cmd) {
             let transitions = state_transitions
                 .iter()
-                .map(|(literal_id, to)| format!("{} = {}", literal_id, to))
-                .join("; ");
+                .map(|(literal_id, to)| format!("{}={}", literal_id, to))
+                .join(";");
             writeln!(
                 buffer,
                 r#"    $command_transitions[{state}] = @{{{transitions}}}"#
@@ -250,8 +257,8 @@ fn write_matching_tables<W: Write>(
     if needs_star_code {
         let star_transitions = dfa
             .iter_top_level_star_transitions()
-            .map(|(from, to)| format!("{from} = {to}"))
-            .join("; ");
+            .map(|(from, to)| format!("{from}={to}"))
+            .join(";");
         writeln!(buffer, r#"    $star_transitions = @{{{star_transitions}}}"#)?;
     }
 
@@ -275,8 +282,8 @@ fn write_completion_tables<W: Write>(
             .iter()
             .map(|(from_state, literal_ids)| {
                 format!(
-                    "{from_state} = @({})",
-                    literal_ids.iter().map(|id| id.to_string()).join(", ")
+                    "{from_state}=@({})",
+                    literal_ids.iter().map(|id| id.to_string()).join(",")
                 )
             })
             .join("; ");
@@ -296,8 +303,8 @@ fn write_completion_tables<W: Write>(
                 .iter()
                 .map(|(from_state, cmd_ids)| {
                     format!(
-                        "{from_state} = @({})",
-                        cmd_ids.iter().map(|id| id.to_string()).join(", ")
+                        "{from_state}=@({})",
+                        cmd_ids.iter().map(|id| id.to_string()).join(",")
                     )
                 })
                 .join("; ");
@@ -451,8 +458,8 @@ $ErrorActionPreference = "Stop"
             if !subword_transitions.is_empty() {
                 let state_transitions = subword_transitions
                     .into_iter()
-                    .map(|(dfa, to)| format!("{} = {to}", id_from_dfa.get(&dfa).unwrap()))
-                    .join("; ");
+                    .map(|(dfa, to)| format!("{}={to}", id_from_dfa.get(&dfa).unwrap()))
+                    .join(";");
                 writeln!(
                     buffer,
                     r#"    $subword_transitions[{state}] = @{{{state_transitions}}}"#
@@ -575,8 +582,8 @@ $ErrorActionPreference = "Stop"
                 .iter()
                 .map(|(from_state, subword_ids)| {
                     format!(
-                        r#"{from_state} = @({})"#,
-                        subword_ids.iter().map(|id| id.to_string()).join(", ")
+                        r#"{from_state}=@({})"#,
+                        subword_ids.iter().map(|id| id.to_string()).join(",")
                     )
                 })
                 .join("; ");
@@ -597,7 +604,6 @@ $ErrorActionPreference = "Stop"
     for ($fallback_level = 0; $fallback_level -le $max_fallback_level; $fallback_level++) {{
         $level_results = @()
 
-        # Literal completions
         $transitions_var = "literal_transitions_level_$fallback_level"
         $transitions = Get-Variable -Name $transitions_var -ValueOnly -ErrorAction SilentlyContinue
         if ($transitions -and $transitions.ContainsKey($state)) {{
@@ -621,7 +627,6 @@ $ErrorActionPreference = "Stop"
             buffer,
             r#"
 
-        # Subword completions
         $transitions_var = "subword_transitions_level_$fallback_level"
         $transitions = Get-Variable -Name $transitions_var -ValueOnly -ErrorAction SilentlyContinue
         if ($transitions -and $transitions.ContainsKey($state)) {{
@@ -647,7 +652,6 @@ $ErrorActionPreference = "Stop"
             buffer,
             r#"
 
-        # Command completions
         $commands_var = "commands_level_$fallback_level"
         $commands = Get-Variable -Name $commands_var -ValueOnly -ErrorAction SilentlyContinue
         if ($commands -and $commands.ContainsKey($state)) {{
