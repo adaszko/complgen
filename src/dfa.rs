@@ -1379,8 +1379,8 @@ impl DFA {
         &self,
         id_from_cmd: &IndexSet<Ustr>,
         max_fallback_level: usize,
-    ) -> Vec<HashMap<StateId, Vec<usize>>> {
-        let mut completion_commands: Vec<HashMap<StateId, Vec<usize>>> =
+    ) -> Vec<BTreeMap<StateId, Vec<usize>>> {
+        let mut completion_commands: Vec<BTreeMap<StateId, Vec<usize>>> =
             vec![Default::default(); max_fallback_level + 1];
 
         for (from, input_id, _) in self.iter_transitions() {
@@ -1405,8 +1405,8 @@ impl DFA {
         &self,
         id_from_cmd: &IndexSet<Ustr>,
         max_fallback_level: usize,
-    ) -> Vec<HashMap<StateId, Vec<usize>>> {
-        let mut completion_compadds: Vec<HashMap<StateId, Vec<usize>>> =
+    ) -> Vec<BTreeMap<StateId, Vec<usize>>> {
+        let mut completion_compadds: Vec<BTreeMap<StateId, Vec<usize>>> =
             vec![Default::default(); max_fallback_level + 1];
 
         for (from, input_id, _) in self.iter_transitions() {
