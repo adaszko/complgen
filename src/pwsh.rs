@@ -602,8 +602,6 @@ $ErrorActionPreference = "Stop"
     $results = @()
 
     for ($fallback_level = 0; $fallback_level -le $max_fallback_level; $fallback_level++) {{
-        $level_results = @()
-
         $transitions_var = "literal_transitions_level_$fallback_level"
         $transitions = Get-Variable -Name $transitions_var -ValueOnly -ErrorAction SilentlyContinue
         if ($transitions -and $transitions.ContainsKey($state)) {{
@@ -611,7 +609,7 @@ $ErrorActionPreference = "Stop"
                 $literal = $literals[$literal_id]
                 if ($literal.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {{
                     $desc = if ($descriptions.ContainsKey($literal_id)) {{ $descriptions[$literal_id] }} else {{ $literal }}
-                    $level_results += [System.Management.Automation.CompletionResult]::new(
+                    $results += [System.Management.Automation.CompletionResult]::new(
                         $literal,
                         $literal,
                         'ParameterValue',
@@ -634,7 +632,7 @@ $ErrorActionPreference = "Stop"
                 $subword_completions = & "_{command}_subword_$subword_id" 'complete' $prefix
                 foreach ($comp in $subword_completions) {{
                     if ($comp.Text.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {{
-                        $level_results += [System.Management.Automation.CompletionResult]::new(
+                        $results += [System.Management.Automation.CompletionResult]::new(
                             $comp.Text,
                             $comp.Text,
                             'ParameterValue',
@@ -663,7 +661,7 @@ $ErrorActionPreference = "Stop"
                     $text = $parts[0]
                     $desc = if ($parts.Count -gt 1) {{ $parts[1] }} else {{ $text }}
                     if ($text.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)) {{
-                        $level_results += [System.Management.Automation.CompletionResult]::new(
+                        $results += [System.Management.Automation.CompletionResult]::new(
                             $text,
                             $text,
                             'ParameterValue',
@@ -680,8 +678,7 @@ $ErrorActionPreference = "Stop"
         buffer,
         r#"
 
-        if ($level_results.Count -gt 0) {{
-            $results = $level_results
+        if ($results.Count -gt 0) {{
             break
         }}
     }}
