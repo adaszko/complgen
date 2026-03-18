@@ -1324,8 +1324,8 @@ impl DFA {
         &self,
         id_from_literal_description: &HashMap<(Ustr, Ustr), LiteralId>,
         max_fallback_level: usize,
-    ) -> Vec<BTreeMap<StateId, Vec<LiteralId>>> {
-        let mut completion_literals: Vec<BTreeMap<StateId, Vec<LiteralId>>> =
+    ) -> Vec<BTreeMap<StateId, BTreeSet<LiteralId>>> {
+        let mut completion_literals: Vec<BTreeMap<StateId, BTreeSet<LiteralId>>> =
             vec![Default::default(); max_fallback_level + 1];
 
         for (from, input_id, _) in self.iter_transitions() {
@@ -1341,7 +1341,7 @@ impl DFA {
                     completion_literals[fallback_level]
                         .entry(from)
                         .or_default()
-                        .push(literal_id);
+                        .insert(literal_id);
                 }
                 Inp::Subword { .. } | Inp::Command { .. } | Inp::Compadd { .. } | Inp::Star => {}
             }
@@ -1354,8 +1354,8 @@ impl DFA {
         &self,
         id_from_dfa: IndexMap<DFAId, usize>,
         max_fallback_level: usize,
-    ) -> Vec<HashMap<StateId, Vec<usize>>> {
-        let mut completion_subwords: Vec<HashMap<StateId, Vec<usize>>> =
+    ) -> Vec<BTreeMap<StateId, Vec<usize>>> {
+        let mut completion_subwords: Vec<BTreeMap<StateId, Vec<usize>>> =
             vec![Default::default(); max_fallback_level + 1];
         for (from, input_id, _) in self.iter_transitions() {
             match self.get_input(input_id).clone() {
