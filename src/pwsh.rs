@@ -57,10 +57,10 @@ fn write_subword_fn<W: Write>(
                     $char_index += $literal.Length
                     continue outer
                 }}
-                if ($literal.StartsWith($subword)) {{
+                if ($literal.StartsWith($subword, [StringComparison]::OrdinalIgnoreCase)) {{
                     break outer
                 }}
-                if ($subword.StartsWith($literal) -And $state_transitions.ContainsKey($literal_id)) {{
+                if ($subword.StartsWith($literal, [StringComparison]::OrdinalIgnoreCase) -And $state_transitions.ContainsKey($literal_id)) {{
                     $state = $state_transitions[$literal_id]
                     $char_index += $literal.Length
                     continue outer
@@ -91,11 +91,11 @@ fn write_subword_fn<W: Write>(
                         continue outer
                     }}
 
-                    if ($candidate.StartsWith($subword)) {{
+                    if ($candidate.StartsWith($subword, [StringComparison]::OrdinalIgnoreCase)) {{
                         break outer
                     }}
 
-                    if ($subword.StartsWith($candidate)) {{
+                    if ($subword.StartsWith($candidate, [StringComparison]::OrdinalIgnoreCase)) {{
                         $char_index += $candidate.Length
                         $state = $state_transitions[$cmd_id]
                         continue outer
