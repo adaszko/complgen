@@ -1,9 +1,9 @@
-mygit (add       "add file contents to the index" || <global-option>... add);
-mygit (bisect    "find by binary search the change that introduced a bug" || <global-option>... bisect);
-mygit (branch    "list, create, or delete branches" || <global-option>... branch);
-mygit (checkout  "checkout a branch or paths to the working tree" || <global-option>... checkout);
-mygit (clone     "clone a repository into a new directory" || <global-option>... clone);
-mygit (commit    "record changes to the repository" || <global-option>... commit);
+mygit (add       "add file contents to the index" || <global-option>... add) <add-syntax>;
+mygit (bisect    "find by binary search the change that introduced a bug" || <global-option>... bisect) <bisect-syntax>;
+mygit (branch    "list, create, or delete branches" || <global-option>... branch) <branch-syntax>;
+mygit (checkout  "checkout a branch or paths to the working tree" || <global-option>... checkout) <checkout-syntax>;
+mygit (clone     "clone a repository into a new directory" || <global-option>... clone) <clone-syntax>;
+mygit (commit    "record changes to the repository" || <global-option>... commit) <commit-syntax>;
 mygit (diff      "show changes between commits, commit and working tree, etc" || <global-option>... diff);
 mygit (fetch     "download objects and refs from another repository" || <global-option>... fetch);
 mygit (grep      "print lines matching a pattern" || <global-option>... grep);
@@ -23,8 +23,8 @@ mygit (switch    "switch branches" || <global-option>... switch);
 mygit (tag       "create, list, delete or verify a tag object signed with GPG" || <global-option>... tag);
 
 
-<global-option> ::=
-      --version | -v
+<global-option>
+    = --version | -v
     | --help | -h
     | -C <DIRECTORY>
     | --exec-path[=<DIRECTORY>]
@@ -37,4 +37,74 @@ mygit (tag       "create, list, delete or verify a tag object signed with GPG" |
     | --work-tree=<DIRECTORY>
     | --namespace=
     | --config-env=
+    ;
+
+
+<add-syntax> =
+    [--verbose | -v] [--dry-run | -n] [--force | -f] [--interactive | -i] [--patch | -p]
+    [--edit | -e] [--[no-]all | -A | --[no-]ignore-removal | [--update | -u]] [--sparse]
+    [--intent-to-add | -N] [--refresh] [--ignore-errors] [--ignore-missing] [--renormalize]
+    [--chmod=(+|-)x] [--pathspec-from-file=<PATH> [--pathspec-file-nul]]
+    [--] [<PATH>...]
+    ;
+
+<bisect-syntax>
+    = start [--term-(bad|new)= --term-(good|old)=] [--no-checkout] [--first-parent] <_>... [--] [<PATH>...]
+    | (bad|new)
+    | (good|old)
+    | terms [--term-(good|old) | --term-(bad|new)]
+    | skip
+    | next
+    | reset
+    | (visualize|view)
+    | replay <PATH>
+    | log
+    | run
+    | help
+    ;
+
+<branch-syntax>
+    = [--color[=<_>] | --no-color] [--show-current] [-v [--abbrev=<_> | --no-abbrev]] [--column[=<_>] | --no-column] [--sort=<_>] [--merged [<_>]] [--no-merged [<_>]] [--contains [<_>]] [--no-contains [<_>]] [--points-at <_>] [--format=<_>] [(-r|--remotes) | (-a|--all)] [--list] [<_>...]
+    | [--track[=(direct|inherit)] | --no-track] [-f] [--recurse-submodules] <_> [<_>]
+    | (--set-upstream-to=<_>|-u <_>) [<_>]
+    | --unset-upstream [<_>]
+    | (-m|-M) [<_>] <_>
+    | (-c|-C) [<_>] <_>
+    | (-d|-D) [-r] <_>...
+    | --edit-description [<_>]
+    ;
+
+<checkout-syntax>
+    = [-q] [-f] [-m] [<_>]
+    | [-q] [-f] [-m] --detach [<_>]
+    | [-q] [-f] [-m] [--detach] <_>
+    | [-q] [-f] [-m] [[-b|-B|--orphan] <_>] [<_>]
+    | <_> [--] <PATH>...
+    | <_> --pathspec-from-file=<PATH> [--pathspec-file-nul]
+    | [-f|--ours|--theirs|-m|--conflict=<_>] [--] <PATH>...
+    | [-f|--ours|--theirs|-m|--conflict=<_>] --pathspec-from-file=<PATH> [--pathspec-file-nul]
+    | (-p|--patch) [<_>] [--] [<PATH>...]
+    ;
+
+<clone-syntax> =
+    [--template=<_>]
+    [-l] [-s] [--no-hardlinks] [-q] [-n] [--bare] [--mirror]
+    [-o <_>] [-b <_>] [-u <_>] [--reference <_>]
+    [--dissociate] [--separate-git-dir <DIRECTORY>]
+    [--depth <_>] [--[no-]single-branch] [--[no-]tags]
+    [--recurse-submodules[=<PATH>]] [--[no-]shallow-submodules]
+    [--[no-]remote-submodules] [--jobs <_>] [--sparse] [--[no-]reject-shallow]
+    [--filter=<_> [--also-filter-submodules]] [--] <_>
+    [<DIRECTORY>]
+    ;
+
+<commit-syntax> =
+    [-a | --interactive | --patch] [-s] [-v] [-u[<_>]] [--amend]
+    [--dry-run] [(-c | -C | --squash) <_> | --fixup <_>]
+    [-F <PATH> | -m <_>] [--reset-author] [--allow-empty]
+    [--allow-empty-message] [--no-verify] [-e] [--author=<_>]
+    [--date=<_>] [--cleanup=<_>] [--[no-]status]
+    [-i | -o] [--pathspec-from-file=<PATH> [--pathspec-file-nul]]
+    [(--trailer <_>)...] [-S[<_>]]
+    [--] [<PATH>...]
     ;

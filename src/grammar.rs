@@ -917,7 +917,7 @@ fn nonterm_def_statement<'s>(
 ) -> IResult<Span<'s>, Statement> {
     let (input, (name, nonterm_span, shell)) = nonterm_def(input)?;
     let (input, _) = multiblanks0(input)?;
-    let (input, _) = tag("::=")(input)?;
+    let (input, _) = alt((tag("::="), tag("=")))(input)?;
     let (input, _) = multiblanks0(input)?;
     let (input, rhs_expr_id) = expr(arena, input)?;
     let (input, _) = multiblanks0(input)?;
