@@ -88,20 +88,6 @@ Or download a pre-built binary from [the latest GitHub release](https://github.c
 
 See the [`examples` subdirectory](examples/).
 
-A first approximation of a grammar (not guaranteed to work!) can be produced by piping target program's usage
-info onto `complgen --scrape` as below.  Note that all scraping is meant to do is to save you from too much
-typing.  The produced grammar will still need to be fleshed out by hand.
-
-```
-$ grep --help | complgen --scrape
- | (-E | --extended-regexp) "PATTERNS are extended regular expressions"
- | (-F | --fixed-strings) "PATTERNS are strings"
- | (-G | --basic-regexp) "PATTERNS are basic regular expressions"
-[...]
-```
-
-***
-
 complgen's grammar is based on
 [compleat](https://github.com/mbrubeck/compleat/blob/master/README.markdown#syntax)'s one.
 
@@ -122,6 +108,12 @@ Use parentheses to group patterns:
  * `a (b | c)` matches `a` followed by either `b` or `c`.
  * `(a | b) ...` matches `a` or `b` followed by any number of additional
    `a` or `b`.
+
+# `<_>` Nonterminal
+
+The special nonterminal `<_>` matches any shell word and doesn't produce the "undefined nonterminal"
+compilation warning so it's a good choice to use for program arguments where there isn't enough structure to
+produce meaningful completions but matching should still continue at the next shell word.
 
 ### Filename Completion
 
