@@ -31,6 +31,12 @@ struct CompletionTables {
     command_transitions: Option<Vec<BTreeMap<StateId, Vec<CommandId>>>>,
 }
 
+struct LookupTables {
+    match_tables: MatchingTables,
+    completion_tables: CompletionTables,
+    max_fallback_level: usize,
+}
+
 fn make_string_constant(s: &str) -> String {
     format!(
         r#""{}""#,
@@ -221,7 +227,7 @@ fn write_subword_fn<W: Write>(
     Ok(())
 }
 
-fn get_matching_tables(
+fn get_match_tables(
     dfa: &DFA,
     id_from_cmd: &IndexSet<Ustr>,
     needs_commands_code: bool,
@@ -258,7 +264,7 @@ fn get_matching_tables(
     }
 }
 
-fn write_matching_tables<W: Write>(buffer: &mut W, tables: &MatchingTables) -> Result<()> {
+fn write_match_tables<W: Write>(buffer: &mut W, tables: &MatchingTables) -> Result<()> {
     let literals = tables.literals.join(" ");
     writeln!(buffer, r#"    local -a literals=({literals})"#)?;
 
@@ -336,6 +342,39 @@ fn get_completion_tables(
     }
 }
 
+fn get_lookup_tables(
+    dfa: &DFA,
+    id_from_cmd: &IndexSet<Ustr>,
+    needs_commands_code: bool,
+    needs_star_code: bool,
+) -> LookupTables {
+    let match_tables = get_match_tables(dfa, id_from_cmd, needs_commands_code, needs_star_code);
+    let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
+    let completion_tables = get_completion_tables(
+        dfa,
+        id_from_cmd,
+        needs_commands_code,
+        &match_tables.id_from_literal_description,
+        max_fallback_level,
+    );
+    LookupTables {
+        match_tables,
+        completion_tables,
+        max_fallback_level,
+    }
+}
+
+fn write_lookup_tables<W: Write>(buffer: &mut W, lookups: &LookupTables) -> Result<()> {
+    write_match_tables(buffer, &lookups.match_tables)?;
+    write_completion_tables(buffer, &lookups.completion_tables)?;
+    writeln!(
+        buffer,
+        r#"    local max_fallback_level={}"#,
+        lookups.max_fallback_level
+    )?;
+    Ok(())
+}
+
 fn write_completion_tables<W: Write>(buffer: &mut W, tables: &CompletionTables) -> Result<()> {
     for (level, transitions) in tables.literal_transitions.iter().enumerate() {
         let initializer = transitions
@@ -379,25 +418,9 @@ fn write_subword_wrapper_fn<W: Write>(
 ) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
 
-    let matching_tables =
-        get_matching_tables(dfa, id_from_cmd, needs_commands_code, needs_star_code);
-    write_matching_tables(buffer, &matching_tables)?;
+    let lookup_tables = get_lookup_tables(dfa, id_from_cmd, needs_commands_code, needs_star_code);
+    write_lookup_tables(buffer, &lookup_tables)?;
 
-    let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
-
-    let completion_tables = get_completion_tables(
-        dfa,
-        id_from_cmd,
-        needs_commands_code,
-        &matching_tables.id_from_literal_description,
-        max_fallback_level,
-    );
-    write_completion_tables(buffer, &completion_tables)?;
-
-    writeln!(
-        buffer,
-        r#"    local max_fallback_level={max_fallback_level}"#
-    )?;
     writeln!(buffer, r#"    _{command}_subword "$1" "$2""#)?;
 
     writeln!(buffer, r#"}}"#)?;
@@ -480,13 +503,13 @@ fi
 "#
     )?;
 
-    let tables = get_matching_tables(
+    let lookup_tables = get_lookup_tables(
         dfa,
         &id_from_cmd,
         needs_top_level_commands_code,
         needs_top_level_star_code,
     );
-    write_matching_tables(buffer, &tables)?;
+    write_match_tables(buffer, &lookup_tables.match_tables)?;
 
     if needs_subwords_code {
         writeln!(buffer, r#"    local -A subword_transitions"#)?;
@@ -612,20 +635,11 @@ fi
 
     // ///////////////////////////// Completion ///////////////////////////////////
 
-    let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
-
-    let completion_tables = get_completion_tables(
-        dfa,
-        &id_from_cmd,
-        needs_top_level_commands_code,
-        &tables.id_from_literal_description,
-        max_fallback_level,
-    );
-    write_completion_tables(buffer, &completion_tables)?;
+    write_completion_tables(buffer, &lookup_tables.completion_tables)?;
 
     if needs_subwords_code {
         for (level, transitions) in dfa
-            .get_completion_subwords(id_from_dfa, max_fallback_level)
+            .get_completion_subwords(id_from_dfa, lookup_tables.max_fallback_level)
             .iter()
             .enumerate()
         {
@@ -693,7 +707,8 @@ fi
         done
         if [[ ${{#candidates[@]}} -gt 0 ]]; then
             {MATCH_FN_NAME} "$prefix" candidates matches
-        fi"#
+        fi"#,
+        max_fallback_level = lookup_tables.max_fallback_level
     )?;
 
     if needs_subwords_code {
