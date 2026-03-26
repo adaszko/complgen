@@ -73,6 +73,7 @@ fn write_subword_fn<W: Write>(
     write!(
         buffer,
         r#"
+    declare subword_state=1
     declare char_index=0
     declare matched=0
     while true; do
@@ -622,11 +623,6 @@ fn write_subword_wrapper_fn<W: Write>(
     writeln!(
         buffer,
         r#"    declare subword_max_fallback_level={max_fallback_level}"#
-    )?;
-    writeln!(
-        buffer,
-        r#"    declare subword_state={starting_state}"#,
-        starting_state = dfa.starting_state + ARRAY_START
     )?;
 
     writeln!(buffer, r#"    _{command}_subword "$@""#)?;
