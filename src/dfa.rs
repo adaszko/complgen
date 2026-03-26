@@ -1029,7 +1029,9 @@ impl DFA {
                 Inp::Command { .. } | Inp::Compadd { .. } => None,
             })
             .collect();
-        result.sort_by_key(|(literal, _)| literal.len());
+        result.sort_unstable_by(|(left, _), (right, _)| {
+            (left.len(), left).cmp(&(right.len(), right))
+        });
         result.reverse();
         result
     }
