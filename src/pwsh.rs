@@ -37,6 +37,7 @@ fn write_subword_fn<W: Write>(
         r#"function _{command}_subword {{
     param([string]$mode, [string]$word)
 
+    $subword_state = 0
     $char_index = 0
     $matched = $false
     :outer while ($true) {{
@@ -354,14 +355,9 @@ fn write_subword_wrapper_fn<W: Write>(
 
     writeln!(buffer, r#"    $max_fallback_level = {max_fallback_level}"#)?;
 
-    writeln!(
-        buffer,
-        r#"
-    $subword_state = {starting_state}
-    _{command}_subword $mode $word
-}}"#,
-        starting_state = dfa.starting_state
-    )?;
+    writeln!(buffer, r#"    _{command}_subword $mode $word"#,)?;
+
+    writeln!(buffer, r#"}}"#)?;
 
     Ok(())
 }
