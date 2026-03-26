@@ -47,13 +47,13 @@ fn write_subword_fn<W: Write>(
 
         $subword = $word.Substring($char_index)
 
-        if ($literal_transitions.ContainsKey($state)) {{
-            $state_transitions = $literal_transitions[$state]
+        if ($literal_transitions.ContainsKey($subword_state)) {{
+            $state_transitions = $literal_transitions[$subword_state]
 
             for ($literal_id = 0; $literal_id -lt $literals.Count; $literal_id++) {{
                 $literal = $literals[$literal_id]
                 if ($subword -eq $literal -And $state_transitions.ContainsKey($literal_id)) {{
-                    $state = $state_transitions[$literal_id]
+                    $subword_state = $state_transitions[$literal_id]
                     $char_index += $literal.Length
                     continue outer
                 }}
@@ -61,7 +61,7 @@ fn write_subword_fn<W: Write>(
                     break outer
                 }}
                 if ($subword.StartsWith($literal, [StringComparison]::OrdinalIgnoreCase) -And $state_transitions.ContainsKey($literal_id)) {{
-                    $state = $state_transitions[$literal_id]
+                    $subword_state = $state_transitions[$literal_id]
                     $char_index += $literal.Length
                     continue outer
                 }}
@@ -73,8 +73,8 @@ fn write_subword_fn<W: Write>(
         write!(
             buffer,
             r#"
-        if ($command_transitions.ContainsKey($state)) {{
-            $state_transitions = $command_transitions[$state]
+        if ($command_transitions.ContainsKey($subword_state)) {{
+            $state_transitions = $command_transitions[$subword_state]
 
             foreach ($cmd_id in $state_transitions.Keys) {{
                 $output = & "_{command}_cmd_$cmd_id"
@@ -87,7 +87,7 @@ fn write_subword_fn<W: Write>(
 
                     if ($candidate -eq $subword) {{
                         $char_index += $candidate.Length
-                        $state = $state_transitions[$cmd_id]
+                        $subword_state = $state_transitions[$cmd_id]
                         continue outer
                     }}
 
@@ -97,7 +97,7 @@ fn write_subword_fn<W: Write>(
 
                     if ($subword.StartsWith($candidate, [StringComparison]::OrdinalIgnoreCase)) {{
                         $char_index += $candidate.Length
-                        $state = $state_transitions[$cmd_id]
+                        $subword_state = $state_transitions[$cmd_id]
                         continue outer
                     }}
                 }}
@@ -110,7 +110,7 @@ fn write_subword_fn<W: Write>(
         write!(
             buffer,
             r#"
-        if ($star_transitions.ContainsKey($state)) {{
+        if ($star_transitions.ContainsKey($subword_state)) {{
             $matched = $true
             break
         }}
@@ -135,8 +135,8 @@ fn write_subword_fn<W: Write>(
     for ($fallback_level = 0; $fallback_level -le $max_fallback_level; $fallback_level++) {{
         $transitions_var = "literal_transitions_level_$fallback_level"
         $transitions = Get-Variable -Name $transitions_var -ValueOnly -ErrorAction SilentlyContinue
-        if ($transitions -and $transitions.ContainsKey($state)) {{
-            foreach ($literal_id in $transitions[$state]) {{
+        if ($transitions -and $transitions.ContainsKey($subword_state)) {{
+            foreach ($literal_id in $transitions[$subword_state]) {{
                 $literal = $literals[$literal_id]
                 if ($literal.StartsWith($completed_prefix, [StringComparison]::OrdinalIgnoreCase)) {{
                     $completion = $matched_prefix + $literal
@@ -154,8 +154,8 @@ fn write_subword_fn<W: Write>(
 
         $commands_var = "commands_level_$fallback_level"
         $commands = Get-Variable -Name $commands_var -ValueOnly -ErrorAction SilentlyContinue
-        if ($commands -and $commands.ContainsKey($state)) {{
-            foreach ($cmd_id in $commands[$state]) {{
+        if ($commands -and $commands.ContainsKey($subword_state)) {{
+            foreach ($cmd_id in $commands[$subword_state]) {{
                 $output = & "_{command}_cmd_$cmd_id"
                 foreach ($line in $output) {{
                     if ([string]::IsNullOrWhiteSpace($line)) {{ continue }}
@@ -357,7 +357,7 @@ fn write_subword_wrapper_fn<W: Write>(
     writeln!(
         buffer,
         r#"
-    $state = {starting_state}
+    $subword_state = {starting_state}
     _{command}_subword $mode $word
 }}"#,
         starting_state = dfa.starting_state
