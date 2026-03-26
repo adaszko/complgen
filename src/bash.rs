@@ -1,8 +1,9 @@
+use std::collections::BTreeMap;
 use std::io::Write;
 
-use crate::LiteralId;
 use crate::Result;
 use crate::dfa::DFA;
+use crate::{CommandId, LiteralId, StateId};
 use hashbrown::HashMap;
 use indexmap::IndexSet;
 use itertools::Itertools;
@@ -16,6 +17,14 @@ use ustr::Ustr;
 
 pub const ARRAY_START: u32 = 0;
 pub const MATCH_FN_NAME: &str = "__complgen_match";
+
+struct MatchingTables {
+    id_from_literal_description: HashMap<(Ustr, Ustr), LiteralId>,
+    literals: Vec<String>,
+    literal_transitions: BTreeMap<StateId, BTreeMap<LiteralId, StateId>>,
+    command_transitions: Option<BTreeMap<StateId, BTreeMap<CommandId, StateId>>>,
+    star_transitions: Option<Vec<(StateId, StateId)>>,
+}
 
 fn make_string_constant(s: &str) -> String {
     format!(
@@ -207,13 +216,12 @@ fn write_subword_fn<W: Write>(
     Ok(())
 }
 
-fn write_matching_tables<W: Write>(
-    buffer: &mut W,
+fn get_matching_tables(
     dfa: &DFA,
     id_from_cmd: &IndexSet<Ustr>,
     needs_commands_code: bool,
     needs_star_code: bool,
-) -> Result<HashMap<(Ustr, Ustr), LiteralId>> {
+) -> MatchingTables {
     let all_literals = dfa.get_all_literals(ARRAY_START as usize);
 
     let id_from_literal_description: HashMap<(Ustr, Ustr), LiteralId> = all_literals
@@ -223,16 +231,34 @@ fn write_matching_tables<W: Write>(
 
     let all_states = dfa.get_all_states();
 
-    let literals: String = all_literals
+    let literals: Vec<String> = all_literals
         .iter()
         .map(|(_, literal, _)| make_string_constant(literal))
-        .join(" ");
+        .collect();
+
+    let literal_transitions =
+        dfa.get_literal_transitions(&all_states, &id_from_literal_description);
+
+    let command_transitions =
+        needs_commands_code.then(|| dfa.get_command_transitions(&all_states, id_from_cmd));
+
+    let star_transitions = needs_star_code.then(|| dfa.iter_top_level_star_transitions().collect());
+
+    MatchingTables {
+        id_from_literal_description,
+        literals,
+        literal_transitions,
+        command_transitions,
+        star_transitions,
+    }
+}
+
+fn write_matching_tables<W: Write>(buffer: &mut W, tables: &MatchingTables) -> Result<()> {
+    let literals = tables.literals.join(" ");
     writeln!(buffer, r#"    local -a literals=({literals})"#)?;
 
     writeln!(buffer, r#"    local -A literal_transitions=()"#)?;
-    for (state, state_transitions) in
-        dfa.get_literal_transitions(&all_states, &id_from_literal_description)
-    {
+    for (state, state_transitions) in &tables.literal_transitions {
         let transitions = state_transitions
             .iter()
             .map(|(literal_id, to)| format!("[{literal_id}]={to}"))
@@ -243,9 +269,9 @@ fn write_matching_tables<W: Write>(
         )?;
     }
 
-    if needs_commands_code {
+    if let Some(command_transitions) = &tables.command_transitions {
         writeln!(buffer, r#"    local -A command_transitions=()"#)?;
-        for (state, state_transitions) in dfa.get_command_transitions(&all_states, id_from_cmd) {
+        for (state, state_transitions) in command_transitions {
             let transitions = state_transitions
                 .iter()
                 .map(|(cmd_id, to)| format!("[{cmd_id}]={to}"))
@@ -257,18 +283,15 @@ fn write_matching_tables<W: Write>(
         }
     }
 
-    if needs_star_code {
-        let star_transitions = dfa
-            .iter_top_level_star_transitions()
+    if let Some(star_transitions) = &tables.star_transitions {
+        let transitions = star_transitions
+            .iter()
             .map(|(from, to)| format!("[{from}]={to}"))
             .join(" ");
-        writeln!(
-            buffer,
-            r#"    local -A star_transitions=({star_transitions})"#
-        )?;
+        writeln!(buffer, r#"    local -A star_transitions=({transitions})"#)?;
     }
 
-    Ok(id_from_literal_description)
+    Ok(())
 }
 
 fn write_completion_tables<W: Write>(
@@ -329,13 +352,9 @@ fn write_subword_wrapper_fn<W: Write>(
 ) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
 
-    let id_from_literal_description = write_matching_tables(
-        buffer,
-        dfa,
-        id_from_cmd,
-        needs_commands_code,
-        needs_star_code,
-    )?;
+    let matching_tables =
+        get_matching_tables(dfa, id_from_cmd, needs_commands_code, needs_star_code);
+    write_matching_tables(buffer, &matching_tables)?;
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
@@ -344,7 +363,7 @@ fn write_subword_wrapper_fn<W: Write>(
         dfa,
         id_from_cmd,
         needs_commands_code,
-        &id_from_literal_description,
+        &matching_tables.id_from_literal_description,
         max_fallback_level,
     )?;
 
@@ -434,13 +453,13 @@ fi
 "#
     )?;
 
-    let id_from_literal_description = write_matching_tables(
-        buffer,
+    let tables = get_matching_tables(
         dfa,
         &id_from_cmd,
         needs_top_level_commands_code,
         needs_top_level_star_code,
-    )?;
+    );
+    write_matching_tables(buffer, &tables)?;
 
     if needs_subwords_code {
         writeln!(buffer, r#"    local -A subword_transitions"#)?;
@@ -573,7 +592,7 @@ fi
         dfa,
         &id_from_cmd,
         needs_top_level_commands_code,
-        &id_from_literal_description,
+        &tables.id_from_literal_description,
         max_fallback_level,
     )?;
 
