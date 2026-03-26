@@ -50,13 +50,13 @@ fn write_subword_fn<W: Write>(
 
         local subword=${{word:$char_index}}
 
-        if [[ -v "literal_transitions[$state]" ]]; then
-            local -A state_transitions=${{literal_transitions[$state]}}
+        if [[ -v "literal_transitions[$subword_state]" ]]; then
+            local -A state_transitions=${{literal_transitions[$subword_state]}}
 
             for ((literal_id = 0; literal_id < nliterals; literal_id++)); do
                 local literal=${{literals[$literal_id]}}
                 if [[ $subword == $literal && -v "state_transitions[$literal_id]" ]]; then
-                    state=${{state_transitions[$literal_id]}}
+                    subword_state=${{state_transitions[$literal_id]}}
                     char_index=$((char_index + ${{#literal}}))
                     continue 2
                 fi
@@ -64,7 +64,7 @@ fn write_subword_fn<W: Write>(
                     break 2
                 fi
                 if [[ $subword == $literal* && -v "state_transitions[$literal_id]" ]]; then
-                    state=${{state_transitions[$literal_id]}}
+                    subword_state=${{state_transitions[$literal_id]}}
                     char_index=$((char_index + ${{#literal}}))
                     continue 2
                 fi
@@ -76,9 +76,9 @@ fn write_subword_fn<W: Write>(
         write!(
             buffer,
             r#"
-        if [[ -v "command_transitions[$state]" ]]; then
+        if [[ -v "command_transitions[$subword_state]" ]]; then
             local matched_prefix="${{word:0:$char_index}}"
-            local -A state_commands=${{command_transitions[$state]}}
+            local -A state_commands=${{command_transitions[$subword_state]}}
             for cmd_id in "${{!state_commands[@]}}"; do
                 readarray -t subword_candidates < <(_{command}_cmd_$cmd_id "$subword" "$matched_prefix" | while read -r f1 _; do echo "$f1"; done)
                 if [[ ${{#subword_candidates[@]}} -gt 0 ]]; then
@@ -96,7 +96,7 @@ fn write_subword_fn<W: Write>(
                         if [[ $candidate == $subword ]]; then
                             match_len=${{#candidate}}
                             char_index=$((char_index + match_len))
-                            state=${{state_commands[$cmd_id]}}
+                            subword_state=${{state_commands[$cmd_id]}}
                             continue 3
                         fi
 
@@ -107,7 +107,7 @@ fn write_subword_fn<W: Write>(
                         if [[ $subword == $candidate* ]]; then
                             match_len=${{#candidate}}
                             char_index=$((char_index + match_len))
-                            state=${{state_commands[$cmd_id]}}
+                            subword_state=${{state_commands[$cmd_id]}}
                             continue 3
                         fi
                     done
@@ -122,7 +122,7 @@ fn write_subword_fn<W: Write>(
         write!(
             buffer,
             r#"
-        if [[ -v "star_transitions[$state]" ]]; then
+        if [[ -v "star_transitions[$subword_state]" ]]; then
             matched=1
             break
         fi
@@ -159,7 +159,7 @@ fn write_subword_fn<W: Write>(
     local -a subword_matches=()
     for (( subword_fallback_level=0; subword_fallback_level <= max_fallback_level; subword_fallback_level++ )) {{
         eval "local literal_transitions_name=literal_transitions_level_${{subword_fallback_level}}"
-        eval "local -a transitions=(\${{$literal_transitions_name[$state]}})"
+        eval "local -a transitions=(\${{$literal_transitions_name[$subword_state]}})"
         for literal_id in "${{transitions[@]}}"; do
             local literal=${{literals[$literal_id]}}
             subword_candidates+=("$matched_prefix$literal")
@@ -173,7 +173,7 @@ fn write_subword_fn<W: Write>(
             buffer,
             r#"
         eval "local commands_name=commands_level_${{subword_fallback_level}}"
-        eval "local -a transitions=(\${{$commands_name[$state]}})"
+        eval "local -a transitions=(\${{$commands_name[$subword_state]}})"
         for command_id in "${{transitions[@]}}"; do
             readarray -t subword_candidates < <(_{command}_cmd_$command_id "$completed_prefix" "$matched_prefix" | while read -r f1 _; do echo "$f1"; done)
             local -a filtered_candidates=()
@@ -353,7 +353,7 @@ fn write_subword_wrapper_fn<W: Write>(
     )?;
     writeln!(
         buffer,
-        r#"    local state={starting_state}"#,
+        r#"    local subword_state={starting_state}"#,
         starting_state = dfa.starting_state
     )?;
 
