@@ -106,7 +106,7 @@ complgen's grammar is based on
 [compleat](https://github.com/mbrubeck/compleat/blob/master/README.markdown#syntax)'s one.
 
 A grammar is a series of lines separated by a semicolon (`;`).  Each line either represents a single variant
-of invoking the completed command (e.g. `git status; git log`) or is a nonterminal definition (`<FOO> ::=
+of invoking the completed command (e.g. `git status; git log`) or is a nonterminal definition (`<FOO> =
 bar`).
 
  * `a b` matches `a` followed by `b`.
@@ -132,7 +132,7 @@ There's a small set of predefined nonterminals that are handled specially by `co
 |`<PATH>`       | ✅   | ✅   | ✅  | ✅   | file or directory path |
 |`<DIRECTORY>`  | ✅   | ✅   | ✅  | ✅   | directory path |
 
-These can still be redefined in the grammar (`<PATH> ::= ...`), in which case their predefined meaning gets
+These can still be redefined in the grammar (`<PATH> = ...`), in which case their predefined meaning gets
 overridden.
 
 ### Completion Descriptions (fish/zsh/pwsh)
@@ -187,10 +187,10 @@ function for it:
 
 ```
 cmd <USER>;
-<USER@bash> ::= {{{ compgen -A user | sort | uniq }}}; # produce candidates on stdout under bash
-<USER@fish> ::= {{{ __fish_complete_users }}}; # produce candidates on stdout under fish
-<USER@zsh> ::= {{{ _users }}}; # produce candidates via compadd and friends under zsh
-<USER@pwsh> ::= {{{ Get-LocalUser | ForEach-Object { $_.Name } }}}; # PowerShell
+<USER@bash> = {{{ compgen -A user | sort | uniq }}}; # produce candidates on stdout under bash
+<USER@fish> = {{{ __fish_complete_users }}}; # produce candidates on stdout under fish
+<USER@zsh> = {{{ _users }}}; # produce candidates via compadd and friends under zsh
+<USER@pwsh> = {{{ Get-LocalUser | ForEach-Object { $_.Name } }}}; # PowerShell
 ```
 
 complgen will pick the right definition of `<USER>` depending on what you're compiling the grammar to.
@@ -209,9 +209,9 @@ The same mechanism works for more complicated things:
 
 ```
 strace -e <EXPR>;
-<EXPR> ::= [<qualifier>=][!]<value>[,<value>]...;
-<qualifier> ::= trace | read | write | fault;
-<value> ::= %file | file | all;
+<EXPR> = [<qualifier>=][!]<value>[,<value>]...;
+<qualifier> = trace | read | write | fault;
+<value> = %file | file | all;
 ```
 
 The above grammar was pulled straight out of [`strace` man
@@ -252,8 +252,8 @@ _fallbacks_ (`||`).  An abridged version version of the above would look like be
 
 ```
 mygit (<SUBCOMMAND> || <OPTION>);
-<SUBCOMMAND> ::= fetch | add | commit | push;
-<OPTION> ::= --help | --version;
+<SUBCOMMAND> = fetch | add | commit | push;
+<OPTION> = --help | --version;
 ```
 
 The effect:

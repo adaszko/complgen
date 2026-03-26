@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Unreleased
 ### Added
 
- * `<nonterminal> = ...;` syntax is now supported in addition to `<nonterminal> ::= ...;`
+ * `<nonterminal> ::= ...;` is now deprecated and `<nonterminal> = ...;` is preferred
 
 ## 0.8.3
 ### Fixed

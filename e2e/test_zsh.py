@@ -218,11 +218,11 @@ def test_zsh_uses_correct_description_with_duplicated_literals(
     GRAMMAR = """
 cmd <COMMAND> [--help];
 
-<COMMAND> ::= rm           "Remove a project" <RM-OPTION>
+<COMMAND> = rm           "Remove a project" <RM-OPTION>
             | remote       "Manage a project's remotes" [<REMOTE-SUBCOMMAND>]
             ;
 
-<REMOTE-SUBCOMMAND> ::= rm <name>;
+<REMOTE-SUBCOMMAND> = rm <name>;
 """
 
     assert get_sorted_completions(complgen_binary_path, GRAMMAR, "cmd ") == sorted(
@@ -236,7 +236,7 @@ def test_zsh_uses_correct_description_with_duplicated_descriptions(
     GRAMMAR = """
 mygrep [<OPTION>]...;
 
-<OPTION> ::= --color    "use markers to highlight the matching strings" [<WHEN>]
+<OPTION> = --color    "use markers to highlight the matching strings" [<WHEN>]
            | --colour   "use markers to highlight the matching strings" [<WHEN>]
            ;
 """
@@ -297,7 +297,7 @@ def test_external_command_completes_subword(complgen_binary_path: Path):
 def test_nontail_external_command(complgen_binary_path: Path):
     GRAMMAR = r"""
 cmd <CMD> <CMD>;
-<CMD> ::= {{{ echo foo; echo bar; }}};
+<CMD> = {{{ echo foo; echo bar; }}};
 """
     assert [
         s.split() for s in get_sorted_completions(complgen_binary_path, GRAMMAR, "cmd ")
@@ -332,7 +332,7 @@ cmd <CMD> <CMD>;
 def test_subword_nontail_external_command(complgen_binary_path: Path):
     GRAMMAR = r"""
 cmd <CMD>..<CMD>;
-<CMD> ::= {{{ echo foo; echo bar; echo baz; }}};
+<CMD> = {{{ echo foo; echo bar; echo baz; }}};
 """
     assert [
         s.split() for s in get_sorted_completions(complgen_binary_path, GRAMMAR, "cmd ")
@@ -367,7 +367,7 @@ cmd <CMD>..<CMD>;
 def test_nontail_external_command_specialized(complgen_binary_path: Path):
     GRAMMAR = r"""
 cmd <CMD>..<CMD>;
-<CMD@zsh> ::= {{{ compadd foo; compadd bar; compadd baz; }}};
+<CMD@zsh> = {{{ compadd foo; compadd bar; compadd baz; }}};
 """
     assert [
         s.split() for s in get_sorted_completions(complgen_binary_path, GRAMMAR, "cmd ")
@@ -402,8 +402,8 @@ cmd <CMD>..<CMD>;
 def test_specializes_for_zsh(complgen_binary_path: Path):
     GRAMMAR = """
 cmd <FOO>;
-<FOO> ::= {{{ echo foo }}};
-<FOO@zsh> ::= {{{ compadd zsh }}};
+<FOO> = {{{ echo foo }}};
+<FOO@zsh> = {{{ compadd zsh }}};
 """
     assert get_sorted_completions(complgen_binary_path, GRAMMAR, "cmd ") == sorted(
         ["zsh"]
@@ -413,7 +413,7 @@ cmd <FOO>;
 def test_specializes_for_zsh_fallbacks(complgen_binary_path: Path):
     GRAMMAR = """
 cmd (<FOO> || completion-fallback);
-<FOO@zsh> ::= {{{ compadd completion-specialized }}};
+<FOO@zsh> = {{{ compadd completion-specialized }}};
 """
     assert get_sorted_completions(
         complgen_binary_path, GRAMMAR, "cmd completion-"
@@ -423,7 +423,7 @@ cmd (<FOO> || completion-fallback);
 def test_subword_specializes_for_zsh_fallbacks(complgen_binary_path: Path):
     GRAMMAR = """
 cmd --opt=(<FOO> || completion-fallback);
-<FOO@zsh> ::= {{{ compadd completion-specialized }}};
+<FOO@zsh> = {{{ compadd completion-specialized }}};
 """
     assert get_sorted_completions(
         complgen_binary_path, GRAMMAR, "cmd --opt=c"
@@ -433,9 +433,9 @@ cmd --opt=(<FOO> || completion-fallback);
 def test_mycargo(complgen_binary_path: Path):
     GRAMMAR = r"""
 cargo [+<toolchain>] [<COMMAND>];
-<toolchain> ::= {{{ echo toolchain }}};
-<COMMAND> ::= t "Run the tests" <TESTNAME>;
-<TESTNAME> ::= {{{ echo testname }}};
+<toolchain> = {{{ echo toolchain }}};
+<COMMAND> = t "Run the tests" <TESTNAME>;
+<TESTNAME> = {{{ echo testname }}};
 """
 
     assert get_sorted_completions(complgen_binary_path, GRAMMAR, "cargo t ") == sorted(
@@ -447,7 +447,7 @@ def test_matches_prefix(complgen_binary_path: Path):
     GRAMMAR = """
 cargo +<toolchain> foo;
 cargo test --test testname;
-<toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
+<toolchain> = stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 """
     assert get_sorted_completions(
         complgen_binary_path, GRAMMAR, "cargo +stable-aarch64-apple-darwin "
@@ -457,7 +457,7 @@ cargo test --test testname;
 def test_completes_prefix(complgen_binary_path: Path):
     GRAMMAR = """
 cargo +<toolchain>;
-<toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
+<toolchain> = stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 """
     actual = [
         s.split()
@@ -534,7 +534,7 @@ def test_subword_descriptions(complgen_binary_path: Path):
 def test_subword_descriptions_bug(complgen_binary_path: Path):
     GRAMMAR = r"""
 cmd --binary-files=<TYPE> "assume that binary files are <TYPE>";
-<TYPE> ::= binary "Search binary files but do not print them"
+<TYPE> = binary "Search binary files but do not print them"
          | text "Treat all files as text"
          | without-match "Do not search binary files";
 """
@@ -607,7 +607,7 @@ def test_subword_fallbacks_on_no_matches(complgen_binary_path: Path):
 def test_subword_fallback_bug(complgen_binary_path: Path):
     GRAMMAR = r"""
 cmd (--color=<WHEN> || --color <WHEN> | --colour=<WHEN> | --colour <WHEN>);
-<WHEN> ::= always | never | auto;
+<WHEN> = always | never | auto;
 """
     assert get_sorted_completions(
         complgen_binary_path, GRAMMAR, "cmd --colour"

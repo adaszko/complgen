@@ -1665,7 +1665,7 @@ fn check_subword_spaces(
 // Disallows spaces in subword expressions, e.g.
 //
 // aerc :<COMMAND>;
-// <COMMAND> ::= quit -f;
+// <COMMAND> = quit -f;
 //
 // On deeply nested <NONTERM>s, this can lead to [surprising spaces removal](https://github.com/adaszko/complgen/issues/63) so forbid it completely.
 fn do_check_subword_spaces(
@@ -3058,8 +3058,8 @@ darcs convert ( ( --repo-name <DIRECTORY> | --repodir <DIRECTORY> ) | ( --set-sc
     fn parses_nonterminal_definition() {
         const INPUT: &str = r#"
 grep [<OPTION>]... <PATTERNS> [<FILE>]...;
-<OPTION> ::= --color <WHEN>;
-<WHEN> ::= always | never | auto;
+<OPTION> = --color <WHEN>;
+<WHEN> = always | never | auto;
 "#;
         let mut g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements.len(), 3);
@@ -3115,7 +3115,7 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
         );
         assert!(teq(*expr_id, expected_expr1_id, &g.arena));
 
-        // Statement 2: <OPTION> ::= ...
+        // Statement 2: <OPTION> = ...
         let (symbol, shell, expr_id2) = match &g.statements[1] {
             Statement::NonterminalDefinition(NontermDefn {
                 lhs_name: symbol,
@@ -3138,7 +3138,7 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
         );
         assert!(teq(*expr_id2, expected_expr2_id, &g.arena));
 
-        // Statement 3: <WHEN> ::= ...
+        // Statement 3: <WHEN> = ...
         let (symbol, shell, expr_id3) = match &g.statements[2] {
             Statement::NonterminalDefinition(NontermDefn {
                 lhs_name: symbol,
@@ -3175,7 +3175,7 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
     fn parses_comments() {
         const INPUT: &str = r#"
 # sample comment
-<OPTION> ::= --extended-regexp                      # "PATTERNS are extended regular expressions"
+<OPTION> = --extended-regexp                      # "PATTERNS are extended regular expressions"
            | --fixed-strings                        # "PATTERNS are strings"
            | --basic-regexp                         # "PATTERNS are basic regular expressions"
            | --perl-regexp                          # "PATTERNS are Perl regular expressions"
@@ -3420,7 +3420,7 @@ cargo [+{{{ rustup toolchain list | cut -d' ' -f1 }}}]
     fn parses_prefix_grammar() {
         const INPUT: &str = r#"
 grep --color=<WHEN> --version;
-<WHEN> ::= always | never | auto;
+<WHEN> = always | never | auto;
 "#;
         let mut g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements.len(), 2);
@@ -3456,7 +3456,7 @@ grep --color=<WHEN> --version;
         );
         assert!(teq(*expr_id, expected_expr1_id, &g.arena));
 
-        // Statement 2: <WHEN> ::= ...
+        // Statement 2: <WHEN> = ...
         let (symbol, shell, expr_id2) = match &g.statements[1] {
             Statement::NonterminalDefinition(NontermDefn {
                 lhs_name: symbol,
@@ -3528,9 +3528,9 @@ grep --color=(always | never | auto);
         use Statement::*;
         const INPUT: &str = r#"
 strace -e <EXPR>;
-<EXPR> ::= [<qualifier>=][!]<value>[,<value>]...;
-<qualifier> ::= trace | read | write | fault;
-<value> ::= %file | file | all;
+<EXPR> = [<qualifier>=][!]<value>[,<value>]...;
+<qualifier> = trace | read | write | fault;
+<value> = %file | file | all;
 "#;
         let mut g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements.len(), 4);
@@ -3681,9 +3681,9 @@ strace -e <EXPR>;
         use Statement::*;
         const INPUT: &str = r#"
 lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
-<PROTOCOL> ::= TCP | UDP;
-<STATE-SPEC> ::= [^]<STATE>;
-<STATE> ::= LISTEN | CLOSED;
+<PROTOCOL> = TCP | UDP;
+<STATE-SPEC> = [^]<STATE>;
+<STATE> = LISTEN | CLOSED;
 "#;
         let mut g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements.len(), 4);
@@ -3817,7 +3817,7 @@ lsof -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
     fn parses_shell_command_nonterminal_definition() {
         const INPUT: &str = r#"
 cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
-<toolchain> ::= {{{ rustup toolchain list | cut -d' ' -f1 }}};
+<toolchain> = {{{ rustup toolchain list | cut -d' ' -f1 }}};
 "#;
         let mut g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements.len(), 2);
@@ -3985,8 +3985,8 @@ grep --extended-regexp "PATTERNS are extended regular expressions";
     fn detects_duplicated_nonterminals() {
         const INPUT: &str = r#"
 grep [<OPTION>]... <PATTERNS> [<FILE>]...;
-<OPTION> ::= --color <WHEN>;
-<OPTION> ::= always | never | auto;
+<OPTION> = --color <WHEN>;
+<OPTION> = always | never | auto;
 "#;
         let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert!(matches!(
@@ -4034,8 +4034,8 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
         use Statement::*;
         const INPUT: &str = r#"
 ls <FILE>;
-<FILE@bash> ::= {{{ compgen -A file "$1" }}};
-<FILE@fish> ::= {{{ __fish_complete_path "$1" }}};
+<FILE@bash> = {{{ compgen -A file "$1" }}};
+<FILE@fish> = {{{ __fish_complete_path "$1" }}};
 "#;
         let mut g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert_eq!(g.statements.len(), 3);
@@ -4372,9 +4372,9 @@ ls <FILE>;
     fn issue_71() {
         const INPUT: &str = r#"
 srun --acctg-freq=<FREQ>;
-<FREQ> ::= <DATATYPE>=<INTERVAL>;
-<DATATYPE> ::= task | energy | network | filesystem;
-<INTERVAL> ::= <NUM>[s|m|h];
+<FREQ> = <DATATYPE>=<INTERVAL>;
+<DATATYPE> = task | energy | network | filesystem;
+<INTERVAL> = <NUM>[s|m|h];
 "#;
         let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         assert!(matches!(ValidGrammar::from_grammar(g, Shell::Bash), Ok(_)));

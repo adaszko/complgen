@@ -38,7 +38,7 @@ For the following grammar:
 ```
 grep [<OPTION>]... <PATTERNS> [<FILE>]...;
 
-<OPTION> ::= --extended-regexp                      "PATTERNS are extended regular expressions"
+<OPTION> = --extended-regexp                      "PATTERNS are extended regular expressions"
            | --fixed-strings                        "PATTERNS are strings"
            | --basic-regexp                         "PATTERNS are basic regular expressions"
            | --perl-regexp                          "PATTERNS are Perl regular expressions"
@@ -88,15 +88,15 @@ grep [<OPTION>]... <PATTERNS> [<FILE>]...;
            | --binary                               "do not strip CR characters at EOL (MSDOS/Windows)"
            ;
 
-<ACTION-DIRECTORIES> ::= read | recurse | skip;
+<ACTION-DIRECTORIES> = read | recurse | skip;
 
-<ACTION-DEVICES> ::= read | skip;
+<ACTION-DEVICES> = read | skip;
 
-<TYPE> ::= binary | text | without-match;
+<TYPE> = binary | text | without-match;
 
-<WHEN> ::= always | never | auto;
+<WHEN> = always | never | auto;
 
-<FILE> ::= {{{ ls }}};
+<FILE> = {{{ ls }}};
 ```
 
 A regular expression is first constructed:

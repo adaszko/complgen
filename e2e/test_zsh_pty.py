@@ -132,8 +132,8 @@ def test_autoload(complgen_binary_path: Path):
 def test_subword_specialization(complgen_binary_path: Path):
     GRAMMAR = r"""
 cmd --option=<FOO>;
-<FOO> ::= {{{ echo generic }}};
-<FOO@zsh> ::= {{{ compadd zsh }}};
+<FOO> = {{{ echo generic }}};
+<FOO@zsh> = {{{ compadd zsh }}};
 """
     bracketed_pastes = get_autoloaded_completion_output(
         complgen_binary_path, GRAMMAR, "cmd", b"cmd --option=	"

@@ -219,11 +219,11 @@ def test_bash_uses_correct_transition_with_duplicated_literals(
     GRAMMAR = """
 cmd <COMMAND> [--help];
 
-<COMMAND> ::= rm           "Remove a project" <RM-OPTION>
+<COMMAND> = rm           "Remove a project" <RM-OPTION>
             | remote       "Manage a project's remotes" [<REMOTE-SUBCOMMAND>]
             ;
 
-<REMOTE-SUBCOMMAND> ::= rm <name>;
+<REMOTE-SUBCOMMAND> = rm <name>;
 """
 
     with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
@@ -269,7 +269,7 @@ cmd {{{ echo -e "completion\tdescription" }}};
 def test_nontail_external_command(complgen_binary_path: Path):
     GRAMMAR = r"""
 cmd <CMD> <CMD>;
-<CMD> ::= {{{ echo foo; echo bar; }}};
+<CMD> = {{{ echo foo; echo bar; }}};
 """
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
         input = (
@@ -293,7 +293,7 @@ cmd <CMD> <CMD>;
 def test_subword_nontail_external_command(complgen_binary_path: Path):
     GRAMMAR = r"""
 cmd <CMD>..<CMD>;
-<CMD> ::= {{{ echo foo; echo bar; echo baz; }}};
+<CMD> = {{{ echo foo; echo bar; echo baz; }}};
 """
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
         input = (
@@ -321,7 +321,7 @@ cmd <CMD>..<CMD>;
 
 def test_specializes_for_bash(complgen_binary_path: Path):
     GRAMMAR = (
-        """cmd <FOO>; <FOO> ::= {{{ echo foo }}}; <FOO@bash> ::= {{{ echo bash }}};"""
+        """cmd <FOO>; <FOO> = {{{ echo foo }}}; <FOO@bash> = {{{ echo bash }}};"""
     )
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
         input = (
@@ -333,7 +333,7 @@ def test_specializes_for_bash(complgen_binary_path: Path):
 def test_mycargo(complgen_binary_path: Path):
     GRAMMAR = r"""
 mycargo test <TESTNAME>;
-<TESTNAME> ::= {{{ echo foo; echo bar }}};
+<TESTNAME> = {{{ echo foo; echo bar }}};
 """
     with completion_script_path(complgen_binary_path, GRAMMAR) as completions_file_path:
         assert get_sorted_bash_completions(
@@ -346,7 +346,7 @@ def test_matches_prefix(complgen_binary_path: Path):
     GRAMMAR = """
 cargo +<toolchain> foo;
 cargo test --test testname;
-<toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
+<toolchain> = stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 """
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
         input = r'''COMP_WORDS=(cargo +stable-aarch64-apple-darwin); COMP_CWORD=2; _cargo; printf '%s\n' "${COMPREPLY[@]}"'''
@@ -356,7 +356,7 @@ cargo test --test testname;
 def test_completes_prefix(complgen_binary_path: Path):
     GRAMMAR = """
 cargo +<toolchain>;
-<toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
+<toolchain> = stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 """
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
         input = r'''COMP_WORDS=(cargo +); COMP_CWORD=1; _cargo; printf '%s\n' "${COMPREPLY[@]}"'''
@@ -398,8 +398,8 @@ def test_completes_subword_external_command(complgen_binary_path: Path):
 def test_subword_specialization(complgen_binary_path: Path):
     GRAMMAR = r"""
 cmd --option=<FOO>;
-<FOO> ::= {{{ echo generic }}};
-<FOO@bash> ::= {{{ echo bash }}};
+<FOO> = {{{ echo generic }}};
+<FOO@bash> = {{{ echo bash }}};
 """
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
         input = r'''COMP_WORDS=(cmd --option=); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''

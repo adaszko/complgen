@@ -947,9 +947,9 @@ mod tests {
     fn lsof_bug() {
         const GRAMMAR: &str = "
 lsf -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
-<PROTOCOL> ::= TCP | UDP;
-<STATE-SPEC> ::= [^]<STATE>;
-<STATE> ::= LISTEN | CLOSED;
+<PROTOCOL> = TCP | UDP;
+<STATE-SPEC> = [^]<STATE>;
+<STATE> = LISTEN | CLOSED;
 ";
 
         assert!(matches!(get_validated_grammar(GRAMMAR), Ok(_)));
@@ -973,31 +973,31 @@ lsf -s<PROTOCOL>:<STATE-SPEC>[,<STATE-SPEC>]...;
         // https://github.com/adaszko/complgen/issues/49
         assert!(matches!(
             get_validated_grammar(
-                r#"build <PLATFORM>-(amd64|arm64); <PLATFORM> ::= {{{ echo foo }}};"#
+                r#"build <PLATFORM>-(amd64|arm64); <PLATFORM> = {{{ echo foo }}};"#
             ),
             Ok(_)
         ));
         assert!(matches!(
             get_validated_grammar(
-                r#"build <PLATFORM>[-(amd64|arm64)]; <PLATFORM> ::= {{{ echo foo }}};"#
+                r#"build <PLATFORM>[-(amd64|arm64)]; <PLATFORM> = {{{ echo foo }}};"#
             ),
             Ok(_)
         ));
 
         // https://github.com/adaszko/complgen/issues/53
         assert!(matches!(
-            get_validated_grammar(r#"cmd <DUMMY>,<DUMMY>; <DUMMY@bash> ::= {{{ echo dummy }}};"#),
+            get_validated_grammar(r#"cmd <DUMMY>,<DUMMY>; <DUMMY@bash> = {{{ echo dummy }}};"#),
             Ok(_)
         ));
         assert!(matches!(
-            get_validated_grammar(r#"cmd --option=<FOO>; <FOO@bash> ::= {{{ echo bash }}};"#),
+            get_validated_grammar(r#"cmd --option=<FOO>; <FOO@bash> = {{{ echo bash }}};"#),
             Ok(_)
         ));
         assert!(matches!(
             get_validated_grammar(
                 r#"
 duf -hide-fs <FS>[,<FS>]...;
-<FS@fish> ::= {{{ string split ' ' --fields 3 </proc/mounts | sort --unique }}};
+<FS@fish> = {{{ string split ' ' --fields 3 </proc/mounts | sort --unique }}};
 "#
             ),
             Err(Error::UnboundedMatchable(_, _))

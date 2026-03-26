@@ -107,7 +107,7 @@ def test_ambiguous_transition7(complgen_binary_path: Path):
 def test_ambiguous_transition8(complgen_binary_path: Path):
     GRAMMAR = """
 mygit (<command> || [-c <name>=<value>] <command>);
-<command> ::= clone;
+<command> = clone;
 """
     r = complgen_check(complgen_binary_path, GRAMMAR)
     assert r.returncode == 1
@@ -129,11 +129,11 @@ def test_issue_45(complgen_binary_path: Path):
     GRAMMAR = r"""
 hyprctl [<OPTION>]... <COMMAND>;
 
-<COMMAND> ::= animations          "list animations and beziers (not in --help)"
+<COMMAND> = animations          "list animations and beziers (not in --help)"
             | switchxkblayout     "switch keyboard layout" <DEVICE> (next | prev)
             ;
 
-<DEVICE> ::= {{{ hyprctl devices -j | awk '/^"keyboards"/,/^\],$/' | sed -n 's/.*"name": "\(.*\)".*/\1/p' }}};
+<DEVICE> = {{{ hyprctl devices -j | awk '/^"keyboards"/,/^\],$/' | sed -n 's/.*"name": "\(.*\)".*/\1/p' }}};
 """
     assert complgen_check(complgen_binary_path, GRAMMAR).returncode == 0
 
@@ -158,24 +158,24 @@ def test_subword_spaces_detection1(complgen_binary_path: Path):
 
 def test_subword_spaces_detection2(complgen_binary_path: Path):
     r = complgen_check(
-        complgen_binary_path, """aerc :<COMMAND>; <COMMAND> ::= quit -f;"""
+        complgen_binary_path, """aerc :<COMMAND>; <COMMAND> = quit -f;"""
     )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
--:1:32:error: Adjacent literals in expression used in a subword context
+-:1:30:error: Adjacent literals in expression used in a subword context
   |
-1 | aerc :<COMMAND>; <COMMAND> ::= quit -f;
-  |                                ^^^^ First one
+1 | aerc :<COMMAND>; <COMMAND> = quit -f;
+  |                              ^^^^ First one
   |
--:1:37:error
+-:1:35:error
   |
-1 | aerc :<COMMAND>; <COMMAND> ::= quit -f;
-  |                                     ^^ Second one
+1 | aerc :<COMMAND>; <COMMAND> = quit -f;
+  |                                   ^^ Second one
   |
   = help: Join the adjacent literals into one as spaces are invalid in a subword context
 -:1:7:error: Referenced in a subword context at
   |
-1 | aerc :<COMMAND>; <COMMAND> ::= quit -f;
+1 | aerc :<COMMAND>; <COMMAND> = quit -f;
   |       ^^^^^^^^^
   |
 """)
@@ -191,13 +191,13 @@ aerc [<OPTION>]... :<COMMAND>;
 
 # shortened for brevity
 
-<COMMAND> ::= (help <topic> | man <topic>) "show help page inside aerc"
+<COMMAND> = (help <topic> | man <topic>) "show help page inside aerc"
     # shortened for brevity
     | (quit <QUIT_ARGS> | exit <QUIT_ARGS> | q <QUIT_ARGS>) "exit aerc"
     | (redraw) "force a full redraw of the screen"
     ;
 
-<QUIT_ARGS> ::= ( -f) "force close aerc"
+<QUIT_ARGS> = ( -f) "force close aerc"
     ;""",
     )
     assert r.returncode == 1
@@ -207,10 +207,10 @@ aerc [<OPTION>]... :<COMMAND>;
 10 |     | (quit <QUIT_ARGS> | exit <QUIT_ARGS> | q <QUIT_ARGS>) "exit aerc"
    |        ^^^^ First one
    |
--:14:19:error
+-:14:17:error
    |
-14 | <QUIT_ARGS> ::= ( -f) "force close aerc"
-   |                   ^^ Second one
+14 | <QUIT_ARGS> = ( -f) "force close aerc"
+   |                 ^^ Second one
    |
    = help: Join the adjacent literals into one as spaces are invalid in a subword context
 -:4:21:error: Referenced in a subword context at
@@ -442,14 +442,14 @@ def test_unknown_shell(complgen_binary_path: Path):
         complgen_binary_path,
         """
 foo quux;
-<BAR@quux> ::= {{{ echo foo }}};
+<BAR@quux> = {{{ echo foo }}};
 """,
     )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 -:3:6:error: Unknown shell
   |
-3 | <BAR@quux> ::= {{{ echo foo }}};
+3 | <BAR@quux> = {{{ echo foo }}};
   |      ^^^^
   |
   = help: Can only use one of: bash, fish, zsh, pwsh
@@ -478,26 +478,26 @@ def test_nonterminal_cycle_outer(complgen_binary_path: Path):
         complgen_binary_path,
         """
 cmd <FOO>;
-<FOO> ::= <BAR>;
-<BAR> ::= <FOO>;
+<FOO> = <BAR>;
+<BAR> = <FOO>;
 """,
     )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 -:3:1:error: Nonterminal definitions cycle
   |
-3 | <FOO> ::= <BAR>;
+3 | <FOO> = <BAR>;
   | ^^^^^
   |
--:3:11:error: Nonterminal definitions cycle
+-:3:9:error: Nonterminal definitions cycle
   |
-3 | <FOO> ::= <BAR>;
-  |           ^^^^^
+3 | <FOO> = <BAR>;
+  |         ^^^^^
   |
--:4:11:error: Nonterminal definitions cycle
+-:4:9:error: Nonterminal definitions cycle
   |
-4 | <BAR> ::= <FOO>;
-  |           ^^^^^
+4 | <BAR> = <FOO>;
+  |         ^^^^^
   |
 """)
 
@@ -507,32 +507,32 @@ def test_nonterminal_cycle_inner(complgen_binary_path: Path):
         complgen_binary_path,
         """
 cmd <FOO>;
-<FOO> ::= <BAR>;
-<BAR> ::= <QUUX>;
-<QUUX> ::= <BAR>;
+<FOO> = <BAR>;
+<BAR> = <QUUX>;
+<QUUX> = <BAR>;
 """,
     )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 -:3:1:error: Nonterminal definitions cycle
   |
-3 | <FOO> ::= <BAR>;
+3 | <FOO> = <BAR>;
   | ^^^^^
   |
--:3:11:error: Nonterminal definitions cycle
+-:3:9:error: Nonterminal definitions cycle
   |
-3 | <FOO> ::= <BAR>;
-  |           ^^^^^
+3 | <FOO> = <BAR>;
+  |         ^^^^^
   |
--:4:11:error: Nonterminal definitions cycle
+-:4:9:error: Nonterminal definitions cycle
   |
-4 | <BAR> ::= <QUUX>;
-  |           ^^^^^^
+4 | <BAR> = <QUUX>;
+  |         ^^^^^^
   |
--:5:12:error: Nonterminal definitions cycle
+-:5:10:error: Nonterminal definitions cycle
   |
-5 | <QUUX> ::= <BAR>;
-  |            ^^^^^
+5 | <QUUX> = <BAR>;
+  |          ^^^^^
   |
 """)
 
@@ -542,16 +542,16 @@ def test_non_command_specialization(complgen_binary_path: Path):
         complgen_binary_path,
         """
 cmd <FOO>;
-<FOO@bash> ::= foo;
-<FOO@bash> ::= bar;
+<FOO@bash> = foo;
+<FOO@bash> = bar;
 """,
     )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
--:3:16:error: Can only specialize external commands
+-:3:14:error: Can only specialize external commands
   |
-3 | <FOO@bash> ::= foo;
-  |                ^^^
+3 | <FOO@bash> = foo;
+  |              ^^^
   |
   = help: Use a {{{ ... }}} command here instead
 """)
@@ -562,20 +562,20 @@ def test_duplicated_nonterminal_definition(complgen_binary_path: Path):
         complgen_binary_path,
         """
 cmd <FOO>;
-<FOO> ::= foo;
-<FOO> ::= bar;
+<FOO> = foo;
+<FOO> = bar;
 """,
     )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 -:4:1:error: Duplicate nonterminal definition
   |
-4 | <FOO> ::= bar;
+4 | <FOO> = bar;
   | ^^^^^
   |
 -:3:1:error: Previous definition
   |
-3 | <FOO> ::= foo;
+3 | <FOO> = foo;
   | ^^^^^
   |
 """)
@@ -586,20 +586,20 @@ def test_duplicated_nonterminal_definition_specialization(complgen_binary_path: 
         complgen_binary_path,
         """
 cmd <FOO>;
-<FOO@bash> ::= {{{ echo foo }}};
-<FOO@bash> ::= {{{ echo bar }}};
+<FOO@bash> = {{{ echo foo }}};
+<FOO@bash> = {{{ echo bar }}};
 """,
     )
     assert r.returncode == 1
     assert r.stderr == snapshot("""\
 -:4:1:error: Duplicate nonterminal definition
   |
-4 | <FOO@bash> ::= {{{ echo bar }}};
+4 | <FOO@bash> = {{{ echo bar }}};
   | ^^^^^^^^^^
   |
 -:3:1:error: Previous definition
   |
-3 | <FOO@bash> ::= {{{ echo foo }}};
+3 | <FOO@bash> = {{{ echo foo }}};
   | ^^^^^^^^^^
   |
 """)
@@ -610,14 +610,14 @@ def test_unused_specialization(complgen_binary_path: Path):
         complgen_binary_path,
         """
 foo bar;
-<foo@bash> ::= {{{ : }}};
+<foo@bash> = {{{ : }}};
 """,
     )
     assert r.returncode == 0
     assert r.stderr == snapshot("""\
 -:3:1:warning: Unused specialization
   |
-3 | <foo@bash> ::= {{{ : }}};
+3 | <foo@bash> = {{{ : }}};
   | ----------
   |
 """)
@@ -629,9 +629,9 @@ def test_unused_specialization_issue68(complgen_binary_path: Path):
         complgen_binary_path,
         """
 spec_test <COMMAND>;
-<COMMAND> ::= command <ID>;
-<ID@bash> ::= {{{ : }}};
-<ID@zsh> ::= {{{ : }}};
+<COMMAND> = command <ID>;
+<ID@bash> = {{{ : }}};
+<ID@zsh> = {{{ : }}};
 """,
     )
     assert r.returncode == 0
@@ -643,16 +643,16 @@ def test_transitive_unused_specialization(complgen_binary_path: Path):
         complgen_binary_path,
         """
 cmd foo;
-<BAR> ::= <BAZ>;
-<BAZ@bash> ::= {{{ : }}};
-<BAZ@zsh> ::= {{{ : }}};
+<BAR> = <BAZ>;
+<BAZ@bash> = {{{ : }}};
+<BAZ@zsh> = {{{ : }}};
 """,
     )
     assert r.returncode == 0
     assert r.stderr == snapshot("""\
 -:3:1:warning: Unused
   |
-3 | <BAR> ::= <BAZ>;
+3 | <BAR> = <BAZ>;
   | -----
   |
 """)

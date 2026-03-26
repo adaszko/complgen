@@ -241,11 +241,11 @@ def test_fish_uses_correct_description_with_duplicated_literals(
     GRAMMAR = """
 cmd <COMMAND> [--help];
 
-<COMMAND> ::= rm           "Remove a project" <RM-OPTION>
+<COMMAND> = rm           "Remove a project" <RM-OPTION>
             | remote       "Manage a project's remotes" [<REMOTE-SUBCOMMAND>]
             ;
 
-<REMOTE-SUBCOMMAND> ::= rm <name>;
+<REMOTE-SUBCOMMAND> = rm <name>;
 """
 
     with gen_fish_completion_script_path(
@@ -264,7 +264,7 @@ def test_fish_uses_correct_description_with_duplicated_descriptions(
     GRAMMAR = """
 cmd [<OPTION>]...;
 
-<OPTION> ::= --color    "use markers to highlight the matching strings" [<WHEN>]
+<OPTION> = --color    "use markers to highlight the matching strings" [<WHEN>]
            | --colour   "use markers to highlight the matching strings" [<WHEN>]
            ;
 """
@@ -329,7 +329,7 @@ cmd --ref={{{echo foo; echo bar; echo baz;}}};
 def test_nontail_external_command(complgen_binary_path: Path):
     GRAMMAR = r"""
 cmd <CMD> <CMD>;
-<CMD> ::= {{{ echo foo; echo bar; }}};
+<CMD> = {{{ echo foo; echo bar; }}};
 """
 
     with gen_fish_completion_script_path(
@@ -389,7 +389,7 @@ cmd <CMD> <CMD>;
 def test_subword_nontail_external_command(complgen_binary_path: Path):
     GRAMMAR = r"""
 cmd <CMD>..<CMD>;
-<CMD> ::= {{{ echo foo; echo bar; echo baz; }}};
+<CMD> = {{{ echo foo; echo bar; echo baz; }}};
 """
 
     with gen_fish_completion_script_path(
@@ -450,7 +450,7 @@ cmd <CMD>..<CMD>;
 
 def test_specializes_for_fish(complgen_binary_path: Path):
     GRAMMAR = (
-        """cmd <FOO>; <FOO> ::= {{{ echo foo }}}; <FOO@fish> ::= {{{ echo fish }}};"""
+        """cmd <FOO>; <FOO> = {{{ echo foo }}}; <FOO@fish> = {{{ echo fish }}};"""
     )
     with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
@@ -465,7 +465,7 @@ def test_matches_prefix(complgen_binary_path: Path):
     GRAMMAR = """
 cmd +<toolchain> foo;
 cmd test --test testname;
-<toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
+<toolchain> = stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 """
     with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
@@ -478,7 +478,7 @@ cmd test --test testname;
 def test_completes_prefix(complgen_binary_path: Path):
     GRAMMAR = """
 cargo +<toolchain>;
-<toolchain> ::= stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
+<toolchain> = stable-aarch64-apple-darwin | stable-x86_64-apple-darwin;
 """
     with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
@@ -555,8 +555,8 @@ def test_completes_subword_external_command(complgen_binary_path: Path):
 def test_subword_specialization(complgen_binary_path: Path):
     GRAMMAR = r"""
 cmd --option=<FOO>;
-<FOO> ::= {{{ echo generic }}};
-<FOO@fish> ::= {{{ echo fish }}};
+<FOO> = {{{ echo generic }}};
+<FOO@fish> = {{{ echo fish }}};
 """
     with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
@@ -682,8 +682,8 @@ def test_subword_longest_command_candidate_first(complgen_binary_path: Path):
 def test_bug1(complgen_binary_path: Path):
     GRAMMAR = r"""
 mygrep <OPTION>...;
-<OPTION> ::= --color=[<WHEN>] || --colour=[<WHEN>];
-<WHEN> ::= always | never | auto;
+<OPTION> = --color=[<WHEN>] || --colour=[<WHEN>];
+<WHEN> = always | never | auto;
 """
     with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
