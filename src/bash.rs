@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 
 use crate::Result;
@@ -24,6 +24,11 @@ struct MatchingTables {
     literal_transitions: BTreeMap<StateId, BTreeMap<LiteralId, StateId>>,
     command_transitions: Option<BTreeMap<StateId, BTreeMap<CommandId, StateId>>>,
     star_transitions: Option<Vec<(StateId, StateId)>>,
+}
+
+struct CompletionTables {
+    literal_transitions: Vec<BTreeMap<StateId, BTreeSet<LiteralId>>>,
+    command_transitions: Option<Vec<BTreeMap<StateId, Vec<CommandId>>>>,
 }
 
 fn make_string_constant(s: &str) -> String {
@@ -294,19 +299,45 @@ fn write_matching_tables<W: Write>(buffer: &mut W, tables: &MatchingTables) -> R
     Ok(())
 }
 
-fn write_completion_tables<W: Write>(
-    buffer: &mut W,
+fn get_completion_tables(
     dfa: &DFA,
     id_from_cmd: &IndexSet<Ustr>,
     needs_commands_code: bool,
     id_from_literal_description: &HashMap<(Ustr, Ustr), LiteralId>,
     max_fallback_level: usize,
-) -> Result<()> {
-    for (level, transitions) in dfa
-        .get_completion_literals(id_from_literal_description, max_fallback_level)
-        .iter()
-        .enumerate()
-    {
+) -> CompletionTables {
+    let literal_transitions =
+        dfa.get_completion_literals(id_from_literal_description, max_fallback_level);
+
+    let command_transitions = if needs_commands_code {
+        let commands = dfa.get_completion_commands(id_from_cmd, max_fallback_level);
+        let commands = commands
+            .into_iter()
+            .map(|level| {
+                level
+                    .into_iter()
+                    .map(|(state, command_ids)| {
+                        (
+                            state,
+                            command_ids.into_iter().map(|id| id as CommandId).collect(),
+                        )
+                    })
+                    .collect()
+            })
+            .collect();
+        Some(commands)
+    } else {
+        None
+    };
+
+    CompletionTables {
+        literal_transitions,
+        command_transitions,
+    }
+}
+
+fn write_completion_tables<W: Write>(buffer: &mut W, tables: &CompletionTables) -> Result<()> {
+    for (level, transitions) in tables.literal_transitions.iter().enumerate() {
         let initializer = transitions
             .iter()
             .map(|(from_state, literal_ids)| {
@@ -319,12 +350,8 @@ fn write_completion_tables<W: Write>(
         )?;
     }
 
-    if needs_commands_code {
-        for (level, transitions) in dfa
-            .get_completion_commands(id_from_cmd, max_fallback_level)
-            .iter()
-            .enumerate()
-        {
+    if let Some(command_transitions) = &tables.command_transitions {
+        for (level, transitions) in command_transitions.iter().enumerate() {
             let initializer = transitions
                 .iter()
                 .map(|(from_state, command_ids)| {
@@ -358,14 +385,14 @@ fn write_subword_wrapper_fn<W: Write>(
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
-    write_completion_tables(
-        buffer,
+    let completion_tables = get_completion_tables(
         dfa,
         id_from_cmd,
         needs_commands_code,
         &matching_tables.id_from_literal_description,
         max_fallback_level,
-    )?;
+    );
+    write_completion_tables(buffer, &completion_tables)?;
 
     writeln!(
         buffer,
@@ -587,14 +614,14 @@ fi
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
 
-    write_completion_tables(
-        buffer,
+    let completion_tables = get_completion_tables(
         dfa,
         &id_from_cmd,
         needs_top_level_commands_code,
         &tables.id_from_literal_description,
         max_fallback_level,
-    )?;
+    );
+    write_completion_tables(buffer, &completion_tables)?;
 
     if needs_subwords_code {
         for (level, transitions) in dfa
