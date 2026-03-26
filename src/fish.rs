@@ -116,6 +116,7 @@ fn write_subword_fn<W: Write>(
     write!(
         buffer,
         r#"
+    set subword_state 1
     set char_index 1
     set matched 0
     while true
@@ -591,11 +592,6 @@ fn write_subword_wrapper_fn<W: Write>(
 
     writeln!(buffer)?;
 
-    writeln!(
-        buffer,
-        r#"    set --global subword_state {}"#,
-        dfa.starting_state + ARRAY_START
-    )?;
     writeln!(buffer, r#"    _{command}_subword "$mode" "$word""#)?;
 
     writeln!(
