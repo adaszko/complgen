@@ -39,6 +39,7 @@ fn write_subword_fn<W: Write>(
     local mode=$1
     local word=$2
 
+    local subword_state=0
     local char_index=0
     local matched=0
     local nliterals=${{#literals[@]}}
@@ -351,12 +352,6 @@ fn write_subword_wrapper_fn<W: Write>(
         buffer,
         r#"    local max_fallback_level={max_fallback_level}"#
     )?;
-    writeln!(
-        buffer,
-        r#"    local subword_state={starting_state}"#,
-        starting_state = dfa.starting_state
-    )?;
-
     writeln!(buffer, r#"    _{command}_subword "$1" "$2""#)?;
 
     writeln!(buffer, r#"}}"#)?;
