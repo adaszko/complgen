@@ -516,7 +516,7 @@ fn write_completion_tables<W: Write>(
     max_fallback_level: usize,
 ) -> Result<()> {
     for (level, transitions) in dfa
-        .get_completion_literals(id_from_literal_description, max_fallback_level)
+        .get_literal_completions(id_from_literal_description, max_fallback_level)
         .iter()
         .enumerate()
     {
@@ -538,7 +538,7 @@ fn write_completion_tables<W: Write>(
 
     if needs_commands_code {
         for (level, transitions) in dfa
-            .get_completion_commands(id_from_cmd, max_fallback_level)
+            .get_command_completions(id_from_cmd, max_fallback_level)
             .iter()
             .enumerate()
         {

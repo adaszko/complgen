@@ -18,23 +18,22 @@ use ustr::Ustr;
 pub const ARRAY_START: u32 = 0;
 pub const MATCH_FN_NAME: &str = "__complgen_match";
 
-struct MatchingTables {
-    id_from_literal_description: HashMap<(Ustr, Ustr), LiteralId>,
-    literals: Vec<String>,
-    literal_transitions: BTreeMap<StateId, BTreeMap<LiteralId, StateId>>,
-    command_transitions: Option<BTreeMap<StateId, BTreeMap<CommandId, StateId>>>,
-    star_transitions: Option<Vec<(StateId, StateId)>>,
+struct MatchTransitions {
+    literal: BTreeMap<StateId, BTreeMap<LiteralId, StateId>>,
+    command: Option<BTreeMap<StateId, BTreeMap<CommandId, StateId>>>,
+    star: Option<Vec<(StateId, StateId)>>,
 }
 
-struct CompletionTables {
-    literal_transitions: Vec<BTreeMap<StateId, BTreeSet<LiteralId>>>,
-    command_transitions: Option<Vec<BTreeMap<StateId, Vec<CommandId>>>>,
+struct CompletionTransitions {
+    literal: Vec<BTreeMap<StateId, BTreeSet<LiteralId>>>,
+    command: Option<Vec<BTreeMap<StateId, Vec<CommandId>>>>,
 }
 
 struct LookupTables {
-    match_tables: MatchingTables,
-    completion_tables: CompletionTables,
+    literals: Vec<String>,
     max_fallback_level: usize,
+    match_transitions: MatchTransitions,
+    completion_transitions: CompletionTransitions,
 }
 
 fn make_string_constant(s: &str) -> String {
@@ -227,49 +226,42 @@ fn write_subword_fn<W: Write>(
     Ok(())
 }
 
-fn get_match_tables(
+fn get_match_transitions(
     dfa: &DFA,
+    id_from_literal_description: &HashMap<(Ustr, Ustr), LiteralId>,
     id_from_cmd: &IndexSet<Ustr>,
     needs_commands_code: bool,
     needs_star_code: bool,
-) -> MatchingTables {
-    let all_literals = dfa.get_all_literals(ARRAY_START as usize);
-
-    let id_from_literal_description: HashMap<(Ustr, Ustr), LiteralId> = all_literals
-        .iter()
-        .map(|(id, input, description)| ((*input, *description), *id))
-        .collect();
-
+) -> MatchTransitions {
     let all_states = dfa.get_all_states();
-
-    let literals: Vec<String> = all_literals
-        .iter()
-        .map(|(_, literal, _)| make_string_constant(literal))
-        .collect();
 
     let literal_transitions =
         dfa.get_literal_transitions(&all_states, &id_from_literal_description);
 
-    let command_transitions =
-        needs_commands_code.then(|| dfa.get_command_transitions(&all_states, id_from_cmd));
+    let command_transitions = 'commands: {
+        if !needs_commands_code {
+            break 'commands None;
+        }
+        Some(dfa.get_command_transitions(&all_states, id_from_cmd))
+    };
 
-    let star_transitions = needs_star_code.then(|| dfa.iter_top_level_star_transitions().collect());
+    let star_transitions = 'stars: {
+        if !needs_star_code {
+            break 'stars None;
+        }
+        Some(dfa.iter_top_level_star_transitions().collect())
+    };
 
-    MatchingTables {
-        id_from_literal_description,
-        literals,
-        literal_transitions,
-        command_transitions,
-        star_transitions,
+    MatchTransitions {
+        literal: literal_transitions,
+        command: command_transitions,
+        star: star_transitions,
     }
 }
 
-fn write_match_tables<W: Write>(buffer: &mut W, tables: &MatchingTables) -> Result<()> {
-    let literals = tables.literals.join(" ");
-    writeln!(buffer, r#"    local -a literals=({literals})"#)?;
-
+fn write_match_transitions<W: Write>(buffer: &mut W, tables: &MatchTransitions) -> Result<()> {
     writeln!(buffer, r#"    local -A literal_transitions=()"#)?;
-    for (state, state_transitions) in &tables.literal_transitions {
+    for (state, state_transitions) in &tables.literal {
         let transitions = state_transitions
             .iter()
             .map(|(literal_id, to)| format!("[{literal_id}]={to}"))
@@ -280,7 +272,7 @@ fn write_match_tables<W: Write>(buffer: &mut W, tables: &MatchingTables) -> Resu
         )?;
     }
 
-    if let Some(command_transitions) = &tables.command_transitions {
+    if let Some(command_transitions) = &tables.command {
         writeln!(buffer, r#"    local -A command_transitions=()"#)?;
         for (state, state_transitions) in command_transitions {
             let transitions = state_transitions
@@ -294,7 +286,7 @@ fn write_match_tables<W: Write>(buffer: &mut W, tables: &MatchingTables) -> Resu
         }
     }
 
-    if let Some(star_transitions) = &tables.star_transitions {
+    if let Some(star_transitions) = &tables.star {
         let transitions = star_transitions
             .iter()
             .map(|(from, to)| format!("[{from}]={to}"))
@@ -305,40 +297,26 @@ fn write_match_tables<W: Write>(buffer: &mut W, tables: &MatchingTables) -> Resu
     Ok(())
 }
 
-fn get_completion_tables(
+fn get_completion_transitions(
     dfa: &DFA,
     id_from_cmd: &IndexSet<Ustr>,
     needs_commands_code: bool,
     id_from_literal_description: &HashMap<(Ustr, Ustr), LiteralId>,
     max_fallback_level: usize,
-) -> CompletionTables {
-    let literal_transitions =
-        dfa.get_completion_literals(id_from_literal_description, max_fallback_level);
+) -> CompletionTransitions {
+    let literal_completions =
+        dfa.get_literal_completions(id_from_literal_description, max_fallback_level);
 
-    let command_transitions = if needs_commands_code {
-        let commands = dfa.get_completion_commands(id_from_cmd, max_fallback_level);
-        let commands = commands
-            .into_iter()
-            .map(|level| {
-                level
-                    .into_iter()
-                    .map(|(state, command_ids)| {
-                        (
-                            state,
-                            command_ids.into_iter().map(|id| id as CommandId).collect(),
-                        )
-                    })
-                    .collect()
-            })
-            .collect();
-        Some(commands)
-    } else {
-        None
+    let command_completions = 'commands: {
+        if !needs_commands_code {
+            break 'commands None;
+        }
+        Some(dfa.get_command_completions(id_from_cmd, max_fallback_level))
     };
 
-    CompletionTables {
-        literal_transitions,
-        command_transitions,
+    CompletionTransitions {
+        literal: literal_completions,
+        command: command_completions,
     }
 }
 
@@ -348,35 +326,53 @@ fn get_lookup_tables(
     needs_commands_code: bool,
     needs_star_code: bool,
 ) -> LookupTables {
-    let match_tables = get_match_tables(dfa, id_from_cmd, needs_commands_code, needs_star_code);
+    let all_literals = dfa.get_all_literals(ARRAY_START as usize);
+
+    let id_from_literal_description: HashMap<(Ustr, Ustr), LiteralId> = all_literals
+        .iter()
+        .map(|(id, input, description)| ((*input, *description), *id))
+        .collect();
+
+    let literals: Vec<String> = all_literals
+        .iter()
+        .map(|(_, literal, _)| make_string_constant(literal))
+        .collect();
+
+    let match_transitions = get_match_transitions(
+        dfa,
+        &id_from_literal_description,
+        id_from_cmd,
+        needs_commands_code,
+        needs_star_code,
+    );
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
-    let completion_tables = get_completion_tables(
+    let completion_transitions = get_completion_transitions(
         dfa,
         id_from_cmd,
         needs_commands_code,
-        &match_tables.id_from_literal_description,
+        &id_from_literal_description,
         max_fallback_level,
     );
     LookupTables {
-        match_tables,
-        completion_tables,
+        literals,
         max_fallback_level,
+        match_transitions,
+        completion_transitions,
     }
 }
 
-fn write_lookup_tables<W: Write>(buffer: &mut W, lookups: &LookupTables) -> Result<()> {
-    write_match_tables(buffer, &lookups.match_tables)?;
-    write_completion_tables(buffer, &lookups.completion_tables)?;
-    writeln!(
-        buffer,
-        r#"    local max_fallback_level={}"#,
-        lookups.max_fallback_level
-    )?;
+fn write_literals<W: Write>(buffer: &mut W, literals: &[String]) -> Result<()> {
+    let literals = literals.join(" ");
+    writeln!(buffer, r#"    local -a literals=({literals})"#)?;
     Ok(())
 }
 
-fn write_completion_tables<W: Write>(buffer: &mut W, tables: &CompletionTables) -> Result<()> {
-    for (level, transitions) in tables.literal_transitions.iter().enumerate() {
+fn write_completion_tables<W: Write>(
+    buffer: &mut W,
+    max_fallback_level: usize,
+    completions: &CompletionTransitions,
+) -> Result<()> {
+    for (level, transitions) in completions.literal.iter().enumerate() {
         let initializer = transitions
             .iter()
             .map(|(from_state, literal_ids)| {
@@ -389,7 +385,7 @@ fn write_completion_tables<W: Write>(buffer: &mut W, tables: &CompletionTables) 
         )?;
     }
 
-    if let Some(command_transitions) = &tables.command_transitions {
+    if let Some(command_transitions) = &completions.command {
         for (level, transitions) in command_transitions.iter().enumerate() {
             let initializer = transitions
                 .iter()
@@ -403,6 +399,11 @@ fn write_completion_tables<W: Write>(buffer: &mut W, tables: &CompletionTables) 
             )?;
         }
     }
+
+    writeln!(
+        buffer,
+        r#"    local max_fallback_level={max_fallback_level}"#,
+    )?;
 
     Ok(())
 }
@@ -418,8 +419,14 @@ fn write_subword_wrapper_fn<W: Write>(
 ) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
 
-    let lookup_tables = get_lookup_tables(dfa, id_from_cmd, needs_commands_code, needs_star_code);
-    write_lookup_tables(buffer, &lookup_tables)?;
+    let lookups = get_lookup_tables(dfa, id_from_cmd, needs_commands_code, needs_star_code);
+    write_literals(buffer, &lookups.literals)?;
+    write_match_transitions(buffer, &lookups.match_transitions)?;
+    write_completion_tables(
+        buffer,
+        lookups.max_fallback_level,
+        &lookups.completion_transitions,
+    )?;
 
     writeln!(buffer, r#"    _{command}_subword "$1" "$2""#)?;
 
@@ -503,13 +510,14 @@ fi
 "#
     )?;
 
-    let lookup_tables = get_lookup_tables(
+    let lookups = get_lookup_tables(
         dfa,
         &id_from_cmd,
         needs_top_level_commands_code,
         needs_top_level_star_code,
     );
-    write_match_tables(buffer, &lookup_tables.match_tables)?;
+    write_literals(buffer, &lookups.literals)?;
+    write_match_transitions(buffer, &lookups.match_transitions)?;
 
     if needs_subwords_code {
         writeln!(buffer, r#"    local -A subword_transitions"#)?;
@@ -635,11 +643,15 @@ fi
 
     // ///////////////////////////// Completion ///////////////////////////////////
 
-    write_completion_tables(buffer, &lookup_tables.completion_tables)?;
+    write_completion_tables(
+        buffer,
+        lookups.max_fallback_level,
+        &lookups.completion_transitions,
+    )?;
 
     if needs_subwords_code {
         for (level, transitions) in dfa
-            .get_completion_subwords(id_from_dfa, lookup_tables.max_fallback_level)
+            .get_completion_subwords(id_from_dfa, lookups.max_fallback_level)
             .iter()
             .enumerate()
         {
@@ -708,7 +720,7 @@ fi
         if [[ ${{#candidates[@]}} -gt 0 ]]; then
             {MATCH_FN_NAME} "$prefix" candidates matches
         fi"#,
-        max_fallback_level = lookup_tables.max_fallback_level
+        max_fallback_level = lookups.max_fallback_level
     )?;
 
     if needs_subwords_code {

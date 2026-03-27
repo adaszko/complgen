@@ -1322,7 +1322,7 @@ impl DFA {
         command_transitions
     }
 
-    pub(crate) fn get_completion_literals(
+    pub(crate) fn get_literal_completions(
         &self,
         id_from_literal_description: &HashMap<(Ustr, Ustr), LiteralId>,
         max_fallback_level: usize,
@@ -1377,12 +1377,12 @@ impl DFA {
         completion_subwords
     }
 
-    pub(crate) fn get_completion_commands(
+    pub(crate) fn get_command_completions(
         &self,
         id_from_cmd: &IndexSet<Ustr>,
         max_fallback_level: usize,
-    ) -> Vec<BTreeMap<StateId, Vec<usize>>> {
-        let mut completion_commands: Vec<BTreeMap<StateId, Vec<usize>>> =
+    ) -> Vec<BTreeMap<StateId, Vec<CommandId>>> {
+        let mut completion_commands: Vec<BTreeMap<StateId, Vec<CommandId>>> =
             vec![Default::default(); max_fallback_level + 1];
 
         for (from, input_id, _) in self.iter_transitions() {
@@ -1395,7 +1395,7 @@ impl DFA {
                     completion_commands[fallback_level]
                         .entry(from)
                         .or_default()
-                        .push(command_id);
+                        .push(command_id as CommandId);
                 }
                 Inp::Literal { .. } | Inp::Compadd { .. } | Inp::Subword { .. } | Inp::Star => {}
             }
