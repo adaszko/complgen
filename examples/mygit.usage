@@ -4,39 +4,31 @@ mygit (branch    "list, create, or delete branches" || <global-option>... branch
 mygit (checkout  "checkout a branch or paths to the working tree" || <global-option>... checkout) <checkout-syntax>;
 mygit (clone     "clone a repository into a new directory" || <global-option>... clone) <clone-syntax>;
 mygit (commit    "record changes to the repository" || <global-option>... commit) <commit-syntax>;
-mygit (diff      "show changes between commits, commit and working tree, etc" || <global-option>... diff);
+mygit (diff      "show changes between commits, commit and working tree, etc" || <global-option>... diff) <diff-syntax>;
 mygit (fetch     "download objects and refs from another repository" || <global-option>... fetch);
 mygit (grep      "print lines matching a pattern" || <global-option>... grep) <grep-syntax>;
 mygit (init      "create an empty Git repository or reinitialize an existing one" || <global-option>... init) <init-syntax>;
-mygit (log       "show commit logs" || <global-option>... log);
+mygit (log       "show commit logs" || <global-option>... log) <log-syntax>;
 mygit (merge     "join two or more development histories together" || <global-option>... merge) <merge-syntax>;
 mygit (mv        "move or rename a file, a directory, or a symlink" || <global-option>... mv) <mv-syntax>;
-mygit (pull      "fetch from and merge with another repository or a local branch" || <global-option>... pull);
+mygit (pull      "fetch from and merge with another repository or a local branch" || <global-option>... pull) <pull-syntax>;
 mygit (push      "update remote refs along with associated objects" || <global-option>... push) <push-syntax>;
-mygit (rebase    "forward-port local commits to the updated upstream head" || <global-option>... rebase);
+mygit (rebase    "forward-port local commits to the updated upstream head" || <global-option>... rebase) <rebase-syntax>;
 mygit (reset     "reset current HEAD to the specified state" || <global-option>... reset) <reset-syntax>;
-mygit (restore   "restore working tree files" || <global-option>... restore);
+mygit (restore   "restore working tree files" || <global-option>... restore) <restore-syntax>;
 mygit (rm        "remove files from the working tree and from the index" || <global-option>... rm) <rm-syntax>;
-mygit (show      "show various types of objects" || <global-option>... show);
-mygit (status    "show the working tree status" || <global-option>... status);
-mygit (switch    "switch branches" || <global-option>... switch);
+mygit (show      "show various types of objects" || <global-option>... show) <show-syntax>;
+mygit (status    "show the working tree status" || <global-option>... status) <status-syntax>;
+mygit (switch    "switch branches" || <global-option>... switch) <switch-syntax>;
 mygit (tag       "create, list, delete or verify a tag object signed with GPG" || <global-option>... tag) <tag-syntax>;
 
 
-<global-option>
-    = --version | -v
-    | --help | -h
-    | -C <DIRECTORY>
-    | --exec-path[=<DIRECTORY>]
-    | --html-path
-    | --man-path
-    | --info-path
-    | --paginate | --no-pager | -p | -P
-    | --bare
-    | --git-dir=<DIRECTORY>
-    | --work-tree=<DIRECTORY>
-    | --namespace=
-    | --config-env=
+<global-option> =
+    [-v | --version] [-h | --help] [-C <path>] [-c <config-env>]
+    [--exec-path[=<path>]] [--html-path] [--man-path] [--info-path]
+    [-p | --paginate | -P | --no-pager] [--no-replace-objects] [--no-lazy-fetch]
+    [--no-optional-locks] [--no-advice] [--bare] [--git-dir=<path>]
+    [--work-tree=<path>] [--namespace=<name>] [--config-env=<config-env>]
     ;
 
 
@@ -44,34 +36,33 @@ mygit (tag       "create, list, delete or verify a tag object signed with GPG" |
     [--verbose | -v] [--dry-run | -n] [--force | -f] [--interactive | -i] [--patch | -p]
     [--edit | -e] [--[no-]all | -A | --[no-]ignore-removal | [--update | -u]] [--sparse]
     [--intent-to-add | -N] [--refresh] [--ignore-errors] [--ignore-missing] [--renormalize]
-    [--chmod=(+|-)x] [--pathspec-from-file=<PATH> [--pathspec-file-nul]]
-    [--] [<PATH>...]
+    [--chmod=(+|-)x] [--pathspec-from-file=<file> [--pathspec-file-nul]]
+    [--] [<pathspec>...]
     ;
 
 <bisect-syntax>
-    = start [--term-(bad|new)= --term-(good|old)=] [--no-checkout] [--first-parent] <_>... [--] [<PATH>...]
-    | (bad|new)
-    | (good|old)
+    = start [--term-(bad|new)=<term-new> --term-(good|old)=<term-old>] [--no-checkout] [--first-parent] [<bad> [<good>...]] [--] [<pathspec>...]
+    | (bad|new|<term-new>) [<rev>]
+    | (good|old|<term-old>) [<rev>...]
     | terms [--term-(good|old) | --term-(bad|new)]
-    | skip
-    | next
-    | reset
+    | skip [(<rev>|<range>)...]
+    | reset [<commit>]
     | (visualize|view)
-    | replay <PATH>
+    | replay <logfile>
     | log
-    | run
+    | run <cmd> [<arg>...]
     | help
     ;
 
 <branch-syntax>
-    = [--color[=<_>] | --no-color] [--show-current] [-v [--abbrev=<_> | --no-abbrev]] [--column[=<_>] | --no-column] [--sort=<_>] [--merged [<_>]] [--no-merged [<_>]] [--contains [<_>]] [--no-contains [<_>]] [--points-at <_>] [--format=<_>] [(-r|--remotes) | (-a|--all)] [--list] [<_>...]
-    | [--track[=(direct|inherit)] | --no-track] [-f] [--recurse-submodules] <_> [<_>]
-    | (--set-upstream-to=<_>|-u <_>) [<_>]
-    | --unset-upstream [<_>]
-    | (-m|-M) [<_>] <_>
-    | (-c|-C) [<_>] <_>
-    | (-d|-D) [-r] <_>...
-    | --edit-description [<_>]
+    = [--color[=<when>] | --no-color] [--show-current] [-v [--abbrev=<n> | --no-abbrev]] [--column[=<column-options>] | --no-column] [--sort=<key>] [--merged [<commit>]] [--no-merged [<commit>]] [--contains [<commit>]] [--no-contains [<commit>]] [--points-at <object>] [--format=<format>] [(-r|--remotes) | (-a|--all)] [--list] [<pattern>...]
+    | [--track[=(direct|inherit)] | --no-track] [-f] [--recurse-submodules] <branch-name> [<start-point>]
+    | (--set-upstream-to=<upstream>|-u <upstream>) [<branch-name>]
+    | --unset-upstream [<branch-name>]
+    | (-m|-M) [<old-branch>] <new-branch>
+    | (-c|-C) [<old-branch>] <new-branch>
+    | (-d|-D) [-r] <branch-name>...
+    | --edit-description [<branch-name>]
     ;
 
 <checkout-syntax>
@@ -109,6 +100,99 @@ mygit (tag       "create, list, delete or verify a tag object signed with GPG" |
     [--] [<PATH>...]
     ;
 
+<diff-syntax>
+    = [<diff-option>...] [<_>] [--] [<PATH>...]
+    | [<diff-option>...] --cached [--merge-base] [<_>] [--] [<PATH>...]
+    | [<diff-option>...] [--merge-base] <_> [<_>...] <_> [--] [<PATH>...]
+    | [<diff-option>...] <_> <_>
+    | [<diff-option>...] --no-index [--] <PATH> <PATH> [<PATH>...]
+    ;
+
+<diff-option>
+    = -p | -u | --patch
+    | -s | --no-patch
+    | -U<_> | --unified=<_>
+    | --output=<_>
+    | --output-indicator-new=<_> | --output-indicator-old=<_> | --output-indicator-context=<_>
+    | --raw
+    | --patch-with-raw
+    | --indent-heuristic
+    | --no-indent-heuristic
+    | --minimal
+    | --patience
+    | --histogram
+    | --anchored=<_>
+    | --diff-algorithm=(patience|minimal|histogram|myers)
+    | --stat[=<_>]
+    | --compact-summary
+    | --numstat
+    | --shortstat
+    | -X [<_>] | --dirstat[=<_>]
+    | --cumulative
+    | --dirstat-by-file[=<_>]
+    | --summary
+    | --patch-with-stat
+    | -z
+    | --name-only
+    | --name-status
+    | --submodule[=<_>]
+    | --color[=<_>]
+    | --no-color
+    | --color-moved[=<_>]
+    | --no-color-moved
+    | --color-moved-ws=<_>
+    | --no-color-moved-ws
+    | --word-diff[=<_>]
+    | --word-diff-regex=<_>
+    | --color-words[=<_>]
+    | --no-renames
+    | --[no-]rename-empty
+    | --check
+    | --ws-error-highlight=<_>
+    | --full-index
+    | --binary
+    | --abbrev[=<_>]
+    | -B[<_>] | --break-rewrites[=[<_>]]
+    | -M[<_>] | --find-renames[=<_>]
+    | -C[<_>] | --find-copies[=<_>]
+    | --find-copies-harder
+    | -D | --irreversible-delete
+    | -l<_>
+    | --diff-filter=[(A|C|D|M|R|T|U|X|B)...[*]]
+    | -S<_>
+    | -G<_>
+    | --find-object=<_>
+    | --pickaxe-all
+    | --pickaxe-regex
+    | -O<_>
+    | --skip-to=<_> | --rotate-to=<_>
+    | -R
+    | --relative[=<_>] | --no-relative
+    | -a | --text
+    | --ignore-cr-at-eol
+    | --ignore-space-at-eol
+    | -b | --ignore-space-change
+    | -w | --ignore-all-space
+    | --ignore-blank-lines
+    | -I<_> | --ignore-matching-lines=<_>
+    | --inter-hunk-context=<_>
+    | -W | --function-context
+    | --exit-code
+    | --quiet
+    | --ext-diff
+    | --no-ext-diff
+    | --textconv | --no-textconv
+    | --ignore-submodules[=(none|untracked|dirty|all)]
+    | --src-prefix=<_>
+    | --dst-prefix=<_>
+    | --no-prefix
+    | --default-prefix
+    | --line-prefix=<_>
+    | --ita-invisible-in-index
+    | -1 | --base | -2 | --ours | -3 | --theirs
+    | -0
+    ;
+
 <grep-syntax> =
     [-a | --text] [-I] [--textconv] [-i | --ignore-case] [-w | --word-regexp]
     [-v | --invert-match] [-h|-H] [--full-name]
@@ -141,6 +225,101 @@ mygit (tag       "create, list, delete or verify a tag object signed with GPG" |
     [--shared[=<_>]] [<DIRECTORY>]
     ;
 
+<log-syntax>
+    = [<log-option>...] <_> [[--] <PATH>...]
+    ;
+
+<log-option>
+    = --follow
+    | --no-decorate | --decorate[=(short|full|auto|no)]
+    | --decorate-refs=<_> | --decorate-refs-exclude=<_>
+    | --clear-decorations
+    | --source
+    | --[no-]mailmap | --[no-]use-mailmap
+    | --full-diff
+    | --log-size
+    | -L<_> | -L:<_>
+    | -<_> | -n <_> | --max-count=<_>
+    | --skip=<_>
+    | --since=<_> | --after=<_>
+    | --since-as-filter=<_>
+    | --until=<_> | --before=<_>
+    | --author=<_> | --committer=<_>
+    | --grep-reflog=<_>
+    | --grep=<_>
+    | --all-match
+    | --invert-grep
+    | -i | --regexp-ignore-case
+    | --basic-regexp
+    | -E | --extended-regexp
+    | -F | --fixed-strings
+    | -P | --perl-regexp
+    | --remove-empty
+    | --merges
+    | --no-merges
+    | --min-parents=<_> | --max-parents=<_> | --no-min-parents | --no-max-parents
+    | --first-parent
+    | --exclude-first-parent-only
+    | --not
+    | --all
+    | --branches[=<_>]
+    | --tags[=<_>]
+    | --remotes[=<_>]
+    | --glob=<_>
+    | --exclude=<_>
+    | --exclude-hidden=(fetch|receive|uploadpack)
+    | --reflog
+    | --alternate-refs
+    | --single-worktree
+    | --ignore-missing
+    | --bisect
+    | --stdin
+    | --cherry-mark
+    | --cherry-pick
+    | --left-only | --right-only
+    | --cherry
+    | -g | --walk-reflogs
+    | --merge
+    | --boundary
+    | --simplify-by-decoration
+    | --show-pulls
+    | --full-history
+    | --dense
+    | --sparse
+    | --simplify-merges
+    | --ancestry-path[=<_>]
+    | --full-history without parent rewriting
+    | --full-history with parent rewriting
+    | --dense
+    | --sparse
+    | --simplify-merges
+    | --ancestry-path[=<_>]
+    | --date-order
+    | --author-date-order
+    | --topo-order
+    | --reverse
+    | --no-walk[=(sorted|unsorted)]
+    | --do-walk
+    | --pretty[=<_>] | --format=<_>
+    | --abbrev-commit
+    | --no-abbrev-commit
+    | --oneline
+    | --encoding=<_>
+    | --expand-tabs=<_> | --expand-tabs | --no-expand-tabs
+    | --notes[=<_>]
+    | --no-notes
+    | --show-notes-by-default
+    | --show-notes[=<_>] | --standard-notes | --no-standard-notes
+    | --show-signature
+    | --relative-date
+    | --date=<_>
+    | --parents
+    | --children
+    | --left-right
+    | --graph
+    | --show-linear-break[=<_>]
+    ;
+
 <merge-syntax>
     = [-n] [--stat] [--compact-summary] [--no-commit] [--squash] [--[no-]edit]
       [--no-verify] [-s <_>] [-X <_>] [-S[<_>]]
@@ -155,6 +334,65 @@ mygit (tag       "create, list, delete or verify a tag object signed with GPG" |
     | [-v] [-f] [-n] [-k] <PATH>... <DIRECTORY>
     ;
 
+<pull-syntax>
+    = [<pull-option>...] [<_> [<_>...]]
+    ;
+
+<pull-option>
+    = -q | --quiet
+    | -v | --verbose
+    | --[no-]recurse-submodules[=(yes|on-demand|no)]
+    | --commit | --no-commit
+    | --edit | -e | --no-edit
+    | --cleanup=<_>
+    | --ff-only
+    | --ff | --no-ff
+    | -S[<_>] | --gpg-sign[=<_>] | --no-gpg-sign
+    | --log[=<_>] | --no-log
+    | --signoff | --no-signoff
+    | --stat | -n | --no-stat
+    | --compact-summary
+    | --squash | --no-squash
+    | --[no-]verify
+    | -s <_> | --strategy=<_>
+    | -X <_> | --strategy-option=<_>
+    | --verify-signatures | --no-verify-signatures
+    | --summary | --no-summary
+    | --autostash | --no-autostash
+    | --allow-unrelated-histories
+    | -r | --rebase[=(false|true|merges|interactive)]
+    | --no-rebase
+    | --[no-]all
+    | -a | --append
+    | --atomic
+    | --depth=<_>
+    | --deepen=<_>
+    | --shallow-since=<_>
+    | --shallow-exclude=<_>
+    | --unshallow
+    | --update-shallow
+    | --negotiation-tip=<_>
+    | --negotiate-only
+    | --dry-run
+    | --porcelain
+    | -f | --force
+    | -k | --keep
+    | --prefetch
+    | -p | --prune
+    | --no-tags
+    | --refmap=<_>
+    | -t | --tags
+    | -j | --jobs=<_>
+    | --set-upstream
+    | --upload-pack <_>
+    | --progress
+    | -o <_> | --server-option=<_>
+    | --show-forced-updates
+    | --no-show-forced-updates
+    | -4 | --ipv4
+    | -6 | --ipv6
+    ;
+
 <push-syntax> =
     [--all | --branches | --mirror | --tags] [--follow-tags] [--atomic] [-n | --dry-run] [--receive-pack=<_>]
     [--repo=<_>] [-f | --force] [-d | --delete] [--prune] [-q | --quiet] [-v | --verbose]
@@ -164,6 +402,55 @@ mygit (tag       "create, list, delete or verify a tag object signed with GPG" |
     [--no-verify] [<_> [<_>...]]
     ;
 
+<rebase-syntax>
+    = [-i | --interactive] [<rebase-option>...] [--exec <_>] [--onto <_> | --keep-base] [<_> [<_>]]
+    | [-i | --interactive] [<rebase-option>...] [--exec <_>] [--onto <_>] --root [<_>]
+    | (--continue|--skip|--abort|--quit|--edit-todo|--show-current-patch)
+    ;
+
+<rebase-option>
+    = --continue
+    | --skip
+    | --abort
+    | --quit
+    | --edit-todo
+    | --show-current-patch
+    | --onto <_>
+    | --keep-base
+    | --apply
+    | --empty=(drop|keep|stop)
+    | --no-keep-empty | --keep-empty
+    | --reapply-cherry-picks | --no-reapply-cherry-picks
+    | --allow-empty-message
+    | -m | --merge
+    | -s <_> | --strategy=<_>
+    | -X <_> | --strategy-option=<_>
+    | --rerere-autoupdate | --no-rerere-autoupdate
+    | -S[<_>] | --gpg-sign[=<_>] | --no-gpg-sign
+    | -q | --quiet
+    | -v | --verbose
+    | --stat
+    | -n | --no-stat
+    | --no-verify
+    | --verify
+    | -C<_>
+    | --no-ff | --force-rebase | -f
+    | --fork-point | --no-fork-point
+    | --ignore-whitespace
+    | --whitespace=<_>
+    | --committer-date-is-author-date
+    | --ignore-date | --reset-author-date
+    | --signoff
+    | -i | --interactive
+    | -r | --rebase-merges[=(rebase-cousins|no-rebase-cousins)] | --no-rebase-merges
+    | -x <_> | --exec <_>
+    | --root
+    | --autosquash | --no-autosquash
+    | --autostash | --no-autostash
+    | --reschedule-failed-exec | --no-reschedule-failed-exec
+    | --update-refs | --no-update-refs
+    ;
+
 <reset-syntax>
     = [-q] [<_>] [--] <PATH>...
     | [-q] [--pathspec-from-file=<PATH> [--pathspec-file-nul]] [<_>]
@@ -171,10 +458,181 @@ mygit (tag       "create, list, delete or verify a tag object signed with GPG" |
     | [--soft | --mixed [-N] | --hard | --merge | --keep] [-q] [<_>]
     ;
 
+<restore-syntax>
+    = [<restore-option>...] [--source=<_>] [--staged] [--worktree] [--] <PATH>...
+    | [<restore-option>...] [--source=<_>] [--staged] [--worktree] --pathspec-from-file=<PATH> [--pathspec-file-nul]
+    | (-p|--patch) [<restore-option>...] [--source=<_>] [--staged] [--worktree] [--] [<PATH>...]
+    ;
+
+<restore-option>
+    = -s <_> | --source=<_>
+    | -p | --patch
+    | -W | --worktree | -S | --staged
+    | -q | --quiet
+    | --progress | --no-progress
+    | --ours | --theirs
+    | -m | --merge
+    | --conflict=<_>
+    | --ignore-unmerged
+    | --ignore-skip-worktree-bits
+    | --recurse-submodules | --no-recurse-submodules
+    | --overlay | --no-overlay
+    | --pathspec-from-file=<_>
+    | --pathspec-file-nul
+    ;
+
+
 <rm-syntax> =
     [-f | --force] [-n] [-r] [--cached] [--ignore-unmatch]
     [--quiet] [--pathspec-from-file=<PATH> [--pathspec-file-nul]]
     [--] [<PATH>...]
+    ;
+
+<show-syntax> = [<show-option>...] [<_>...];
+
+<show-option>
+    = --pretty[=<_>] | --format=<_>
+    | --abbrev-commit
+    | --no-abbrev-commit
+    | --oneline
+    | --encoding=<_>
+    | --expand-tabs=<_> | --expand-tabs | --no-expand-tabs
+    | --notes[=<_>]
+    | --no-notes
+    | --show-notes-by-default
+    | --show-notes[=<_>] | --standard-notes | --no-standard-notes
+    | --show-signature
+    | -p | -u | --patch
+    | -s | --no-patch
+    | -m
+    | -c
+    | --cc
+    | --dd
+    | --remerge-diff
+    | --no-diff-merges
+    | --diff-merges=<_>
+    | --combined-all-paths
+    | -U<_> | --unified=<_>
+    | --output=<_>
+    | --output-indicator-new=<_> | --output-indicator-old=<_> | --output-indicator-context=<_>
+    | --raw
+    | --patch-with-raw
+    | -t
+    | --indent-heuristic
+    | --no-indent-heuristic
+    | --minimal
+    | --patience
+    | --histogram
+    | --anchored=<_>
+    | --diff-algorithm=(patience|minimal|histogram|myers)
+    | --stat[=<_>]
+    | --compact-summary
+    | --numstat
+    | --shortstat
+    | -X [<_>] | --dirstat[=<_>]
+    | --cumulative
+    | --dirstat-by-file[=<_>]
+    | --summary
+    | --patch-with-stat
+    | -z
+    | --name-only
+    | --name-status
+    | --submodule[=<_>]
+    | --color[=<_>]
+    | --no-color
+    | --color-moved[=<_>]
+    | --no-color-moved
+    | --color-moved-ws=<_>
+    | --no-color-moved-ws
+    | --word-diff[=<_>]
+    | --word-diff-regex=<_>
+    | --color-words[=<_>]
+    | --no-renames
+    | --[no-]rename-empty
+    | --check
+    | --ws-error-highlight=<_>
+    | --full-index
+    | --binary
+    | --abbrev[=<_>]
+    | -B[<_>] | --break-rewrites[=[<_>]]
+    | -M[<_>] | --find-renames[=<_>]
+    | -C[<_>] | --find-copies[=<_>]
+    | --find-copies-harder
+    | -D | --irreversible-delete
+    | -l<_>
+    | --diff-filter=[(A|C|D|M|R|T|U|X|B)...[*]]
+    | -S<_>
+    | -G<_>
+    | --find-object=<_>
+    | --pickaxe-all
+    | --pickaxe-regex
+    | -O<_>
+    | --skip-to=<_> | --rotate-to=<_>
+    | -R
+    | --relative[=<_>] | --no-relative
+    | -a | --text
+    | --ignore-cr-at-eol
+    | --ignore-space-at-eol
+    | -b | --ignore-space-change
+    | -w | --ignore-all-space
+    | --ignore-blank-lines
+    | -I<_> | --ignore-matching-lines=<_>
+    | --inter-hunk-context=<_>
+    | -W | --function-context
+    | --ext-diff
+    | --no-ext-diff
+    | --textconv | --no-textconv
+    | --ignore-submodules[=(none|untracked|dirty|all)]
+    | --src-prefix=<_>
+    | --dst-prefix=<_>
+    | --no-prefix
+    | --default-prefix
+    | --line-prefix=<_>
+    | --ita-invisible-in-index
+    ;
+
+<status-syntax> = [<status-option>...] [--] [<pathspec>...];
+
+<status-option>
+    = -s | --short
+    | -b | --branch
+    | --show-stash
+    | --porcelain[=<version>]
+    | --long
+    | -v | --verbose
+    | -u[<mode>] | --untracked-files[=<mode>]
+    | --ignore-submodules[=<when>]
+    | --ignored[=<mode>]
+    | -z
+    | --column[=<_>] | --no-column
+    | --ahead-behind | --no-ahead-behind
+    | --renames | --no-renames
+    | --find-renames[=<n>]
+    ;
+
+<switch-syntax>
+    = [<switch-option>...] [--no-guess] <branch>
+    | [<switch-option>...] --detach [<start-point>]
+    | [<switch-option>...] (-c|-C) <new-branch> [<start-point>]
+    | [<switch-option>...] --orphan <new-branch>
+    ;
+
+<switch-option>
+    = -c <new-branch> | --create <new-branch>
+    | -C <new-branch> | --force-create <new-branch>
+    | -d | --detach
+    | --guess | --no-guess
+    | -f | --force
+    | --discard-changes
+    | -m | --merge
+    | --conflict=<style>
+    | -q | --quiet
+    | --progress | --no-progress
+    | -t | --track[ (direct|inherit)]
+    | --no-track
+    | --orphan <new-branch>
+    | --ignore-other-worktrees
+    | --recurse-submodules | --no-recurse-submodules
     ;
 
 <tag-syntax>
@@ -188,3 +646,36 @@ mygit (tag       "create, list, delete or verify a tag object signed with GPG" |
       [--merged <_>] [--no-merged <_>] [<_>...]
     | -v [--format=<_>] <_>...
     ;
+
+
+<file> = <PATH>;
+<path> = <PATH>;
+<pathspec> = <PATH>;
+<logfile> = <PATH>;
+<n> = <_>;
+<mode> = <_>;
+<version> = <_>;
+<when> = <_>;
+<branch> = <_>;
+<branch-name> = <_>;
+<old-branch> = <_>;
+<new-branch> = <_>;
+<start-point> = <_>;
+<style> = <_>;
+<arg> = <_>;
+<cmd> = <_>;
+<commit> = <_>;
+<range> = <_>;
+<rev> = <_>;
+<term-old> = <_>;
+<term-new> = <_>;
+<good> = <_>;
+<bad> = <_>;
+<upstream> = <_>;
+<pattern> = <_>;
+<format> = <_>;
+<object> = <_>;
+<key> = <_>;
+<column-options> = <_>;
+<config-env> = <_>;
+<name> = <_>;
