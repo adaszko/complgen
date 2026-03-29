@@ -447,55 +447,55 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
     ;
 
 <reset-syntax>
-    = [-q] [<_>] [--] <PATH>...
-    | [-q] [--pathspec-from-file=<PATH> [--pathspec-file-nul]] [<_>]
-    | (--patch | -p) [<_>] [--] [<PATH>...]
-    | [--soft | --mixed [-N] | --hard | --merge | --keep] [-q] [<_>]
+    = [-q] [<tree-ish>] [--] <PATH>...
+    | [-q] [--pathspec-from-file=<PATH> [--pathspec-file-nul]] [<tree-ish>]
+    | (--patch | -p) [<tree-ish>] [--] [<PATH>...]
+    | [--soft | --mixed [-N] | --hard | --merge | --keep] [-q] [<commit>]
     ;
 
 <restore-syntax>
-    = [<restore-option>...] [--source=<_>] [--staged] [--worktree] [--] <PATH>...
-    | [<restore-option>...] [--source=<_>] [--staged] [--worktree] --pathspec-from-file=<PATH> [--pathspec-file-nul]
-    | (-p|--patch) [<restore-option>...] [--source=<_>] [--staged] [--worktree] [--] [<PATH>...]
+    = [<restore-option>...] [--source=<tree>] [--staged] [--worktree] [--] <pathspec>...
+    | [<restore-option>...] [--source=<tree>] [--staged] [--worktree] --pathspec-from-file=<file> [--pathspec-file-nul]
+    | (-p|--patch) [<restore-option>...] [--source=<tree>] [--staged] [--worktree] [--] [<pathspec>...]
     ;
 
 <restore-option>
-    = -s <_> | --source=<_>
+    = -s <tree> | --source=<tree>
     | -p | --patch
     | -W | --worktree | -S | --staged
     | -q | --quiet
     | --progress | --no-progress
     | --ours | --theirs
     | -m | --merge
-    | --conflict=<_>
+    | --conflict=<style>
     | --ignore-unmerged
     | --ignore-skip-worktree-bits
     | --recurse-submodules | --no-recurse-submodules
     | --overlay | --no-overlay
-    | --pathspec-from-file=<_>
+    | --pathspec-from-file=<file>
     | --pathspec-file-nul
     ;
 
 
 <rm-syntax> =
     [-f | --force] [-n] [-r] [--cached] [--ignore-unmatch]
-    [--quiet] [--pathspec-from-file=<PATH> [--pathspec-file-nul]]
-    [--] [<PATH>...]
+    [--quiet] [--pathspec-from-file=<file> [--pathspec-file-nul]]
+    [--] [<pathspec>...]
     ;
 
-<show-syntax> = [<show-option>...] [<_>...];
+<show-syntax> = [<show-option>...] [<object>...];
 
 <show-option>
-    = --pretty[=<_>] | --format=<_>
+    = --pretty[=<pretty-format>] | --format=<pretty-format>
     | --abbrev-commit
     | --no-abbrev-commit
     | --oneline
-    | --encoding=<_>
-    | --expand-tabs=<_> | --expand-tabs | --no-expand-tabs
-    | --notes[=<_>]
+    | --encoding=<encoding>
+    | --expand-tabs=<n> | --expand-tabs | --no-expand-tabs
+    | --notes[=<ref>]
     | --no-notes
     | --show-notes-by-default
-    | --show-notes[=<_>] | --standard-notes | --no-standard-notes
+    | --show-notes[=<ref>] | --standard-notes | --no-standard-notes
     | --show-signature
     | <diff-formatting-option>
     ;
@@ -603,7 +603,7 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
     | --ignore-submodules[=<when>]
     | --ignored[=<mode>]
     | -z
-    | --column[=<_>] | --no-column
+    | --column[=<column-options>] | --no-column
     | --ahead-behind | --no-ahead-behind
     | --renames | --no-renames
     | --find-renames[=<n>]
@@ -635,95 +635,99 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
     ;
 
 <tag-syntax>
-    = [-a | -s | -u <_>] [-f] [-m <_> | -F <_>] [-e]
+    = [-a | -s | -u <key-id>] [-f] [-m <msg> | -F <file>] [-e]
       [(--trailer <_>)...]
-      <_> [<_> | <_>]
-    | -d <_>...
-    | [-n[<_>]] -l [--contains <_>] [--no-contains <_>]
-      [--points-at <_>] [--column[=<_>] | --no-column]
-      [--create-reflog] [--sort=<_>] [--format=<_>]
-      [--merged <_>] [--no-merged <_>] [<_>...]
-    | -v [--format=<_>] <_>...
+      <tagname> [<commit> | <object>]
+    | -d <tagname>...
+    | [-n[<num>]] -l [--contains <commit>] [--no-contains <commit>]
+      [--points-at <object>] [--column[=<column-options>] | --no-column]
+      [--create-reflog] [--sort=<key>] [--format=<format>]
+      [--merged <commit>] [--no-merged <commit>] [<pattern>...]
+    | -v [--format=<format>] <tagname>...
     ;
 
 
 <file> = <PATH>;
+<logfile> = <PATH>;
 <path> = <PATH>;
 <pathspec> = <PATH>;
-<logfile> = <PATH>;
-<template-directory> = <DIRECTORY>;
-<git-dir> = <DIRECTORY>;
-<directory> = <DIRECTORY>;
-<source> = <DIRECTORY>;
-<destination> = <DIRECTORY>;
+
 <destination-directory> = <DIRECTORY>;
+<destination> = <DIRECTORY>;
+<directory> = <DIRECTORY>;
+<git-dir> = <DIRECTORY>;
+<source> = <DIRECTORY>;
+<template-directory> = <DIRECTORY>;
+
+<arg> = <_>;
+<author> = <_>;
+<bad> = <_>;
+<barrier> = <_>;
+<basename> = <_>;
+<blob> = <_>;
+<branch-name> = <_>;
+<branch> = <_>;
+<char> = <_>;
+<cmd> = <_>;
+<column-options> = <_>;
+<commit> = <_>;
+<config-env> = <_>;
+<context> = <_>;
+<date> = <_>;
+<depth> = <_>;
+<encoding> = <_>;
+<filter-spec> = <_>;
+<format> = <_>;
+<git-receive-pack> = <_>;
+<glob-pattern> = <_>;
+<glob> = <_>;
+<good> = <_>;
+<group> = <_>;
+<key-id> = <_>;
+<key> = <_>;
+<keyid> = <_>;
+<kind> = <_>;
+<mode> = <_>;
+<msg> = <_>;
 <n> = <_>;
+<name> = <_>;
+<new-branch> = <_>;
+<newbase> = <_>;
 <num> = <_>;
 <number> = <_>;
-<depth> = <_>;
-<mode> = <_>;
-<version> = <_>;
-<when> = <_>;
-<branch> = <_>;
+<object-id> = <_>;
+<object> = <_>;
+<old-branch> = <_>;
+<option> = <_>;
+<orderfile> = <_>;
+<pager> = <_>;
+<param> = <_>;
+<pattern> = <_>;
+<permissions> = <_>;
+<post-context> = <_>;
+<pre-context> = <_>;
+<prefix> = <_>;
+<range> = <_>;
 <ref> = <_>;
 <refspec> = <_>;
-<branch-name> = <_>;
-<old-branch> = <_>;
-<new-branch> = <_>;
-<start-point> = <_>;
-<style> = <_>;
-<arg> = <_>;
-<cmd> = <_>;
-<commit> = <_>;
-<range> = <_>;
-<rev> = <_>;
-<term-old> = <_>;
-<term-new> = <_>;
-<good> = <_>;
-<bad> = <_>;
-<upstream> = <_>;
-<pattern> = <_>;
-<format> = <_>;
-<object> = <_>;
-<key> = <_>;
-<column-options> = <_>;
-<config-env> = <_>;
-<name> = <_>;
-<server-option> = <_>;
-<upload-pack> = <_>;
-<glob> = <_>;
-<glob-pattern> = <_>;
-<date> = <_>;
-<repository> = <_>;
-<group> = <_>;
-<tree-ish> = <_>;
-<filter-spec> = <_>;
-<msg> = <_>;
-<author> = <_>;
-<token> = <_>;
-<keyid> = <_>;
-<blob> = <_>;
-<char> = <_>;
-<text> = <_>;
-<param> = <_>;
 <regex> = <_>;
-<kind> = <_>;
-<string> = <_>;
-<object-id> = <_>;
-<orderfile> = <_>;
-<prefix> = <_>;
-<pager> = <_>;
-<pre-context> = <_>;
-<context> = <_>;
-<post-context> = <_>;
-<basename> = <_>;
-<tree> = <_>;
-<permissions> = <_>;
+<repository> = <_>;
+<rev> = <_>;
 <revision-range> = <_>;
-<encoding> = <_>;
-<barrier> = <_>;
-<strategy> = <_>;
+<server-option> = <_>;
+<start-point> = <_>;
 <strategy-option> = <_>;
-<key-id> = <_>;
-<git-receive-pack> = <_>;
-<newbase> = <_>;
+<strategy> = <_>;
+<string> = <_>;
+<style> = <_>;
+<tagname> = <_>;
+<term-new> = <_>;
+<term-old> = <_>;
+<text> = <_>;
+<token> = <_>;
+<tree-ish> = <_>;
+<tree> = <_>;
+<upload-pack> = <_>;
+<upstream> = <_>;
+<version> = <_>;
+<when> = <_>;
