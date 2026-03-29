@@ -113,30 +113,31 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
     ;
 
 <commit-syntax> =
-    [-a | --interactive | --patch] [-s] [-v] [-u[<_>]] [--amend]
-    [--dry-run] [(-c | -C | --squash) <_> | --fixup <_>]
-    [-F <PATH> | -m <_>] [--reset-author] [--allow-empty]
-    [--allow-empty-message] [--no-verify] [-e] [--author=<_>]
-    [--date=<_>] [--cleanup=<_>] [--[no-]status]
-    [-i | -o] [--pathspec-from-file=<PATH> [--pathspec-file-nul]]
-    [(--trailer <_>)...] [-S[<_>]]
-    [--] [<PATH>...]
+    [-a | --interactive | --patch] [-s] [-v] [-u[<mode>]] [--amend]
+    [--dry-run] [(-c | -C | --squash) <commit> | --fixup <commit>]
+    [-F <file> | -m <msg>] [--reset-author] [--allow-empty]
+    [--allow-empty-message] [--no-verify] [-e] [--author=<author>]
+    [--date=<date>] [--cleanup=<mode>] [--[no-]status]
+    [-i | -o] [--pathspec-from-file=<file> [--pathspec-file-nul]]
+    [(--trailer <token>)...] [-S[<keyid>]]
+    [--] [<pathspec>...]
     ;
 
 <diff-syntax>
-    = [<diff-option>...] [<_>] [--] [<PATH>...]
-    | [<diff-option>...] --cached [--merge-base] [<_>] [--] [<PATH>...]
-    | [<diff-option>...] [--merge-base] <_> [<_>...] <_> [--] [<PATH>...]
-    | [<diff-option>...] <_> <_>
-    | [<diff-option>...] --no-index [--] <PATH> <PATH> [<PATH>...]
+    = [<diff-option>...] [<commit>] [--] [<path>...]
+    | [<diff-option>...] --cached [--merge-base] [<commit>] [--] [<path>...]
+    | [<diff-option>...] [--merge-base] <commit> [<commit>...] <commit> [--] [<path>...]
+    | [<diff-option>...] <_> [--] [<path>...]
+    | [<diff-option>...] <blob> <blob>
+    | [<diff-option>...] --no-index [--] <path> <path> [<pathspec>...]
     ;
 
 <diff-option>
     = -p | -u | --patch
     | -s | --no-patch
-    | -U<_> | --unified=<_>
+    | -U<n> | --unified=<n>
     | --output=<_>
-    | --output-indicator-new=<_> | --output-indicator-old=<_> | --output-indicator-context=<_>
+    | --output-indicator-new=<char> | --output-indicator-old=<char> | --output-indicator-context=<char>
     | --raw
     | --patch-with-raw
     | --indent-heuristic
@@ -144,61 +145,61 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
     | --minimal
     | --patience
     | --histogram
-    | --anchored=<_>
+    | --anchored=<text>
     | --diff-algorithm=(patience|minimal|histogram|myers)
     | --stat[=<_>]
     | --compact-summary
     | --numstat
     | --shortstat
-    | -X [<_>] | --dirstat[=<_>]
+    | -X [<param>] | --dirstat[=<param>]
     | --cumulative
-    | --dirstat-by-file[=<_>]
+    | --dirstat-by-file[=<param>]
     | --summary
     | --patch-with-stat
     | -z
     | --name-only
     | --name-status
-    | --submodule[=<_>]
-    | --color[=<_>]
+    | --submodule[=<format>]
+    | --color[=<when>]
     | --no-color
-    | --color-moved[=<_>]
+    | --color-moved[=<mode>]
     | --no-color-moved
-    | --color-moved-ws=<_>
+    | --color-moved-ws=<mode>
     | --no-color-moved-ws
-    | --word-diff[=<_>]
-    | --word-diff-regex=<_>
-    | --color-words[=<_>]
+    | --word-diff[=<mode>]
+    | --word-diff-regex=<regex>
+    | --color-words[=<regex>]
     | --no-renames
     | --[no-]rename-empty
     | --check
-    | --ws-error-highlight=<_>
+    | --ws-error-highlight=<kind>
     | --full-index
     | --binary
-    | --abbrev[=<_>]
+    | --abbrev[=<n>]
     | -B[<_>] | --break-rewrites[=[<_>]]
     | -M[<_>] | --find-renames[=<_>]
     | -C[<_>] | --find-copies[=<_>]
     | --find-copies-harder
     | -D | --irreversible-delete
-    | -l<_>
+    | -l<num>
     | --diff-filter=[(A|C|D|M|R|T|U|X|B)...[*]]
-    | -S<_>
-    | -G<_>
-    | --find-object=<_>
+    | -S<string>
+    | -G<regex>
+    | --find-object=<object-id>
     | --pickaxe-all
     | --pickaxe-regex
-    | -O<_>
-    | --skip-to=<_> | --rotate-to=<_>
+    | -O<orderfile>
+    | --skip-to=<file> | --rotate-to=<file>
     | -R
-    | --relative[=<_>] | --no-relative
+    | --relative[=<path>] | --no-relative
     | -a | --text
     | --ignore-cr-at-eol
     | --ignore-space-at-eol
     | -b | --ignore-space-change
     | -w | --ignore-all-space
     | --ignore-blank-lines
-    | -I<_> | --ignore-matching-lines=<_>
-    | --inter-hunk-context=<_>
+    | -I<_> | --ignore-matching-lines=<regex>
+    | --inter-hunk-context=<number>
     | -W | --function-context
     | --exit-code
     | --quiet
@@ -206,11 +207,11 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
     | --no-ext-diff
     | --textconv | --no-textconv
     | --ignore-submodules[=(none|untracked|dirty|all)]
-    | --src-prefix=<_>
-    | --dst-prefix=<_>
+    | --src-prefix=<prefix>
+    | --dst-prefix=<prefix>
     | --no-prefix
     | --default-prefix
-    | --line-prefix=<_>
+    | --line-prefix=<prefix>
     | --ita-invisible-in-index
     | -1 | --base | -2 | --ours | -3 | --theirs
     | -0
@@ -732,6 +733,8 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
 <git-dir> = <DIRECTORY>;
 <directory> = <DIRECTORY>;
 <n> = <_>;
+<num> = <_>;
+<number> = <_>;
 <depth> = <_>;
 <mode> = <_>;
 <version> = <_>;
@@ -769,3 +772,17 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
 <group> = <_>;
 <tree-ish> = <_>;
 <filter-spec> = <_>;
+<msg> = <_>;
+<author> = <_>;
+<token> = <_>;
+<keyid> = <_>;
+<blob> = <_>;
+<char> = <_>;
+<text> = <_>;
+<param> = <_>;
+<regex> = <_>;
+<kind> = <_>;
+<string> = <_>;
+<object-id> = <_>;
+<orderfile> = <_>;
+<prefix> = <_>;
