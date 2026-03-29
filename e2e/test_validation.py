@@ -323,6 +323,8 @@ error: Conflicting descriptions:
 
 mygit clone "Clone a repository into a new directory"
 mygit clone ""
+
+Hint: If the trailing literals (i.e. "clone") are indeed equivalent, please annotate all of them with the same description to get rid of this error.
 """)
 
 
@@ -337,8 +339,10 @@ cmd dummy help "bar help" baz;
     assert r.stderr == snapshot("""\
 error: Conflicting descriptions:
 
-cmd dummy help "foo help"
-cmd dummy help "bar help"
+cmd dummy (0) help "foo help"
+cmd dummy (0) help "bar help"
+
+Hint: If the trailing literals (i.e. "help") are indeed equivalent, please annotate all of them with the same description to get rid of this error.
 """)
 
 
@@ -354,6 +358,8 @@ error: Conflicting descriptions:
 
 cmd help "foo help"
 cmd help "bar help"
+
+Hint: If the trailing literals (i.e. "help") are indeed equivalent, please annotate all of them with the same description to get rid of this error.
 """)
 
 
