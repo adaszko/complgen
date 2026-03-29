@@ -5,7 +5,7 @@ mygit (<checkout-cmd>  || <global-option>... <checkout-cmd>) <checkout-syntax>;
 mygit (<clone-cmd>     || <global-option>... <clone-cmd>) <clone-syntax>;
 mygit (<commit-cmd>    || <global-option>... <commit-cmd>) <commit-syntax>;
 mygit (<diff-cmd>      || <global-option>... <diff-cmd>) <diff-syntax>;
-mygit (<fetch-cmd>     || <global-option>... <fetch-cmd>);
+mygit (<fetch-cmd>     || <global-option>... <fetch-cmd>) <fetch-syntax>;
 mygit (<grep-cmd>      || <global-option>... <grep-cmd>) <grep-syntax>;
 mygit (<init-cmd>      || <global-option>... <init-cmd>) <init-syntax>;
 mygit (<log-cmd>       || <global-option>... <log-cmd>) <log-syntax>;
@@ -214,6 +214,59 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
     | --ita-invisible-in-index
     | -1 | --base | -2 | --ours | -3 | --theirs
     | -0
+    ;
+
+<fetch-syntax>
+    = [<fetch-option>...] [<repository> [<refspec>...]]
+    | [<fetch-option>...] <group>
+    | --multiple [<fetch-option>...] [(<repository> | <group>)...]
+    | --all [<fetch-option>...]
+    ;
+
+<fetch-option>
+    = --[no-]all
+    | -a | --append
+    | --atomic
+    | --depth=<depth>
+    | --deepen=<depth>
+    | --shallow-since=<date>
+    | --shallow-exclude=<ref>
+    | --unshallow
+    | --update-shallow
+    | --negotiation-tip=(<commit>|<glob>)
+    | --negotiate-only
+    | --dry-run
+    | --porcelain
+    | --[no-]write-fetch-head
+    | -f | --force
+    | -k | --keep
+    | --multiple
+    | --[no-]auto-maintenance | --[no-]auto-gc
+    | --[no-]write-commit-graph
+    | --prefetch
+    | -p | --prune
+    | -P | --prune-tags
+    | -n | --no-tags
+    | --refetch
+    | --refmap=<refspec>
+    | -t | --tags
+    | --recurse-submodules[=(yes|on-demand|no)]
+    | -j | --jobs=<n>
+    | --no-recurse-submodules
+    | --set-upstream
+    | --submodule-prefix=<path>
+    | --recurse-submodules-default=[yes|on-demand]
+    | -u | --update-head-ok
+    | --upload-pack <upload-pack>
+    | -q | --quiet
+    | -v | --verbose
+    | --progress
+    | -o <server-option> | --server-option=<server-option>
+    | --show-forced-updates
+    | --no-show-forced-updates
+    | -4 | --ipv4
+    | -6 | --ipv6
+    | --stdin
     ;
 
 <grep-syntax> =
@@ -676,10 +729,13 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
 <pathspec> = <PATH>;
 <logfile> = <PATH>;
 <n> = <_>;
+<depth> = <_>;
 <mode> = <_>;
 <version> = <_>;
 <when> = <_>;
 <branch> = <_>;
+<ref> = <_>;
+<refspec> = <_>;
 <branch-name> = <_>;
 <old-branch> = <_>;
 <new-branch> = <_>;
@@ -702,3 +758,9 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
 <column-options> = <_>;
 <config-env> = <_>;
 <name> = <_>;
+<server-option> = <_>;
+<upload-pack> = <_>;
+<glob> = <_>;
+<date> = <_>;
+<repository> = <_>;
+<group> = <_>;
