@@ -253,6 +253,11 @@ fn handle_error(e: Error, path: &str, source: &str, command: &str) -> anyhow::Re
                     right_descr.as_str()
                 );
             }
+            eprintln!();
+            eprintln!(
+                "Hint: If the trailing literals (i.e. {:?}) are indeed equivalent, please annotate all of them with the same description to get rid of this error.",
+                literal.as_str(),
+            );
         }
         e => {
             eprintln!("{}", e);
