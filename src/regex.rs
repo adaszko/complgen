@@ -496,7 +496,7 @@ fn do_to_dot<W: Write>(
                 output,
                 subword_regex.root_id,
                 &subword_regex.arena,
-                input_from_position,
+                &subword_regex.input_from_position,
                 subword_regexes,
                 recursion_level + 1,
             )?;
