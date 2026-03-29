@@ -724,7 +724,7 @@ pub fn diagnostic_display_input<W: std::fmt::Write>(w: &mut W, input: &Inp) -> R
             literal,
             description: Some(descr),
             ..
-        } => write!(w, r#"{literal} {descr:?}"#)?,
+        } => write!(w, r#"{literal} {:?}"#, descr.as_str())?,
         Inp::Star => write!(w, r#"*"#)?,
         Inp::Command { cmd, .. } => write!(w, r#"{{{{{{ {cmd} }}}}}}"#)?,
         Inp::Compadd { cmd, .. } => write!(w, r#"{{{{{{ {cmd} }}}}}}compadd"#)?,
