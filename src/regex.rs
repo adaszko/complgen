@@ -503,10 +503,21 @@ fn do_to_dot<W: Write>(
             writeln!(output, "{indentation}}}")?;
         }
         RegexNode::Terminal(term, _, pos) => {
-            writeln!(
-                output,
-                r#"{indentation}_{node_id}[label="{pos}: \"{term}\""];"#
-            )?;
+            let RegexInput::Literal { description, .. } = input_from_position[pos as usize].clone()
+            else {
+                unreachable!();
+            };
+            if let Some(description) = description {
+                writeln!(
+                    output,
+                    r#"{indentation}_{node_id}[label="{pos}: \"{term}\"\n\"{description}\""];"#
+                )?;
+            } else {
+                writeln!(
+                    output,
+                    r#"{indentation}_{node_id}[label="{pos}: \"{term}\""];"#
+                )?;
+            }
         }
         RegexNode::Nonterminal(pos) => {
             let input = input_from_position[pos as usize].clone();
