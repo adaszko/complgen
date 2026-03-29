@@ -317,20 +317,20 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
 
 <merge-syntax>
     = [-n] [--stat] [--compact-summary] [--no-commit] [--squash] [--[no-]edit]
-      [--no-verify] [-s <_>] [-X <_>] [-S[<_>]]
+      [--no-verify] [-s <strategy>] [-X <strategy-option>] [-S[<keyid>]]
       [--[no-]allow-unrelated-histories]
-      [--[no-]rerere-autoupdate] [-m <_>] [-F <PATH>]
-      [--into-name <_>] [<_>...]
+      [--[no-]rerere-autoupdate] [-m <msg>] [-F <file>]
+      [--into-name <branch>] [<commit>...]
     | (--continue | --abort | --quit)
     ;
 
 <mv-syntax>
-    = [-v] [-f] [-n] [-k] <PATH> <PATH>
-    | [-v] [-f] [-n] [-k] <PATH>... <DIRECTORY>
+    = [-v] [-f] [-n] [-k] <source> <destination>
+    | [-v] [-f] [-n] [-k] <source>... <destination-directory>
     ;
 
 <pull-syntax>
-    = [<pull-option>...] [<_> [<_>...]]
+    = [<pull-option>...] [<repository> [<refspec>...]]
     ;
 
 <pull-option>
@@ -339,18 +339,18 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
     | --[no-]recurse-submodules[=(yes|on-demand|no)]
     | --commit | --no-commit
     | --edit | -e | --no-edit
-    | --cleanup=<_>
+    | --cleanup=<mode>
     | --ff-only
     | --ff | --no-ff
-    | -S[<_>] | --gpg-sign[=<_>] | --no-gpg-sign
-    | --log[=<_>] | --no-log
+    | -S[<key-id>] | --gpg-sign[=<key-id>] | --no-gpg-sign
+    | --log[=<n>] | --no-log
     | --signoff | --no-signoff
     | --stat | -n | --no-stat
     | --compact-summary
     | --squash | --no-squash
     | --[no-]verify
-    | -s <_> | --strategy=<_>
-    | -X <_> | --strategy-option=<_>
+    | -s <strategy> | --strategy=<strategy>
+    | -X <strategy-option> | --strategy-option=<strategy-option>
     | --verify-signatures | --no-verify-signatures
     | --summary | --no-summary
     | --autostash | --no-autostash
@@ -360,13 +360,13 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
     | --[no-]all
     | -a | --append
     | --atomic
-    | --depth=<_>
-    | --deepen=<_>
-    | --shallow-since=<_>
-    | --shallow-exclude=<_>
+    | --depth=<depth>
+    | --deepen=<depth>
+    | --shallow-since=<date>
+    | --shallow-exclude=<ref>
     | --unshallow
     | --update-shallow
-    | --negotiation-tip=<_>
+    | --negotiation-tip=(<commit>|<glob>)
     | --negotiate-only
     | --dry-run
     | --porcelain
@@ -375,13 +375,13 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
     | --prefetch
     | -p | --prune
     | --no-tags
-    | --refmap=<_>
+    | --refmap=<refspec>
     | -t | --tags
-    | -j | --jobs=<_>
+    | -j | --jobs=<n>
     | --set-upstream
-    | --upload-pack <_>
+    | --upload-pack <upload-pack>
     | --progress
-    | -o <_> | --server-option=<_>
+    | -o <server-option> | --server-option=<server-option>
     | --show-forced-updates
     | --no-show-forced-updates
     | -4 | --ipv4
@@ -654,6 +654,9 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
 <template-directory> = <DIRECTORY>;
 <git-dir> = <DIRECTORY>;
 <directory> = <DIRECTORY>;
+<source> = <DIRECTORY>;
+<destination> = <DIRECTORY>;
+<destination-directory> = <DIRECTORY>;
 <n> = <_>;
 <num> = <_>;
 <number> = <_>;
@@ -719,3 +722,6 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
 <revision-range> = <_>;
 <encoding> = <_>;
 <barrier> = <_>;
+<strategy> = <_>;
+<strategy-option> = <_>;
+<key-id> = <_>;
