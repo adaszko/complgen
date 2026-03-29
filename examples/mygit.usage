@@ -88,6 +88,9 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
     | --edit-description [<branch-name>]
     ;
 
+<column-option> = always | never | auto | column | row | plain | dense | nodense;
+<column-options> = <column-option>[,<column-option>]...;
+
 <checkout-syntax>
     = [-q] [-f] [-m] [<branch>]
     | [-q] [-f] [-m] --detach [<branch>]
@@ -669,7 +672,6 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
 <branch> = <_>;
 <char> = <_>;
 <cmd> = <_>;
-<column-options> = <_>;
 <commit> = <_>;
 <config-env> = <_>;
 <context> = <_>;
