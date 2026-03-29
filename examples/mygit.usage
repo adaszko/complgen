@@ -89,27 +89,27 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
     ;
 
 <checkout-syntax>
-    = [-q] [-f] [-m] [<_>]
-    | [-q] [-f] [-m] --detach [<_>]
-    | [-q] [-f] [-m] [--detach] <_>
-    | [-q] [-f] [-m] [[-b|-B|--orphan] <_>] [<_>]
-    | <_> [--] <PATH>...
-    | <_> --pathspec-from-file=<PATH> [--pathspec-file-nul]
-    | [-f|--ours|--theirs|-m|--conflict=<_>] [--] <PATH>...
-    | [-f|--ours|--theirs|-m|--conflict=<_>] --pathspec-from-file=<PATH> [--pathspec-file-nul]
-    | (-p|--patch) [<_>] [--] [<PATH>...]
+    = [-q] [-f] [-m] [<branch>]
+    | [-q] [-f] [-m] --detach [<branch>]
+    | [-q] [-f] [-m] [--detach] <commit>
+    | [-q] [-f] [-m] [[-b|-B|--orphan] <new-branch>] [<start-point>]
+    | [-f] <tree-ish> [--] <pathspec>...
+    | [-f] <tree-ish> --pathspec-from-file=<file> [--pathspec-file-nul]
+    | [-f|--ours|--theirs|-m|--conflict=<style>] [--] <pathspec>...
+    | [-f|--ours|--theirs|-m|--conflict=<style>] --pathspec-from-file=<file> [--pathspec-file-nul]
+    | (-p|--patch) [<tree-ish>] [--] [<pathspec>...]
     ;
 
 <clone-syntax> =
-    [--template=<_>]
+    [--template=<template-directory>]
     [-l] [-s] [--no-hardlinks] [-q] [-n] [--bare] [--mirror]
-    [-o <_>] [-b <_>] [-u <_>] [--reference <_>]
-    [--dissociate] [--separate-git-dir <DIRECTORY>]
-    [--depth <_>] [--[no-]single-branch] [--[no-]tags]
-    [--recurse-submodules[=<PATH>]] [--[no-]shallow-submodules]
-    [--[no-]remote-submodules] [--jobs <_>] [--sparse] [--[no-]reject-shallow]
-    [--filter=<_> [--also-filter-submodules]] [--] <_>
-    [<DIRECTORY>]
+    [-o <name>] [-b <name>] [-u <upload-pack>] [--reference <repository>]
+    [--dissociate] [--separate-git-dir <git-dir>]
+    [--depth <depth>] [--[no-]single-branch] [--[no-]tags]
+    [--recurse-submodules[=<pathspec>]] [--[no-]shallow-submodules]
+    [--[no-]remote-submodules] [--jobs <n>] [--sparse] [--[no-]reject-shallow]
+    [--filter=<filter-spec>] [--also-filter-submodules] [--] <repository>
+    [<directory>]
     ;
 
 <commit-syntax> =
@@ -728,6 +728,9 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
 <path> = <PATH>;
 <pathspec> = <PATH>;
 <logfile> = <PATH>;
+<template-directory> = <DIRECTORY>;
+<git-dir> = <DIRECTORY>;
+<directory> = <DIRECTORY>;
 <n> = <_>;
 <depth> = <_>;
 <mode> = <_>;
@@ -764,3 +767,5 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
 <date> = <_>;
 <repository> = <_>;
 <group> = <_>;
+<tree-ish> = <_>;
+<filter-spec> = <_>;
