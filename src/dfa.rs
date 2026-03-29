@@ -718,13 +718,13 @@ pub fn diagnostic_display_input<W: std::fmt::Write>(w: &mut W, input: &Inp) -> R
         Inp::Literal {
             literal,
             description: None,
-            ..
-        } => write!(w, r#"{literal}"#)?,
+            fallback_level,
+        } => write!(w, r#"{literal} ({fallback_level})"#)?,
         Inp::Literal {
             literal,
             description: Some(descr),
-            ..
-        } => write!(w, r#"{literal} {:?}"#, descr.as_str())?,
+            fallback_level,
+        } => write!(w, r#"{literal} {:?} ({fallback_level})"#, descr.as_str())?,
         Inp::Star => write!(w, r#"*"#)?,
         Inp::Command { cmd, .. } => write!(w, r#"{{{{{{ {cmd} }}}}}}"#)?,
         Inp::Compadd { cmd, .. } => write!(w, r#"{{{{{{ {cmd} }}}}}}compadd"#)?,
