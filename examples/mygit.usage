@@ -295,35 +295,33 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
     ;
 
 <init-syntax> =
-    [-q | --quiet] [--bare] [--template=<_>]
-    [--separate-git-dir <DIRECTORY>] [--object-format=<_>]
-    [--ref-format=<_>]
-    [-b <_> | --initial-branch=<_>]
-    [--shared[=<_>]] [<DIRECTORY>]
+    [-q | --quiet] [--bare] [--template=<template-directory>]
+    [--separate-git-dir <git-dir>] [--object-format=<format>]
+    [--ref-format=<format>]
+    [-b <branch-name> | --initial-branch=<branch-name>]
+    [--shared[=<permissions>]] [<directory>]
     ;
 
-<log-syntax>
-    = [<log-option>...] <_> [[--] <PATH>...]
-    ;
+<log-syntax> = [<log-option>...] [<revision-range>] [[--] <path>...];
 
 <log-option>
     = --follow
     | --no-decorate | --decorate[=(short|full|auto|no)]
-    | --decorate-refs=<_> | --decorate-refs-exclude=<_>
+    | --decorate-refs=<pattern> | --decorate-refs-exclude=<pattern>
     | --clear-decorations
     | --source
     | --[no-]mailmap | --[no-]use-mailmap
     | --full-diff
     | --log-size
     | -L<_> | -L:<_>
-    | -<_> | -n <_> | --max-count=<_>
-    | --skip=<_>
-    | --since=<_> | --after=<_>
-    | --since-as-filter=<_>
-    | --until=<_> | --before=<_>
-    | --author=<_> | --committer=<_>
-    | --grep-reflog=<_>
-    | --grep=<_>
+    | -<number> | -n <number> | --max-count=<number>
+    | --skip=<number>
+    | --since=<date> | --after=<date>
+    | --since-as-filter=<date>
+    | --until=<date> | --before=<date>
+    | --author=<pattern> | --committer=<pattern>
+    | --grep-reflog=<pattern>
+    | --grep=<pattern>
     | --all-match
     | --invert-grep
     | -i | --regexp-ignore-case
@@ -334,16 +332,16 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
     | --remove-empty
     | --merges
     | --no-merges
-    | --min-parents=<_> | --max-parents=<_> | --no-min-parents | --no-max-parents
+    | --min-parents=<number> | --max-parents=<number> | --no-min-parents | --no-max-parents
     | --first-parent
     | --exclude-first-parent-only
     | --not
     | --all
-    | --branches[=<_>]
-    | --tags[=<_>]
-    | --remotes[=<_>]
-    | --glob=<_>
-    | --exclude=<_>
+    | --branches[=<pattern>]
+    | --tags[=<pattern>]
+    | --remotes[=<pattern>]
+    | --glob=<glob-pattern>
+    | --exclude=<glob-pattern>
     | --exclude-hidden=(fetch|receive|uploadpack)
     | --reflog
     | --alternate-refs
@@ -364,38 +362,36 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
     | --dense
     | --sparse
     | --simplify-merges
-    | --ancestry-path[=<_>]
-    | --full-history without parent rewriting
-    | --full-history with parent rewriting
+    | --ancestry-path[=<commit>]
     | --dense
     | --sparse
-    | --simplify-merges
-    | --ancestry-path[=<_>]
     | --date-order
     | --author-date-order
     | --topo-order
     | --reverse
     | --no-walk[=(sorted|unsorted)]
     | --do-walk
-    | --pretty[=<_>] | --format=<_>
+    | --pretty[=<pretty-format>] | --format=<pretty-format>
     | --abbrev-commit
     | --no-abbrev-commit
     | --oneline
-    | --encoding=<_>
-    | --expand-tabs=<_> | --expand-tabs | --no-expand-tabs
-    | --notes[=<_>]
+    | --encoding=<encoding>
+    | --expand-tabs=<n> | --expand-tabs | --no-expand-tabs
+    | --notes[=<ref>]
     | --no-notes
     | --show-notes-by-default
-    | --show-notes[=<_>] | --standard-notes | --no-standard-notes
+    | --show-notes[=<ref>] | --standard-notes | --no-standard-notes
     | --show-signature
     | --relative-date
-    | --date=<_>
+    | --date=(relative|local|iso|iso-strict|rfc|short|raw|human|unix|default|format:<format>)
     | --parents
     | --children
     | --left-right
     | --graph
-    | --show-linear-break[=<_>]
+    | --show-linear-break[=<barrier>]
     ;
+
+<pretty-format> = oneline | short | medium | full | fuller | reference | email | mboxrd | raw | format:<format>;
 
 <merge-syntax>
     = [-n] [--stat] [--compact-summary] [--no-commit] [--squash] [--[no-]edit]
@@ -587,7 +583,7 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
     | --dd
     | --remerge-diff
     | --no-diff-merges
-    | --diff-merges=<_>
+    | --diff-merges=(off | none | on | m | first-parent | 1 | separate | combined | c | dense-combined | cc | remerge | r)
     | --combined-all-paths
     | -U<_> | --unified=<_>
     | --output=<_>
@@ -767,6 +763,7 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
 <server-option> = <_>;
 <upload-pack> = <_>;
 <glob> = <_>;
+<glob-pattern> = <_>;
 <date> = <_>;
 <repository> = <_>;
 <group> = <_>;
@@ -792,3 +789,7 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
 <post-context> = <_>;
 <basename> = <_>;
 <tree> = <_>;
+<permissions> = <_>;
+<revision-range> = <_>;
+<encoding> = <_>;
+<barrier> = <_>;
