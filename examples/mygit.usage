@@ -277,21 +277,21 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
     [-P | --perl-regexp]
     [-F | --fixed-strings] [-n | --line-number] [--column]
     [-l | --files-with-matches] [-L | --files-without-match]
-    [(-O | --open-files-in-pager) [<_>]]
+    [(-O | --open-files-in-pager) [<pager>]]
     [-z | --null]
     [ -o | --only-matching ] [-c | --count] [--all-match] [-q | --quiet]
-    [--max-depth <_>] [--[no-]recursive]
-    [--color[=<_>] | --no-color]
+    [--max-depth <depth>] [--[no-]recursive]
+    [--color[=<when>] | --no-color]
     [--break] [--heading] [-p | --show-function]
-    [-A <_>] [-B <_>] [-C <_>]
+    [-A <post-context>] [-B <pre-context>] [-C <context>]
     [-W | --function-context]
-    [(-m | --max-count) <_>]
-    [--threads <_>]
-    [-f <PATH>] [-e] <_>
-    [--and|--or|--not|\||-e <_>...]
-    [--recurse-submodules] [--parent-basename <_>]
-    [ [--[no-]exclude-standard] [--cached | --untracked | --no-index] | <_>...]
-    [--] [<PATH>...]
+    [(-m | --max-count) <num>]
+    [--threads <num>]
+    [-f <file>] [-e] <num>
+    [--and|--or|--not|\||-e <pattern>...]
+    [--recurse-submodules] [--parent-basename <basename>]
+    [ [--[no-]exclude-standard] [--cached | --untracked | --no-index] | <tree>...]
+    [--] [<pathspec>...]
     ;
 
 <init-syntax> =
@@ -786,3 +786,9 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
 <object-id> = <_>;
 <orderfile> = <_>;
 <prefix> = <_>;
+<pager> = <_>;
+<pre-context> = <_>;
+<context> = <_>;
+<post-context> = <_>;
+<basename> = <_>;
+<tree> = <_>;
