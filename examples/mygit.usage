@@ -389,17 +389,17 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
     ;
 
 <push-syntax> =
-    [--all | --branches | --mirror | --tags] [--follow-tags] [--atomic] [-n | --dry-run] [--receive-pack=<_>]
-    [--repo=<_>] [-f | --force] [-d | --delete] [--prune] [-q | --quiet] [-v | --verbose]
-    [-u | --set-upstream] [-o <_> | --push-option=<_>]
+    [--all | --branches | --mirror | --tags] [--follow-tags] [--atomic] [-n | --dry-run] [--receive-pack=<git-receive-pack>]
+    [--repo=<repository>] [-f | --force] [-d | --delete] [--prune] [-q | --quiet] [-v | --verbose]
+    [-u | --set-upstream] [-o <string> | --push-option=<string>]
     [--[no-]signed|--signed=(true|false|if-asked)]
     [--force-with-lease[=<_>] [--force-if-includes]]
-    [--no-verify] [<_> [<_>...]]
+    [--no-verify] [<repository> [<refspec>...]]
     ;
 
 <rebase-syntax>
-    = [-i | --interactive] [<rebase-option>...] [--exec <_>] [--onto <_> | --keep-base] [<_> [<_>]]
-    | [-i | --interactive] [<rebase-option>...] [--exec <_>] [--onto <_>] --root [<_>]
+    = [-i | --interactive] [<rebase-option>...] [--exec <cmd>] [--onto <newbase> | --keep-base] [<upstream> [<branch>]]
+    | [-i | --interactive] [<rebase-option>...] [--exec <cmd>] [--onto <newbase>] --root [<branch>]
     | (--continue|--skip|--abort|--quit|--edit-todo|--show-current-patch)
     ;
 
@@ -410,7 +410,7 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
     | --quit
     | --edit-todo
     | --show-current-patch
-    | --onto <_>
+    | --onto <newbase>
     | --keep-base
     | --apply
     | --empty=(drop|keep|stop)
@@ -418,27 +418,27 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
     | --reapply-cherry-picks | --no-reapply-cherry-picks
     | --allow-empty-message
     | -m | --merge
-    | -s <_> | --strategy=<_>
-    | -X <_> | --strategy-option=<_>
+    | -s <strategy> | --strategy=<strategy>
+    | -X <strategy-option> | --strategy-option=<strategy-option>
     | --rerere-autoupdate | --no-rerere-autoupdate
-    | -S[<_>] | --gpg-sign[=<_>] | --no-gpg-sign
+    | -S[<key-id>] | --gpg-sign[=<key-id>] | --no-gpg-sign
     | -q | --quiet
     | -v | --verbose
     | --stat
     | -n | --no-stat
     | --no-verify
     | --verify
-    | -C<_>
+    | -C<n>
     | --no-ff | --force-rebase | -f
     | --fork-point | --no-fork-point
     | --ignore-whitespace
-    | --whitespace=<_>
+    | --whitespace=<option>
     | --committer-date-is-author-date
     | --ignore-date | --reset-author-date
     | --signoff
     | -i | --interactive
     | -r | --rebase-merges[=(rebase-cousins|no-rebase-cousins)] | --no-rebase-merges
-    | -x <_> | --exec <_>
+    | -x <cmd> | --exec <cmd>
     | --root
     | --autosquash | --no-autosquash
     | --autostash | --no-autostash
@@ -725,3 +725,5 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
 <strategy> = <_>;
 <strategy-option> = <_>;
 <key-id> = <_>;
+<git-receive-pack> = <_>;
+<newbase> = <_>;
