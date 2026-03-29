@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
  * Various output script size optimizations
 
+### Removed
+
+ * Breaking: The scrape subcommand
+
 ## 0.8.3
 ### Fixed
 

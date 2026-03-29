@@ -10,7 +10,6 @@ pub mod fish;
 pub mod grammar;
 pub mod pwsh;
 pub mod regex;
-pub mod scrape;
 pub mod zsh;
 
 #[derive(thiserror::Error, Debug)]

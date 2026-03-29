@@ -14,12 +14,6 @@ use complgen::{Error, bash, fish, pwsh, zsh};
 
 #[derive(clap::Parser)]
 struct Cli {
-    #[clap(
-        long,
-        help = "Read another program's --help output and generate a grammar *skeleton*"
-    )]
-    scrape: bool,
-
     #[clap(long, help = "Show version and exit")]
     version: bool,
 
@@ -407,28 +401,12 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn scrape() -> anyhow::Result<()> {
-    let input: String = {
-        let mut input = String::default();
-        std::io::stdin().read_to_string(&mut input)?;
-        input
-    };
-
-    let mut writer = BufWriter::new(std::io::stdout());
-    complgen::scrape::scrape(&input, &mut writer)?;
-    Ok(())
-}
-
 fn main() -> anyhow::Result<()> {
     let args = Cli::parse();
 
     if args.version {
         println!("{}", env!("COMPLGEN_VERSION"));
         return Ok(());
-    }
-
-    if args.scrape {
-        return scrape();
     }
 
     aot(&args)
