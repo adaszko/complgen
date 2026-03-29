@@ -133,86 +133,7 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
     ;
 
 <diff-option>
-    = -p | -u | --patch
-    | -s | --no-patch
-    | -U<n> | --unified=<n>
-    | --output=<_>
-    | --output-indicator-new=<char> | --output-indicator-old=<char> | --output-indicator-context=<char>
-    | --raw
-    | --patch-with-raw
-    | --indent-heuristic
-    | --no-indent-heuristic
-    | --minimal
-    | --patience
-    | --histogram
-    | --anchored=<text>
-    | --diff-algorithm=(patience|minimal|histogram|myers)
-    | --stat[=<_>]
-    | --compact-summary
-    | --numstat
-    | --shortstat
-    | -X [<param>] | --dirstat[=<param>]
-    | --cumulative
-    | --dirstat-by-file[=<param>]
-    | --summary
-    | --patch-with-stat
-    | -z
-    | --name-only
-    | --name-status
-    | --submodule[=<format>]
-    | --color[=<when>]
-    | --no-color
-    | --color-moved[=<mode>]
-    | --no-color-moved
-    | --color-moved-ws=<mode>
-    | --no-color-moved-ws
-    | --word-diff[=<mode>]
-    | --word-diff-regex=<regex>
-    | --color-words[=<regex>]
-    | --no-renames
-    | --[no-]rename-empty
-    | --check
-    | --ws-error-highlight=<kind>
-    | --full-index
-    | --binary
-    | --abbrev[=<n>]
-    | -B[<_>] | --break-rewrites[=[<_>]]
-    | -M[<_>] | --find-renames[=<_>]
-    | -C[<_>] | --find-copies[=<_>]
-    | --find-copies-harder
-    | -D | --irreversible-delete
-    | -l<num>
-    | --diff-filter=[(A|C|D|M|R|T|U|X|B)...[*]]
-    | -S<string>
-    | -G<regex>
-    | --find-object=<object-id>
-    | --pickaxe-all
-    | --pickaxe-regex
-    | -O<orderfile>
-    | --skip-to=<file> | --rotate-to=<file>
-    | -R
-    | --relative[=<path>] | --no-relative
-    | -a | --text
-    | --ignore-cr-at-eol
-    | --ignore-space-at-eol
-    | -b | --ignore-space-change
-    | -w | --ignore-all-space
-    | --ignore-blank-lines
-    | -I<_> | --ignore-matching-lines=<regex>
-    | --inter-hunk-context=<number>
-    | -W | --function-context
-    | --exit-code
-    | --quiet
-    | --ext-diff
-    | --no-ext-diff
-    | --textconv | --no-textconv
-    | --ignore-submodules[=(none|untracked|dirty|all)]
-    | --src-prefix=<prefix>
-    | --dst-prefix=<prefix>
-    | --no-prefix
-    | --default-prefix
-    | --line-prefix=<prefix>
-    | --ita-invisible-in-index
+    = <diff-formatting-option>
     | -1 | --base | -2 | --ours | -3 | --theirs
     | -0
     ;
@@ -389,6 +310,7 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
     | --left-right
     | --graph
     | --show-linear-break[=<barrier>]
+    | <diff-formatting-option>
     ;
 
 <pretty-format> = oneline | short | medium | full | fuller | reference | email | mboxrd | raw | format:<format>;
@@ -575,7 +497,11 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
     | --show-notes-by-default
     | --show-notes[=<_>] | --standard-notes | --no-standard-notes
     | --show-signature
-    | -p | -u | --patch
+    | <diff-formatting-option>
+    ;
+
+<diff-formatting-option>
+    = -p | -u | --patch
     | -s | --no-patch
     | -m
     | -c
@@ -583,11 +509,11 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
     | --dd
     | --remerge-diff
     | --no-diff-merges
-    | --diff-merges=(off | none | on | m | first-parent | 1 | separate | combined | c | dense-combined | cc | remerge | r)
+    | --diff-merges=(off|none|on|m|first-parent|1|separate|combined|c|dense-combined|cc|remerge|r)
     | --combined-all-paths
-    | -U<_> | --unified=<_>
-    | --output=<_>
-    | --output-indicator-new=<_> | --output-indicator-old=<_> | --output-indicator-context=<_>
+    | -U<n> | --unified=<n>
+    | --output=<file>
+    | --output-indicator-new=<char> | --output-indicator-old=<char> | --output-indicator-context=<char>
     | --raw
     | --patch-with-raw
     | -t
@@ -596,71 +522,71 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
     | --minimal
     | --patience
     | --histogram
-    | --anchored=<_>
+    | --anchored=<text>
     | --diff-algorithm=(patience|minimal|histogram|myers)
     | --stat[=<_>]
     | --compact-summary
     | --numstat
     | --shortstat
-    | -X [<_>] | --dirstat[=<_>]
+    | -X [<param>] | --dirstat[=<param>]
     | --cumulative
-    | --dirstat-by-file[=<_>]
+    | --dirstat-by-file[=<param>]
     | --summary
     | --patch-with-stat
     | -z
     | --name-only
     | --name-status
-    | --submodule[=<_>]
-    | --color[=<_>]
+    | --submodule[=<format>]
+    | --color[=<when>]
     | --no-color
-    | --color-moved[=<_>]
+    | --color-moved[=<mode>]
     | --no-color-moved
-    | --color-moved-ws=<_>
+    | --color-moved-ws=<mode>
     | --no-color-moved-ws
-    | --word-diff[=<_>]
-    | --word-diff-regex=<_>
-    | --color-words[=<_>]
+    | --word-diff[=<mode>]
+    | --word-diff-regex=<regex>
+    | --color-words[=<regex>]
     | --no-renames
     | --[no-]rename-empty
     | --check
-    | --ws-error-highlight=<_>
+    | --ws-error-highlight=<kind>
     | --full-index
     | --binary
-    | --abbrev[=<_>]
-    | -B[<_>] | --break-rewrites[=[<_>]]
-    | -M[<_>] | --find-renames[=<_>]
-    | -C[<_>] | --find-copies[=<_>]
+    | --abbrev[=<n>]
+    | -B[<_>] | --break-rewrites[=[<n>]]
+    | -M[<_>] | --find-renames[=<n>]
+    | -C[<_>] | --find-copies[=<n>]
     | --find-copies-harder
     | -D | --irreversible-delete
-    | -l<_>
+    | -l<num>
     | --diff-filter=[(A|C|D|M|R|T|U|X|B)...[*]]
-    | -S<_>
-    | -G<_>
-    | --find-object=<_>
+    | -S<string>
+    | -G<regex>
+    | --find-object=<object-id>
     | --pickaxe-all
     | --pickaxe-regex
-    | -O<_>
-    | --skip-to=<_> | --rotate-to=<_>
+    | -O<orderfile>
+    | --skip-to=<file> | --rotate-to=<file>
     | -R
-    | --relative[=<_>] | --no-relative
+    | --relative[=<path>] | --no-relative
     | -a | --text
     | --ignore-cr-at-eol
     | --ignore-space-at-eol
     | -b | --ignore-space-change
     | -w | --ignore-all-space
     | --ignore-blank-lines
-    | -I<_> | --ignore-matching-lines=<_>
-    | --inter-hunk-context=<_>
+    | -I<regex> | --ignore-matching-lines=<regex>
+    | --inter-hunk-context=<number>
     | -W | --function-context
     | --ext-diff
     | --no-ext-diff
     | --textconv | --no-textconv
     | --ignore-submodules[=(none|untracked|dirty|all)]
-    | --src-prefix=<_>
-    | --dst-prefix=<_>
+    | --src-prefix=<prefix>
+    | --dst-prefix=<prefix>
     | --no-prefix
     | --default-prefix
-    | --line-prefix=<_>
+    | --line-prefix=<prefix>
     | --ita-invisible-in-index
     ;
 
