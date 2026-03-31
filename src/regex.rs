@@ -465,6 +465,7 @@ pub(crate) fn make_dot_string_constant(s: &str) -> String {
 fn do_to_dot<W: Write>(
     output: &mut W,
     node_id: RegexNodeId,
+    parent_dot_id: Option<&str>,
     arena: &[RegexNode],
     input_from_position: &Vec<RegexInput>,
     subword_regexes: &RegexInternPool,
@@ -473,13 +474,8 @@ fn do_to_dot<W: Write>(
     visited_subwords: &mut RoaringBitmap,
 ) -> std::result::Result<(), std::io::Error> {
     let indentation = format!("\t{}", str::repeat("\t", recursion_level));
+    let node_dot_id = format!("_{identifiers_prefix}{node_id}");
     match arena[node_id].clone() {
-        RegexNode::Epsilon => {
-            writeln!(
-                output,
-                r#"{indentation}_{identifiers_prefix}{node_id}[label="Epsilon"];"#
-            )?;
-        }
         RegexNode::Subword(pos) => {
             let RegexInput::Subword {
                 subword_regex_id, ..
@@ -487,31 +483,38 @@ fn do_to_dot<W: Write>(
             else {
                 unreachable!();
             };
+            if let Some(parent_dot_id) = parent_dot_id {
+                writeln!(output, "{indentation}{parent_dot_id} -> {node_dot_id};")?;
+            }
+            writeln!(
+                output,
+                "{indentation}{node_dot_id}[label=\"{pos}: Subword {subword_regex_id}\"];"
+            )?;
+            let subword_regex = subword_regexes.lookup(subword_regex_id);
+            writeln!(
+                output,
+                "{indentation}{node_dot_id} -> _{subword_regex_id}_{};",
+                subword_regex.root_id
+            )?;
             if visited_subwords.contains(subword_regex_id.0 as _) {
                 return Ok(());
             }
             visited_subwords.insert(subword_regex_id.0 as _);
-            let subword_regex = subword_regexes.lookup(subword_regex_id);
             writeln!(
                 output,
-                "{indentation}_{node_id} -> _{subword_regex_id}_{};",
-                subword_regex.root_id
+                "{indentation}subgraph cluster_{subword_regex_id} {{"
             )?;
-            writeln!(output, "{indentation}subgraph cluster_{node_id} {{")?;
             writeln!(
                 output,
                 "{indentation}\tlabel=\"SUBWORD {subword_regex_id}\";"
             )?;
             writeln!(output, "{indentation}\tcolor=grey91;")?;
             writeln!(output, "{indentation}\tstyle=filled;")?;
-            writeln!(
-                output,
-                "{indentation}\t_{node_id}[label=\"{pos}: Subword\"];"
-            )?;
             let subword_identifiers_prefix = &format!("{subword_regex_id}_");
             do_to_dot(
                 output,
                 subword_regex.root_id,
+                None,
                 &subword_regex.arena,
                 &subword_regex.input_from_position,
                 subword_regexes,
@@ -521,6 +524,12 @@ fn do_to_dot<W: Write>(
             )?;
             writeln!(output, "{indentation}}}")?;
         }
+        RegexNode::Epsilon => {
+            writeln!(output, r#"{indentation}{node_dot_id}[label="Epsilon"];"#)?;
+            if let Some(parent_dot_id) = parent_dot_id {
+                writeln!(output, r#"{indentation}{parent_dot_id} -> {node_dot_id};"#,)?;
+            }
+        }
         RegexNode::Terminal(term, _, pos) => {
             let RegexInput::Literal { description, .. } = input_from_position[pos as usize].clone()
             else {
@@ -529,13 +538,16 @@ fn do_to_dot<W: Write>(
             if let Some(description) = description {
                 writeln!(
                     output,
-                    r#"{indentation}_{identifiers_prefix}{node_id}[label="{pos}: \"{term}\"\n\"{description}\""];"#
+                    r#"{indentation}{node_dot_id}[label="{pos}: \"{term}\"\n\"{description}\""];"#
                 )?;
             } else {
                 writeln!(
                     output,
-                    r#"{indentation}_{identifiers_prefix}{node_id}[label="{pos}: \"{term}\""];"#
+                    r#"{indentation}{node_dot_id}[label="{pos}: \"{term}\""];"#
                 )?;
+            }
+            if let Some(parent_dot_id) = parent_dot_id {
+                writeln!(output, r#"{indentation}{parent_dot_id} -> {node_dot_id};"#,)?;
             }
         }
         RegexNode::Nonterminal(pos) => {
@@ -545,25 +557,29 @@ fn do_to_dot<W: Write>(
             };
             writeln!(
                 output,
-                r#"{indentation}_{identifiers_prefix}{node_id}[label="{pos}: <{nonterm}>"];"#
+                r#"{indentation}{node_dot_id}[label="{pos}: <{nonterm}>"];"#
             )?;
+            if let Some(parent_dot_id) = parent_dot_id {
+                writeln!(output, r#"{indentation}{parent_dot_id} -> {node_dot_id};"#,)?;
+            }
         }
         RegexNode::Command(cmd, pos) => {
             writeln!(
                 output,
-                r#"{indentation}_{identifiers_prefix}{node_id}[label={}];"#,
+                r#"{indentation}{node_dot_id}[label={}];"#,
                 make_dot_string_constant(&format!("{pos}: {cmd}"))
             )?;
+            if let Some(parent_dot_id) = parent_dot_id {
+                writeln!(output, r#"{indentation}{parent_dot_id} -> {node_dot_id};"#,)?;
+            }
         }
         RegexNode::Cat(children) => {
-            writeln!(
-                output,
-                r#"{indentation}_{identifiers_prefix}{node_id}[label="Cat"];"#
-            )?;
+            writeln!(output, r#"{indentation}{node_dot_id}[label="Cat"];"#)?;
             for child_id in children {
                 do_to_dot(
                     output,
                     child_id,
+                    Some(&node_dot_id),
                     arena,
                     input_from_position,
                     subword_regexes,
@@ -571,27 +587,18 @@ fn do_to_dot<W: Write>(
                     recursion_level,
                     visited_subwords,
                 )?;
-                writeln!(
-                    output,
-                    r#"{indentation}_{identifiers_prefix}{node_id} -> _{identifiers_prefix}{child_id};"#
-                )?;
+            }
+            if let Some(parent_dot_id) = parent_dot_id {
+                writeln!(output, r#"{indentation}{parent_dot_id} -> {node_dot_id};"#,)?;
             }
         }
         RegexNode::Or(ors, _) => {
-            writeln!(
-                output,
-                r#"{indentation}_{identifiers_prefix}{node_id}[label="Or"];"#
-            )?;
-            for child in &ors {
-                writeln!(
-                    output,
-                    r#"{indentation}_{identifiers_prefix}{node_id} -> _{identifiers_prefix}{child};"#
-                )?;
-            }
+            writeln!(output, r#"{indentation}{node_dot_id}[label="Or"];"#)?;
             for child in ors {
                 do_to_dot(
                     output,
                     child,
+                    Some(&node_dot_id),
                     arena,
                     input_from_position,
                     subword_regexes,
@@ -600,18 +607,24 @@ fn do_to_dot<W: Write>(
                     visited_subwords,
                 )?;
             }
+            if let Some(parent_dot_id) = parent_dot_id {
+                writeln!(output, r#"{indentation}{parent_dot_id} -> {node_dot_id};"#,)?;
+            }
         }
-        RegexNode::Star(child) => {
-            writeln!(
-                output,
-                r#"{indentation}_{identifiers_prefix}{node_id}[label="Star"]; _{identifiers_prefix}{node_id} -> _{identifiers_prefix}{child};"#
-            )?;
+        RegexNode::Star(..) => {
+            writeln!(output, r#"{indentation}{node_dot_id}[label="Star"];"#)?;
+            if let Some(parent_dot_id) = parent_dot_id {
+                writeln!(output, r#"{indentation}{parent_dot_id} -> {node_dot_id};"#,)?;
+            }
         }
         RegexNode::EndMarker(pos) => {
             writeln!(
                 output,
-                r#"{indentation}_{identifiers_prefix}{node_id}[label="{pos}: EndMarker"];"#
+                r#"{indentation}{node_dot_id}[label="{pos}: EndMarker"];"#
             )?;
+            if let Some(parent_dot_id) = parent_dot_id {
+                writeln!(output, r#"{indentation}{parent_dot_id} -> {node_dot_id};"#,)?;
+            }
         }
     }
     Ok(())
@@ -877,6 +890,7 @@ impl Regex {
         do_to_dot(
             output,
             self.root_id,
+            None,
             &self.arena,
             &self.input_from_position,
             subword_regexes,
