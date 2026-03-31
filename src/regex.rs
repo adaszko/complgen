@@ -468,12 +468,16 @@ fn do_to_dot<W: Write>(
     arena: &[RegexNode],
     input_from_position: &Vec<RegexInput>,
     subword_regexes: &RegexInternPool,
+    identifiers_prefix: &str,
     recursion_level: usize,
 ) -> std::result::Result<(), std::io::Error> {
     let indentation = format!("\t{}", str::repeat("\t", recursion_level));
     match arena[node_id].clone() {
         RegexNode::Epsilon => {
-            writeln!(output, r#"{indentation}_{node_id}[label="Epsilon"];"#)?;
+            writeln!(
+                output,
+                r#"{indentation}_{identifiers_prefix}{node_id}[label="Epsilon"];"#
+            )?;
         }
         RegexNode::Subword(pos) => {
             let RegexInput::Subword {
@@ -482,7 +486,12 @@ fn do_to_dot<W: Write>(
             else {
                 unreachable!();
             };
-            writeln!(output, "{indentation}_{node_id} -> _{subword_regex_id};")?;
+            let subword_regex = subword_regexes.lookup(subword_regex_id);
+            writeln!(
+                output,
+                "{indentation}_{node_id} -> _{subword_regex_id}_{};",
+                subword_regex.root_id
+            )?;
             writeln!(output, "{indentation}subgraph cluster_{node_id} {{")?;
             writeln!(output, "{indentation}\tlabel=\"SUBWORD\";")?;
             writeln!(output, "{indentation}\tcolor=grey91;")?;
@@ -491,13 +500,14 @@ fn do_to_dot<W: Write>(
                 output,
                 "{indentation}\t_{node_id}[label=\"{pos}: Subword\"];"
             )?;
-            let subword_regex = subword_regexes.lookup(subword_regex_id);
+            let subword_identifiers_prefix = &format!("{subword_regex_id}_");
             do_to_dot(
                 output,
                 subword_regex.root_id,
                 &subword_regex.arena,
                 &subword_regex.input_from_position,
                 subword_regexes,
+                subword_identifiers_prefix,
                 recursion_level + 1,
             )?;
             writeln!(output, "{indentation}}}")?;
@@ -510,12 +520,12 @@ fn do_to_dot<W: Write>(
             if let Some(description) = description {
                 writeln!(
                     output,
-                    r#"{indentation}_{node_id}[label="{pos}: \"{term}\"\n\"{description}\""];"#
+                    r#"{indentation}_{identifiers_prefix}{node_id}[label="{pos}: \"{term}\"\n\"{description}\""];"#
                 )?;
             } else {
                 writeln!(
                     output,
-                    r#"{indentation}_{node_id}[label="{pos}: \"{term}\""];"#
+                    r#"{indentation}_{identifiers_prefix}{node_id}[label="{pos}: \"{term}\""];"#
                 )?;
             }
         }
@@ -526,20 +536,20 @@ fn do_to_dot<W: Write>(
             };
             writeln!(
                 output,
-                r#"{indentation}_{node_id}[label="{pos}: <{nonterm}>"];"#
+                r#"{indentation}_{identifiers_prefix}{node_id}[label="{pos}: <{nonterm}>"];"#
             )?;
         }
         RegexNode::Command(cmd, pos) => {
             writeln!(
                 output,
-                r#"{indentation}_{node_id}[label={}];"#,
+                r#"{indentation}_{identifiers_prefix}{node_id}[label={}];"#,
                 make_dot_string_constant(&format!("{pos}: {cmd}"))
             )?;
         }
         RegexNode::Cat(lhs, rhs) => {
             writeln!(
                 output,
-                r#"{indentation}_{node_id}[label="Cat"]; _{node_id} -> _{lhs}; _{node_id} -> _{rhs};"#
+                r#"{indentation}_{identifiers_prefix}{node_id}[label="Cat"]; _{identifiers_prefix}{node_id} -> _{identifiers_prefix}{lhs}; _{identifiers_prefix}{node_id} -> _{identifiers_prefix}{rhs};"#
             )?;
             do_to_dot(
                 output,
@@ -547,6 +557,7 @@ fn do_to_dot<W: Write>(
                 arena,
                 input_from_position,
                 subword_regexes,
+                identifiers_prefix,
                 recursion_level,
             )?;
             do_to_dot(
@@ -555,13 +566,20 @@ fn do_to_dot<W: Write>(
                 arena,
                 input_from_position,
                 subword_regexes,
+                identifiers_prefix,
                 recursion_level,
             )?;
         }
         RegexNode::Or(ors, _) => {
-            writeln!(output, r#"{indentation}_{node_id}[label="Or"];"#)?;
+            writeln!(
+                output,
+                r#"{indentation}_{identifiers_prefix}{node_id}[label="Or"];"#
+            )?;
             for child in &ors {
-                writeln!(output, r#"{indentation}_{node_id} -> _{child};"#)?;
+                writeln!(
+                    output,
+                    r#"{indentation}_{identifiers_prefix}{node_id} -> _{identifiers_prefix}{child};"#
+                )?;
             }
             for child in ors {
                 do_to_dot(
@@ -570,6 +588,7 @@ fn do_to_dot<W: Write>(
                     arena,
                     input_from_position,
                     subword_regexes,
+                    identifiers_prefix,
                     recursion_level,
                 )?;
             }
@@ -577,13 +596,13 @@ fn do_to_dot<W: Write>(
         RegexNode::Star(child) => {
             writeln!(
                 output,
-                r#"{indentation}_{node_id}[label="Star"]; _{node_id} -> _{child};"#
+                r#"{indentation}_{identifiers_prefix}{node_id}[label="Star"]; _{identifiers_prefix}{node_id} -> _{identifiers_prefix}{child};"#
             )?;
         }
         RegexNode::EndMarker(pos) => {
             writeln!(
                 output,
-                r#"{indentation}_{node_id}[label="{pos}: EndMarker"];"#
+                r#"{indentation}_{identifiers_prefix}{node_id}[label="{pos}: EndMarker"];"#
             )?;
         }
     }
@@ -852,6 +871,7 @@ impl Regex {
             &self.arena,
             &self.input_from_position,
             subword_regexes,
+            "",
             0,
         )?;
         writeln!(output, "}}")?;
