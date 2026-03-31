@@ -277,7 +277,7 @@ fn dfa_from_regex(
     mut subdfas: DFAInternPool,
 ) -> Result<DFA> {
     let mut unallocated_state_id = FIRST_STATE_ID;
-    let combined_starting_state: BTreeSet<Position> = regex.firstpos();
+    let combined_starting_state: BTreeSet<Position> = BTreeSet::from_iter(regex.firstpos());
     let combined_starting_state_id = unallocated_state_id;
     unallocated_state_id += 1;
 
