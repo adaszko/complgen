@@ -470,6 +470,7 @@ fn do_to_dot<W: Write>(
     subword_regexes: &RegexInternPool,
     identifiers_prefix: &str,
     recursion_level: usize,
+    visited_subwords: &mut RoaringBitmap,
 ) -> std::result::Result<(), std::io::Error> {
     let indentation = format!("\t{}", str::repeat("\t", recursion_level));
     match arena[node_id].clone() {
@@ -486,6 +487,10 @@ fn do_to_dot<W: Write>(
             else {
                 unreachable!();
             };
+            if visited_subwords.contains(subword_regex_id.0 as _) {
+                return Ok(());
+            }
+            visited_subwords.insert(subword_regex_id.0 as _);
             let subword_regex = subword_regexes.lookup(subword_regex_id);
             writeln!(
                 output,
@@ -493,7 +498,10 @@ fn do_to_dot<W: Write>(
                 subword_regex.root_id
             )?;
             writeln!(output, "{indentation}subgraph cluster_{node_id} {{")?;
-            writeln!(output, "{indentation}\tlabel=\"SUBWORD\";")?;
+            writeln!(
+                output,
+                "{indentation}\tlabel=\"SUBWORD {subword_regex_id}\";"
+            )?;
             writeln!(output, "{indentation}\tcolor=grey91;")?;
             writeln!(output, "{indentation}\tstyle=filled;")?;
             writeln!(
@@ -509,6 +517,7 @@ fn do_to_dot<W: Write>(
                 subword_regexes,
                 subword_identifiers_prefix,
                 recursion_level + 1,
+                visited_subwords,
             )?;
             writeln!(output, "{indentation}}}")?;
         }
@@ -560,6 +569,7 @@ fn do_to_dot<W: Write>(
                     subword_regexes,
                     identifiers_prefix,
                     recursion_level,
+                    visited_subwords,
                 )?;
                 writeln!(
                     output,
@@ -587,6 +597,7 @@ fn do_to_dot<W: Write>(
                     subword_regexes,
                     identifiers_prefix,
                     recursion_level,
+                    visited_subwords,
                 )?;
             }
         }
@@ -861,6 +872,7 @@ impl Regex {
         output: &mut W,
         subword_regexes: &RegexInternPool,
     ) -> std::result::Result<(), std::io::Error> {
+        let mut visited_subwords = RoaringBitmap::default();
         writeln!(output, "digraph rx {{")?;
         do_to_dot(
             output,
@@ -870,6 +882,7 @@ impl Regex {
             subword_regexes,
             "",
             0,
+            &mut visited_subwords,
         )?;
         writeln!(output, "}}")?;
         Ok(())
