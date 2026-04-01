@@ -400,8 +400,8 @@ fn write_matching_tables<W: Write>(
         dfa.get_literal_transitions(&all_states, &id_from_literal_description)
     {
         let state_inputs = state_transitions
-            .iter()
-            .map(|(literal_id, _)| format!("{}", literal_id))
+            .keys()
+            .map(|literal_id| format!("{}", literal_id))
             .join(" ");
         // TODO Optimize for output size: Emit a single assigment to literal_transitions_inputs
         // instead of many
@@ -413,8 +413,8 @@ fn write_matching_tables<W: Write>(
         )?;
 
         let state_tos: String = state_transitions
-            .iter()
-            .map(|(_, to)| format!("{}", to + ARRAY_START))
+            .values()
+            .map(|to| format!("{}", to + ARRAY_START))
             .join(" ");
 
         // TODO Optimize for output size: Emit a single assigment to literal_transitions_tos
@@ -490,8 +490,8 @@ fn write_completion_tables<W: Write>(
         .enumerate()
     {
         let froms_initializer = transitions
-            .iter()
-            .map(|(from_state, _)| format!("{}", from_state + ARRAY_START))
+            .keys()
+            .map(|from_state| format!("{}", from_state + ARRAY_START))
             .join(" ");
         writeln!(
             buffer,
@@ -499,8 +499,8 @@ fn write_completion_tables<W: Write>(
         )?;
 
         let literals_initializer = transitions
-            .iter()
-            .map(|(_, literal_ids)| {
+            .values()
+            .map(|literal_ids| {
                 make_string_constant(&literal_ids.iter().map(|id| format!("{}", id)).join(" "))
             })
             .join(" ");
@@ -518,8 +518,8 @@ fn write_completion_tables<W: Write>(
             .enumerate()
         {
             let from_initializer = transitions
-                .iter()
-                .map(|(from_state, _)| from_state + ARRAY_START)
+                .keys()
+                .map(|from_state| from_state + ARRAY_START)
                 .join(" ");
             writeln!(
                 buffer,
@@ -527,8 +527,8 @@ fn write_completion_tables<W: Write>(
             )?;
 
             let commands_initializer = transitions
-                .iter()
-                .map(|(_, state_commands)| {
+                .values()
+                .map(|state_commands| {
                     let cell = state_commands
                         .iter()
                         .map(|literal_id| format!("{}", literal_id))
@@ -868,8 +868,8 @@ end
             .enumerate()
         {
             let froms_initializer = transitions
-                .iter()
-                .map(|(from_state, _)| format!("{}", from_state + ARRAY_START))
+                .keys()
+                .map(|from_state| format!("{}", from_state + ARRAY_START))
                 .join(" ");
             writeln!(
                 buffer,
@@ -877,8 +877,8 @@ end
             )?;
 
             let subwords_initializer = transitions
-                .iter()
-                .map(|(_, state_subwords)| {
+                .values()
+                .map(|state_subwords| {
                     let cell = state_subwords
                         .iter()
                         .map(|literal_id| format!("{}", literal_id))
