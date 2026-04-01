@@ -292,13 +292,13 @@ impl RegexNode {
 }
 
 fn do_from_expr(
-    node: ExprId,
+    expr_id: ExprId,
     expr_arena: &[Expr],
     node_arena: &mut Vec<RegexNode>,
     input_from_position: &mut Vec<RegexInput>,
     subwords: &mut RegexInternPool,
 ) -> Result<RegexNodeId> {
-    match &expr_arena[node] {
+    match &expr_arena[expr_id] {
         Expr::Terminal {
             term,
             descr: description,
@@ -712,29 +712,29 @@ impl Regex {
     }
 
     pub(crate) fn from_expr(
-        e: ExprId,
+        root_expr_id: ExprId,
         expr_arena: &[Expr],
-        subword_regexes: &mut RegexInternPool,
+        subwords: &mut RegexInternPool,
     ) -> Result<Self> {
         let mut input_from_position: Vec<RegexInput> = Default::default();
-        let mut arena: Vec<RegexNode> = Default::default();
+        let mut node_arena: Vec<RegexNode> = Default::default();
         let regex = do_from_expr(
-            e,
+            root_expr_id,
             expr_arena,
-            &mut arena,
+            &mut node_arena,
             &mut input_from_position,
-            subword_regexes,
+            subwords,
         )?;
         let endmarker_position = input_from_position.len() as Position;
-        let endmarkerid = alloc(&mut arena, RegexNode::EndMarker(endmarker_position));
+        let endmarkerid = alloc(&mut node_arena, RegexNode::EndMarker(endmarker_position));
         let root = RegexNode::Cat(vec![regex, endmarkerid]);
-        let root_id = alloc(&mut arena, root.clone());
+        let root_id = alloc(&mut node_arena, root.clone());
 
         let retval = Self {
             root_id,
             endmarker_position,
             input_from_position,
-            arena,
+            arena: node_arena,
             follow_cache: Default::default(),
         };
         Ok(retval)
