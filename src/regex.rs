@@ -95,7 +95,7 @@ pub enum RegexNode {
     Nonterminal(Position),
     Command(Position),
     Cat(Box<[RegexNodeId]>),
-    Or(Box<[RegexNodeId]>, bool), // is fallback
+    Or(Box<[RegexNodeId]>),
     Star(RegexNodeId),
     EndMarker(Position),
 }
@@ -108,9 +108,7 @@ impl std::fmt::Debug for RegexNode {
             Self::Nonterminal(position) => f.write_fmt(format_args!(r#"Nonterminal({position})"#)),
             Self::Command(position) => f.write_fmt(format_args!(r#"Command({position})"#)),
             Self::Cat(children) => f.write_fmt(format_args!(r#"Cat({children:?})"#)),
-            Self::Or(children, is_fallback) => {
-                f.write_fmt(format_args!(r#"Or(vec!{children:?}, {is_fallback})"#))
-            }
+            Self::Or(children) => f.write_fmt(format_args!(r#"Or(vec!{children:?})"#)),
             Self::Star(child) => f.write_fmt(format_args!(r#"Star({child:?})"#)),
             Self::EndMarker(position) => f.write_fmt(format_args!(r#"EndMarker({position})"#)),
             Self::Epsilon => f.write_fmt(format_args!(r#"Epsilon"#)),
@@ -133,7 +131,7 @@ fn do_firstpos(re: &RegexNode, arena: &[RegexNode], result: &mut RoaringBitmap) 
         RegexNode::Command(position) => {
             result.insert(*position);
         }
-        RegexNode::Or(subregexes, _) => {
+        RegexNode::Or(subregexes) => {
             for subreid in subregexes {
                 let subre = &arena[*subreid];
                 do_firstpos(subre, arena, result);
@@ -173,7 +171,7 @@ fn do_lastpos(re: &RegexNode, arena: &[RegexNode], result: &mut HashSet<Position
         RegexNode::Command(position) => {
             result.insert(*position);
         }
-        RegexNode::Or(subregexes, _) => {
+        RegexNode::Or(subregexes) => {
             for subreid in subregexes {
                 let subre = &arena[*subreid];
                 do_lastpos(subre, arena, result);
@@ -209,7 +207,7 @@ fn do_followpos(
         RegexNode::Terminal(..) => {}
         RegexNode::Nonterminal(..) => {}
         RegexNode::Command(..) => {}
-        RegexNode::Or(subregexes, _) => {
+        RegexNode::Or(subregexes) => {
             for subreid in subregexes {
                 let subre = &arena[*subreid];
                 do_followpos(subre, arena, result);
@@ -262,7 +260,7 @@ impl RegexNode {
             RegexNode::Terminal(..) => false,
             RegexNode::Nonterminal(..) => false,
             RegexNode::Command(..) => false,
-            RegexNode::Or(children, _) => children
+            RegexNode::Or(children) => children
                 .iter()
                 .any(|child_id| arena[*child_id].nullable(arena)),
             RegexNode::Cat(children) => children
@@ -399,7 +397,7 @@ fn do_from_expr(
                 )?;
                 subregexes.push(subregex);
             }
-            let result = RegexNode::Or(subregexes.into_boxed_slice(), false);
+            let result = RegexNode::Or(subregexes.into_boxed_slice());
             Ok(alloc(arena, result))
         }
         Expr::Optional { child: subexpr, .. } => {
@@ -412,7 +410,7 @@ fn do_from_expr(
                 subword_regexes,
             )?;
             let epsid = alloc(arena, RegexNode::Epsilon);
-            let result = RegexNode::Or(Box::new([subregex, epsid]), false);
+            let result = RegexNode::Or(Box::new([subregex, epsid]));
             Ok(alloc(arena, result))
         }
         Expr::Many1 { child: subexpr, .. } => {
@@ -447,7 +445,7 @@ fn do_from_expr(
                 )?;
                 subregexes.push(subregex);
             }
-            let result = RegexNode::Or(subregexes.into_boxed_slice(), true);
+            let result = RegexNode::Or(subregexes.into_boxed_slice());
             Ok(alloc(arena, result))
         }
     }
@@ -595,7 +593,7 @@ fn do_to_dot<W: Write>(
                 writeln!(output, r#"{indentation}{parent_dot_id} -> {node_dot_id};"#,)?;
             }
         }
-        RegexNode::Or(ors, _) => {
+        RegexNode::Or(ors) => {
             writeln!(output, r#"{indentation}{node_dot_id}[label="Or"];"#)?;
             for child in ors {
                 do_to_dot(
@@ -925,7 +923,7 @@ mod tests {
     fn make_sample_star_regex(arena: &mut Vec<RegexNode>) -> RegexNodeId {
         let t1 = alloc(arena, RegexNode::Terminal(1));
         let t2 = alloc(arena, RegexNode::Terminal(2));
-        let or_ = RegexNode::Or(Box::new([t1, t2]), false);
+        let or_ = RegexNode::Or(Box::new([t1, t2]));
         let or_id = alloc(arena, or_);
         let star = RegexNode::Star(or_id);
         let star_id = alloc(arena, star);
