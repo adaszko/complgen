@@ -295,7 +295,7 @@ impl RegexNode {
 fn do_from_expr(
     node: ExprId,
     expr_arena: &[Expr],
-    arena: &mut Vec<RegexNode>,
+    node_arena: &mut Vec<RegexNode>,
     input_from_position: &mut Vec<RegexInput>,
     subwords: &mut RegexInternPool,
 ) -> Result<RegexNodeId> {
@@ -314,7 +314,7 @@ fn do_from_expr(
                 span: *span,
             };
             input_from_position.push(input.clone());
-            Ok(alloc(arena, result))
+            Ok(alloc(node_arena, result))
         }
         Expr::Subword {
             root_id,
@@ -330,7 +330,7 @@ fn do_from_expr(
                 span: *span,
             };
             input_from_position.push(input.clone());
-            Ok(alloc(arena, result))
+            Ok(alloc(node_arena, result))
         }
         Expr::NontermRef {
             nonterm,
@@ -344,7 +344,7 @@ fn do_from_expr(
                 span: *span,
             };
             input_from_position.push(input.clone());
-            Ok(alloc(arena, result))
+            Ok(alloc(node_arena, result))
         }
         Expr::Command {
             cmd,
@@ -360,7 +360,7 @@ fn do_from_expr(
                 span: *span,
             };
             input_from_position.push(input.clone());
-            Ok(alloc(arena, result))
+            Ok(alloc(node_arena, result))
         }
         Expr::Sequence {
             children: subexprs, ..
@@ -371,7 +371,7 @@ fn do_from_expr(
                     do_from_expr(
                         *subexpr_id,
                         expr_arena,
-                        arena,
+                        node_arena,
                         input_from_position,
                         subwords,
                     )
@@ -379,48 +379,72 @@ fn do_from_expr(
                 .collect::<Result<_>>()?;
 
             let result = RegexNode::Cat(subregexes);
-            let result_id = alloc(arena, result);
+            let result_id = alloc(node_arena, result);
             Ok(result_id)
         }
         Expr::Alternative {
             children: subexprs, ..
         } => {
-            let mut subregexes: Vec<RegexNodeId> = Vec::with_capacity(subexprs.len());
-            for e in subexprs {
-                let subregex = do_from_expr(*e, expr_arena, arena, input_from_position, subwords)?;
-                subregexes.push(subregex);
-            }
+            let subregexes: Vec<RegexNodeId> = subexprs
+                .iter()
+                .map(|subexpr_id| {
+                    do_from_expr(
+                        *subexpr_id,
+                        expr_arena,
+                        node_arena,
+                        input_from_position,
+                        subwords,
+                    )
+                })
+                .collect::<Result<_>>()?;
+
             let result = RegexNode::Or(subregexes);
-            Ok(alloc(arena, result))
+            Ok(alloc(node_arena, result))
         }
         Expr::Optional { child: subexpr, .. } => {
-            let subregex =
-                do_from_expr(*subexpr, expr_arena, arena, input_from_position, subwords)?;
-            let epsid = alloc(arena, RegexNode::Epsilon);
+            let subregex = do_from_expr(
+                *subexpr,
+                expr_arena,
+                node_arena,
+                input_from_position,
+                subwords,
+            )?;
+            let epsid = alloc(node_arena, RegexNode::Epsilon);
             let result = RegexNode::Or(vec![subregex, epsid]);
-            Ok(alloc(arena, result))
+            Ok(alloc(node_arena, result))
         }
         Expr::Many1 { child: subexpr, .. } => {
-            let subregex_id =
-                do_from_expr(*subexpr, expr_arena, arena, input_from_position, subwords)?;
+            let subregex_id = do_from_expr(
+                *subexpr,
+                expr_arena,
+                node_arena,
+                input_from_position,
+                subwords,
+            )?;
             let star = RegexNode::Star(subregex_id);
-            let starid = alloc(arena, star);
+            let starid = alloc(node_arena, star);
             let result = RegexNode::Cat(vec![subregex_id, starid]);
-            Ok(alloc(arena, result))
+            Ok(alloc(node_arena, result))
         }
-        Expr::DistributiveDescription { .. } => unreachable!(
-            "DistributiveDescription Expr type should have been erased before compilation to regex"
-        ),
+        Expr::DistributiveDescription { .. } => unreachable!(),
         Expr::Fallback {
             children: subexprs, ..
         } => {
-            let mut subregexes: Vec<RegexNodeId> = Vec::with_capacity(subexprs.len());
-            for e in subexprs {
-                let subregex = do_from_expr(*e, expr_arena, arena, input_from_position, subwords)?;
-                subregexes.push(subregex);
-            }
+            let subregexes: Vec<RegexNodeId> = subexprs
+                .iter()
+                .map(|subexpr_id| {
+                    do_from_expr(
+                        *subexpr_id,
+                        expr_arena,
+                        node_arena,
+                        input_from_position,
+                        subwords,
+                    )
+                })
+                .collect::<Result<_>>()?;
+
             let result = RegexNode::Or(subregexes);
-            Ok(alloc(arena, result))
+            Ok(alloc(node_arena, result))
         }
     }
 }
