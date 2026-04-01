@@ -91,7 +91,7 @@ fn alloc(arena: &mut Vec<RegexNode>, elem: RegexNode) -> RegexNodeId {
 pub enum RegexNode {
     Epsilon,
     Subword(Position),
-    Terminal(Ustr, usize, Position), // terminal, fallback level, position
+    Terminal(usize, Position), // fallback level, position
     Nonterminal(Position),
     Command(Ustr, Position),
     Cat(Box<[RegexNodeId]>),
@@ -104,9 +104,9 @@ impl std::fmt::Debug for RegexNode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Subword(position) => f.write_fmt(format_args!(r#"Subword({position})"#)),
-            Self::Terminal(term, level, position) => f.write_fmt(format_args!(
-                r#"Terminal({term:?}.to_string(), {level}, {position})"#
-            )),
+            Self::Terminal(level, position) => {
+                f.write_fmt(format_args!(r#"Terminal({level}, {position})"#))
+            }
             Self::Nonterminal(position) => f.write_fmt(format_args!(r#"Nonterminal({position})"#)),
             Self::Command(code, position) => {
                 f.write_fmt(format_args!(r#"Command({code:?}.to_string(), {position})"#))
@@ -128,7 +128,7 @@ fn do_firstpos(re: &RegexNode, arena: &[RegexNode], result: &mut RoaringBitmap) 
         RegexNode::Subword(position) => {
             result.insert(*position);
         }
-        RegexNode::Terminal(_, _, position) => {
+        RegexNode::Terminal(_, position) => {
             result.insert(*position);
         }
         RegexNode::Nonterminal(position) => {
@@ -168,7 +168,7 @@ fn do_lastpos(re: &RegexNode, arena: &[RegexNode], result: &mut HashSet<Position
         RegexNode::Subword(position) => {
             result.insert(*position);
         }
-        RegexNode::Terminal(_, _, position) => {
+        RegexNode::Terminal(_, position) => {
             result.insert(*position);
         }
         RegexNode::Nonterminal(position) => {
@@ -311,7 +311,7 @@ fn do_from_expr(
             fallback: level,
             span,
         } => {
-            let result = RegexNode::Terminal(*term, *level, input_from_position.len() as Position);
+            let result = RegexNode::Terminal(*level, input_from_position.len() as Position);
             let input = RegexInput::Literal {
                 literal: *term,
                 description: *description,
@@ -530,20 +530,24 @@ fn do_to_dot<W: Write>(
                 writeln!(output, r#"{indentation}{parent_dot_id} -> {node_dot_id};"#,)?;
             }
         }
-        RegexNode::Terminal(term, _, pos) => {
-            let RegexInput::Literal { description, .. } = input_from_position[pos as usize].clone()
+        RegexNode::Terminal(_, pos) => {
+            let RegexInput::Literal {
+                literal,
+                description,
+                ..
+            } = input_from_position[pos as usize].clone()
             else {
                 unreachable!();
             };
             if let Some(description) = description {
                 writeln!(
                     output,
-                    r#"{indentation}{node_dot_id}[label="{pos}: \"{term}\"\n\"{description}\""];"#
+                    r#"{indentation}{node_dot_id}[label="{pos}: \"{literal}\"\n\"{description}\""];"#
                 )?;
             } else {
                 writeln!(
                     output,
-                    r#"{indentation}{node_dot_id}[label="{pos}: \"{term}\""];"#
+                    r#"{indentation}{node_dot_id}[label="{pos}: \"{literal}\""];"#
                 )?;
             }
             if let Some(parent_dot_id) = parent_dot_id {
@@ -918,11 +922,10 @@ impl Regex {
 mod tests {
     use super::*;
     use crate::{Error, Result};
-    use ustr::ustr;
 
     fn make_sample_star_regex(arena: &mut Vec<RegexNode>) -> RegexNodeId {
-        let t1 = alloc(arena, RegexNode::Terminal(ustr("a"), 0, 1));
-        let t2 = alloc(arena, RegexNode::Terminal(ustr("b"), 0, 2));
+        let t1 = alloc(arena, RegexNode::Terminal(0, 1));
+        let t2 = alloc(arena, RegexNode::Terminal(0, 2));
         let or_ = RegexNode::Or(Box::new([t1, t2]), false);
         let or_id = alloc(arena, or_);
         let star = RegexNode::Star(or_id);
@@ -932,7 +935,7 @@ mod tests {
 
     fn make_sample_regex(arena: &mut Vec<RegexNode>) -> RegexNode {
         // (a|b)*a
-        let t = alloc(arena, RegexNode::Terminal(ustr("a"), 0, 3));
+        let t = alloc(arena, RegexNode::Terminal(0, 3));
         RegexNode::Cat(Box::new([make_sample_star_regex(arena), t]))
     }
 
@@ -965,11 +968,11 @@ mod tests {
         use RegexNode::*;
 
         let c0 = make_sample_star_regex(arena);
-        let c1 = alloc(arena, Terminal(ustr("a"), 0, 3));
+        let c1 = alloc(arena, Terminal(0, 3));
         let c2 = alloc(arena, Cat(Box::new([c0, c1])));
-        let c3 = alloc(arena, Terminal(ustr("b"), 0, 4));
+        let c3 = alloc(arena, Terminal(0, 4));
         let c4 = alloc(arena, Cat(Box::new([c2, c3])));
-        let c5 = alloc(arena, Terminal(ustr("b"), 0, 5));
+        let c5 = alloc(arena, Terminal(0, 5));
 
         // (a|b)*abb#
         RegexNode::Cat(Box::new([
