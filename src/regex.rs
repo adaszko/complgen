@@ -90,14 +90,16 @@ fn alloc(arena: &mut Vec<RegexNode>, elem: RegexNode) -> RegexNodeId {
 #[derive(Clone, Hash, PartialEq, Eq)]
 pub enum RegexNode {
     Epsilon,
-    Subword(Position),
+
     Terminal(Position),
     Nonterminal(Position),
     Command(Position),
-    Cat(Box<[RegexNodeId]>),
-    Or(Box<[RegexNodeId]>),
-    Star(RegexNodeId),
+    Subword(Position),
     EndMarker(Position),
+
+    Cat(Vec<RegexNodeId>),
+    Or(Vec<RegexNodeId>),
+    Star(RegexNodeId),
 }
 
 impl std::fmt::Debug for RegexNode {
@@ -364,7 +366,7 @@ fn do_from_expr(
         Expr::Sequence {
             children: subexprs, ..
         } => {
-            let subregexes: Box<[RegexNodeId]> = subexprs
+            let subregexes: Vec<RegexNodeId> = subexprs
                 .iter()
                 .map(|subexpr_id| {
                     do_from_expr(
@@ -397,7 +399,7 @@ fn do_from_expr(
                 )?;
                 subregexes.push(subregex);
             }
-            let result = RegexNode::Or(subregexes.into_boxed_slice());
+            let result = RegexNode::Or(subregexes);
             Ok(alloc(arena, result))
         }
         Expr::Optional { child: subexpr, .. } => {
@@ -410,7 +412,7 @@ fn do_from_expr(
                 subword_regexes,
             )?;
             let epsid = alloc(arena, RegexNode::Epsilon);
-            let result = RegexNode::Or(Box::new([subregex, epsid]));
+            let result = RegexNode::Or(vec![subregex, epsid]);
             Ok(alloc(arena, result))
         }
         Expr::Many1 { child: subexpr, .. } => {
@@ -424,7 +426,7 @@ fn do_from_expr(
             )?;
             let star = RegexNode::Star(subregex_id);
             let starid = alloc(arena, star);
-            let result = RegexNode::Cat(Box::new([subregex_id, starid]));
+            let result = RegexNode::Cat(vec![subregex_id, starid]);
             Ok(alloc(arena, result))
         }
         Expr::DistributiveDescription { .. } => unreachable!(
@@ -445,7 +447,7 @@ fn do_from_expr(
                 )?;
                 subregexes.push(subregex);
             }
-            let result = RegexNode::Or(subregexes.into_boxed_slice());
+            let result = RegexNode::Or(subregexes);
             Ok(alloc(arena, result))
         }
     }
@@ -733,7 +735,7 @@ impl Regex {
         )?;
         let endmarker_position = input_from_position.len() as Position;
         let endmarkerid = alloc(&mut arena, RegexNode::EndMarker(endmarker_position));
-        let root = RegexNode::Cat(Box::new([regex, endmarkerid]));
+        let root = RegexNode::Cat(vec![regex, endmarkerid]);
         let root_id = alloc(&mut arena, root.clone());
 
         let retval = Self {
@@ -923,7 +925,7 @@ mod tests {
     fn make_sample_star_regex(arena: &mut Vec<RegexNode>) -> RegexNodeId {
         let t1 = alloc(arena, RegexNode::Terminal(1));
         let t2 = alloc(arena, RegexNode::Terminal(2));
-        let or_ = RegexNode::Or(Box::new([t1, t2]));
+        let or_ = RegexNode::Or(vec![t1, t2]);
         let or_id = alloc(arena, or_);
         let star = RegexNode::Star(or_id);
         let star_id = alloc(arena, star);
@@ -933,7 +935,7 @@ mod tests {
     fn make_sample_regex(arena: &mut Vec<RegexNode>) -> RegexNode {
         // (a|b)*a
         let t = alloc(arena, RegexNode::Terminal(3));
-        RegexNode::Cat(Box::new([make_sample_star_regex(arena), t]))
+        RegexNode::Cat(vec![make_sample_star_regex(arena), t])
     }
 
     #[test]
@@ -966,16 +968,16 @@ mod tests {
 
         let c0 = make_sample_star_regex(arena);
         let c1 = alloc(arena, Terminal(3));
-        let c2 = alloc(arena, Cat(Box::new([c0, c1])));
+        let c2 = alloc(arena, Cat(vec![c0, c1]));
         let c3 = alloc(arena, Terminal(4));
-        let c4 = alloc(arena, Cat(Box::new([c2, c3])));
+        let c4 = alloc(arena, Cat(vec![c2, c3]));
         let c5 = alloc(arena, Terminal(5));
 
         // (a|b)*abb#
-        RegexNode::Cat(Box::new([
-            alloc(arena, Cat(Box::new([c4, c5]))),
+        RegexNode::Cat(vec![
+            alloc(arena, Cat(vec![c4, c5])),
             alloc(arena, EndMarker(6)),
-        ]))
+        ])
     }
 
     #[test]
