@@ -6,7 +6,7 @@ use std::{cell::OnceCell, collections::BTreeMap, io::Write};
 use roaring::RoaringBitmap;
 use ustr::Ustr;
 
-use crate::grammar::{Expr, ExprId, HumanSpan, Shell};
+use crate::grammar::{Expr, ExprId, HumanSpan};
 
 // Serves as RegexInputId
 pub type Position = u32;
@@ -293,14 +293,13 @@ impl RegexNode {
 }
 
 fn do_from_expr(
-    e: ExprId,
+    node: ExprId,
     expr_arena: &[Expr],
-    shell: Shell,
     arena: &mut Vec<RegexNode>,
     input_from_position: &mut Vec<RegexInput>,
-    subword_regexes: &mut RegexInternPool,
+    subwords: &mut RegexInternPool,
 ) -> Result<RegexNodeId> {
-    match &expr_arena[e] {
+    match &expr_arena[node] {
         Expr::Terminal {
             term,
             descr: description,
@@ -322,8 +321,8 @@ fn do_from_expr(
             fallback,
             span,
         } => {
-            let subword_regex = Regex::from_expr(*root_id, expr_arena, shell, subword_regexes)?;
-            let subword_regex_id = subword_regexes.intern(subword_regex);
+            let subword_regex = Regex::from_expr(*root_id, expr_arena, subwords)?;
+            let subword_regex_id = subwords.intern(subword_regex);
             let result = RegexNode::Subword(input_from_position.len() as Position);
             let input = RegexInput::Subword {
                 subword_regex_id,
@@ -372,10 +371,9 @@ fn do_from_expr(
                     do_from_expr(
                         *subexpr_id,
                         expr_arena,
-                        shell,
                         arena,
                         input_from_position,
-                        subword_regexes,
+                        subwords,
                     )
                 })
                 .collect::<Result<_>>()?;
@@ -389,41 +387,22 @@ fn do_from_expr(
         } => {
             let mut subregexes: Vec<RegexNodeId> = Vec::with_capacity(subexprs.len());
             for e in subexprs {
-                let subregex = do_from_expr(
-                    *e,
-                    expr_arena,
-                    shell,
-                    arena,
-                    input_from_position,
-                    subword_regexes,
-                )?;
+                let subregex = do_from_expr(*e, expr_arena, arena, input_from_position, subwords)?;
                 subregexes.push(subregex);
             }
             let result = RegexNode::Or(subregexes);
             Ok(alloc(arena, result))
         }
         Expr::Optional { child: subexpr, .. } => {
-            let subregex = do_from_expr(
-                *subexpr,
-                expr_arena,
-                shell,
-                arena,
-                input_from_position,
-                subword_regexes,
-            )?;
+            let subregex =
+                do_from_expr(*subexpr, expr_arena, arena, input_from_position, subwords)?;
             let epsid = alloc(arena, RegexNode::Epsilon);
             let result = RegexNode::Or(vec![subregex, epsid]);
             Ok(alloc(arena, result))
         }
         Expr::Many1 { child: subexpr, .. } => {
-            let subregex_id = do_from_expr(
-                *subexpr,
-                expr_arena,
-                shell,
-                arena,
-                input_from_position,
-                subword_regexes,
-            )?;
+            let subregex_id =
+                do_from_expr(*subexpr, expr_arena, arena, input_from_position, subwords)?;
             let star = RegexNode::Star(subregex_id);
             let starid = alloc(arena, star);
             let result = RegexNode::Cat(vec![subregex_id, starid]);
@@ -437,14 +416,7 @@ fn do_from_expr(
         } => {
             let mut subregexes: Vec<RegexNodeId> = Vec::with_capacity(subexprs.len());
             for e in subexprs {
-                let subregex = do_from_expr(
-                    *e,
-                    expr_arena,
-                    shell,
-                    arena,
-                    input_from_position,
-                    subword_regexes,
-                )?;
+                let subregex = do_from_expr(*e, expr_arena, arena, input_from_position, subwords)?;
                 subregexes.push(subregex);
             }
             let result = RegexNode::Or(subregexes);
@@ -709,10 +681,9 @@ impl std::hash::Hash for Regex {
 impl Regex {
     pub fn from_valid_grammar(
         v: &ValidGrammar,
-        shell: Shell,
         subword_regexes: &mut RegexInternPool,
     ) -> Result<Self> {
-        let regex = Self::from_expr(v.expr, &v.arena, shell, subword_regexes)?;
+        let regex = Self::from_expr(v.expr, &v.arena, subword_regexes)?;
         regex.check_ambiguities(subword_regexes)?;
         Ok(regex)
     }
@@ -720,7 +691,6 @@ impl Regex {
     pub(crate) fn from_expr(
         e: ExprId,
         expr_arena: &[Expr],
-        shell: Shell,
         subword_regexes: &mut RegexInternPool,
     ) -> Result<Self> {
         let mut input_from_position: Vec<RegexInput> = Default::default();
@@ -728,7 +698,6 @@ impl Regex {
         let regex = do_from_expr(
             e,
             expr_arena,
-            shell,
             &mut arena,
             &mut input_from_position,
             subword_regexes,
@@ -920,6 +889,7 @@ impl Regex {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::grammar::Shell;
     use crate::{Error, Result};
 
     fn make_sample_star_regex(arena: &mut Vec<RegexNode>) -> RegexNodeId {
@@ -999,7 +969,7 @@ mod tests {
             .unwrap();
         let validated = crate::grammar::ValidGrammar::from_grammar(g, Shell::Bash)?;
         let mut subword_regexes = RegexInternPool::default();
-        let _ = Regex::from_valid_grammar(&validated, Shell::Bash, &mut subword_regexes)?;
+        let _ = Regex::from_valid_grammar(&validated, &mut subword_regexes)?;
         Ok(validated)
     }
 

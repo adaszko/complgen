@@ -1573,7 +1573,7 @@ mod tests {
         let mut arena: Vec<Expr> = Default::default();
         let expr = alloc(&mut arena, Expr::term("foo"));
         let mut subword_regexes = RegexInternPool::default();
-        let regex = Regex::from_expr(expr, &arena, Shell::Bash, &mut subword_regexes).unwrap();
+        let regex = Regex::from_expr(expr, &arena, &mut subword_regexes).unwrap();
         assert!(regex.check_ambiguities(&subword_regexes).is_ok());
         let dfa = DFA::from_regex(regex, &subword_regexes).unwrap();
         let foo = Inp::literal("foo");
@@ -1863,7 +1863,7 @@ mod tests {
             //println!("{:?}", arena);
             //println!("{:?}", input);
             let mut subword_regexes = RegexInternPool::default();
-            let regex = Regex::from_expr(expr, &arena.borrow(), Shell::Bash, &mut subword_regexes).unwrap();
+            let regex = Regex::from_expr(expr, &arena.borrow(), &mut subword_regexes).unwrap();
             //dbg!(&regex.input_from_position);
             prop_assume!(regex.check_ambiguities(&subword_regexes).is_ok());
             let dfa = DFA::from_regex_lenient(regex, &subword_regexes, DFAInternPool::default()).unwrap();
@@ -1877,7 +1877,7 @@ mod tests {
             println!("{:?}", expr);
             println!("{:?}", input);
             let mut subword_regexes = RegexInternPool::default();
-            let regex = Regex::from_expr(expr, &arena.borrow(), Shell::Bash, &mut subword_regexes).unwrap();
+            let regex = Regex::from_expr(expr, &arena.borrow(), &mut subword_regexes).unwrap();
             prop_assume!(regex.check_ambiguities(&subword_regexes).is_ok());
             let dfa = DFA::from_regex_lenient(regex, &subword_regexes, DFAInternPool::default()).unwrap();
             prop_assume!(dfa.check_ambiguity_best_effort().is_ok());
@@ -1929,7 +1929,7 @@ foo DUPLICATED_TERM;
         let g = Grammar::parse(INPUT).map_err(|e| e.to_string()).unwrap();
         let vg = ValidGrammar::from_grammar(g, Shell::Bash).unwrap();
         let mut subword_regexes = RegexInternPool::default();
-        let regex = Regex::from_valid_grammar(&vg, Shell::Bash, &mut subword_regexes).unwrap();
+        let regex = Regex::from_valid_grammar(&vg, &mut subword_regexes).unwrap();
         let dfa = DFA::from_regex(regex, &subword_regexes).unwrap();
 
         // There should be only one tansition on input Term("DUPLICATED_TERM")

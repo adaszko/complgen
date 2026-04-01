@@ -307,7 +307,7 @@ fn aot(args: &Cli) -> anyhow::Result<()> {
 
     let mut subword_regexes = RegexInternPool::default();
 
-    let regex = match Regex::from_valid_grammar(&validated, shell, &mut subword_regexes) {
+    let regex = match Regex::from_valid_grammar(&validated, &mut subword_regexes) {
         Ok(regex) => regex,
         Err(e) => return handle_error(e, usage_file_path, &input, &validated.command),
     };
