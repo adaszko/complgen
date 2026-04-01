@@ -93,7 +93,7 @@ pub enum RegexNode {
     Subword(Position),
     Terminal(Position),
     Nonterminal(Position),
-    Command(Ustr, Position),
+    Command(Position),
     Cat(Box<[RegexNodeId]>),
     Or(Box<[RegexNodeId]>, bool), // is fallback
     Star(RegexNodeId),
@@ -106,9 +106,7 @@ impl std::fmt::Debug for RegexNode {
             Self::Subword(position) => f.write_fmt(format_args!(r#"Subword({position})"#)),
             Self::Terminal(position) => f.write_fmt(format_args!(r#"Terminal({position})"#)),
             Self::Nonterminal(position) => f.write_fmt(format_args!(r#"Nonterminal({position})"#)),
-            Self::Command(code, position) => {
-                f.write_fmt(format_args!(r#"Command({code:?}.to_string(), {position})"#))
-            }
+            Self::Command(position) => f.write_fmt(format_args!(r#"Command({position})"#)),
             Self::Cat(children) => f.write_fmt(format_args!(r#"Cat({children:?})"#)),
             Self::Or(children, is_fallback) => {
                 f.write_fmt(format_args!(r#"Or(vec!{children:?}, {is_fallback})"#))
@@ -132,7 +130,7 @@ fn do_firstpos(re: &RegexNode, arena: &[RegexNode], result: &mut RoaringBitmap) 
         RegexNode::Nonterminal(position) => {
             result.insert(*position);
         }
-        RegexNode::Command(_, position) => {
+        RegexNode::Command(position) => {
             result.insert(*position);
         }
         RegexNode::Or(subregexes, _) => {
@@ -172,7 +170,7 @@ fn do_lastpos(re: &RegexNode, arena: &[RegexNode], result: &mut HashSet<Position
         RegexNode::Nonterminal(position) => {
             result.insert(*position);
         }
-        RegexNode::Command(_, position) => {
+        RegexNode::Command(position) => {
             result.insert(*position);
         }
         RegexNode::Or(subregexes, _) => {
@@ -355,7 +353,7 @@ fn do_from_expr(
             fallback,
             span,
         } => {
-            let result = RegexNode::Command(*cmd, input_from_position.len() as Position);
+            let result = RegexNode::Command(input_from_position.len() as Position);
             let input = RegexInput::Command {
                 cmd: *cmd,
                 zsh_compadd: *zsh_compadd,
@@ -565,7 +563,10 @@ fn do_to_dot<W: Write>(
                 writeln!(output, r#"{indentation}{parent_dot_id} -> {node_dot_id};"#,)?;
             }
         }
-        RegexNode::Command(cmd, pos) => {
+        RegexNode::Command(pos) => {
+            let RegexInput::Command { cmd, .. } = input_from_position[pos as usize] else {
+                unreachable!()
+            };
             writeln!(
                 output,
                 r#"{indentation}{node_dot_id}[label={}];"#,
