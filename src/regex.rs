@@ -1,5 +1,4 @@
 use crate::{Error, Result, grammar::ValidGrammar};
-use hashbrown::HashSet;
 use indexmap::IndexSet;
 use std::{cell::OnceCell, collections::BTreeMap, io::Write};
 
@@ -133,10 +132,10 @@ fn do_firstpos(re: &RegexNode, arena: &[RegexNode], result: &mut RoaringBitmap) 
         RegexNode::Command(position) => {
             result.insert(*position);
         }
-        RegexNode::Or(subregexes) => {
-            for subreid in subregexes {
-                let subre = &arena[*subreid];
-                do_firstpos(subre, arena, result);
+        RegexNode::Or(children) => {
+            for child_id in children {
+                let child = &arena[*child_id];
+                do_firstpos(child, arena, result);
             }
         }
         RegexNode::Cat(children) => {
@@ -148,9 +147,9 @@ fn do_firstpos(re: &RegexNode, arena: &[RegexNode], result: &mut RoaringBitmap) 
                 }
             }
         }
-        RegexNode::Star(subregexid) => {
-            let subregex = &arena[*subregexid];
-            do_firstpos(subregex, arena, result);
+        RegexNode::Star(child_id) => {
+            let child = &arena[*child_id];
+            do_firstpos(child, arena, result);
         }
         RegexNode::EndMarker(position) => {
             result.insert(*position);
@@ -158,7 +157,7 @@ fn do_firstpos(re: &RegexNode, arena: &[RegexNode], result: &mut RoaringBitmap) 
     }
 }
 
-fn do_lastpos(re: &RegexNode, arena: &[RegexNode], result: &mut HashSet<Position>) {
+fn do_lastpos(re: &RegexNode, arena: &[RegexNode], result: &mut RoaringBitmap) {
     match re {
         RegexNode::Epsilon => {}
         RegexNode::Subword(position) => {
@@ -173,10 +172,10 @@ fn do_lastpos(re: &RegexNode, arena: &[RegexNode], result: &mut HashSet<Position
         RegexNode::Command(position) => {
             result.insert(*position);
         }
-        RegexNode::Or(subregexes) => {
-            for subreid in subregexes {
-                let subre = &arena[*subreid];
-                do_lastpos(subre, arena, result);
+        RegexNode::Or(children) => {
+            for child_id in children {
+                let child = &arena[*child_id];
+                do_lastpos(child, arena, result);
             }
         }
         RegexNode::Cat(children) => {
@@ -188,9 +187,9 @@ fn do_lastpos(re: &RegexNode, arena: &[RegexNode], result: &mut HashSet<Position
                 }
             }
         }
-        RegexNode::Star(subregexid) => {
-            let subregex = &arena[*subregexid];
-            do_lastpos(subregex, arena, result);
+        RegexNode::Star(child_id) => {
+            let child = &arena[*child_id];
+            do_lastpos(child, arena, result);
         }
         RegexNode::EndMarker(position) => {
             result.insert(*position);
@@ -279,8 +278,8 @@ impl RegexNode {
         result
     }
 
-    fn lastpos(&self, arena: &[RegexNode]) -> HashSet<Position> {
-        let mut result: HashSet<Position> = Default::default();
+    fn lastpos(&self, arena: &[RegexNode]) -> RoaringBitmap {
+        let mut result: RoaringBitmap = Default::default();
         do_lastpos(self, arena, &mut result);
         result
     }
@@ -954,7 +953,7 @@ mod tests {
     fn lastpos() {
         let mut arena = Default::default();
         let regex = make_sample_regex(&mut arena);
-        assert_eq!(regex.lastpos(&arena), HashSet::from([3]));
+        assert_eq!(regex.lastpos(&arena), RoaringBitmap::from_iter([3]));
     }
 
     fn make_followpos_regex(arena: &mut Vec<RegexNode>) -> RegexNode {
