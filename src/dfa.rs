@@ -1326,8 +1326,8 @@ impl DFA {
         &self,
         id_from_literal_description: &HashMap<(Ustr, Ustr), LiteralId>,
         max_fallback_level: usize,
-    ) -> Vec<BTreeMap<StateId, BTreeSet<LiteralId>>> {
-        let mut completion_literals: Vec<BTreeMap<StateId, BTreeSet<LiteralId>>> =
+    ) -> Vec<BTreeMap<StateId, RoaringBitmap>> {
+        let mut completion_literals: Vec<BTreeMap<StateId, RoaringBitmap>> =
             vec![Default::default(); max_fallback_level + 1];
 
         for (from, input_id, _) in self.iter_transitions() {

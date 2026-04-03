@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::io::Write;
 
 use crate::Result;
@@ -7,6 +7,7 @@ use crate::{CommandId, LiteralId, StateId};
 use hashbrown::HashMap;
 use indexmap::IndexSet;
 use itertools::Itertools;
+use roaring::RoaringBitmap;
 use ustr::Ustr;
 
 // Bash array indexes start at 0.
@@ -25,7 +26,7 @@ struct MatchTransitions {
 }
 
 struct CompletionTransitions {
-    literal: Vec<BTreeMap<StateId, BTreeSet<LiteralId>>>,
+    literal: Vec<BTreeMap<StateId, RoaringBitmap>>,
     command: Option<Vec<BTreeMap<StateId, Vec<CommandId>>>>,
 }
 
