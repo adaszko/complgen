@@ -2318,6 +2318,15 @@ fn make_builtin_specializations(shell: Shell) -> UstrMap<BuiltinSpec> {
 
 impl Grammar {
     pub fn parse(input_before: &str) -> Result<Self> {
+        // Normalize CRLF line endings to LF so the parser works with Windows-style line endings
+        let normalized;
+        let input_before = if input_before.contains('\r') {
+            normalized = input_before.replace('\r', "");
+            normalized.as_str()
+        } else {
+            input_before
+        };
+
         let (input_after, (arena, statements)) = match grammar(Span::new(input_before)).finish() {
             Ok((input, statements)) => (input, statements),
             Err(e) => {
@@ -4366,6 +4375,21 @@ ls <FILE>;
         );
 
         assert!(teq(e, expected_expr_id, &arena));
+    }
+
+    #[test]
+    fn issue_72_crlf_line_endings() {
+        // Windows-style CRLF line endings should parse correctly
+        let input = "# comment\r\nfoo bar;\r\nfoo baz;\r\n";
+        let g = Grammar::parse(input).map_err(|e| e.to_string()).unwrap();
+        assert_eq!(g.statements.len(), 2);
+    }
+
+    #[test]
+    fn issue_72_crlf_with_nonterminal_def() {
+        let input = "mygrep <OPTION> [<PATTERN>] [<FILE>];\r\n\r\n<OPTION> ::= --color;\r\n";
+        let g = Grammar::parse(input).map_err(|e| e.to_string()).unwrap();
+        assert_eq!(g.statements.len(), 2);
     }
 
     #[test]
