@@ -4,8 +4,8 @@ use hashbrown::HashSet;
 use nom::{
     Finish, IResult, Parser,
     branch::alt,
-    bytes::complete::{escaped_transform, is_not, tag, take_till, take_until, take_while1},
-    character::complete::{char, multispace1, one_of},
+    bytes::complete::{is_not, tag, take_till, take_until, take_while},
+    character::complete::{char, multispace1},
     combinator::{eof, fail, map, opt, value, verify},
     error::context,
     multi::{fold_many0, many0},
@@ -632,30 +632,80 @@ fn multiblanks1(input: Span) -> IResult<Span, ()> {
     Ok((input, ()))
 }
 
-const ESCAPE_CHARACTER: char = '\\';
-const RESERVED_CHARACTERS: &str = r#"()[]{}<>|;""#;
-
-fn is_terminal_char(c: char) -> bool {
-    if c == ESCAPE_CHARACTER {
-        return false;
+// A sequence of alphanumeric/punctuation characters that ends at first reserved character
+// (i.e. operators like ()[]{}<>|;").
+// There's special case for '.' since it's the only reserved character that is repeated (i.e. in
+// "...") in order to gain special meaning of denoting "one or more".
+fn terminal(mut input: Span) -> IResult<Span, String> {
+    fn is_regular_terminal_char(c: char) -> bool {
+        c.is_ascii_alphanumeric()
+            || matches!(
+                c,
+                '!' | '#'
+                    | '$'
+                    | '%'
+                    | '&'
+                    | '\''
+                    | '*'
+                    | '+'
+                    | ','
+                    | '-'
+                    | '/'
+                    | ':'
+                    | '='
+                    | '?'
+                    | '@'
+                    | '^'
+                    | '_'
+                    | '`'
+                    | '~',
+            )
     }
 
-    if RESERVED_CHARACTERS.find(c).is_some() {
-        return false;
+    let mut term = String::new();
+    loop {
+        let mut consumed = 0;
+
+        // an optional sequence of regular characters
+        let (after, part) = take_while(is_regular_terminal_char)(input)?;
+        term.push_str(&part);
+        consumed += part.len();
+        input = after;
+
+        // an optional sequence of escaped characters
+        while let Some(after) = input.strip_prefix('\\') {
+            input = after.into();
+            if input.starts_with(&[
+                '(', ')', '[', ']', '<', '>', '|', ';', '"', '{', '}', '\\', '.',
+            ]) {
+                let mut chars = input.chars();
+                term.push(chars.next().unwrap());
+                consumed += 1;
+                input = chars.as_str().into();
+            } else {
+                // escaped non-special character
+                return fail().parse(input);
+            }
+        }
+
+        // an optional sequence of fewer than 3 '.'
+        if input.starts_with("...") {
+            break;
+        }
+        let (after, part) = take_while(|c| c == '.')(input)?;
+        term.push_str(&part);
+        consumed += part.len();
+        input = after;
+
+        if consumed == 0 {
+            break;
+        }
     }
 
-    c.is_ascii_alphanumeric() || c.is_ascii_punctuation()
-}
-
-fn terminal(input: Span) -> IResult<Span, String> {
-    let (input, term) = escaped_transform(
-        take_while1(is_terminal_char),
-        ESCAPE_CHARACTER,
-        one_of(RESERVED_CHARACTERS),
-    )(input)?;
     if term.is_empty() {
         return fail().parse(input);
     }
+
     Ok((input, term))
 }
 
@@ -691,6 +741,7 @@ fn parse_fragment(input: Span) -> IResult<Span, StringFragment> {
     .parse(input)
 }
 
+// https://github.com/rust-bakery/nom/blob/51c3c4e44fa78a8a09b413419372b97b2cc2a787/examples/string.rs
 fn description_inner(input: Span) -> IResult<Span, String> {
     let (input, inner) = fold_many0(parse_fragment, String::new, |mut string, fragment| {
         match fragment {
@@ -1469,6 +1520,21 @@ pub(crate) mod tests {
         assert!(s.is_empty());
         let expected = alloc(&mut arena, Expr::term("--foo"));
         assert!(teq(actual, expected, &arena));
+    }
+
+    #[test]
+    fn parses_escaped_terminal() {
+        let (s, t) = terminal(Span::new("\\...")).unwrap();
+        assert!(s.is_empty(), "{s}");
+        assert_eq!(t, "...", "{t}");
+
+        let (s, t) = terminal(Span::new(".\\..")).unwrap();
+        assert!(s.is_empty(), "{s}");
+        assert_eq!(t, "...", "{t}");
+
+        let (s, t) = terminal(Span::new("..\\.")).unwrap();
+        assert!(s.is_empty(), "{s}");
+        assert_eq!(t, "...", "{t}");
     }
 
     #[test]
@@ -2533,7 +2599,7 @@ cargo [+<toolchain>] [<OPTIONS>] [<COMMAND>];
     }
 
     #[test]
-    fn parses_special_characters_descr() {
+    fn parses_descr_escaped_chars() {
         const INPUT: &str = r#""$f\"\\""#;
         let (s, e) = description(Span::new(INPUT)).unwrap();
         assert!(s.is_empty());
@@ -2699,6 +2765,28 @@ grep --extended-regexp "PATTERNS are extended regular expressions";
             },
         );
         let expected_expr_id = alloc(&mut arena, Expr::subword(seq_id));
+
+        assert!(teq(e, expected_expr_id, &arena));
+    }
+
+    #[test]
+    fn parses_quoted_operators() {
+        const INPUT: &str = r#"<_>\...<_>"#;
+        let mut arena: Vec<Expr> = Default::default();
+        let (s, e) = expr(&mut arena, Span::new(INPUT)).unwrap();
+        assert!(s.is_empty());
+
+        let left = alloc(&mut arena, Expr::nontermref("_"));
+        let sep = alloc(&mut arena, Expr::term("..."));
+        let right = alloc(&mut arena, Expr::nontermref("_"));
+        let seq = alloc(
+            &mut arena,
+            Sequence {
+                children: vec![left, sep, right],
+                span: Default::default(),
+            },
+        );
+        let expected_expr_id = alloc(&mut arena, Expr::subword(seq));
 
         assert!(teq(e, expected_expr_id, &arena));
     }
