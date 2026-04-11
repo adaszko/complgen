@@ -67,3 +67,9 @@ mygrep ([<OPTION>]... || --) <PATTERNS> [<PATH>]...;
     ;
 
 <WHEN> = always | never | auto "only when stdout is a tty";
+
+<PATTERNS> = <_>;
+<LABEL> = <_>;
+<GLOB> = <_>;
+<NUM> = <_>;
+<SEP> = <_>;
