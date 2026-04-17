@@ -489,7 +489,7 @@ fn form_feed(input: Span) -> IResult<Span, Span> {
 }
 
 fn blanks(input: Span) -> IResult<Span, ()> {
-    let (input, _) = alt((multispace1, comment, form_feed))(input)?;
+    let (input, _) = alt((multispace1, comment, form_feed)).parse(input)?;
     Ok((input, ()))
 }
 
@@ -528,7 +528,7 @@ fn terminal(input: Span) -> IResult<Span, String> {
         one_of(RESERVED_CHARACTERS),
     )(input)?;
     if term.is_empty() {
-        return fail(input);
+        return fail().parse(input);
     }
     Ok((input, term))
 }
@@ -573,7 +573,8 @@ fn description_inner(input: Span) -> IResult<Span, String> {
             StringFragment::EscapedWS => {}
         }
         Span::new(&string).to_string()
-    })(input)?;
+    })
+    .parse(input)?;
     Ok((input, inner))
 }
 
@@ -589,7 +590,7 @@ fn terminal_opt_description_expr<'s>(
     input: Span<'s>,
 ) -> IResult<Span<'s>, ExprId> {
     let (after, term) = terminal(input)?;
-    let (after, descr) = opt(preceded(multiblanks0, description))(after)?;
+    let (after, descr) = opt(preceded(multiblanks0, description)).parse(after)?;
     let expr = Expr::Terminal {
         term: ustr(&term),
         descr: descr.map(|span| ustr(&span)),
@@ -610,7 +611,7 @@ fn nonterm(input: Span) -> IResult<Span, (Ustr, HumanSpan)> {
 }
 
 fn nonterm_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, ExprId> {
-    let (after, (nonterm, _)) = context("nonterminal", nonterm)(input)?;
+    let (after, (nonterm, _)) = context("nonterminal", nonterm).parse(input)?;
     let diagnostic_span = HumanSpan::from_range(input, after);
     let e = Expr::NontermRef {
         nonterm,
@@ -740,7 +741,7 @@ fn subword_sequence_expr_opt_description<'s>(
     input: Span<'s>,
 ) -> IResult<Span<'s>, ExprId> {
     let (after, expr_id) = subword_sequence_expr(arena, input)?;
-    let (after, description) = opt(preceded(multiblanks0, description))(after)?;
+    let (after, description) = opt(preceded(multiblanks0, description)).parse(after)?;
     let result = match description {
         Some(descr) => {
             let e = Expr::DistributiveDescription {
@@ -760,7 +761,8 @@ fn sequence_expr<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>
     let mut factors: Vec<ExprId> = vec![left];
     while let Ok((rest, right)) = preceded(multiblanks1, |i| {
         subword_sequence_expr_opt_description(arena, i)
-    })(after)
+    })
+    .parse(after)
     {
         factors.push(right);
         after = rest;
@@ -860,7 +862,7 @@ pub enum Statement {
 }
 
 fn end_of_statement<'s>(input: Span<'s>) -> IResult<Span<'s>, ()> {
-    alt((map(char(';'), |_| ()), map(eof, |_| ())))(input)
+    alt((map(char(';'), |_| ()), map(eof, |_| ()))).parse(input)
 }
 
 fn call_variant<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, Statement> {
@@ -908,7 +910,7 @@ fn nonterm_def(input: Span) -> IResult<Span, (Ustr, HumanSpan, Option<(Ustr, Hum
     if let Ok((input, (name, nonterm_span))) = nonterm(input) {
         return Ok((input, (name, nonterm_span, None)));
     }
-    fail(input)
+    fail().parse(input)
 }
 
 fn nonterm_def_statement<'s>(
@@ -917,7 +919,7 @@ fn nonterm_def_statement<'s>(
 ) -> IResult<Span<'s>, Statement> {
     let (input, (name, nonterm_span, shell)) = nonterm_def(input)?;
     let (input, _) = multiblanks0(input)?;
-    let (input, _) = alt((tag("::="), tag("=")))(input)?;
+    let (input, _) = alt((tag("::="), tag("="))).parse(input)?;
     let (input, _) = multiblanks0(input)?;
     let (input, rhs_expr_id) = expr(arena, input)?;
     let (input, _) = multiblanks0(input)?;
@@ -949,7 +951,7 @@ fn statement<'s>(arena: &mut Vec<Expr>, input: Span<'s>) -> IResult<Span<'s>, St
 fn grammar(input: Span) -> IResult<Span, (Vec<Expr>, Vec<Statement>)> {
     let mut arena = Vec::new();
     let (input, _) = multiblanks0(input)?;
-    let (input, statements) = many0(|i| statement(&mut arena, i))(input)?;
+    let (input, statements) = many0(|i| statement(&mut arena, i)).parse(input)?;
     let (input, _) = multiblanks0(input)?;
     Ok((input, (arena, statements)))
 }
