@@ -1451,8 +1451,9 @@ mod tests {
     use std::ops::Rem;
     use std::rc::Rc;
 
-    use crate::grammar::{Expr, ExprId, Grammar, HumanSpan, Shell, ValidGrammar, alloc};
+    use crate::parse::{Expr, ExprId, Grammar, HumanSpan, Shell, alloc};
     use crate::regex::{Regex, RegexInternPool};
+    use crate::check::ValidGrammar;
     use Expr::*;
     use itertools::Itertools;
     use proptest::bits::{u64, usize};

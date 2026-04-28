@@ -1,13 +1,14 @@
-use grammar::HumanSpan;
+use parse::HumanSpan;
 use std::string::FromUtf8Error;
 use ustr::Ustr;
 
 use crate::dfa::Inp;
 
 pub mod bash;
+pub mod check;
 pub mod dfa;
 pub mod fish;
-pub mod grammar;
+pub mod parse;
 pub mod pwsh;
 pub mod regex;
 pub mod zsh;

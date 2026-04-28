@@ -1,11 +1,12 @@
-use crate::{Error, Result, grammar::ValidGrammar};
+use crate::check::ValidGrammar;
+use crate::{Error, Result};
 use indexmap::IndexSet;
 use std::{cell::OnceCell, collections::BTreeMap, io::Write};
 
 use roaring::RoaringBitmap;
 use ustr::Ustr;
 
-use crate::grammar::{Expr, ExprId, HumanSpan};
+use crate::parse::{Expr, ExprId, HumanSpan};
 
 // Serves as RegexInputId
 pub type Position = u32;
@@ -912,7 +913,7 @@ impl Regex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::grammar::Shell;
+    use crate::parse::Shell;
     use crate::{Error, Result};
 
     fn make_sample_star_regex(arena: &mut Vec<RegexNode>) -> RegexNodeId {
@@ -986,11 +987,11 @@ mod tests {
         assert_eq!(fp.get(&1), Some(&RoaringBitmap::from_iter([1, 2, 3])));
     }
 
-    fn get_validated_grammar(input: &str) -> Result<crate::grammar::ValidGrammar> {
-        let g = crate::grammar::Grammar::parse(input)
+    fn get_validated_grammar(input: &str) -> Result<ValidGrammar> {
+        let g = crate::parse::Grammar::parse(input)
             .map_err(|e| e.to_string())
             .unwrap();
-        let validated = crate::grammar::ValidGrammar::from_grammar(g, Shell::Bash)?;
+        let validated = ValidGrammar::from_grammar(g, Shell::Bash)?;
         let mut subword_regexes = RegexInternPool::default();
         let _ = Regex::from_valid_grammar(&validated, &mut subword_regexes)?;
         Ok(validated)

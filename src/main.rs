@@ -6,10 +6,11 @@ use std::process::exit;
 use anyhow::{Context, bail};
 use clap::Parser;
 
-use complgen::grammar::{Grammar, HumanSpan, Shell, ValidGrammar};
+use complgen::parse::{Grammar, HumanSpan, Shell};
 
 use complgen::dfa::{DFA, diagnostic_display_input};
 use complgen::regex::{Regex, RegexInternPool};
+use complgen::check::ValidGrammar;
 use complgen::{Error, bash, fish, pwsh, zsh};
 
 #[derive(clap::Parser)]
