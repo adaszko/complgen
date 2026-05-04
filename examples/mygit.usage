@@ -130,7 +130,7 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
     = [<diff-option>...] [<commit>] [--] [<path>...]
     | [<diff-option>...] --cached [--merge-base] [<commit>] [--] [<path>...]
     | [<diff-option>...] [--merge-base] <commit> [<commit>...] <commit> [--] [<path>...]
-    | [<diff-option>...] <_> [--] [<path>...]
+    | [<diff-option>...] <commit>\.\.\.<commit> [--] [<path>...]
     | [<diff-option>...] <blob> <blob>
     | [<diff-option>...] --no-index [--] <path> <path> [<pathspec>...]
     ;
@@ -662,6 +662,24 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
 <source> = <DIRECTORY>;
 <template-directory> = <DIRECTORY>;
 
+
+<commit> ::= {{{ bash -c '
+    shopt -s globstar
+    root="$(git rev-parse --show-toplevel 2>/dev/null)"
+    if [[ -d "$root"/.git/refs/heads ]]; then
+        cd "$root"/.git/refs/heads
+        printf "%s\n" *
+    fi
+    if [[ -d "$root"/.git/refs/remotes ]]; then
+        cd "$root"/.git/refs/remotes
+        printf "%s\n" **/*
+    fi
+    if [[ -d "$root"/.git/refs/tags ]]; then
+        cd "$root"/.git/refs/tags
+        printf "%s\n" **/*
+    fi
+'}}};
+
 <arg> = <_>;
 <author> = <_>;
 <bad> = <_>;
@@ -672,7 +690,6 @@ mygit (<tag-cmd>       || <global-option>... <tag-cmd>) <tag-syntax>;
 <branch> = <_>;
 <char> = <_>;
 <cmd> = <_>;
-<commit> = <_>;
 <config-env> = <_>;
 <context> = <_>;
 <date> = <_>;
