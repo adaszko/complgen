@@ -37,6 +37,78 @@ struct LookupTables {
     completion_transitions: CompletionTransitions,
 }
 
+impl LookupTables {
+    // Excludes exact literal values
+    fn shape_hash(&self) -> usize {
+        todo!();
+    }
+
+    // Equivalent sub-DFAs, ignoring literal values, IOW: "same-shape"
+    fn isomorphic_to(&self, other: &LookupTables) -> bool {
+        let LookupTables {
+            literals: _,
+            max_fallback_level: left_max_fallback_level,
+            match_transitions: left_match_transitions,
+            completion_transitions: left_completion_transitions,
+        } = self;
+
+        let LookupTables {
+            literals: _,
+            max_fallback_level: right_max_fallback_level,
+            match_transitions: right_match_transitions,
+            completion_transitions: right_completion_transitions,
+        } = other;
+
+        if left_max_fallback_level != right_max_fallback_level {
+            return false;
+        }
+
+        let MatchTransitions {
+            literal: left_literal,
+            command: left_command,
+            star: left_star,
+        } = &left_match_transitions;
+
+        let MatchTransitions {
+            literal: right_literal,
+            command: right_command,
+            star: right_star,
+        } = &right_match_transitions;
+
+        if left_literal != right_literal {
+            return false;
+        }
+
+        if left_command != right_command {
+            return false;
+        }
+
+        if left_star != right_star {
+            return false;
+        }
+
+        let CompletionTransitions {
+            literal: left_literal,
+            command: left_command,
+        } = left_completion_transitions;
+
+        let CompletionTransitions {
+            literal: right_literal,
+            command: right_command,
+        } = right_completion_transitions;
+
+        if left_literal != right_literal {
+            return false;
+        }
+
+        if left_command != right_command {
+            return false;
+        }
+
+        return true;
+    }
+}
+
 fn make_string_constant(s: &str) -> String {
     format!(
         r#""{}""#,
