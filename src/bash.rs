@@ -413,14 +413,10 @@ fn write_subword_wrapper_fn<W: Write>(
     buffer: &mut W,
     command: &str,
     id: usize,
-    dfa: &DFA,
-    id_from_cmd: &IndexSet<Ustr>,
-    needs_commands_code: bool,
-    needs_star_code: bool,
+    lookups: &LookupTables,
 ) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
 
-    let lookups = get_lookup_tables(dfa, id_from_cmd, needs_commands_code, needs_star_code);
     write_literals(buffer, &lookups.literals)?;
     write_match_transitions(buffer, &lookups.match_transitions)?;
     write_completion_tables(
@@ -476,15 +472,13 @@ fi
     if needs_subwords_code {
         for (dfaid, id) in &id_from_dfa {
             let dfa = dfa.subdfas.lookup(*dfaid);
-            write_subword_wrapper_fn(
-                buffer,
-                command,
-                *id,
+            let lookups = get_lookup_tables(
                 dfa,
                 &id_from_cmd,
                 needs_subword_commands_code,
                 needs_subword_star_code,
-            )?;
+            );
+            write_subword_wrapper_fn(buffer, command, *id, &lookups)?;
             writeln!(buffer)?;
         }
 
