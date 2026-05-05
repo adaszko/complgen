@@ -470,15 +470,23 @@ fi
 
     let id_from_dfa = dfa.get_subwords(ARRAY_START as usize);
     if needs_subwords_code {
-        for (dfaid, id) in &id_from_dfa {
-            let dfa = dfa.subdfas.lookup(*dfaid);
-            let lookups = get_lookup_tables(
-                dfa,
-                &id_from_cmd,
-                needs_subword_commands_code,
-                needs_subword_star_code,
-            );
-            write_subword_wrapper_fn(buffer, command, *id, &lookups)?;
+        let lookup_tables = {
+            let mut lookup_tables: HashMap<usize, LookupTables> = Default::default();
+            for (dfaid, id) in &id_from_dfa {
+                let subdfa = dfa.subdfas.lookup(*dfaid);
+                let tables = get_lookup_tables(
+                    subdfa,
+                    &id_from_cmd,
+                    needs_subword_commands_code,
+                    needs_subword_star_code,
+                );
+                lookup_tables.insert(*id, tables);
+            }
+            lookup_tables
+        };
+
+        for (id, tables) in lookup_tables {
+            write_subword_wrapper_fn(buffer, command, id, &tables)?;
             writeln!(buffer)?;
         }
 
