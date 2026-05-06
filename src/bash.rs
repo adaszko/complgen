@@ -1,4 +1,6 @@
 use std::collections::BTreeMap;
+use std::hash::DefaultHasher;
+use std::hash::Hasher;
 use std::io::Write;
 
 use crate::Result;
@@ -39,8 +41,72 @@ struct LookupTables {
 
 impl LookupTables {
     // Excludes exact literal values
-    fn shape_hash(&self) -> usize {
-        todo!();
+    fn shape_hash(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+
+        let Self {
+            literals: _,
+            max_fallback_level,
+            match_transitions,
+            completion_transitions,
+        } = self;
+
+        hasher.write_usize(*max_fallback_level);
+
+        let MatchTransitions {
+            literal,
+            command,
+            star,
+        } = match_transitions;
+
+        for (from, tos) in literal {
+            hasher.write_u32(*from);
+            for (lit_id, to) in tos {
+                hasher.write_u32(*lit_id);
+                hasher.write_u32(*to);
+            }
+        }
+
+        if let Some(command) = command {
+            for (from, tos) in command {
+                hasher.write_u32(*from);
+                for (cmd_id, to) in tos {
+                    hasher.write_u32(*cmd_id);
+                    hasher.write_u32(*to);
+                }
+            }
+        }
+
+        if let Some(star) = star {
+            for (from, to) in star {
+                hasher.write_u32(*from);
+                hasher.write_u32(*to);
+            }
+        }
+
+        let CompletionTransitions { literal, command } = completion_transitions;
+
+        for level in literal {
+            for (from, lit_ids) in level {
+                hasher.write_u32(*from);
+                for id in lit_ids {
+                    hasher.write_u32(id);
+                }
+            }
+        }
+
+        if let Some(command) = command {
+            for level in command {
+                for (from, cmd_ids) in level {
+                    hasher.write_u32(*from);
+                    for id in cmd_ids {
+                        hasher.write_u32(*id);
+                    }
+                }
+            }
+        }
+
+        hasher.finish()
     }
 
     // Equivalent sub-DFAs, ignoring literal values, IOW: "same-shape"
