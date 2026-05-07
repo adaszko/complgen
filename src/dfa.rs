@@ -105,6 +105,7 @@ impl Inp {
         input: &RegexInput,
         subword_regexes: &RegexInternPool,
         subdfas: &mut DFAInternPool,
+        subwords_cache: &mut HashMap<RegexId, DFAId>,
     ) -> Result<Self> {
         let result = match input.clone() {
             RegexInput::Literal {
@@ -122,15 +123,18 @@ impl Inp {
                 fallback_level,
                 span: _,
             } => {
-                let subdfaid = if let Some(subdfaid) = subdfas.resolve(subword_regex_id) {
-                    subdfaid
+                let subdfaid = if let Some(subdfaid) = subwords_cache.get(&subword_regex_id) {
+                    *subdfaid
                 } else {
                     let regex = subword_regexes.lookup(subword_regex_id);
                     let subdfa = DFA::from_regex(regex.clone(), subword_regexes)?;
                     let subdfa = subdfa.minimize();
                     subdfa.check_ambiguity_best_effort()?;
-                    subdfas.insert(subword_regex_id, subdfa)
+                    let subdfaid = subdfas.intern(subdfa);
+                    subwords_cache.insert(subword_regex_id, subdfaid);
+                    subdfaid
                 };
+
                 Self::Subword {
                     subdfa: subdfaid,
                     fallback_level,
@@ -250,22 +254,17 @@ pub struct DFAId(usize);
 
 #[derive(Debug, Clone, Default)]
 pub struct DFAInternPool {
-    store: IndexMap<RegexId, DFA>,
+    store: IndexSet<DFA>,
 }
 
 impl DFAInternPool {
-    fn resolve(&self, regex_id: RegexId) -> Option<DFAId> {
-        self.store.get(&regex_id).map(|_| DFAId(regex_id.0))
-    }
-
-    fn insert(&mut self, regex_id: RegexId, value: DFA) -> DFAId {
-        self.store.insert(regex_id, value);
-        DFAId(regex_id.0)
+    fn intern(&mut self, value: DFA) -> DFAId {
+        let (id, _) = self.store.insert_full(value);
+        DFAId(id)
     }
 
     pub(crate) fn lookup(&self, id: DFAId) -> &DFA {
-        let regex_id = RegexId(id.0);
-        self.store.get(&regex_id).unwrap()
+        self.store.get_index(id.0).unwrap()
     }
 }
 
@@ -284,11 +283,13 @@ fn dfa_from_regex(
     let mut state_id_from_set_of_positions: IndexMap<BTreeSet<Position>, StateId> =
         IndexMap::from_iter([(combined_starting_state.clone(), combined_starting_state_id)]);
 
+    let mut subwords_cache: HashMap<RegexId, DFAId> = Default::default();
+
     let followpos = regex.followpos();
     let inputs = {
         let mut inputs = InpInternPool::default();
         for input in &regex.input_from_position {
-            let inp = Inp::from_input(input, subword_regexes, &mut subdfas)?;
+            let inp = Inp::from_input(input, subword_regexes, &mut subdfas, &mut subwords_cache)?;
             inputs.intern(inp);
         }
         inputs
@@ -306,7 +307,8 @@ fn dfa_from_regex(
             let mut set_of_positions = RoaringBitmap::new();
             for pos in &combined_state {
                 if let Some(input) = regex.input_from_position.get(*pos as usize)
-                    && Inp::from_input(input, subword_regexes, &mut subdfas)? == *inp
+                    && Inp::from_input(input, subword_regexes, &mut subdfas, &mut subwords_cache)?
+                        == *inp
                     && let Some(positions) = followpos.get(pos)
                 {
                     set_of_positions |= positions;
