@@ -570,6 +570,45 @@ fn write_subword_wrapper_fn<W: Write>(
     Ok(())
 }
 
+fn write_subword_shape_fn<W: Write>(
+    buffer: &mut W,
+    command: &str,
+    shape_id: usize,
+    lookups: &LookupTables,
+) -> Result<()> {
+    writeln!(buffer, r#"_{command}_subword_shape_{shape_id} () {{"#)?;
+
+    write_match_transitions(buffer, &lookups.match_transitions)?;
+    write_completion_tables(
+        buffer,
+        lookups.max_fallback_level,
+        &lookups.completion_transitions,
+    )?;
+
+    writeln!(buffer, r#"    _{command}_subword "$1" "$2""#)?;
+
+    writeln!(buffer, r#"}}"#)?;
+
+    Ok(())
+}
+
+fn write_subword_shape_wrapper_fn<W: Write>(
+    buffer: &mut W,
+    command: &str,
+    id: usize,
+    shape_id: usize,
+    lookups: &LookupTables,
+) -> Result<()> {
+    writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
+    write_literals(buffer, &lookups.literals)?;
+    writeln!(
+        buffer,
+        r#"    _{command}_subword_shape_{shape_id} "$1" "$2""#
+    )?;
+    writeln!(buffer, r#"}}"#)?;
+    Ok(())
+}
+
 pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DFA) -> Result<()> {
     let needs_subwords_code = dfa.needs_subwords_code();
     let needs_top_level_commands_code = dfa.needs_top_level_commands_code();
@@ -608,7 +647,7 @@ fi
 
     let id_from_dfa = dfa.get_subwords(ARRAY_START as usize);
     if needs_subwords_code {
-        let lookup_tables = {
+        let tables_from_id = {
             let mut lookup_tables: HashMap<usize, LookupTables> = Default::default();
             for (dfaid, id) in &id_from_dfa {
                 let subdfa = dfa.subdfas.lookup(*dfaid);
@@ -623,9 +662,41 @@ fi
             lookup_tables
         };
 
-        for (id, tables) in lookup_tables {
-            write_subword_wrapper_fn(buffer, command, id, &tables)?;
-            writeln!(buffer)?;
+        let mut hashes: Vec<(usize, u64)> = Default::default();
+        for (id, table) in &tables_from_id {
+            hashes.push((*id, table.shape_hash()));
+        }
+        hashes.sort_by_key(|(_, hash)| *hash);
+
+        let isomorphic_subwords =
+            hashes.chunk_by(|(left_id, left_hash), (right_id, right_hash)| {
+                if left_hash != right_hash {
+                    return false;
+                }
+
+                let left = tables_from_id.get(left_id).unwrap();
+                let right = tables_from_id.get(right_id).unwrap();
+
+                left.isomorphic_to(&right)
+            });
+
+        for (shape_id, chunk) in isomorphic_subwords.enumerate() {
+            if chunk.len() > 1 {
+                let (chunk_leader_id, _) = chunk[0];
+                let chunk_leader_tables = tables_from_id.get(&chunk_leader_id).unwrap();
+                write_subword_shape_fn(buffer, command, shape_id, chunk_leader_tables)?;
+                writeln!(buffer)?;
+                for (id, _) in chunk {
+                    let tables = tables_from_id.get(id).unwrap();
+                    write_subword_shape_wrapper_fn(buffer, command, *id, shape_id, tables)?;
+                    writeln!(buffer)?;
+                }
+            } else {
+                let [(id, _)] = chunk else { unreachable!() };
+                let tables = tables_from_id.get(id).unwrap();
+                write_subword_wrapper_fn(buffer, command, *id, &tables)?;
+                writeln!(buffer)?;
+            }
         }
 
         write_subword_fn(
