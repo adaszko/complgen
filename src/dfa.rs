@@ -1381,8 +1381,8 @@ impl DFA {
         &self,
         id_from_cmd: &IndexSet<Ustr>,
         max_fallback_level: usize,
-    ) -> Vec<BTreeMap<StateId, Vec<CommandId>>> {
-        let mut completion_commands: Vec<BTreeMap<StateId, Vec<CommandId>>> =
+    ) -> Vec<BTreeMap<StateId, RoaringBitmap>> {
+        let mut completion_commands: Vec<BTreeMap<StateId, RoaringBitmap>> =
             vec![Default::default(); max_fallback_level + 1];
 
         for (from, input_id, _) in self.iter_transitions() {
@@ -1395,7 +1395,7 @@ impl DFA {
                     completion_commands[fallback_level]
                         .entry(from)
                         .or_default()
-                        .push(command_id as CommandId);
+                        .insert(command_id as CommandId);
                 }
                 Inp::Literal { .. } | Inp::Compadd { .. } | Inp::Subword { .. } | Inp::Star => {}
             }
@@ -1451,9 +1451,9 @@ mod tests {
     use std::ops::Rem;
     use std::rc::Rc;
 
+    use crate::check::ValidGrammar;
     use crate::parse::{Expr, ExprId, Grammar, HumanSpan, Shell, alloc};
     use crate::regex::{Regex, RegexInternPool};
-    use crate::check::ValidGrammar;
     use Expr::*;
     use itertools::Itertools;
     use proptest::bits::{u64, usize};

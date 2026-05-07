@@ -29,7 +29,7 @@ struct MatchTransitions {
 
 struct CompletionTransitions {
     literal: Vec<BTreeMap<StateId, RoaringBitmap>>,
-    command: Option<Vec<BTreeMap<StateId, Vec<CommandId>>>>,
+    command: Option<Vec<BTreeMap<StateId, RoaringBitmap>>>,
 }
 
 struct LookupTables {
@@ -100,7 +100,7 @@ impl LookupTables {
                 for (from, cmd_ids) in level {
                     hasher.write_u32(*from);
                     for id in cmd_ids {
-                        hasher.write_u32(*id);
+                        hasher.write_u32(id);
                     }
                 }
             }
