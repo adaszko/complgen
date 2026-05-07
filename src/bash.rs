@@ -33,7 +33,7 @@ struct CompletionTransitions {
 }
 
 struct LookupTables {
-    literals: Vec<String>,
+    literals: Vec<Ustr>,
     max_fallback_level: usize,
     match_transitions: MatchTransitions,
     completion_transitions: CompletionTransitions,
@@ -472,9 +472,9 @@ fn get_lookup_tables(
         .map(|(id, input, description)| ((*input, *description), *id))
         .collect();
 
-    let literals: Vec<String> = all_literals
+    let literals: Vec<Ustr> = all_literals
         .iter()
-        .map(|(_, literal, _)| make_string_constant(literal))
+        .map(|(_, literal, _)| *literal)
         .collect();
 
     let match_transitions = get_match_transitions(
@@ -500,8 +500,11 @@ fn get_lookup_tables(
     }
 }
 
-fn write_literals<W: Write>(buffer: &mut W, literals: &[String]) -> Result<()> {
-    let literals = literals.join(" ");
+fn write_literals<W: Write>(buffer: &mut W, literals: &[Ustr]) -> Result<()> {
+    let literals = literals
+        .iter()
+        .map(|lit| make_string_constant(lit))
+        .join(" ");
     writeln!(buffer, r#"    local -a literals=({literals})"#)?;
     Ok(())
 }
