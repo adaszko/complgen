@@ -11,6 +11,7 @@ pub mod fish;
 pub mod parse;
 pub mod pwsh;
 pub mod regex;
+pub mod tables;
 pub mod zsh;
 
 #[derive(thiserror::Error, Debug)]
