@@ -1324,6 +1324,28 @@ impl DFA {
         command_transitions
     }
 
+    pub(crate) fn get_compadd_transitions(
+        &self,
+        all_states: &RoaringBitmap,
+        id_from_cmd: &IndexSet<Ustr>,
+    ) -> BTreeMap<StateId, BTreeMap<CommandId, StateId>> {
+        let mut compadd_transitions: BTreeMap<StateId, BTreeMap<CommandId, StateId>> =
+            Default::default();
+
+        for state in all_states {
+            let state_compadd_transitions: BTreeMap<CommandId, StateId> = self
+                .get_compadd_transitions_from(state)
+                .iter()
+                .map(|(cmd, to)| (id_from_cmd.get_index_of(cmd).unwrap() as CommandId, *to))
+                .collect();
+            if !state_compadd_transitions.is_empty() {
+                compadd_transitions.insert(state, state_compadd_transitions);
+            }
+        }
+
+        compadd_transitions
+    }
+
     pub(crate) fn get_literal_completions(
         &self,
         id_from_literal_description: &HashMap<(Ustr, Ustr), LiteralId>,

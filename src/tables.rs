@@ -12,6 +12,7 @@ use crate::{CommandId, LiteralId, StateId};
 pub(crate) struct MatchTransitions {
     pub(crate) literal: BTreeMap<StateId, BTreeMap<LiteralId, StateId>>,
     pub(crate) command: Option<BTreeMap<StateId, BTreeMap<CommandId, StateId>>>,
+    pub(crate) compadd: Option<BTreeMap<StateId, BTreeMap<CommandId, StateId>>>,
     pub(crate) star: Option<Vec<(StateId, StateId)>>,
 }
 
@@ -44,6 +45,7 @@ impl LookupTables {
         let MatchTransitions {
             literal,
             command,
+            compadd: _,
             star,
         } = match_transitions;
 
@@ -120,12 +122,14 @@ impl LookupTables {
         let MatchTransitions {
             literal: left_literal,
             command: left_command,
+            compadd: _,
             star: left_star,
         } = &left_match_transitions;
 
         let MatchTransitions {
             literal: right_literal,
             command: right_command,
+            compadd: _,
             star: right_star,
         } = &right_match_transitions;
 
@@ -168,6 +172,7 @@ pub(crate) fn get_match_transitions(
     id_from_literal_description: &HashMap<(Ustr, Ustr), LiteralId>,
     id_from_cmd: &IndexSet<Ustr>,
     needs_commands_code: bool,
+    needs_compadds_code: bool,
     needs_star_code: bool,
 ) -> MatchTransitions {
     let all_states = dfa.get_all_states();
@@ -182,6 +187,13 @@ pub(crate) fn get_match_transitions(
         Some(dfa.get_command_transitions(&all_states, id_from_cmd))
     };
 
+    let compadd_transitions = 'compadds: {
+        if !needs_compadds_code {
+            break 'compadds None;
+        }
+        Some(dfa.get_compadd_transitions(&all_states, id_from_cmd))
+    };
+
     let star_transitions = 'stars: {
         if !needs_star_code {
             break 'stars None;
@@ -192,6 +204,7 @@ pub(crate) fn get_match_transitions(
     MatchTransitions {
         literal: literal_transitions,
         command: command_transitions,
+        compadd: compadd_transitions,
         star: star_transitions,
     }
 }
@@ -243,6 +256,7 @@ pub(crate) fn get_lookup_tables(
         &id_from_literal_description,
         id_from_cmd,
         needs_commands_code,
+        false,
         needs_star_code,
     );
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(array_start);
