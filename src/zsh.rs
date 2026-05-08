@@ -4,7 +4,7 @@ use std::io::Write;
 use crate::LiteralId;
 use crate::Result;
 use crate::dfa::DFA;
-use crate::tables::{MatchTransitions, get_match_transitions};
+use crate::tables::{CompletionTransitions, MatchTransitions, get_completion_transitions, get_match_transitions};
 use hashbrown::HashMap;
 use indexmap::IndexSet;
 use itertools::Itertools;
@@ -488,19 +488,10 @@ fn write_matching_tables<W: Write>(
 
 fn write_completion_tables<W: Write>(
     buffer: &mut W,
-    dfa: &DFA,
+    completions: &CompletionTransitions,
     prefix: &str,
-    id_from_literal_description: &HashMap<(Ustr, Ustr), u32>,
-    id_from_cmd: &IndexSet<Ustr>,
-    needs_commands_code: bool,
-    needs_compadds_code: bool,
-    max_fallback_level: usize,
 ) -> Result<()> {
-    for (level, transitions) in dfa
-        .get_literal_completions(id_from_literal_description, max_fallback_level)
-        .iter()
-        .enumerate()
-    {
+    for (level, transitions) in completions.literal.iter().enumerate() {
         let initializer = transitions
             .iter()
             .map(|(from_state, literal_ids)| {
@@ -517,12 +508,8 @@ fn write_completion_tables<W: Write>(
         )?;
     }
 
-    if needs_commands_code {
-        for (level, transitions) in dfa
-            .get_command_completions(id_from_cmd, max_fallback_level)
-            .iter()
-            .enumerate()
-        {
+    if let Some(command_transitions) = &completions.command {
+        for (level, transitions) in command_transitions.iter().enumerate() {
             let initializer = transitions
                 .iter()
                 .map(|(from_state, command_ids)| {
@@ -540,12 +527,8 @@ fn write_completion_tables<W: Write>(
         }
     }
 
-    if needs_compadds_code {
-        for (level, transitions) in dfa
-            .get_completion_compadds(id_from_cmd, max_fallback_level)
-            .iter()
-            .enumerate()
-        {
+    if let Some(compadd_transitions) = &completions.compadd {
+        for (level, transitions) in compadd_transitions.iter().enumerate() {
             let initializer = transitions
                 .iter()
                 .map(|(from_state, command_ids)| {
@@ -594,17 +577,15 @@ fn write_subword_wrapper_fn<W: Write>(
     write_matching_tables(buffer, &all_literals, &match_transitions, "subword_")?;
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
-
-    write_completion_tables(
-        buffer,
+    let completion_transitions = get_completion_transitions(
         dfa,
-        "subword_",
-        &id_from_literal_description,
         id_from_cmd,
         needs_commands_code,
         needs_compadds_code,
+        &id_from_literal_description,
         max_fallback_level,
-    )?;
+    );
+    write_completion_tables(buffer, &completion_transitions, "subword_")?;
 
     writeln!(
         buffer,
@@ -887,17 +868,15 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     // ///////////////////////////// Completion ///////////////////////////////////
 
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
-
-    write_completion_tables(
-        buffer,
+    let completion_transitions = get_completion_transitions(
         dfa,
-        "",
-        &id_from_literal_description,
         &id_from_cmd,
         needs_top_level_commands_code,
         needs_top_level_compadds_code,
+        &id_from_literal_description,
         max_fallback_level,
-    )?;
+    );
+    write_completion_tables(buffer, &completion_transitions, "")?;
 
     if needs_subwords_code {
         for (level, transitions) in dfa

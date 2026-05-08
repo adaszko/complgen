@@ -19,6 +19,7 @@ pub(crate) struct MatchTransitions {
 pub(crate) struct CompletionTransitions {
     pub(crate) literal: Vec<BTreeMap<StateId, RoaringBitmap>>,
     pub(crate) command: Option<Vec<BTreeMap<StateId, RoaringBitmap>>>,
+    pub(crate) compadd: Option<Vec<BTreeMap<StateId, Vec<usize>>>>,
 }
 
 pub(crate) struct LookupTables {
@@ -74,7 +75,7 @@ impl LookupTables {
             }
         }
 
-        let CompletionTransitions { literal, command } = completion_transitions;
+        let CompletionTransitions { literal, command, compadd: _ } = completion_transitions;
 
         for level in literal {
             for (from, lit_ids) in level {
@@ -148,11 +149,13 @@ impl LookupTables {
         let CompletionTransitions {
             literal: left_literal,
             command: left_command,
+            compadd: _,
         } = left_completion_transitions;
 
         let CompletionTransitions {
             literal: right_literal,
             command: right_command,
+            compadd: _,
         } = right_completion_transitions;
 
         if left_literal != right_literal {
@@ -213,6 +216,7 @@ pub(crate) fn get_completion_transitions(
     dfa: &DFA,
     id_from_cmd: &IndexSet<Ustr>,
     needs_commands_code: bool,
+    needs_compadds_code: bool,
     id_from_literal_description: &HashMap<(Ustr, Ustr), LiteralId>,
     max_fallback_level: usize,
 ) -> CompletionTransitions {
@@ -226,9 +230,17 @@ pub(crate) fn get_completion_transitions(
         Some(dfa.get_command_completions(id_from_cmd, max_fallback_level))
     };
 
+    let compadd_completions = 'compadds: {
+        if !needs_compadds_code {
+            break 'compadds None;
+        }
+        Some(dfa.get_completion_compadds(id_from_cmd, max_fallback_level))
+    };
+
     CompletionTransitions {
         literal: literal_completions,
         command: command_completions,
+        compadd: compadd_completions,
     }
 }
 
@@ -264,6 +276,7 @@ pub(crate) fn get_lookup_tables(
         dfa,
         id_from_cmd,
         needs_commands_code,
+        false,
         &id_from_literal_description,
         max_fallback_level,
     );
