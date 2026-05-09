@@ -305,7 +305,7 @@ fn write_subword_wrapper_fn<W: Write>(
 ) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
 
-    write_literals(buffer, &lookups.literals)?;
+    write_literals(buffer, &lookups.all_literals.iter().map(|(_, l, _)| *l).collect::<Vec<_>>())?;
     write_match_transitions(buffer, &lookups.match_transitions)?;
     write_completion_tables(
         buffer,
@@ -350,7 +350,7 @@ fn write_subword_shape_wrapper_fn<W: Write>(
     lookups: &LookupTables,
 ) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
-    write_literals(buffer, &lookups.literals)?;
+    write_literals(buffer, &lookups.all_literals.iter().map(|(_, l, _)| *l).collect::<Vec<_>>())?;
     writeln!(
         buffer,
         r#"    _{command}_subword_shape_{shape_id} "$1" "$2""#
@@ -406,6 +406,7 @@ fi
                     &id_from_cmd,
                     ARRAY_START as usize,
                     needs_subword_commands_code,
+                    false,
                     needs_subword_star_code,
                 );
                 lookup_tables.insert(*id, tables);
@@ -478,9 +479,11 @@ fi
         &id_from_cmd,
         ARRAY_START as usize,
         needs_top_level_commands_code,
+        false,
         needs_top_level_star_code,
     );
-    write_literals(buffer, &lookups.literals)?;
+    let literals: Vec<Ustr> = lookups.all_literals.iter().map(|(_, l, _)| *l).collect();
+    write_literals(buffer, &literals)?;
     write_match_transitions(buffer, &lookups.match_transitions)?;
 
     if needs_subwords_code {

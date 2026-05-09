@@ -23,7 +23,7 @@ pub(crate) struct CompletionTransitions {
 }
 
 pub(crate) struct LookupTables {
-    pub(crate) literals: Vec<Ustr>,
+    pub(crate) all_literals: Vec<(LiteralId, Ustr, Ustr)>,
     pub(crate) max_fallback_level: usize,
     pub(crate) match_transitions: MatchTransitions,
     pub(crate) completion_transitions: CompletionTransitions,
@@ -35,7 +35,7 @@ impl LookupTables {
         let mut hasher = DefaultHasher::new();
 
         let Self {
-            literals: _,
+            all_literals: _,
             max_fallback_level,
             match_transitions,
             completion_transitions,
@@ -46,7 +46,7 @@ impl LookupTables {
         let MatchTransitions {
             literal,
             command,
-            compadd: _,
+            compadd,
             star,
         } = match_transitions;
 
@@ -68,6 +68,16 @@ impl LookupTables {
             }
         }
 
+        if let Some(compadd) = compadd {
+            for (from, tos) in compadd {
+                hasher.write_u32(*from);
+                for (cmd_id, to) in tos {
+                    hasher.write_u32(*cmd_id);
+                    hasher.write_u32(*to);
+                }
+            }
+        }
+
         if let Some(star) = star {
             for (from, to) in star {
                 hasher.write_u32(*from);
@@ -75,7 +85,11 @@ impl LookupTables {
             }
         }
 
-        let CompletionTransitions { literal, command, compadd: _ } = completion_transitions;
+        let CompletionTransitions {
+            literal,
+            command,
+            compadd: _,
+        } = completion_transitions;
 
         for level in literal {
             for (from, lit_ids) in level {
@@ -103,14 +117,14 @@ impl LookupTables {
     // Equivalent sub-DFAs, ignoring literal values, IOW: "same-shape"
     pub(crate) fn isomorphic_to(&self, other: &LookupTables) -> bool {
         let LookupTables {
-            literals: _,
+            all_literals: _,
             max_fallback_level: left_max_fallback_level,
             match_transitions: left_match_transitions,
             completion_transitions: left_completion_transitions,
         } = self;
 
         let LookupTables {
-            literals: _,
+            all_literals: _,
             max_fallback_level: right_max_fallback_level,
             match_transitions: right_match_transitions,
             completion_transitions: right_completion_transitions,
@@ -123,14 +137,14 @@ impl LookupTables {
         let MatchTransitions {
             literal: left_literal,
             command: left_command,
-            compadd: _,
+            compadd: left_compadd,
             star: left_star,
         } = &left_match_transitions;
 
         let MatchTransitions {
             literal: right_literal,
             command: right_command,
-            compadd: _,
+            compadd: right_compadd,
             star: right_star,
         } = &right_match_transitions;
 
@@ -139,6 +153,10 @@ impl LookupTables {
         }
 
         if left_command != right_command {
+            return false;
+        }
+
+        if left_compadd != right_compadd {
             return false;
         }
 
@@ -249,6 +267,7 @@ pub(crate) fn get_lookup_tables(
     id_from_cmd: &IndexSet<Ustr>,
     array_start: usize,
     needs_commands_code: bool,
+    needs_compadds_code: bool,
     needs_star_code: bool,
 ) -> LookupTables {
     let all_literals = dfa.get_all_literals(array_start);
@@ -258,17 +277,12 @@ pub(crate) fn get_lookup_tables(
         .map(|(id, input, description)| ((*input, *description), *id))
         .collect();
 
-    let literals: Vec<Ustr> = all_literals
-        .iter()
-        .map(|(_, literal, _)| *literal)
-        .collect();
-
     let match_transitions = get_match_transitions(
         dfa,
         &id_from_literal_description,
         id_from_cmd,
         needs_commands_code,
-        false,
+        needs_compadds_code,
         needs_star_code,
     );
     let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(array_start);
@@ -276,12 +290,12 @@ pub(crate) fn get_lookup_tables(
         dfa,
         id_from_cmd,
         needs_commands_code,
-        false,
+        needs_compadds_code,
         &id_from_literal_description,
         max_fallback_level,
     );
     LookupTables {
-        literals,
+        all_literals,
         max_fallback_level,
         match_transitions,
         completion_transitions,
