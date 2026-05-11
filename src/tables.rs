@@ -17,6 +17,7 @@ pub(crate) struct MatchTransitions {
 }
 
 pub(crate) struct CompletionTransitions {
+    pub(crate) max_fallback_level: usize,
     pub(crate) literal: Vec<BTreeMap<StateId, RoaringBitmap>>,
     pub(crate) command: Option<Vec<BTreeMap<StateId, RoaringBitmap>>>,
     pub(crate) compadd: Option<Vec<BTreeMap<StateId, Vec<usize>>>>,
@@ -24,7 +25,6 @@ pub(crate) struct CompletionTransitions {
 
 pub(crate) struct LookupTables {
     pub(crate) all_literals: Vec<(LiteralId, Ustr, Ustr)>,
-    pub(crate) max_fallback_level: usize,
     pub(crate) match_transitions: MatchTransitions,
     pub(crate) completion_transitions: CompletionTransitions,
 }
@@ -36,12 +36,9 @@ impl LookupTables {
 
         let Self {
             all_literals: _,
-            max_fallback_level,
             match_transitions,
             completion_transitions,
         } = self;
-
-        hasher.write_usize(*max_fallback_level);
 
         let MatchTransitions {
             literal,
@@ -86,10 +83,13 @@ impl LookupTables {
         }
 
         let CompletionTransitions {
+            max_fallback_level,
             literal,
             command,
             compadd: _,
         } = completion_transitions;
+
+        hasher.write_usize(*max_fallback_level);
 
         for level in literal {
             for (from, lit_ids) in level {
@@ -118,21 +118,15 @@ impl LookupTables {
     pub(crate) fn isomorphic_to(&self, other: &LookupTables) -> bool {
         let LookupTables {
             all_literals: _,
-            max_fallback_level: left_max_fallback_level,
             match_transitions: left_match_transitions,
             completion_transitions: left_completion_transitions,
         } = self;
 
         let LookupTables {
             all_literals: _,
-            max_fallback_level: right_max_fallback_level,
             match_transitions: right_match_transitions,
             completion_transitions: right_completion_transitions,
         } = other;
-
-        if left_max_fallback_level != right_max_fallback_level {
-            return false;
-        }
 
         let MatchTransitions {
             literal: left_literal,
@@ -165,16 +159,22 @@ impl LookupTables {
         }
 
         let CompletionTransitions {
+            max_fallback_level: left_max_fallback_level,
             literal: left_literal,
             command: left_command,
             compadd: _,
         } = left_completion_transitions;
 
         let CompletionTransitions {
+            max_fallback_level: right_max_fallback_level,
             literal: right_literal,
             command: right_command,
             compadd: _,
         } = right_completion_transitions;
+
+        if left_max_fallback_level != right_max_fallback_level {
+            return false;
+        }
 
         if left_literal != right_literal {
             return false;
@@ -256,6 +256,7 @@ pub(crate) fn get_completion_transitions(
     };
 
     CompletionTransitions {
+        max_fallback_level,
         literal: literal_completions,
         command: command_completions,
         compadd: compadd_completions,
@@ -296,7 +297,6 @@ pub(crate) fn get_lookup_tables(
     );
     LookupTables {
         all_literals,
-        max_fallback_level,
         match_transitions,
         completion_transitions,
     }

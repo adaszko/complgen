@@ -4,6 +4,7 @@ use std::io::Write;
 use crate::LiteralId;
 use crate::Result;
 use crate::dfa::DFA;
+use crate::tables::CompletionTransitions;
 use crate::tables::{LookupTables, MatchTransitions, get_lookup_tables};
 use hashbrown::HashMap;
 use indexmap::IndexSet;
@@ -495,10 +496,10 @@ fn write_literals<W: Write>(
 
 fn write_completion_tables<W: Write>(
     buffer: &mut W,
-    lookups: &LookupTables,
+    lookups: &CompletionTransitions,
     prefix: &str,
 ) -> Result<()> {
-    for (level, transitions) in lookups.completion_transitions.literal.iter().enumerate() {
+    for (level, transitions) in lookups.literal.iter().enumerate() {
         let initializer = transitions
             .iter()
             .map(|(from_state, literal_ids)| {
@@ -515,7 +516,7 @@ fn write_completion_tables<W: Write>(
         )?;
     }
 
-    if let Some(command_transitions) = &lookups.completion_transitions.command {
+    if let Some(command_transitions) = &lookups.command {
         for (level, transitions) in command_transitions.iter().enumerate() {
             let initializer = transitions
                 .iter()
@@ -534,7 +535,7 @@ fn write_completion_tables<W: Write>(
         }
     }
 
-    if let Some(compadd_transitions) = &lookups.completion_transitions.compadd {
+    if let Some(compadd_transitions) = &lookups.compadd {
         for (level, transitions) in compadd_transitions.iter().enumerate() {
             let initializer = transitions
                 .iter()
@@ -571,7 +572,7 @@ fn write_subword_wrapper_fn<W: Write>(
     writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
     write_literals(buffer, &lookups.all_literals, "subword_")?;
     write_match_transitions(buffer, &lookups.match_transitions, "subword_")?;
-    write_completion_tables(buffer, &lookups, "subword_")?;
+    write_completion_tables(buffer, &lookups.completion_transitions, "subword_")?;
     writeln!(buffer, r#"    _{command}_subword "$@""#)?;
     writeln!(buffer, r#"}}"#)?;
     Ok(())
@@ -585,7 +586,7 @@ fn write_subword_shape_fn<W: Write>(
 ) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_shape_{shape_id} () {{"#)?;
     write_match_transitions(buffer, &lookups.match_transitions, "subword_")?;
-    write_completion_tables(buffer, &lookups, "subword_")?;
+    write_completion_tables(buffer, &lookups.completion_transitions, "subword_")?;
     writeln!(buffer, r#"    _{command}_subword "$@""#)?;
     writeln!(buffer, r#"}}"#)?;
     Ok(())
@@ -909,11 +910,14 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
     // ///////////////////////////// Completion ///////////////////////////////////
 
-    write_completion_tables(buffer, &lookups, "")?;
+    write_completion_tables(buffer, &lookups.completion_transitions, "")?;
 
     if needs_subwords_code {
         for (level, transitions) in dfa
-            .get_completion_subwords(id_from_dfa, lookups.max_fallback_level)
+            .get_completion_subwords(
+                id_from_dfa,
+                lookups.completion_transitions.max_fallback_level,
+            )
             .iter()
             .enumerate()
         {

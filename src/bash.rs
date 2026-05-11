@@ -309,7 +309,7 @@ fn write_subword_wrapper_fn<W: Write>(
     write_match_transitions(buffer, &lookups.match_transitions)?;
     write_completion_tables(
         buffer,
-        lookups.max_fallback_level,
+        lookups.completion_transitions.max_fallback_level,
         &lookups.completion_transitions,
     )?;
 
@@ -331,7 +331,7 @@ fn write_subword_shape_fn<W: Write>(
     write_match_transitions(buffer, &lookups.match_transitions)?;
     write_completion_tables(
         buffer,
-        lookups.max_fallback_level,
+        lookups.completion_transitions.max_fallback_level,
         &lookups.completion_transitions,
     )?;
 
@@ -612,13 +612,13 @@ fi
 
     write_completion_tables(
         buffer,
-        lookups.max_fallback_level,
+        lookups.completion_transitions.max_fallback_level,
         &lookups.completion_transitions,
     )?;
 
     if needs_subwords_code {
         for (level, transitions) in dfa
-            .get_completion_subwords(id_from_dfa, lookups.max_fallback_level)
+            .get_completion_subwords(id_from_dfa, lookups.completion_transitions.max_fallback_level)
             .iter()
             .enumerate()
         {
@@ -687,7 +687,7 @@ fi
         if [[ ${{#candidates[@]}} -gt 0 ]]; then
             {MATCH_FN_NAME} "$prefix" candidates matches
         fi"#,
-        max_fallback_level = lookups.max_fallback_level
+        max_fallback_level = lookups.completion_transitions.max_fallback_level
     )?;
 
     if needs_subwords_code {
