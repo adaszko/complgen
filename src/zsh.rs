@@ -4,7 +4,8 @@ use std::io::Write;
 use crate::LiteralId;
 use crate::Result;
 use crate::dfa::DFA;
-use crate::tables::{CompletionTransitions, LookupTables, MatchTransitions, get_lookup_tables};
+use crate::tables::{LookupTables, MatchTransitions, get_lookup_tables};
+use hashbrown::HashMap;
 use indexmap::IndexSet;
 use itertools::Itertools;
 use ustr::Ustr;
@@ -453,16 +454,6 @@ fn write_literals<W: Write>(
         .map(|(_, literal, _)| make_string_constant(literal))
         .join(" ");
     writeln!(buffer, r#"    declare -a {prefix}literals=({literals})"#)?;
-    Ok(())
-}
-
-fn write_matching_tables<W: Write>(
-    buffer: &mut W,
-    all_literals: &[(LiteralId, Ustr, Ustr)],
-    tables: &MatchTransitions,
-    prefix: &str,
-) -> Result<()> {
-    write_literals(buffer, all_literals, prefix)?;
 
     let descriptions: IndexSet<Ustr> = all_literals
         .iter()
@@ -499,17 +490,15 @@ fn write_matching_tables<W: Write>(
         r#"    declare -A {prefix}descr_id_from_literal_id=({initializer})"#
     )?;
 
-    write_match_transitions(buffer, tables, prefix)?;
-
     Ok(())
 }
 
 fn write_completion_tables<W: Write>(
     buffer: &mut W,
-    completions: &CompletionTransitions,
+    lookups: &LookupTables,
     prefix: &str,
 ) -> Result<()> {
-    for (level, transitions) in completions.literal.iter().enumerate() {
+    for (level, transitions) in lookups.completion_transitions.literal.iter().enumerate() {
         let initializer = transitions
             .iter()
             .map(|(from_state, literal_ids)| {
@@ -526,7 +515,7 @@ fn write_completion_tables<W: Write>(
         )?;
     }
 
-    if let Some(command_transitions) = &completions.command {
+    if let Some(command_transitions) = &lookups.completion_transitions.command {
         for (level, transitions) in command_transitions.iter().enumerate() {
             let initializer = transitions
                 .iter()
@@ -545,7 +534,7 @@ fn write_completion_tables<W: Write>(
         }
     }
 
-    if let Some(compadd_transitions) = &completions.compadd {
+    if let Some(compadd_transitions) = &lookups.completion_transitions.compadd {
         for (level, transitions) in compadd_transitions.iter().enumerate() {
             let initializer = transitions
                 .iter()
@@ -564,6 +553,12 @@ fn write_completion_tables<W: Write>(
         }
     }
 
+    writeln!(
+        buffer,
+        r#"    declare {prefix}max_fallback_level={}"#,
+        lookups.max_fallback_level
+    )?;
+
     Ok(())
 }
 
@@ -574,24 +569,39 @@ fn write_subword_wrapper_fn<W: Write>(
     lookups: &LookupTables,
 ) -> Result<()> {
     writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
-
-    write_matching_tables(
-        buffer,
-        &lookups.all_literals,
-        &lookups.match_transitions,
-        "subword_",
-    )?;
-    write_completion_tables(buffer, &lookups.completion_transitions, "subword_")?;
-
-    writeln!(
-        buffer,
-        r#"    declare subword_max_fallback_level={}"#,
-        lookups.max_fallback_level
-    )?;
-
+    write_literals(buffer, &lookups.all_literals, "subword_")?;
+    write_match_transitions(buffer, &lookups.match_transitions, "subword_")?;
+    write_completion_tables(buffer, &lookups, "subword_")?;
     writeln!(buffer, r#"    _{command}_subword "$@""#)?;
     writeln!(buffer, r#"}}"#)?;
+    Ok(())
+}
 
+fn write_subword_shape_fn<W: Write>(
+    buffer: &mut W,
+    command: &str,
+    shape_id: usize,
+    lookups: &LookupTables,
+) -> Result<()> {
+    writeln!(buffer, r#"_{command}_subword_shape_{shape_id} () {{"#)?;
+    write_match_transitions(buffer, &lookups.match_transitions, "subword_")?;
+    write_completion_tables(buffer, &lookups, "subword_")?;
+    writeln!(buffer, r#"    _{command}_subword "$@""#)?;
+    writeln!(buffer, r#"}}"#)?;
+    Ok(())
+}
+
+fn write_subword_shape_wrapper_fn<W: Write>(
+    buffer: &mut W,
+    command: &str,
+    id: usize,
+    shape_id: usize,
+    lookups: &LookupTables,
+) -> Result<()> {
+    writeln!(buffer, r#"_{command}_subword_{id} () {{"#)?;
+    write_literals(buffer, &lookups.all_literals, "subword_")?;
+    writeln!(buffer, r#"    _{command}_subword_shape_{shape_id} "$@""#)?;
+    writeln!(buffer, r#"}}"#)?;
     Ok(())
 }
 
@@ -631,23 +641,58 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
     let id_from_dfa = dfa.get_subwords(ARRAY_START as usize);
     if needs_subwords_code {
-        for (dfaid, id) in &id_from_dfa {
-            let dfa = dfa.subdfas.lookup(*dfaid);
-            let lookups = get_lookup_tables(
-                dfa,
-                &id_from_cmd,
-                ARRAY_START as usize,
-                needs_subword_commands_code,
-                needs_subword_compadds_code,
-                needs_subword_star_code,
-            );
-            write_subword_wrapper_fn(
-                buffer,
-                command,
-                *id,
-                &lookups,
-            )?;
-            writeln!(buffer)?;
+        let tables_from_id = {
+            let mut lookup_tables: HashMap<usize, LookupTables> = Default::default();
+            for (dfaid, id) in &id_from_dfa {
+                let subdfa = dfa.subdfas.lookup(*dfaid);
+                let tables = get_lookup_tables(
+                    subdfa,
+                    &id_from_cmd,
+                    ARRAY_START as usize,
+                    needs_subword_commands_code,
+                    needs_subword_compadds_code,
+                    needs_subword_star_code,
+                );
+                lookup_tables.insert(*id, tables);
+            }
+            lookup_tables
+        };
+
+        let mut hashes: Vec<(usize, u64)> = Default::default();
+        for (id, table) in &tables_from_id {
+            hashes.push((*id, table.shape_hash()));
+        }
+        hashes.sort_by_key(|(_, hash)| *hash);
+
+        let isomorphic_subwords =
+            hashes.chunk_by(|(left_id, left_hash), (right_id, right_hash)| {
+                if left_hash != right_hash {
+                    return false;
+                }
+
+                let left = tables_from_id.get(left_id).unwrap();
+                let right = tables_from_id.get(right_id).unwrap();
+
+                left.isomorphic_to(&right)
+            });
+
+        for (shape_id, chunk) in isomorphic_subwords.enumerate() {
+            if chunk.len() > 1 {
+                let (chunk_leader_id, _) = chunk[0];
+                let chunk_leader_tables = tables_from_id.get(&chunk_leader_id).unwrap();
+                write_subword_shape_fn(buffer, command, shape_id, chunk_leader_tables)?;
+                writeln!(buffer)?;
+                for (id, _) in chunk {
+                    let tables = tables_from_id.get(id).unwrap();
+                    write_subword_shape_wrapper_fn(buffer, command, *id, shape_id, tables)?;
+                    writeln!(buffer)?;
+                }
+            } else {
+                let [(id, _)] = chunk else { unreachable!() };
+                let tables = tables_from_id.get(id).unwrap();
+                write_subword_wrapper_fn(buffer, command, *id, &tables)?;
+                writeln!(buffer)?;
+            }
         }
     }
 
@@ -675,12 +720,8 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         needs_top_level_compadds_code,
         needs_top_level_star_code,
     );
-    write_matching_tables(
-        buffer,
-        &lookups.all_literals,
-        &lookups.match_transitions,
-        "",
-    )?;
+    write_literals(buffer, &lookups.all_literals, "")?;
+    write_match_transitions(buffer, &lookups.match_transitions, "")?;
 
     if needs_subwords_code {
         writeln!(buffer, r#"    declare -A subword_transitions=()"#)?;
@@ -868,7 +909,7 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
 
     // ///////////////////////////// Completion ///////////////////////////////////
 
-    write_completion_tables(buffer, &lookups.completion_transitions, "")?;
+    write_completion_tables(buffer, &lookups, "")?;
 
     if needs_subwords_code {
         for (level, transitions) in dfa
@@ -896,7 +937,6 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
     write!(
         buffer,
         r#"
-    declare max_fallback_level={}
     for (( fallback_level=0; fallback_level <= max_fallback_level; fallback_level++ )); do
         completions_no_description_trailing_space=()
         completions_no_description_no_trailing_space=()
@@ -907,7 +947,6 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         suffixes_no_trailing_space=()
         descriptions_no_trailing_space=()
         matches=()"#,
-        lookups.max_fallback_level
     )?;
 
     if needs_top_level_compadds_code {
