@@ -324,9 +324,9 @@ end
     Ok(())
 }
 
-fn write_matching_tables<W: Write>(
+fn write_literals<W: Write>(
     buffer: &mut W,
-    lookups: &LookupTables,
+    all_literals: &[(crate::LiteralId, Ustr, Ustr)],
     prefix: Option<&str>,
 ) -> Result<()> {
     let scope_patch = if let Some(prefix) = prefix {
@@ -334,8 +334,6 @@ fn write_matching_tables<W: Write>(
     } else {
         ""
     };
-
-    let all_literals = &lookups.all_literals;
 
     let literals: String = all_literals
         .iter()
@@ -383,6 +381,22 @@ fn write_matching_tables<W: Write>(
         .map(|(_, descr_id)| format!("{descr_id}"))
         .join(" ");
     writeln!(buffer, r#"    set {scope_patch}descr_ids {descr_ids}"#)?;
+
+    Ok(())
+}
+
+fn write_matching_tables<W: Write>(
+    buffer: &mut W,
+    lookups: &LookupTables,
+    prefix: Option<&str>,
+) -> Result<()> {
+    let scope_patch = if let Some(prefix) = prefix {
+        &format!("--global {}", prefix)
+    } else {
+        ""
+    };
+
+    write_literals(buffer, &lookups.all_literals, prefix)?;
 
     writeln!(buffer, r#"    set {scope_patch}literal_transitions_inputs"#)?;
     for (state, state_transitions) in &lookups.match_transitions.literal {
