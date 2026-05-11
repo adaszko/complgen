@@ -1,10 +1,8 @@
 use std::io::Write;
 
-use crate::LiteralId;
 use crate::dfa::DFA;
 use crate::Result;
 use crate::tables::{LookupTables, get_lookup_tables};
-use hashbrown::HashMap;
 use indexmap::{IndexMap, IndexSet};
 use itertools::Itertools;
 use ustr::{Ustr, ustr};
@@ -458,12 +456,8 @@ fn write_matching_tables<W: Write>(
 
 fn write_completion_tables<W: Write>(
     buffer: &mut W,
-    dfa: &DFA,
+    lookups: &LookupTables,
     prefix: Option<&str>,
-    id_from_literal_description: &HashMap<(Ustr, Ustr), u32>,
-    id_from_cmd: &IndexSet<Ustr>,
-    needs_commands_code: bool,
-    max_fallback_level: usize,
 ) -> Result<()> {
     let scope_patch = if let Some(prefix) = prefix {
         &format!("--global {}", prefix)
@@ -471,11 +465,7 @@ fn write_completion_tables<W: Write>(
         ""
     };
 
-    for (level, transitions) in dfa
-        .get_literal_completions(id_from_literal_description, max_fallback_level)
-        .iter()
-        .enumerate()
-    {
+    for (level, transitions) in lookups.completion_transitions.literal.iter().enumerate() {
         let froms_initializer = transitions
             .keys()
             .map(|from_state| format!("{}", from_state + ARRAY_START))
@@ -498,12 +488,8 @@ fn write_completion_tables<W: Write>(
         )?;
     }
 
-    if needs_commands_code {
-        for (level, transitions) in dfa
-            .get_command_completions(id_from_cmd, max_fallback_level)
-            .iter()
-            .enumerate()
-        {
+    if let Some(command_completions) = &lookups.completion_transitions.command {
+        for (level, transitions) in command_completions.iter().enumerate() {
             let from_initializer = transitions
                 .keys()
                 .map(|from_state| from_state + ARRAY_START)
@@ -537,8 +523,6 @@ fn write_subword_wrapper_fn<W: Write>(
     buffer: &mut W,
     command: &str,
     id: usize,
-    dfa: &DFA,
-    id_from_cmd: &IndexSet<Ustr>,
     lookups: &LookupTables,
 ) -> Result<()> {
     writeln!(
@@ -552,22 +536,9 @@ fn write_subword_wrapper_fn<W: Write>(
     write_matching_tables(buffer, lookups, Some("subword_"))?;
     writeln!(buffer)?;
 
-    let id_from_literal_description: HashMap<(Ustr, Ustr), LiteralId> = lookups.all_literals
-        .iter()
-        .map(|(id, input, description)| ((*input, *description), *id))
-        .collect();
+    write_completion_tables(buffer, lookups, Some("subword_"))?;
+
     let max_fallback_level = lookups.completion_transitions.max_fallback_level;
-
-    write_completion_tables(
-        buffer,
-        dfa,
-        Some("subword_"),
-        &id_from_literal_description,
-        id_from_cmd,
-        lookups.match_transitions.command.is_some(),
-        max_fallback_level,
-    )?;
-
     writeln!(
         buffer,
         r#"    set --global subword_max_fallback_level {max_fallback_level}"#
@@ -624,14 +595,7 @@ end
                 false,
                 needs_subword_star_code,
             );
-            write_subword_wrapper_fn(
-                buffer,
-                command,
-                *id,
-                subdfa,
-                &id_from_cmd,
-                &lookups,
-            )?;
+            write_subword_wrapper_fn(buffer, command, *id, &lookups)?;
         }
     }
 
@@ -680,10 +644,6 @@ end
         needs_top_level_star_code,
     );
     write_matching_tables(buffer, &lookups, None)?;
-    let id_from_literal_description: HashMap<(Ustr, Ustr), LiteralId> = lookups.all_literals
-        .iter()
-        .map(|(id, input, description)| ((*input, *description), *id))
-        .collect();
 
     if needs_subwords_code {
         for state in dfa.get_all_states() {
@@ -846,15 +806,7 @@ end
 
     let max_fallback_level = lookups.completion_transitions.max_fallback_level;
 
-    write_completion_tables(
-        buffer,
-        dfa,
-        None,
-        &id_from_literal_description,
-        &id_from_cmd,
-        needs_top_level_commands_code,
-        max_fallback_level,
-    )?;
+    write_completion_tables(buffer, &lookups, None)?;
 
     if needs_subwords_code {
         for (level, transitions) in dfa
