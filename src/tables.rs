@@ -184,7 +184,7 @@ impl LookupTables {
             return false;
         }
 
-        return true;
+        true
     }
 }
 
@@ -198,8 +198,7 @@ pub(crate) fn get_match_transitions(
 ) -> MatchTransitions {
     let all_states = dfa.get_all_states();
 
-    let literal_transitions =
-        dfa.get_literal_transitions(&all_states, &id_from_literal_description);
+    let literal_transitions = dfa.get_literal_transitions(&all_states, id_from_literal_description);
 
     let command_transitions = 'commands: {
         if !needs_commands_code {

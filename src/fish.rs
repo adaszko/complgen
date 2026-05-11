@@ -642,7 +642,7 @@ end
                 let left = tables_from_id.get(left_id).unwrap();
                 let right = tables_from_id.get(right_id).unwrap();
 
-                left.isomorphic_to(&right)
+                left.isomorphic_to(right)
             });
 
         for (shape_id, chunk) in isomorphic_subwords.enumerate() {
@@ -659,7 +659,7 @@ end
             } else {
                 let [(id, _)] = chunk else { unreachable!() };
                 let tables = tables_from_id.get(id).unwrap();
-                write_subword_wrapper_fn(buffer, command, *id, &tables)?;
+                write_subword_wrapper_fn(buffer, command, *id, tables)?;
                 writeln!(buffer)?;
             }
         }

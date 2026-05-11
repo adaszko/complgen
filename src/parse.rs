@@ -675,7 +675,7 @@ fn terminal(mut input: Span) -> IResult<Span, String> {
         // an optional sequence of escaped characters
         while let Some(after) = input.strip_prefix('\\') {
             input = after.into();
-            if input.starts_with(&[
+            if input.starts_with([
                 '(', ')', '[', ']', '<', '>', '|', ';', '"', '{', '}', '\\', '.',
             ]) {
                 let mut chars = input.chars();
