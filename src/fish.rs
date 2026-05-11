@@ -544,30 +544,12 @@ fn write_subword_wrapper_fn<W: Write>(
     id: usize,
     lookups: &LookupTables,
 ) -> Result<()> {
-    writeln!(
-        buffer,
-        r#"function _{command}_subword_{id}
-    set mode $argv[1]
-    set word $argv[2]
-"#
-    )?;
-
+    writeln!(buffer, r#"function _{command}_subword_{id}"#)?;
     write_literals(buffer, &lookups.all_literals, Some("subword_"))?;
     write_matching_tables(buffer, &lookups.match_transitions, Some("subword_"))?;
-    writeln!(buffer)?;
-
     write_completion_tables(buffer, &lookups.completion_transitions, Some("subword_"))?;
-
-    writeln!(buffer)?;
-
-    writeln!(buffer, r#"    _{command}_subword "$mode" "$word""#)?;
-
-    writeln!(
-        buffer,
-        r#"end
-
-"#
-    )?;
+    writeln!(buffer, r#"    _{command}_subword "$argv[1]" "$argv[2]""#)?;
+    writeln!(buffer, r#"end"#)?;
     Ok(())
 }
 
@@ -577,24 +559,11 @@ fn write_subword_shape_fn<W: Write>(
     shape_id: usize,
     lookups: &LookupTables,
 ) -> Result<()> {
-    writeln!(
-        buffer,
-        r#"function _{command}_subword_shape_{shape_id}
-    set mode $argv[1]
-    set word $argv[2]
-"#
-    )?;
+    writeln!(buffer, r#"function _{command}_subword_shape_{shape_id}"#)?;
     write_matching_tables(buffer, &lookups.match_transitions, Some("subword_"))?;
-    writeln!(buffer)?;
     write_completion_tables(buffer, &lookups.completion_transitions, Some("subword_"))?;
-    writeln!(buffer)?;
-    writeln!(buffer, r#"    _{command}_subword "$mode" "$word""#)?;
-    writeln!(
-        buffer,
-        r#"end
-
-"#
-    )?;
+    writeln!(buffer, r#"    _{command}_subword "$argv[1]" "$argv[2]""#)?;
+    writeln!(buffer, r#"end"#)?;
     Ok(())
 }
 
@@ -605,24 +574,13 @@ fn write_subword_shape_wrapper_fn<W: Write>(
     shape_id: usize,
     lookups: &LookupTables,
 ) -> Result<()> {
-    writeln!(
-        buffer,
-        r#"function _{command}_subword_{id}
-    set mode $argv[1]
-    set word $argv[2]
-"#
-    )?;
+    writeln!(buffer, r#"function _{command}_subword_{id}"#)?;
     write_literals(buffer, &lookups.all_literals, Some("subword_"))?;
     writeln!(
         buffer,
-        r#"    _{command}_subword_shape_{shape_id} "$mode" "$word""#
+        r#"    _{command}_subword_shape_{shape_id} "$argv[1]" "$argv[2]""#
     )?;
-    writeln!(
-        buffer,
-        r#"end
-
-"#
-    )?;
+    writeln!(buffer, r#"end"#)?;
     Ok(())
 }
 
