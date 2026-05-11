@@ -2,7 +2,8 @@ use std::io::Write;
 
 use crate::LiteralId;
 use crate::dfa::DFA;
-use crate::{Result, StateId};
+use crate::Result;
+use crate::tables::{LookupTables, get_lookup_tables};
 use hashbrown::HashMap;
 use indexmap::{IndexMap, IndexSet};
 use itertools::Itertools;
@@ -327,24 +328,16 @@ end
 
 fn write_matching_tables<W: Write>(
     buffer: &mut W,
-    dfa: &DFA,
+    lookups: &LookupTables,
     prefix: Option<&str>,
-    id_from_cmd: &IndexSet<Ustr>,
-    needs_commands_code: bool,
-    needs_star_code: bool,
-) -> Result<HashMap<(Ustr, Ustr), u32>> {
+) -> Result<()> {
     let scope_patch = if let Some(prefix) = prefix {
         &format!("--global {}", prefix)
     } else {
         ""
     };
 
-    let all_literals = dfa.get_all_literals(ARRAY_START as usize);
-
-    let id_from_literal_description: HashMap<(Ustr, Ustr), LiteralId> = all_literals
-        .iter()
-        .map(|(id, input, description)| ((*input, *description), *id))
-        .collect();
+    let all_literals = &lookups.all_literals;
 
     let literals: String = all_literals
         .iter()
@@ -393,12 +386,8 @@ fn write_matching_tables<W: Write>(
         .join(" ");
     writeln!(buffer, r#"    set {scope_patch}descr_ids {descr_ids}"#)?;
 
-    let all_states = dfa.get_all_states();
-
     writeln!(buffer, r#"    set {scope_patch}literal_transitions_inputs"#)?;
-    for (state, state_transitions) in
-        dfa.get_literal_transitions(&all_states, &id_from_literal_description)
-    {
+    for (state, state_transitions) in &lookups.match_transitions.literal {
         let state_inputs = state_transitions
             .keys()
             .map(|literal_id| format!("{}", literal_id))
@@ -427,12 +416,12 @@ fn write_matching_tables<W: Write>(
         )?;
     }
 
-    if needs_commands_code {
+    if let Some(command_transitions) = &lookups.match_transitions.command {
         writeln!(buffer, r#"    set {scope_patch}command_transitions"#,)?;
-        for (state, state_transitions) in dfa.get_command_transitions(&all_states, id_from_cmd) {
+        for (state, state_transitions) in command_transitions {
             let transitions = state_transitions
-                .into_iter()
-                .map(|(cmd, to)| (cmd, to + ARRAY_START))
+                .iter()
+                .map(|(cmd, to)| (*cmd, to + ARRAY_START))
                 .map(|(cmd, to)| format!("{cmd},{to}"))
                 .join(" ");
 
@@ -445,9 +434,7 @@ fn write_matching_tables<W: Write>(
         }
     }
 
-    if needs_star_code {
-        let star_transitions: Vec<(StateId, StateId)> =
-            dfa.iter_top_level_star_transitions().collect();
+    if let Some(star_transitions) = &lookups.match_transitions.star {
         let star_transitions_from = star_transitions
             .iter()
             .map(|(from, _)| format!("{}", from + ARRAY_START))
@@ -466,7 +453,7 @@ fn write_matching_tables<W: Write>(
         )?;
     }
 
-    Ok(id_from_literal_description)
+    Ok(())
 }
 
 fn write_completion_tables<W: Write>(
@@ -552,8 +539,7 @@ fn write_subword_wrapper_fn<W: Write>(
     id: usize,
     dfa: &DFA,
     id_from_cmd: &IndexSet<Ustr>,
-    needs_commands_code: bool,
-    needs_star_code: bool,
+    lookups: &LookupTables,
 ) -> Result<()> {
     writeln!(
         buffer,
@@ -563,17 +549,14 @@ fn write_subword_wrapper_fn<W: Write>(
 "#
     )?;
 
-    let id_from_literal_description = write_matching_tables(
-        buffer,
-        dfa,
-        Some("subword_"),
-        id_from_cmd,
-        needs_commands_code,
-        needs_star_code,
-    )?;
+    write_matching_tables(buffer, lookups, Some("subword_"))?;
     writeln!(buffer)?;
 
-    let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
+    let id_from_literal_description: HashMap<(Ustr, Ustr), LiteralId> = lookups.all_literals
+        .iter()
+        .map(|(id, input, description)| ((*input, *description), *id))
+        .collect();
+    let max_fallback_level = lookups.completion_transitions.max_fallback_level;
 
     write_completion_tables(
         buffer,
@@ -581,7 +564,7 @@ fn write_subword_wrapper_fn<W: Write>(
         Some("subword_"),
         &id_from_literal_description,
         id_from_cmd,
-        needs_commands_code,
+        lookups.match_transitions.command.is_some(),
         max_fallback_level,
     )?;
 
@@ -632,15 +615,22 @@ end
     let id_from_dfa = dfa.get_subwords(ARRAY_START as usize);
     if needs_subwords_code {
         for (dfaid, id) in &id_from_dfa {
-            let dfa = dfa.subdfas.lookup(*dfaid);
+            let subdfa = dfa.subdfas.lookup(*dfaid);
+            let lookups = get_lookup_tables(
+                subdfa,
+                &id_from_cmd,
+                ARRAY_START as usize,
+                needs_subword_commands_code,
+                false,
+                needs_subword_star_code,
+            );
             write_subword_wrapper_fn(
                 buffer,
                 command,
                 *id,
-                dfa,
+                subdfa,
                 &id_from_cmd,
-                needs_subword_commands_code,
-                needs_subword_star_code,
+                &lookups,
             )?;
         }
     }
@@ -681,14 +671,19 @@ end
 "#
     )?;
 
-    let id_from_literal_description = write_matching_tables(
-        buffer,
+    let lookups = get_lookup_tables(
         dfa,
-        None,
         &id_from_cmd,
+        ARRAY_START as usize,
         needs_top_level_commands_code,
+        false,
         needs_top_level_star_code,
-    )?;
+    );
+    write_matching_tables(buffer, &lookups, None)?;
+    let id_from_literal_description: HashMap<(Ustr, Ustr), LiteralId> = lookups.all_literals
+        .iter()
+        .map(|(id, input, description)| ((*input, *description), *id))
+        .collect();
 
     if needs_subwords_code {
         for state in dfa.get_all_states() {
@@ -849,7 +844,7 @@ end
 
     // ///////////////////////////// Completion ///////////////////////////////////
 
-    let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
+    let max_fallback_level = lookups.completion_transitions.max_fallback_level;
 
     write_completion_tables(
         buffer,
