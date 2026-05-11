@@ -3,8 +3,8 @@ use std::io::Write;
 use crate::LiteralId;
 use crate::Result;
 use crate::dfa::DFA;
-use hashbrown::HashMap;
-use indexmap::IndexSet;
+use crate::tables::CompletionTransitions;
+use crate::tables::{LookupTables, MatchTransitions, get_lookup_tables};
 use itertools::Itertools;
 use ustr::Ustr;
 
@@ -189,20 +189,10 @@ fn write_subword_fn<W: Write>(
     Ok(())
 }
 
-fn write_matching_tables<W: Write>(
+fn write_literals<W: Write>(
     buffer: &mut W,
-    dfa: &DFA,
-    id_from_cmd: &IndexSet<Ustr>,
-    needs_commands_code: bool,
-    needs_star_code: bool,
-) -> Result<HashMap<(Ustr, Ustr), u32>> {
-    let all_literals = dfa.get_all_literals(ARRAY_START as usize);
-
-    let id_from_literal_description: HashMap<(Ustr, Ustr), LiteralId> = all_literals
-        .iter()
-        .map(|(id, input, description)| ((*input, *description), *id))
-        .collect();
-
+    all_literals: &[(LiteralId, Ustr, Ustr)],
+) -> Result<()> {
     let literals = all_literals
         .iter()
         .map(|(_, literal, _)| make_string_constant(literal))
@@ -225,12 +215,15 @@ fn write_matching_tables<W: Write>(
         )?;
     }
 
-    let all_states = dfa.get_all_states();
+    Ok(())
+}
 
+fn write_matching_tables<W: Write>(
+    buffer: &mut W,
+    match_transitions: &MatchTransitions,
+) -> Result<()> {
     writeln!(buffer, r#"    $literal_transitions = @{{}}"#)?;
-    for (state, state_transitions) in
-        dfa.get_literal_transitions(&all_states, &id_from_literal_description)
-    {
+    for (state, state_transitions) in &match_transitions.literal {
         let transitions = state_transitions
             .iter()
             .map(|(literal_id, to)| format!("{}={}", literal_id, to))
@@ -241,9 +234,9 @@ fn write_matching_tables<W: Write>(
         )?;
     }
 
-    if needs_commands_code {
+    if let Some(command_transitions) = &match_transitions.command {
         writeln!(buffer, r#"    $command_transitions = @{{}}"#)?;
-        for (state, state_transitions) in dfa.get_command_transitions(&all_states, id_from_cmd) {
+        for (state, state_transitions) in command_transitions {
             let transitions = state_transitions
                 .iter()
                 .map(|(literal_id, to)| format!("{}={}", literal_id, to))
@@ -255,30 +248,22 @@ fn write_matching_tables<W: Write>(
         }
     }
 
-    if needs_star_code {
-        let star_transitions = dfa
-            .iter_top_level_star_transitions()
+    if let Some(star_transitions) = &match_transitions.star {
+        let star_transitions = star_transitions
+            .iter()
             .map(|(from, to)| format!("{from}={to}"))
             .join(";");
         writeln!(buffer, r#"    $star_transitions = @{{{star_transitions}}}"#)?;
     }
 
-    Ok(id_from_literal_description)
+    Ok(())
 }
 
 fn write_completion_tables<W: Write>(
     buffer: &mut W,
-    dfa: &DFA,
-    id_from_cmd: &IndexSet<Ustr>,
-    needs_commands_code: bool,
-    id_from_literal_description: &HashMap<(Ustr, Ustr), LiteralId>,
-    max_fallback_level: usize,
+    completion_transitions: &CompletionTransitions,
 ) -> Result<()> {
-    for (level, transitions) in dfa
-        .get_literal_completions(id_from_literal_description, max_fallback_level)
-        .iter()
-        .enumerate()
-    {
+    for (level, transitions) in completion_transitions.literal.iter().enumerate() {
         let initializer = transitions
             .iter()
             .map(|(from_state, literal_ids)| {
@@ -294,12 +279,8 @@ fn write_completion_tables<W: Write>(
         )?;
     }
 
-    if needs_commands_code {
-        for (level, transitions) in dfa
-            .get_command_completions(id_from_cmd, max_fallback_level)
-            .iter()
-            .enumerate()
-        {
+    if let Some(command_completions) = &completion_transitions.command {
+        for (level, transitions) in command_completions.iter().enumerate() {
             let initializer = transitions
                 .iter()
                 .map(|(from_state, cmd_ids)| {
@@ -316,6 +297,9 @@ fn write_completion_tables<W: Write>(
         }
     }
 
+    let max_fallback_level = completion_transitions.max_fallback_level;
+    writeln!(buffer, r#"    $max_fallback_level = {max_fallback_level}"#)?;
+
     Ok(())
 }
 
@@ -323,10 +307,7 @@ fn write_subword_wrapper_fn<W: Write>(
     buffer: &mut W,
     command: &str,
     id: usize,
-    dfa: &DFA,
-    id_from_cmd: &IndexSet<Ustr>,
-    needs_commands_code: bool,
-    needs_star_code: bool,
+    lookups: &LookupTables,
 ) -> Result<()> {
     writeln!(
         buffer,
@@ -334,31 +315,12 @@ fn write_subword_wrapper_fn<W: Write>(
     param([string]$mode, [string]$word)"#
     )?;
 
-    let id_from_literal_description = write_matching_tables(
-        buffer,
-        dfa,
-        id_from_cmd,
-        needs_commands_code,
-        needs_star_code,
-    )?;
-
-    let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
-
-    write_completion_tables(
-        buffer,
-        dfa,
-        id_from_cmd,
-        needs_commands_code,
-        &id_from_literal_description,
-        max_fallback_level,
-    )?;
-
-    writeln!(buffer, r#"    $max_fallback_level = {max_fallback_level}"#)?;
+    write_literals(buffer, &lookups.all_literals)?;
+    write_matching_tables(buffer, &lookups.match_transitions)?;
+    write_completion_tables(buffer, &lookups.completion_transitions)?;
 
     writeln!(buffer, r#"    _{command}_subword $mode $word"#,)?;
-
     writeln!(buffer, r#"}}"#)?;
-
     Ok(())
 }
 
@@ -400,16 +362,16 @@ $ErrorActionPreference = "Stop"
     let id_from_dfa = dfa.get_subwords(ARRAY_START as usize);
     if needs_subwords_code {
         for (dfaid, id) in &id_from_dfa {
-            let dfa = dfa.subdfas.lookup(*dfaid);
-            write_subword_wrapper_fn(
-                buffer,
-                command,
-                *id,
-                dfa,
+            let subdfa = dfa.subdfas.lookup(*dfaid);
+            let lookups = get_lookup_tables(
+                subdfa,
                 &id_from_cmd,
+                ARRAY_START as usize,
                 needs_subword_commands_code,
+                false,
                 needs_subword_star_code,
-            )?;
+            );
+            write_subword_wrapper_fn(buffer, command, *id, &lookups)?;
             writeln!(buffer)?;
         }
 
@@ -439,13 +401,16 @@ $ErrorActionPreference = "Stop"
 "#
     )?;
 
-    let id_from_literal_description = write_matching_tables(
-        buffer,
+    let lookups = get_lookup_tables(
         dfa,
         &id_from_cmd,
+        ARRAY_START as usize,
         needs_top_level_commands_code,
+        false,
         needs_top_level_star_code,
-    )?;
+    );
+    write_literals(buffer, &lookups.all_literals)?;
+    write_matching_tables(buffer, &lookups.match_transitions)?;
 
     if needs_subwords_code {
         writeln!(buffer, r#"    $subword_transitions = @{{}}"#)?;
@@ -557,17 +522,8 @@ $ErrorActionPreference = "Stop"
 "#
     )?;
 
-    let max_fallback_level = dfa.get_max_fallback_level().unwrap_or(ARRAY_START as usize);
-
-    write_completion_tables(
-        buffer,
-        dfa,
-        &id_from_cmd,
-        needs_top_level_commands_code,
-        &id_from_literal_description,
-        max_fallback_level,
-    )?;
-
+    write_completion_tables(buffer, &lookups.completion_transitions)?;
+    let max_fallback_level = lookups.completion_transitions.max_fallback_level;
     if needs_subwords_code {
         for (level, transitions) in dfa
             .get_completion_subwords(id_from_dfa, max_fallback_level)
