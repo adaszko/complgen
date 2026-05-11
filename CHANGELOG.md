@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
- * Bash: Smaller output size by collapsing equivalent subwords
+ * Smaller output size by collapsing equivalent subwords across all shells
 
 ## 0.9.1
 ### Fixed
