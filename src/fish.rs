@@ -19,6 +19,8 @@ use ustr::{Ustr, ustr};
 //   3) printf [...] | source
 // * echo foo:$bar prints nothing if $bar expands to an empty string (!)
 // * The completion script is responsible for filtering candidates (!)
+// * Avoid `for i in (seq ...)` loops because they shell out and are thus very slow; Prefer while
+//   loops with manually incremented counter instead
 
 pub const ARRAY_START: u32 = 1;
 
@@ -61,32 +63,40 @@ fn write_match_fn<W: Write>(output: &mut W) -> Result<()> {
 
     set matches_case_sensitive
     set descriptions_case_sensitive
-    for i in (seq 1 (count $candidates))
+    set i 1
+    while test $i -le (count $candidates)
         if string match --regex --quiet --entire -- $regex $candidates[$i]
             set --append matches_case_sensitive $candidates[$i]
             set --append descriptions_case_sensitive $descriptions[$i]
         end
+        set i (math $i + 1)
     end
 
     if set --query matches_case_sensitive[1]
-        for i in (seq 1 (count $matches_case_sensitive))
+        set i 1
+        while test $i -le (count $matches_case_sensitive)
             printf '%s	%s\n' $matches_case_sensitive[$i] $descriptions_case_sensitive[$i]
+            set i (math $i + 1)
         end
         return 0
     end
 
     set matches_case_insensitive
     set descriptions_case_insensitive
-    for i in (seq 1 (count $candidates))
+    set i 1
+    while test $i -le (count $candidates)
         if string match --regex --quiet --ignore-case --entire -- $regex $candidates[$i]
             set --append matches_case_insensitive $candidates[$i]
             set --append descriptions_case_insensitive $descriptions[$i]
         end
+        set i (math $i + 1)
     end
 
     if set --query matches_case_insensitive[1]
-        for i in (seq 1 (count $matches_case_insensitive))
+        set i 1
+        while test $i -le (count $matches_case_insensitive)
             printf '%s	%s\n' $matches_case_insensitive[$i] $descriptions_case_insensitive[$i]
+            set i (math $i + 1)
         end
         return 0
     end
@@ -133,7 +143,8 @@ fn write_subword_fn<W: Write>(
 
             set stop_matching 0
             set literal_matched 0
-            for literal_id in (seq 1 (count $subword_literals))
+            set literal_id 1
+            while test $literal_id -le (count $subword_literals)
                 set literal $subword_literals[$literal_id]
                 if test $subword = $literal
                     set index (contains --index -- "$literal_id" $inputs)
@@ -155,6 +166,7 @@ fn write_subword_fn<W: Write>(
                     set literal_matched 1
                     break
                 end
+                set literal_id (math $literal_id + 1)
             end
             if test $stop_matching -ne 0
                 break
@@ -179,13 +191,17 @@ fn write_subword_fn<W: Write>(
                 set to $fields[2]
                 set function_name _{command}_cmd_$cmd_id
                 set candidates ($function_name "" "")
-                for i in (seq 1 (count $candidates))
+                set i 1
+                while test $i -le (count $candidates)
                     set candidate_description (string split --max 1 -- "	" $candidates[$i])
                     set candidates[$i] $candidate_description[1]
+                    set i (math $i + 1)
                 end
                 set indexes (
-                    for i in (seq 1 (count $candidates))
+                    set i 1
+                    while test $i -le (count $candidates)
                         printf '%s %s %s\n' $i (string length -- $candidates[$i]) $candidates[$i]
+                        set i (math $i + 1)
                     end | sort -nrk2,2 -rk3 | cut -f1 -d' '
                 )
                 set decreasing_length (for i in $indexes; echo $candidates[$i]; end)
@@ -267,7 +283,8 @@ fn write_subword_fn<W: Write>(
         set matched_prefix (string sub --end=(math $char_index - 1) -- "$word")
     end
 
-    for fallback_level in (seq 0 $subword_max_fallback_level)
+    set fallback_level 0
+    while test $fallback_level -le $subword_max_fallback_level
         set candidates
         set froms_name subword_literal_froms_level_$fallback_level
         set froms (string split ' ' $$froms_name)
@@ -316,6 +333,7 @@ fn write_subword_fn<W: Write>(
         buffer,
         r#"
         printf '%s\n' $candidates | {MATCH_FN_NAME} && break
+        set fallback_level (math $fallback_level + 1)
     end
 end
 
@@ -805,13 +823,17 @@ end
                 set to $fields[2]
                 set function_name _{command}_cmd_$cmd_id
                 set candidates ($function_name "" "")
-                for i in (seq 1 (count $candidates))
+                set i 1
+                while test $i -le (count $candidates)
                     set candidate_description (string split --max 1 -- "	" $candidates[$i])
                     set candidates[$i] $candidate_description[1]
+                    set i (math $i + 1)
                 end
                 set indexes (
-                    for i in (seq 1 (count $candidates))
+                    set i 1
+                    while test $i -le (count $candidates)
                         printf '%s %s %s\n' $i (string length -- $candidates[$i]) $candidates[$i]
+                        set i (math $i + 1)
                     end | sort -nrk2,2 -rk3 | cut -f1 -d' '
                 )
                 set decreasing_length (for i in $indexes; echo $candidates[$i]; end)
@@ -910,7 +932,8 @@ end
     write!(
         buffer,
         r#"
-    for fallback_level in (seq 0 {max_fallback_level})
+    set fallback_level 0
+    while test $fallback_level -le {max_fallback_level}
         set candidates
         set froms_name literal_froms_level_$fallback_level
         set froms $$froms_name
@@ -969,7 +992,9 @@ end
 
     writeln!(
         buffer,
-        r#"        printf '%s\n' $candidates | {MATCH_FN_NAME} $COMP_WORDS[$word_index] && return 0
+        r#"
+        printf '%s\n' $candidates | {MATCH_FN_NAME} $COMP_WORDS[$word_index] && return 0
+        set fallback_level (math $fallback_level + 1)
     end
 end
 "#
