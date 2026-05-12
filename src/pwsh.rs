@@ -311,17 +311,11 @@ fn write_subword_wrapper_fn<W: Write>(
     id: usize,
     lookups: &LookupTables,
 ) -> Result<()> {
-    writeln!(
-        buffer,
-        r#"function _{command}_subword_{id} {{
-    param([string]$mode, [string]$word)"#
-    )?;
-
+    writeln!(buffer, r#"function _{command}_subword_{id} {{"#)?;
     write_literals(buffer, &lookups.all_literals)?;
     write_matching_tables(buffer, &lookups.match_transitions)?;
     write_completion_tables(buffer, &lookups.completion_transitions)?;
-
-    writeln!(buffer, r#"    _{command}_subword $mode $word"#,)?;
+    writeln!(buffer, r#"    _{command}_subword $args[0] $args[1]"#,)?;
     writeln!(buffer, r#"}}"#)?;
     Ok(())
 }
@@ -332,16 +326,10 @@ fn write_subword_shape_fn<W: Write>(
     shape_id: usize,
     lookups: &LookupTables,
 ) -> Result<()> {
-    writeln!(
-        buffer,
-        r#"function _{command}_subword_shape_{shape_id} {{
-    param([string]$mode, [string]$word)"#
-    )?;
-
+    writeln!(buffer, r#"function _{command}_subword_shape_{shape_id} {{"#)?;
     write_matching_tables(buffer, &lookups.match_transitions)?;
     write_completion_tables(buffer, &lookups.completion_transitions)?;
-
-    writeln!(buffer, r#"    _{command}_subword $mode $word"#)?;
+    writeln!(buffer, r#"    _{command}_subword $args[0] $args[1]"#)?;
     writeln!(buffer, r#"}}"#)?;
     Ok(())
 }
@@ -353,17 +341,11 @@ fn write_subword_shape_wrapper_fn<W: Write>(
     shape_id: usize,
     lookups: &LookupTables,
 ) -> Result<()> {
-    writeln!(
-        buffer,
-        r#"function _{command}_subword_{id} {{
-    param([string]$mode, [string]$word)"#
-    )?;
-
+    writeln!(buffer, r#"function _{command}_subword_{id} {{"#)?;
     write_literals(buffer, &lookups.all_literals)?;
-
     writeln!(
         buffer,
-        r#"    _{command}_subword_shape_{shape_id} $mode $word"#
+        r#"    _{command}_subword_shape_{shape_id} $args[0] $args[1]"#
     )?;
     writeln!(buffer, r#"}}"#)?;
     Ok(())
