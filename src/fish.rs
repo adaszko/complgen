@@ -202,7 +202,7 @@ fn write_subword_fn<W: Write>(
                     while test $i -le (count $candidates)
                         printf '%s %s %s\n' $i (string length -- $candidates[$i]) $candidates[$i]
                         set i (math $i + 1)
-                    end | sort -nrk2,2 -rk3 | cut -f1 -d' '
+                    end | sort -nrk2,2 -rk3 | string split -f1 ' '
                 )
                 set decreasing_length (for i in $indexes; echo $candidates[$i]; end)
 
@@ -834,7 +834,7 @@ end
                     while test $i -le (count $candidates)
                         printf '%s %s %s\n' $i (string length -- $candidates[$i]) $candidates[$i]
                         set i (math $i + 1)
-                    end | sort -nrk2,2 -rk3 | cut -f1 -d' '
+                    end | sort -nrk2,2 -rk3 | string split -f1 ' '
                 )
                 set decreasing_length (for i in $indexes; echo $candidates[$i]; end)
 
