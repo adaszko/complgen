@@ -3,14 +3,14 @@ use std::io::{BufWriter, Read, Write};
 use std::path::Path;
 use std::process::exit;
 
-use anyhow::{Context, bail};
+use anyhow::Context;
 use clap::Parser;
 
 use complgen::parse::{Grammar, HumanSpan, Shell};
 
+use complgen::check::ValidGrammar;
 use complgen::dfa::{DFA, diagnostic_display_input};
 use complgen::regex::{Regex, RegexInternPool};
-use complgen::check::ValidGrammar;
 use complgen::{Error, bash, fish, pwsh, zsh};
 
 #[derive(clap::Parser)]
@@ -272,7 +272,8 @@ fn get_file_or_stdout(path: &str) -> anyhow::Result<Box<dyn Write>> {
 
 fn aot(args: &Cli) -> anyhow::Result<()> {
     let Some(ref usage_file_path) = args.usage_file_path else {
-        bail!("Missing usage file path argument")
+        eprintln!("Missing usage file path argument");
+        exit(1);
     };
 
     let input = {
