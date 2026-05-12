@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
  * Smaller output size by collapsing equivalent subwords across all shells
+ * Generated script signature now contains complgen's version number
 
 ## 0.9.1
 ### Fixed
