@@ -449,9 +449,7 @@ cmd <CMD>..<CMD>;
 
 
 def test_specializes_for_fish(complgen_binary_path: Path):
-    GRAMMAR = (
-        """cmd <FOO>; <FOO> = {{{ echo foo }}}; <FOO@fish> = {{{ echo fish }}};"""
-    )
+    GRAMMAR = """cmd <FOO>; <FOO> = {{{ echo foo }}}; <FOO@fish> = {{{ echo fish }}};"""
     with gen_fish_completion_script_path(
         complgen_binary_path, GRAMMAR
     ) as completions_file_path:
@@ -729,6 +727,21 @@ asdf b [ --file <T> | --term ]...;
         input = """complete --do-complete 'asdf b --file asdf ' """
         assert get_sorted_fish_completions(completions_file_path, input) == sorted(
             [("--file", ""), ("--term", "")]
+        )
+
+
+def test_bug4(complgen_binary_path: Path):
+    GRAMMAR = """
+mygit add [--[no-]all];
+mygit log --decorate-refs=<pattern>;
+<pattern> = <_>;
+"""
+    with gen_fish_completion_script_path(
+        complgen_binary_path, GRAMMAR
+    ) as completions_file_path:
+        input = """complete --do-complete 'mygit add --'"""
+        assert get_sorted_fish_completions(completions_file_path, input) == sorted(
+            [("--no", ""), ("--all", "")]
         )
 
 
