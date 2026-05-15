@@ -369,7 +369,6 @@ fn write_literals<W: Write>(
                 .filter(|d| !d.is_empty()),
         )
         .collect();
-    writeln!(buffer, r#"    set {scope_patch}descrs"#)?;
     for descr in &descrs {
         if descr.is_empty() {
             continue;
@@ -727,6 +726,7 @@ end
         false,
         needs_top_level_star_code,
     );
+    writeln!(buffer, r#"    set descrs"#)?;
     write_literals(buffer, &lookups.all_literals, None)?;
     write_matching_tables(buffer, &lookups.match_transitions, None)?;
 
@@ -794,6 +794,7 @@ end
 
             set subword_matched 0
             for subword_id in $subword_ids
+                set --global subword_descrs
                 if _{command}_subword_$subword_id matches "$word"
                     set subword_matched 1
                     set state $tos[$subword_id]
@@ -965,6 +966,7 @@ end
             set state_subwords $$subwords_name[1][$index]
             set subwords (string split ' ' $state_subwords)
             for id in $subwords
+                set --global subword_descrs
                 set function_name _{command}_subword_$id
                 set --append candidates ($function_name complete "$COMP_WORDS[$COMP_CWORD]")
             end
