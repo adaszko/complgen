@@ -320,9 +320,7 @@ cmd <CMD>..<CMD>;
 
 
 def test_specializes_for_bash(complgen_binary_path: Path):
-    GRAMMAR = (
-        """cmd <FOO>; <FOO> = {{{ echo foo }}}; <FOO@bash> = {{{ echo bash }}};"""
-    )
+    GRAMMAR = """cmd <FOO>; <FOO> = {{{ echo foo }}}; <FOO@bash> = {{{ echo bash }}};"""
     with completion_script_path(complgen_binary_path, GRAMMAR) as path:
         input = (
             r'''COMP_WORDS=(cmd); COMP_CWORD=1; _cmd; printf '%s\n' "${COMPREPLY[@]}"'''
@@ -541,7 +539,7 @@ def test_determinism(complgen_binary_path: Path, examples_directory_path: Path):
         assert left == right
 
 
-LITERALS_ALPHABET = string.ascii_letters + ":="
+LITERALS_ALPHABET = string.ascii_letters + string.digits + ":="
 
 
 @given(text(LITERALS_ALPHABET, min_size=1))

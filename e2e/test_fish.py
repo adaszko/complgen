@@ -753,7 +753,7 @@ def test_determinism(complgen_binary_path: Path, examples_directory_path: Path):
         assert left == right
 
 
-LITERALS_ALPHABET = string.ascii_letters + ":="
+LITERALS_ALPHABET = string.ascii_letters + string.digits + ":="
 
 
 @given(text(LITERALS_ALPHABET, min_size=1))
