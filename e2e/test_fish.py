@@ -741,7 +741,7 @@ mygit log --decorate-refs=<pattern>;
     ) as completions_file_path:
         input = """complete --do-complete 'mygit add --'"""
         assert get_sorted_fish_completions(completions_file_path, input) == sorted(
-            [("--no", ""), ("--all", "")]
+            [("--no-", ""), ("--all", "")]
         )
 
 

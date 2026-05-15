@@ -15,7 +15,7 @@ use ustr::{Ustr, ustr};
 // * Unlike in other shells, scoping *is not* dynamic in fish!  It's lexical-ish!
 // * Metaprogramming:
 //   1) $$var_name (https://fishshell.com/docs/current/language.html#dereferencing-variables)
-//   2) $$var_name[1][$index]: deref $index-th elem of the list whose name is held in $var_name holds
+//   2) $$var_name[1][$index]: deref $index-th elem of the list whose name is held in $var_name
 //   3) printf [...] | source
 // * echo foo:$bar prints nothing if $bar expands to an empty string (!)
 // * The completion script is responsible for filtering candidates (!)
@@ -962,7 +962,8 @@ end
         set index (contains --index -- "$state" $subwords)
         if test -n "$index"
             set subwords_name subwords_level_$fallback_level
-            set subwords (string split ' ' $$subwords_name)
+            set state_subwords $$subwords_name[1][$index]
+            set subwords (string split ' ' $state_subwords)
             for id in $subwords
                 set function_name _{command}_subword_$id
                 set --append candidates ($function_name complete "$COMP_WORDS[$COMP_CWORD]")
