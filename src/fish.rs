@@ -420,32 +420,37 @@ fn write_matching_tables<W: Write>(
         ""
     };
 
-    for (state, state_transitions) in &lookups.literal {
-        let state_inputs = state_transitions
-            .keys()
-            .map(|literal_id| format!("{}", literal_id))
-            .join(" ");
-        // TODO Optimize for output size: Emit a single assigment to literal_transitions_inputs
-        // instead of many
+    if let Some(max_state_id) = lookups.literal.keys().max() {
+        let mut literal_transitions_inputs_initializer: Vec<String> = Default::default();
+        let mut literal_transitions_tos_initializer: Vec<String> = Default::default();
+        for state in 0..=*max_state_id {
+            let Some(state_transitions) = lookups.literal.get(&state) else {
+                literal_transitions_inputs_initializer.push(make_string_constant(""));
+                literal_transitions_tos_initializer.push(make_string_constant(""));
+                continue;
+            };
+            let state_inputs = state_transitions
+                .keys()
+                .map(|literal_id| format!("{}", literal_id))
+                .join(" ");
+            literal_transitions_inputs_initializer.push(make_string_constant(&state_inputs));
+
+            let state_tos: String = state_transitions
+                .values()
+                .map(|to| format!("{}", to + ARRAY_START))
+                .join(" ");
+            literal_transitions_tos_initializer.push(make_string_constant(&state_tos));
+        }
+
         writeln!(
             buffer,
-            r#"    set {scope_patch}literal_transitions_inputs[{}] {}"#,
-            state + ARRAY_START,
-            make_string_constant(&state_inputs),
+            r#"    set {scope_patch}literal_transitions_inputs {}"#,
+            literal_transitions_inputs_initializer.join(" "),
         )?;
-
-        let state_tos: String = state_transitions
-            .values()
-            .map(|to| format!("{}", to + ARRAY_START))
-            .join(" ");
-
-        // TODO Optimize for output size: Emit a single assigment to literal_transitions_tos
-        // instead of many
         writeln!(
             buffer,
-            r#"    set {scope_patch}literal_transitions_tos[{}] {}"#,
-            state + ARRAY_START,
-            make_string_constant(&state_tos),
+            r#"    set {scope_patch}literal_transitions_tos {}"#,
+            literal_transitions_tos_initializer.join(" "),
         )?;
     }
 
