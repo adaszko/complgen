@@ -467,14 +467,16 @@ fn write_matching_tables<W: Write>(
     }
 
     if let Some(star_transitions) = &lookups.star {
-        let star_transitions_from = star_transitions
-            .iter()
-            .map(|(from, _)| format!("{}", from + ARRAY_START))
-            .join(" ");
-        writeln!(
-            buffer,
-            r#"    set {scope_patch}star_transitions_from {star_transitions_from}"#
-        )?;
+        if !star_transitions.is_empty() {
+            let star_transitions_from = star_transitions
+                .iter()
+                .map(|(from, _)| format!("{}", from + ARRAY_START))
+                .join(" ");
+            writeln!(
+                buffer,
+                r#"    set {scope_patch}star_transitions_from {star_transitions_from}"#
+            )?;
+        }
         let star_transitions_to = star_transitions
             .iter()
             .map(|(_, to)| format!("{}", to + ARRAY_START))
@@ -735,6 +737,7 @@ end
     write_literals(buffer, &lookups.all_literals, None)?;
     writeln!(buffer, r#"    set literal_transitions_inputs"#)?;
     writeln!(buffer, r#"    set command_transitions"#,)?;
+    writeln!(buffer, r#"    set star_transitions_from"#,)?;
     write_matching_tables(buffer, &lookups.match_transitions, None)?;
 
     if needs_subwords_code {
@@ -806,6 +809,7 @@ end
                 set --global subword_descr_ids
                 set --global subword_literal_transitions_inputs
                 set --global subword_command_transitions
+                set --global subword_star_transitions_from
                 if _{command}_subword_$subword_id matches "$word"
                     set subword_matched 1
                     set state $tos[$subword_id]
@@ -982,6 +986,7 @@ end
                 set --global subword_descr_ids
                 set --global subword_literal_transitions_inputs
                 set --global subword_command_transitions
+                set --global subword_star_transitions_from
                 set function_name _{command}_subword_$id
                 set --append candidates ($function_name complete "$COMP_WORDS[$COMP_CWORD]")
             end
