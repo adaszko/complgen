@@ -450,7 +450,6 @@ fn write_matching_tables<W: Write>(
     }
 
     if let Some(command_transitions) = &lookups.command {
-        writeln!(buffer, r#"    set {scope_patch}command_transitions"#,)?;
         for (state, state_transitions) in command_transitions {
             let transitions = state_transitions
                 .iter()
@@ -735,6 +734,7 @@ end
     writeln!(buffer, r#"    set descr_literal_ids"#)?;
     write_literals(buffer, &lookups.all_literals, None)?;
     writeln!(buffer, r#"    set literal_transitions_inputs"#)?;
+    writeln!(buffer, r#"    set command_transitions"#,)?;
     write_matching_tables(buffer, &lookups.match_transitions, None)?;
 
     if needs_subwords_code {
@@ -805,6 +805,7 @@ end
                 set --global subword_descr_literal_ids
                 set --global subword_descr_ids
                 set --global subword_literal_transitions_inputs
+                set --global subword_command_transitions
                 if _{command}_subword_$subword_id matches "$word"
                     set subword_matched 1
                     set state $tos[$subword_id]
@@ -980,6 +981,7 @@ end
                 set --global subword_descr_literal_ids
                 set --global subword_descr_ids
                 set --global subword_literal_transitions_inputs
+                set --global subword_command_transitions
                 set function_name _{command}_subword_$id
                 set --append candidates ($function_name complete "$COMP_WORDS[$COMP_CWORD]")
             end
