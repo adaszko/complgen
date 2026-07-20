@@ -628,7 +628,6 @@ pub fn write_completion_script<W: Write>(buffer: &mut W, command: &str, dfa: &DF
         write!(
             buffer,
             r#"function _{command}_cmd_{id}
-    set 1 $argv[1]
     {cmd}
 end
 

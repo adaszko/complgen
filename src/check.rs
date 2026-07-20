@@ -1232,7 +1232,7 @@ fn make_builtin_specializations(shell: Shell) -> UstrMap<BuiltinSpec> {
             cmd: ustr(r#"compgen -A file -- "$1""#),
         },
         Shell::Fish => BuiltinSpec {
-            cmd: ustr(r#"__fish_complete_path "$1""#),
+            cmd: ustr(r#"__fish_complete_path "$argv[1]""#),
         },
         Shell::Zsh => BuiltinSpec {
             cmd: ustr(r#"_path_files"#),
@@ -1249,7 +1249,7 @@ fn make_builtin_specializations(shell: Shell) -> UstrMap<BuiltinSpec> {
             cmd: ustr(r#"compgen -A directory -- "$1""#),
         },
         Shell::Fish => BuiltinSpec {
-            cmd: ustr(r#"__fish_complete_directories "$1""#),
+            cmd: ustr(r#"__fish_complete_directories "$argv[1]""#),
         },
         Shell::Zsh => BuiltinSpec {
             cmd: ustr(r#"_path_files -/"#),
