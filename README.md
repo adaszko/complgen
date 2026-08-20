@@ -1,9 +1,16 @@
 ## Value Proposition
 
-`complgen` compiles man-page-like grammars into standalone completion scripts.  One grammar file compiles into
-several different scripts for most popular shells, freeing you from having to reimplement and maintain the
-same (state-machine) logic for each shell separately.  `complgen` grammars are declarative and thus much
-easier to maintain than long completion scripts.  See [examples](examples/).
+`complgen` is a command line program that takes a `.usage` (see [examples](examples/)) file as input and
+outputs a standalone, distributable shell completion script.
+
+One grammar file can be compiled for popular shells like bash/fish/zsh/pwsh, freeing you from having to
+reimplement logic for each of the shells separately.
+
+`complgen` grammars are declarative and shell-agnostic, unless you need to reach for a shell-specific
+behavior.
+
+`complgen`'s strong suit is in handling complex subcommands completion and sourcing candidates from external,
+run-time shell commands.
 
 ## Demo
 
